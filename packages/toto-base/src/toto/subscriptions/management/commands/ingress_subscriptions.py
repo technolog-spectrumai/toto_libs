@@ -62,7 +62,7 @@ PLANS = [
         # was already true rather than changing what anybody pays.
         "entitlements": [
             "editor",
-            "kanban", "lacedo", "locations",
+            "kanban", "locations",
         ],
     },
     {
@@ -90,7 +90,7 @@ PLANS = [
         # description above has promised "notebooks" and "media" the whole time.
         "entitlements": [
             "cyprian", "memo", "primula", "sketch", "editor",
-            "kanban", "lacedo", "locations",
+            "kanban", "locations",
             "aralia", "mandragora", "notarius",
             "repo", "gitea", "vod", "steven", "travels",
             "anastasia", "dracena", "texlab", "manta",

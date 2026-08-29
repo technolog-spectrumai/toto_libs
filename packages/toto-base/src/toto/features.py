@@ -256,11 +256,11 @@ def resolve_features(get) -> Features:
     # imports them inside the view, so a kanban-less host just shows the zone.
     kanban = flag(get, "BUILD_KANBAN", default=True)          # toto.kanban — project/task boards
     # No `hesperis` here any more. The Bounty Board was parked to
-    # `toto_libs/limbo/hesperis` on 2026-08-29 and succeeded by `toto.lacedo`,
-    # a HOST portion on zenobia — so its flag is host-local (`BUILD_LACEDO` in
-    # that host's settings) and this resolver, which is library code every host
-    # vendors, has nothing to say about it. `BUILD_PLACIDIA`, the pre-rename
-    # fallback, went with it: no config in the tree sets either name.
+    # `toto_libs/limbo/hesperis` on 2026-08-29, succeeded by `toto.lacedo` — a
+    # HOST portion on zenobia, so never a resolver entry in this library file —
+    # and that successor was parked the same day to `zenobia/limbo/lacedo`. No
+    # host in this tree serves a bounty board. `BUILD_PLACIDIA`, the pre-rename
+    # fallback, went with it: no config in the tree sets any of these names.
     #
     # Note what is NOT inherited: hesperis raised a FeatureConfigError unless
     # BUILD_KANBAN was also on, because it was a surface over the kanban engine

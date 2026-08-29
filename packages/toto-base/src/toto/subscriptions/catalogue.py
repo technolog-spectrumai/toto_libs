@@ -234,10 +234,11 @@ _DEFAULTS = (
     Entitlement("kanban", "Tasks", order=25,
                 icon="fa-solid fa-list-check",
                 description="Boards, missions and sprints."),
-    Entitlement("lacedo", "Bounties", order=26,
-                icon="fa-solid fa-binoculars",
-                description="Open calls from the lodges: contribute, follow, "
-                            "and read every decision."),
+    # No "lacedo" (Bounties): the app was parked on 2026-08-29, and so was
+    # toto.hesperis before it. Removed from BOTH here and from the plans that
+    # granted it in ingress_subscriptions.py, together — a code declared here
+    # but granted by no plan hides its tile from everybody and answers 402 to
+    # every write. Order 26 is left vacant; the numbers only need to sort.
     Entitlement("locations", "Maps", order=27,
                 icon="fa-solid fa-map-location-dot",
                 description="Addresses, territories and what is on them."),

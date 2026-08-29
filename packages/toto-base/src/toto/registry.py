@@ -101,10 +101,10 @@ FEATURE_APPS = {
     "repo": ["toto.repo"],
     "gitea": ["toto.gitea"],
 
-    # No "hesperis" entry: the Bounty Board is parked in limbo/ and its
-    # successor `toto.lacedo` is a HOST portion, so the host supplies its own
-    # INSTALLED_APPS line — the same reason canasta, travels and texlab are
-    # absent from this map.
+    # No "hesperis" entry: the Bounty Board is parked in limbo/, and so is its
+    # successor `toto.lacedo` — which was a HOST portion and so would never
+    # have appeared in this map anyway, the same reason canasta, travels and
+    # texlab are absent from it.
 }
 
 
