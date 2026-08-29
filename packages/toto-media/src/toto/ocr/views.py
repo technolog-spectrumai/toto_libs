@@ -115,6 +115,7 @@ def _settings():
 @login_required
 def ocr_home(request):
     """Upload something and read it — or pick up where a scan got to."""
+    from toto.core import office
     from toto.ocr import engine
     from toto.ocr.models import OcrRun
 
@@ -141,6 +142,15 @@ def ocr_home(request):
         "retention_days": limits.retention_days,
         "vault_file": vault_file,
         "recent": OcrRun.objects.filter(owner=request.user)[:10],
+        # The Office tab strip, with this page's own tab lit. Reading a scan is
+        # one of the things Office does, so it is reached the same way the
+        # other things are — and arriving here must not drop you out of the
+        # tabbed interface you clicked from.
+        #
+        # `office_tabs` is asked rather than hardcoded, so a host that does not
+        # mount Office renders an empty strip instead of a row of dead links,
+        # and a host that adds a tab gets it here for free.
+        "sections": office.office_tabs(active="ocr"),
     }
     return render(request, "ocr/ocr.html",
                   PageProcessor().decorate(context, request))

@@ -432,10 +432,10 @@ def office_view(request, section=None):
 
     context = {
         "page_title": "Office",
-        "sections": [{"slug": s.slug, "label": s.label, "icon": s.icon,
-                      "url": reverse("office:section", args=[s.slug]),
-                      "active": s.slug == current.slug}
-                     for s in sections],
+        # ONE list, sections and tools together — `office_tabs` builds the
+        # same strip the OCR and Aralia pages render, so a tab looks the same
+        # and sits in the same place whichever of the three you are on.
+        "sections": office.office_tabs(active=current.slug),
         "section": current,
         # Resolved here and dropped on NoReverseMatch, the same way the
         # dashboard treats a tile whose app is unmounted: an offer that leads
@@ -462,8 +462,9 @@ def office_view(request, section=None):
         # Drawings tab can be editor-less, and its read-only note must
         # not contradict an Edit button once toto.sketch is installed.
         "type_is_editable": office.type_is_editable(current),
-        # Tools sit beside the tabs, not in them: a tab is a kind of
-        # file you have, and a tool is something you do to one.
+        # Still published, though the strip no longer renders it separately:
+        # tools are tabs now and arrive inside `sections`. Kept because
+        # something other than the strip may want to ask what this host can do.
         "tools": office.available_tools(),
         # The same context key primula's and memo's own listings published, so
         # the gate test that used to walk those pages can walk this one.

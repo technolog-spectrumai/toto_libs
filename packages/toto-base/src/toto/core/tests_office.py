@@ -84,6 +84,63 @@ class TabTests(OfficeTestCase):
         self.assertIn("login", response["Location"])
 
 
+class ToolTabTests(OfficeTestCase):
+    """Tools are tabs, in the same strip, since 2026-08-29.
+
+    They were a row of small buttons off to the right of the tab strip, which
+    is where people did not find them. What makes this a real change rather
+    than restyling is that ONE builder produces the strip — so a tool cannot
+    appear on the Office page and be missing from its own.
+    """
+
+    def test_the_strip_holds_sections_and_tools_in_that_order(self):
+        tabs = office.office_tabs()
+        kinds = [t["is_tool"] for t in tabs]
+        self.assertEqual(kinds, sorted(kinds),
+                         "a tool was rendered between two sections")
+        self.assertTrue(any(t["is_tool"] for t in tabs),
+                        "no tool reached the strip at all")
+
+    def test_a_tool_appears_in_the_tab_strip_on_the_office_page(self):
+        body = self.client.get(self.section_url()).content.decode()
+        for tool in office.available_tools():
+            self.assertIn(tool["label"], body)
+            self.assertIn(tool["url"], body)
+
+    def test_exactly_one_tab_is_active(self):
+        active = [t for t in office.office_tabs(active="documents")
+                  if t["active"]]
+        self.assertEqual([t["slug"] for t in active], ["documents"])
+
+    def test_a_tool_can_be_the_active_tab(self):
+        """The tool's own page lights its tab. Nothing can derive that from
+        the request path — the page is in another app entirely — so the slug
+        is passed and this is what asserts it works."""
+        for tool in office.available_tools():
+            with self.subTest(tool=tool["slug"]):
+                active = [t["slug"] for t in
+                          office.office_tabs(active=tool["slug"])
+                          if t["active"]]
+                self.assertEqual(active, [tool["slug"]])
+
+    def test_an_absent_tool_is_not_offered(self):
+        absent = office.Tool(slug="ghost", label="Ghost",
+                             icon="fa-solid fa-ghost", url_name="nowhere:home",
+                             app_labels=("toto.not_installed",))
+        self.assertNotIn(absent.slug,
+                         [t["slug"] for t in office.office_tabs()])
+
+    def test_the_strip_survives_office_being_unmounted(self):
+        """`office_tabs` reverses every URL and drops what does not resolve,
+        so a host that installs the apps but mounts nothing renders an empty
+        strip rather than 500ing every page that includes it."""
+        from django.urls import NoReverseMatch
+        from unittest import mock
+
+        with mock.patch("django.urls.reverse", side_effect=NoReverseMatch):
+            self.assertEqual(office.office_tabs(), [])
+
+
 class ListingTests(OfficeTestCase):
     def test_each_tab_lists_only_its_own_types(self):
         self.make("doc", "html")

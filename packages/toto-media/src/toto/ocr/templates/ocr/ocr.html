@@ -22,6 +22,11 @@
       </p>
     </header>
 
+    {% comment %}The Office strip, with this page's tab lit. `sections` comes
+    from core.office.office_tabs — an empty list on a host that does not mount
+    Office, which renders an empty strip rather than dead links.{% endcomment %}
+    {% if sections %}{% include "oya/_office_tabs.html" %}{% endif %}
+
     {% if not tesseract_available %}
       {% comment %}An honest refusal, naming the flag, rather than a form that
       can only fail. The same shape every unavailable-tier page uses.{% endcomment %}

@@ -7,10 +7,16 @@ so a strip that spans several wheels and a host portion would vanish the moment
 its home app was switched off. Documents come from toto-works, sheets from a
 zenobia host portion, drawings from nowhere in particular — no app can own this.
 
-The tabs themselves are built in the view (core.views.office_view via
-core.office.available_sections), not guarded here: whether a host serves a tab
-is a question about INSTALLED_APPS, and answering it in a template means
-answering it again in every other template that ever wants to know.
+The tabs themselves are built in the view (core.office.office_tabs), not
+guarded here: whether a host serves a tab is a question about INSTALLED_APPS,
+and answering it in a template means answering it again in every other template
+that ever wants to know.
+
+Rendered by THREE pages now, not one: Office itself, and the two tool pages
+(Text recognition, HTML to PDF) that used to be small buttons off to the side.
+Each passes its own `sections` from `office_tabs(active=…)`, which is why the
+active tab is decided there and never from the request path — a tool's page
+lives in another app and has no Office URL to compare against.
 {% endcomment %}
 {% load i18n %}
 <div class="flex flex-wrap items-end justify-between gap-3 border-b"
@@ -19,7 +25,7 @@ answering it again in every other template that ever wants to know.
      x-bind:class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'"
      aria-label="{% trans 'Office sections' %}">
   {% for tab in sections %}
-    <a href="{{ tab.url }}"
+    <a href="{{ tab.url }}"{% if tab.blurb %} title="{{ tab.blurb }}"{% endif %}
        {% if tab.active %}aria-current="page"{% endif %}
        class="-mb-px inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition
               {% if tab.active %}border-accent-2 text-accent-2{% else %}border-transparent opacity-70 hover:opacity-100{% endif %}"
@@ -28,17 +34,4 @@ answering it again in every other template that ever wants to know.
     </a>
   {% endfor %}
 </nav>
-  {% if tools %}
-    {% comment %}Separated from the tabs on purpose. These are not a fifth kind
-    of file — each one is a link into the app that owns it, because Office owns
-    no write routes and a tool needs some.{% endcomment %}
-    <div class="flex flex-wrap gap-2 pb-1.5">
-      {% for tool in tools %}
-        <a href="{{ tool.url }}" title="{{ tool.blurb }}"
-           class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-85"
-           x-bind:class="darkMode ? 'border-accent-1' : 'border-accent-2'">
-          <i class="{{ tool.icon }}" aria-hidden="true"></i>{{ tool.label }}</a>
-      {% endfor %}
-    </div>
-  {% endif %}
 </div>

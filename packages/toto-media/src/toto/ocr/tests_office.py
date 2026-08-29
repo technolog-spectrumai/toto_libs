@@ -49,11 +49,36 @@ class OfficeToolTests(TestCase):
         else:
             self.assertNotIn("ocr", tools)
 
-    def test_a_tool_is_not_a_tab(self):
-        """A Section is defined by the file types it lists. A tool lists none,
-        and forcing one into that grammar would make the next tool's claim to a
-        tab unanswerable."""
+    def test_a_tool_is_not_a_section(self):
+        """Still not a `Section` — a Section is defined by the vault file types
+        it LISTS and this one lists none, so it has no rows, no folder panel
+        and no New button.
+
+        It IS a tab, since 2026-08-29: `office_tabs()` merges the two kinds
+        into the one strip. The distinction that survives is structural, not
+        where it is drawn.
+        """
         self.assertNotIn("ocr", {s.slug for s in office.SECTIONS})
+        if django_apps.is_installed("toto.ocr"):
+            self.assertIn("ocr", {t["slug"] for t in office.office_tabs()})
+
+    def test_the_tool_page_shows_the_office_strip_with_its_own_tab_lit(self):
+        """Clicking a tab must not drop you out of the tabbed interface.
+
+        The active tab is passed as a slug, because this page lives in another
+        app and there is no Office URL for the strip to compare the request
+        path against.
+        """
+        if not django_apps.is_installed("toto.ocr"):
+            self.skipTest("toto.ocr is not installed on this host")
+        response = self.client.get(reverse("ocr:home"))
+        self.assertEqual(response.status_code, 200)
+        tabs = response.context["sections"]
+        self.assertEqual([t["slug"] for t in tabs if t["active"]], ["ocr"])
+        # And the other tabs are really there to click.
+        for section in office.available_sections():
+            self.assertContains(response,
+                                reverse("office:section", args=[section.slug]))
 
     def test_the_office_page_renders_the_link(self):
         # office:index redirects to the first tab this host serves.

@@ -156,17 +156,27 @@ DEFAULT_SORT = "recent"
 
 @dataclass(frozen=True)
 class Tool:
-    """Something you DO to a file, offered beside the tabs.
+    """Something you DO to a file, and a tab of its own.
 
-    A `Section` is defined by the file types it lists; a tool lists none, so
-    forcing one into that grammar would make the tab strip stop meaning "kinds
-    of thing you have" — and then the next tool's claim to a tab is
-    unanswerable. It is a link, not a route: this module owns no writes, and a
-    tool's own app owns its entitlement and its POSTs.
+    Still a separate dataclass from `Section`, because the two answer different
+    questions — a Section is defined by the vault file types it LISTS and a
+    tool lists none, so a tool has no rows, no folder panel, no New button and
+    no sort. What changed on 2026-08-29 is only where it is rendered: tools
+    were a row of small buttons beside the tab strip, which put "read a scan"
+    and "turn this page into a PDF" somewhere people did not look. They are
+    tabs now, in the same strip as Documents and Presentations, and
+    `office_tabs()` is what merges the two kinds into one list.
 
-    `url_name` is a NAME, resolved lazily and dropped on NoReverseMatch, exactly
-    as `Section.alt_view` is — so an installed-but-unmounted app offers nothing
-    rather than 500ing the whole Office page.
+    The comment that justified the old split said a tab strip must mean "kinds
+    of thing you have". That reading lost: what the strip actually means to
+    somebody using it is "the things Office does", and reading a scan is one
+    of them.
+
+    It remains a LINK, not a route — Office owns no write routes and a tool
+    needs some, so each tool's own app keeps its entitlement and its POSTs.
+    `url_name` is a NAME, resolved lazily and dropped on NoReverseMatch,
+    exactly as `Section.alt_view` is, so an installed-but-unmounted app offers
+    nothing rather than 500ing the whole Office page.
     """
 
     slug: str
@@ -179,7 +189,8 @@ class Tool:
 
 
 TOOLS: tuple = (
-    Tool(slug="ocr", label="Read text", icon="fa-solid fa-file-signature",
+    Tool(slug="ocr", label="Text recognition",
+         icon="fa-solid fa-file-signature",
          url_name="ocr:home", app_labels=("toto.ocr",), entitlement="ocr",
          blurb="Turn a photo, a screenshot or a scanned PDF into text."),
     # Names a HOST-owned app, which this module may do: `app_labels` is a
@@ -194,7 +205,12 @@ TOOLS: tuple = (
 
 
 def available_tools() -> list:
-    """The tools this host both installs and mounts."""
+    """The tools this host both installs and mounts.
+
+    Kept as its own function even though `office_tabs()` is what the page
+    renders: a caller asking "does this host read scans?" should not have to
+    filter a list of tabs to find out.
+    """
     from django.apps import apps as django_apps
     from django.urls import NoReverseMatch, reverse
 
@@ -225,6 +241,41 @@ def available_sections():
     return [s for s in SECTIONS
             if not s.app_labels
             or any(django_apps.is_installed(label) for label in s.app_labels)]
+
+
+def office_tabs(active: str = "") -> list:
+    """THE tab strip — sections and tools, in one list, in one order.
+
+    One builder because there is one strip, and a strip assembled half in this
+    module and half in a template drifts: the Office page would order its tabs
+    one way and the OCR page, which shows the same strip so the tab you clicked
+    stays lit, would order them another.
+
+    `active` is a SLUG rather than a URL. A tool's tab lives in another app
+    entirely — `/ocr/`, `/aralia/` — so there is no request path Office could
+    compare against, and the page that renders the strip is the only thing that
+    knows which tab it is.
+
+    Sections come first and tools last, deliberately: the strip reads "here is
+    what you have" then "here is what you can do with it", and a tool wedged
+    between Presentations and Sheets would break that sentence.
+    """
+    from django.urls import NoReverseMatch, reverse
+
+    tabs = []
+    for section in available_sections():
+        try:
+            url = reverse("office:section", args=[section.slug])
+        except NoReverseMatch:
+            # Office itself unmounted. Nothing to point at, so nothing offered.
+            continue
+        tabs.append({"slug": section.slug, "label": section.label,
+                     "icon": section.icon, "url": url, "blurb": section.blurb,
+                     "is_tool": False, "active": section.slug == active})
+    for tool in available_tools():
+        tabs.append({**tool, "is_tool": True,
+                     "active": tool["slug"] == active})
+    return tabs
 
 
 def files_for(user, section, *, search="", sort=DEFAULT_SORT, directory_id=None):
