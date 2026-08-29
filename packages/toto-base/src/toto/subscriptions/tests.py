@@ -18,7 +18,9 @@ from toto.core.models import Platform
 from toto.people.models import Person
 from toto.socialhub.models import Community
 
-from . import services
+from django.apps import apps
+
+from . import catalogue, services
 from .catalogue import Entitlement, registry
 from .gate import ALWAYS_FREE, SubscriptionGateMiddleware, is_entitled
 from .models import (
@@ -107,6 +109,84 @@ class CatalogueTests(TestCase):
     def test_re_registering_the_identical_row_is_fine(self):
         """Autodiscovery may import a module twice; that must not explode."""
         registry.register(registry.get("vault"))
+
+
+class WhatThisHostSellsTests(TestCase):
+    """`installed()` — the display filter, and the two things it asks.
+
+    The plans page must never offer a feature this build does not serve.
+    Getting that wrong is not cosmetic: somebody pays for a tile that is not
+    there, and the first they hear of it is after the money moves.
+    """
+
+    def test_an_absent_app_is_not_offered(self):
+        codes = {e.code for e in registry.installed()}
+        for entitlement in registry.all():
+            if not apps.is_installed(f"toto.{entitlement.code}"):
+                self.assertNotIn(entitlement.code, codes)
+
+    def test_an_installed_but_unmounted_app_is_not_offered(self):
+        """THE case this exists for.
+
+        zenobia keeps `toto.mandragora` in INSTALLED_APPS purely because
+        `workflows.LambdaFunction` holds a live foreign key into its
+        ComputeKernel, and mounts it at no URL. `apps.is_installed` says yes;
+        there is no notebook editor on that host. Same for `toto.workflows`,
+        deliberately unmounted there because a company-management product does
+        not hand its users a DAG builder.
+        """
+        mounted = catalogue.mounted_app_names()
+        for code in ("mandragora", "workflows"):
+            entitlement = registry.get(code)
+            if entitlement is None or not apps.is_installed(f"toto.{code}"):
+                continue
+            if code in mounted:
+                continue
+            self.assertNotIn(code, {e.code for e in registry.installed()})
+
+    def test_everything_offered_is_reachable(self):
+        """The claim in one line: nothing on the plans page is unreachable."""
+        mounted = catalogue.mounted_app_names()
+        for entitlement in registry.installed():
+            with self.subTest(code=entitlement.code):
+                self.assertTrue(apps.is_installed(f"toto.{entitlement.code}"))
+                self.assertIn(entitlement.code, mounted)
+
+    def test_the_mounted_names_are_what_the_gate_reads(self):
+        """`mounted_app_names` collects `app_name`, which is exactly what
+        `SubscriptionGateMiddleware` reads off `resolver_match` — so what is
+        sold and what is enforced come from one fact rather than two."""
+        from django.urls import resolve, reverse
+
+        match = resolve(reverse("subscriptions:plans"))
+        self.assertIn(match.app_name, catalogue.mounted_app_names())
+
+    def test_it_walks_nested_includes_not_just_the_top_level(self):
+        """`get_resolver().app_dict` holds only the root's direct children, so
+        an app included inside a group would look unsold while being perfectly
+        reachable. Under-reporting removes a feature somebody paid for."""
+        from django.urls import get_resolver
+
+        self.assertTrue(
+            set(get_resolver().app_dict) <= catalogue.mounted_app_names())
+
+    def test_a_broken_url_conf_does_not_take_the_plans_page_down(self):
+        from unittest import mock
+
+        with mock.patch("django.urls.get_resolver", side_effect=RuntimeError):
+            self.assertEqual(catalogue.mounted_app_names(), set())
+
+    def test_a_plan_card_lists_only_what_this_host_serves(self):
+        """The end of the chain, through the model rather than the registry:
+        a plan may name a code this build does not carry — the seed data is
+        written once for every build — and the card must simply not show it."""
+        plan = SubscriptionPlan.objects.create(
+            code="probe", name="Probe", active=True,
+            entitlements=["cyprian", "mandragora", "not-a-real-app"])
+        shown = {e.code for e in plan.entitlement_rows()}
+        self.assertNotIn("not-a-real-app", shown)
+        if "mandragora" not in catalogue.mounted_app_names():
+            self.assertNotIn("mandragora", shown)
 
 
 class DiscountTests(TestCase):

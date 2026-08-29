@@ -72,17 +72,80 @@ class EntitlementRegistry:
         return {e.code for e in self._items.values() if e.free}
 
     def installed(self) -> Iterator[Entitlement]:
-        """Only entitlements whose app is actually on this host.
+        """Only entitlements this host actually serves.
 
-        A plan that lists a document editor on a host with no document editor is
-        selling nothing, and the buyer is the last person who should discover
-        that.
+        A plan that lists a document editor on a host with no document editor
+        is selling nothing, and the buyer is the last person who should
+        discover that.
+
+        TWO CONDITIONS, and the second is the one that was missing. The app has
+        to be in ``INSTALLED_APPS`` **and** something has to be mounted under
+        its namespace. `apps.is_installed` alone is not the same question:
+        zenobia keeps ``toto.mandragora`` installed purely because
+        ``workflows.LambdaFunction`` holds a live foreign key into its
+        ComputeKernel, and mounts it at no URL at all — so the plans page sold
+        "Notebooks" on a build with no notebooks in it. `core.views._mounted`
+        learned the same lesson for the manual, in the same words.
+
+        Asking the URL conf is not a proxy for the real question, it IS the
+        real question: ``SubscriptionGateMiddleware`` reads
+        ``resolver_match.app_name`` and nothing else, so a code no mounted URL
+        carries gates nothing and can unlock nothing. What is sold and what is
+        enforced come from one fact.
         """
         from django.apps import apps
 
+        mounted = mounted_app_names()
         for entitlement in self.all():
-            if apps.is_installed(f"toto.{entitlement.code}"):
-                yield entitlement
+            if not apps.is_installed(f"toto.{entitlement.code}"):
+                continue
+            if entitlement.code not in mounted:
+                continue
+            yield entitlement
+
+
+def mounted_app_names() -> set:
+    """Every ``app_name`` reachable in this host's URL conf.
+
+    Walks the whole tree rather than reading ``get_resolver().app_dict``: that
+    dict holds only the resolvers directly beneath the root, and an app
+    included inside a group — zenobia splices several through helper lists —
+    would be missing from it and would look unsold while being perfectly
+    reachable. Under-reporting here removes a feature somebody has paid for,
+    so the expensive walk is the right trade.
+
+    Deliberately uncached. The URL conf is swapped per test with
+    ``override_settings(ROOT_URLCONF=…)``, and a cache keyed on anything less
+    than that answers the previous test's question. The walk is a few hundred
+    patterns and runs on a page render, not in a loop.
+
+    Never raises: a malformed urlconf must not take the plans page with it.
+    An empty set then means "sell nothing", which is the safe direction —
+    the gate is unaffected either way, because this decides only what is
+    DISPLAYED.
+    """
+    from django.urls import get_resolver
+    from django.urls.resolvers import URLResolver
+
+    names = set()
+
+    def walk(resolver, depth=0):
+        # A cycle in an include() would otherwise spin forever. Nothing in this
+        # suite nests anywhere near this deep.
+        if depth > 20:
+            return
+        app_name = getattr(resolver, "app_name", None)
+        if app_name:
+            names.add(app_name)
+        for pattern in getattr(resolver, "url_patterns", ()):
+            if isinstance(pattern, URLResolver):
+                walk(pattern, depth + 1)
+
+    try:
+        walk(get_resolver())
+    except Exception:  # noqa: BLE001 - see the docstring
+        return set()
+    return names
 
 
 registry = EntitlementRegistry()
