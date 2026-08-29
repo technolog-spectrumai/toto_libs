@@ -11,14 +11,14 @@ from toto.vault.models import VaultFile
 from toto.vault.plugins import VaultEditorPlugin, VaultPlayPlugin
 
 
-from toto.cyprian import ctml as df
+from toto.cyprian import htmldoc as df
 
 from .base import CyprianTestCase
 
 
 class DocumentPageTests(CyprianTestCase):
     def _make(self, document=None, *, owner=None, is_public=False,
-              title="report.ctml", file_type="ctml") -> VaultFile:
+              title="report.html", file_type="html") -> VaultFile:
         document = document or df.new_document("Report")
         return VaultFile.objects.create(
             owner=owner or self.owner, title=title, file_type=file_type,
@@ -130,29 +130,24 @@ class DocumentPageTests(CyprianTestCase):
         self.assertEqual(VaultEditorPlugin.for_file_type("xml").get_key(), "xml")
         self.assertIsNone(VaultPlayPlugin.for_file_type("xml"))
 
-    def test_a_document_filed_as_xml_is_adopted_on_open(self):
-        """Still true after the CTML rename, and still needed.
+    def test_the_writer_never_retypes_a_file(self):
+        """`_adopt()` is gone, and this is the assertion that it stays gone.
 
-        Migration 0023 deliberately did not rename existing FILES, so a
-        `.ctml`-less document that is downloaded and re-uploaded comes back
-        typed `xml`. `_adopt` is what repairs it on the next open.
+        It used to force-retype a file to `ctml` on every owner open — the
+        repair for a re-uploaded document. With the format retired, an open
+        must be a READ: a writer that edits a row's type as a side effect of
+        looking at it is exactly the mechanism that would resurrect a retired
+        type one file at a time. The mistyped row simply is not a document any
+        more, and the writer refuses it as such.
         """
-        vault_file = self._make(file_type="ctml")
+        vault_file = self._make(file_type="html")
         VaultFile.objects.filter(pk=vault_file.pk).update(file_type="xml")
         self.client.force_login(self.owner)
-        self.client.get(reverse("cyprian:edit", args=[vault_file.pk]))
+        response = self.client.get(reverse("cyprian:edit", args=[vault_file.pk]))
+        self.assertEqual(response.status_code, 404)
         vault_file.refresh_from_db()
-        self.assertEqual(vault_file.file_type, "ctml")
+        self.assertEqual(vault_file.file_type, "xml")
 
-    def test_the_legacy_spelling_is_adopted_too(self):
-        """Rows the migration could not reach — mirrored, remote, encrypted —
-        are still spelled `document`, and must not be second-class."""
-        vault_file = self._make(file_type="ctml")
-        VaultFile.objects.filter(pk=vault_file.pk).update(file_type="document")
-        self.client.force_login(self.owner)
-        self.client.get(reverse("cyprian:edit", args=[vault_file.pk]))
-        vault_file.refresh_from_db()
-        self.assertEqual(vault_file.file_type, "ctml")
 
 
 class SourceViewTests(CyprianTestCase):
@@ -163,7 +158,7 @@ class SourceViewTests(CyprianTestCase):
         document = df.new_document("Sourced")
         document.content = "<h1>Chapter one</h1><p>body</p>"
         self.file = VaultFile.objects.create(
-            owner=self.owner, title="sourced.ctml", file_type="ctml",
+            owner=self.owner, title="sourced.html", file_type="html",
             bucket=self.bucket,
             file=SimpleUploadedFile("sourced.xml",
                                     df.dumps(document).encode("utf-8")))
@@ -174,7 +169,8 @@ class SourceViewTests(CyprianTestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        self.assertIn("<document", body)
+        # The file is an HTML page now, verbatim: no XML container around it.
+        self.assertIn("<!doctype html>", body.lower())
         self.assertIn("Chapter one", body)
 
     def test_post_parses_with_the_servers_own_parser(self):
@@ -197,11 +193,15 @@ class SourceViewTests(CyprianTestCase):
         self.file.refresh_from_db()
         self.assertEqual(self.file.file.read(), before)
 
-    def test_rubbish_is_refused_with_the_parsers_sentence(self):
-        response = self.client.post(self.url, data="<document><oops",
-                                    content_type="application/xml")
-        self.assertEqual(response.status_code, 400)
-        self.assertTrue(response.json()["error"])
+    def test_rubbish_cannot_be_rubbish_any_more(self):
+        """CTML answered 400 with its parser sentence on a broken container.
+        HTML has no failure mode short of not being text: a broken tag is a
+        body the sanitiser cleans. So the input that used to be refused now
+        parses — asserted, so nobody restores a 400 nothing can produce."""
+        response = self.client.post(self.url, data="<p><oops",
+                                    content_type="text/html")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("document", response.json())
 
     def test_a_stranger_cannot_read_the_source(self):
         self.client.force_login(self.other)
@@ -219,7 +219,7 @@ class WriterChromeTests(CyprianTestCase):
     def setUp(self):
         super().setUp()
         self.file = VaultFile.objects.create(
-            owner=self.owner, title="chrome.ctml", file_type="ctml",
+            owner=self.owner, title="chrome.html", file_type="html",
             bucket=self.bucket,
             file=SimpleUploadedFile("chrome.xml",
                                     df.dumps(df.new_document("Chrome")).encode()))
@@ -362,7 +362,7 @@ class ContractIntegrationTests(CyprianTestCase):
         # A document that outlived its contract is still a document; refusing
         # to save it would be losing work over a broken pointer.
         vault_file = VaultFile.objects.create(
-            owner=self.owner, title="orphan.ctml", file_type="ctml",
+            owner=self.owner, title="orphan.html", file_type="html",
             bucket=self.bucket,
             file=SimpleUploadedFile("orphan.xml", df.dumps(
                 df.Document(title="Orphan", content="<p>x</p>")).encode()))
@@ -382,7 +382,7 @@ class DeletionTests(CyprianTestCase):
     def setUp(self):
         super().setUp()
         self.vault_file = VaultFile.objects.create(
-            owner=self.owner, title="doomed.ctml", file_type="ctml",
+            owner=self.owner, title="doomed.html", file_type="html",
             bucket=self.bucket,
             file=SimpleUploadedFile("doomed.xml", df.dumps(
                 df.Document(title="Doomed", content="<p>x</p>")).encode()))

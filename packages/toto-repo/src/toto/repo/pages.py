@@ -73,7 +73,10 @@ def _surface_link(repo: GitRepo) -> dict:
                         "url": reverse(f"{app}:workspace", args=[workspace.slug])}
 
     for vault_file in subtree_files(repo.directory):
-        if (vault_file.file_type in ("ctml", "document")
+        # `html` since the CTML retirement: a written document is an HTML file
+        # now. cyprian:edit is still the door — it is the rich-text writer a
+        # wiki page opens — so what changed is the type, not the destination.
+        if (vault_file.file_type == "html"
                 and django_apps.is_installed("toto.cyprian")):
             return {"label": vault_file.title, "kind": "document",
                     "url": reverse("cyprian:edit", args=[vault_file.pk])}

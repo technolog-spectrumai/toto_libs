@@ -315,8 +315,6 @@ class VaultFile(models.Model):
         ('sheet', 'Primula Sheet'),   # a Univer workbook snapshot (JSON), edited in toto.primula
         ('pxml', 'Presentation'),     # a slide deck (.pxml), authored in zinnia, shown by toto.memo
         ('presentation', 'Presentation'),  # LEGACY spelling of 'pxml' — see below
-        ('ctml', 'CTML Document'),    # a written document, edited in toto.cyprian
-        ('document', 'Document'),     # LEGACY spelling of 'ctml' — see below
         ('zip', 'Archive'),
     ]
     # The retired doc types (notebook/.tpy, contract/.contract) are ordinary 'xml'
@@ -345,11 +343,16 @@ class VaultFile(models.Model):
     # those rows unnameable in admin and rejected by RenameFileView. toto.memo
     # reads both spellings.
     #
-    # 'document' is the LEGACY spelling of 'ctml', and the story is the same
-    # one told twice. A Cyprian document was an `.xml` file typed 'document' —
+    # 'ctml' and 'document' are BOTH gone as of migration 0024. The writer's
+    # own format was retired on 2026-08-29 and a written document is an
+    # ordinary 'html' file now — see toto/cyprian/htmldoc.py for what the
+    # container carried and why none of it was missed. 0023 is left untouched
+    # because it is deployed; 0024 is the forward migration that undoes it.
+    # The historical note kept below is what 0023 did and why:
+    # a Cyprian document was an `.xml` file typed 'document' —
     # a name that said nothing, on an extension toto.editor already owned — so
-    # what a file WAS depended on which editor had touched it last. It is CTML
-    # now, with its own extension. Migration 0023 retypes what it can reach and
+    # what a file WAS depended on which editor had touched it last. It became
+    # CTML, with its own extension. Migration 0023 retyped what it could reach and
     # cannot reach the same three populations 0021 could not, so the old string
     # stays nameable here forever. Cyprian reads both spellings.
     #
@@ -369,12 +372,10 @@ class VaultFile(models.Model):
         # is the point: a deck is ".pxml", everything else XML-shaped — cyprian
         # documents, notebooks, contracts — stays ".xml".
         ".pxml": "pxml",
-        # A written document is `.ctml` — its own extension, so the type is
-        # decided at every ingest door instead of by whichever editor happened
-        # to touch the row first. Before this, a document uploaded by hand
-        # arrived as generic `xml` and opened in ACE, and only cyprian's own
-        # `_adopt()` repaired it — and only if the OWNER opened it.
-        ".ctml": "ctml",
+        # `.ctml` is deliberately ABSENT. A written document is `.html` now, so
+        # it needs no entry of its own — the `.html` line below already carries
+        # it, and that is the point of retiring the format: one extension, one
+        # type, one editor door.
         ".xml": "xml",
         ".html": "html", ".htm": "html",
         ".md": "text", ".txt": "text", ".rst": "text",

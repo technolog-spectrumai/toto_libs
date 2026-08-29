@@ -1,16 +1,25 @@
-"""Who may write a document the vault would refuse them.
+"""Who may write a wiki page's file that the vault would refuse them.
 
 The vault decides access from its own row — owner, staff, directory ACL,
 public. A project-wiki page is none of those for the people who write it: the
 file is held by the project lead and edited by the team, and only cyprian's
 DocumentBridge knows that. So cyprian answers on the vault's behalf, and the
-lock and version endpoints finally agree with the writer about who may edit.
+lock and version endpoints agree with the writer about who may edit.
 
-Registered UNCONDITIONALLY, unlike the Edit button in
-``vault_editor_plugins.py``, which is gated on ``document_editor_shown()``.
-Hiding the writer's dashboard tile hides a way in; it must not withdraw a
-team's editing lock, because the wiki keeps driving ``cyprian:edit`` either
-way — its URLs stay mounted exactly for that reason.
+KEYED ON `html` SINCE 2026-08-29, where it was `ctml` and `document` before.
+The writer stores an ordinary HTML page now, so that is the type the wiki's
+files carry and the type this rule has to answer for.
+
+Claiming a type as broad as `html` is safe, and the reason is in
+`vault.access.may_edit_via_app`: it is asked only AFTER the vault's own checks
+have said no, and *it only ever widens*. For an ordinary HTML page no bridge
+claims the file, `bridge.may_edit` returns False, and the vault's answer stands
+unchanged. The only files this can widen access to are the ones an owning app
+has put its own column against.
+
+Registered UNCONDITIONALLY. Hiding a way in must never withdraw a team's
+editing lock — access is not visibility, and the wiki keeps driving
+`cyprian:edit` regardless of what any dashboard shows.
 """
 
 from toto.vault.plugins import VaultAccessPlugin
@@ -18,28 +27,12 @@ from toto.vault.plugins import VaultAccessPlugin
 from ..bridge import may_edit
 
 
-@VaultAccessPlugin.plugin(key="ctml", title="CTML Document")
-class CtmlAccessPlugin(VaultAccessPlugin):
-    file_type = "ctml"
+@VaultAccessPlugin.plugin(key="html", title="HTML document")
+class HtmlDocumentAccessPlugin(VaultAccessPlugin):
+    file_type = "html"
 
     def may_edit(self, user, vault_file) -> bool:
         # No parsed document to hand over: the vault holds only the row. A
-        # bridge that answers from its own column (the ones that matter here)
-        # needs nothing more; one that would have to read meta re-reads, which
-        # is the documented cost of asking without the document in hand.
+        # bridge that answers from its own column — the one that matters here,
+        # kanban's — needs nothing more.
         return may_edit(user, vault_file)
-
-
-@VaultAccessPlugin.plugin(key="document", title="Document (legacy)")
-class LegacyDocumentAccessPlugin(CtmlAccessPlugin):
-    """The pre-CTML spelling, registered separately because `key` IS the lookup.
-
-    `VaultAccessPlugin.for_file_type` is `registry.get(file_type)`, so one class
-    cannot answer for two types. Migration 0023 retypes what it can reach, but
-    it deliberately cannot reach mirrored stubs, remote buckets or encrypted
-    rows — and for those, this registration is the difference between a kanban
-    wiki collaborator keeping their lock and version rights and quietly losing
-    them with no error anywhere.
-    """
-
-    file_type = "document"

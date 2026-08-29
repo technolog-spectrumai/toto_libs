@@ -87,23 +87,21 @@ class Section:
 SECTIONS: tuple[Section, ...] = (
     Section(
         slug="documents", label="Documents", icon="fa-solid fa-file-lines",
-        # Two types, one idea. A person looking for "my documents" does not
-        # first decide whether the thing they wrote is a cyprian document or an
-        # HTML page — that is an implementation detail of which editor made it.
-        # Splitting them cost this host its only Documents listing: the tile by
-        # that name opened the HTML viewer while written documents had no
-        # listing at all.
-        # "document" is the LEGACY spelling of "ctml" — carried for rows
-        # migration 0023 could not reach, exactly as "presentation" is
-        # carried beside "pxml" on the tab below.
+        # ONE type, because there is now one thing. "A person looking for my
+        # documents does not first decide whether the thing they wrote is a
+        # cyprian document or an HTML page" was the argument for listing two
+        # types here; retiring CTML on 2026-08-29 settled it the other way and
+        # there is only the HTML page. The writer still exists — it is how a
+        # kanban wiki page is written — but it owns no file type and claims
+        # nothing in the vault.
         # `pdf` is listed but has no editor and no reader plugin, so
         # `open_url` falls through to the download door — which is right. It is
         # here so a PDF made from a page in this tab is VISIBLE in the tab it
         # was made from, instead of landing somewhere the person has to hunt.
-        file_types=("ctml", "document", "html", "pdf"),
-        app_labels=("toto.cyprian", "toto.htmlview"),
-        entitlement="cyprian", show_type=True,
-        blurb="Written documents and HTML pages — read them, or open them to edit.",
+        file_types=("html", "pdf"),
+        app_labels=("toto.htmlview",),
+        entitlement="htmlview", show_type=True,
+        blurb="HTML documents — read them, or open them to edit and preview.",
     ),
     Section(
         slug="presentations", label="Presentations",
@@ -191,8 +189,7 @@ TOOLS: tuple = (
     Tool(slug="aralia", label="HTML to PDF", icon="fa-solid fa-file-pdf",
          url_name="aralia:editor", app_labels=("toto.aralia",),
          entitlement="aralia",
-         blurb="Render an HTML page to a PDF. A CTML document must be "
-               "converted to HTML first."),
+         blurb="Preview an HTML document, and render it to a PDF."),
 )
 
 

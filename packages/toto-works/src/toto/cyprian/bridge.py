@@ -186,6 +186,13 @@ def may_edit(user, vault_file, document=None) -> bool:
 def open_document(*, key: str, ref: str, title: str, seed_html: str, owner,
                   bucket=None, directory=None, toc: bool = False,
                   document_title: str = "") -> VaultFile:
+    # `key`, `ref` and `toc` are accepted and no longer used. They were CTML
+    # container fields — the meta stamp a weak bridge could claim from, and the
+    # contents-page flag — and the container is gone. Kept in the signature
+    # rather than removed because every caller passes them by keyword and a
+    # bridge is a published extension point: dropping them would break an
+    # out-of-tree bridge for no gain. A caller that stops passing them is
+    # correct too.
     """Mint the document behind an owning app's object — once, then reuse it.
 
     Generalised from ``from_contract``, which did exactly this for one key:
@@ -200,7 +207,7 @@ def open_document(*, key: str, ref: str, title: str, seed_html: str, owner,
     created here or it is not created at all, which is what makes the owning
     app's column safe to authorise against.
     """
-    from . import ctml
+    from . import htmldoc
     from toto.antivirus.sanitize import sanitize_content
 
     if bucket is None:
@@ -213,29 +220,29 @@ def open_document(*, key: str, ref: str, title: str, seed_html: str, owner,
     # silently starting blank beside it.
     found = VaultFile.objects.filter(
         bucket=bucket, directory=directory, title=title,
-        file_type__in=("ctml", "document")).first()
+        file_type="html").first()
     if found is not None:
         return found
 
-    document = ctml.new_document(document_title or "")
+    # HTML, not CTML. The writer's storage format was retired on 2026-08-29 —
+    # see htmldoc.py for what the container carried and why none of it was
+    # missed. `key`/`ref` are no longer stamped into the file: the only bridge
+    # that ever read them was the weak, meta-only one, and a wiki page is
+    # claimed from `DocumentationPage.vault_file`, a column its own app
+    # controls. Resolving from a column rather than from the document is the
+    # rule this module's docstring already states; dropping the meta simply
+    # removes the weaker path rather than weakening the strong one.
     body = sanitize_content(seed_html or "")
-    if body:
-        document.content = body
-    document.meta[key] = str(ref)
-    # No contents page by default: an owning app's object has its own front
-    # matter, and a wiki page is read top to bottom.
-    document.toc = toc
-
-    xml = ctml.dumps(document).encode("utf-8")
+    html = htmldoc.page(document_title or title, body).encode("utf-8")
     vault_file = VaultFile(
         owner=owner, title=title,
         key=unique_key(slugify(title.rsplit(".", 1)[0]) or "document", bucket),
-        file_type="ctml", bucket=bucket, directory=directory,
+        file_type="html", bucket=bucket, directory=directory,
         is_public=False)
     vault_file.save()
-    vault_file.file.save(title, ContentFile(xml), save=True)
-    vault_file.content_hash = hashlib.sha256(xml).hexdigest()
-    vault_file.file_size_bytes = len(xml)
+    vault_file.file.save(title, ContentFile(html), save=True)
+    vault_file.content_hash = hashlib.sha256(html).hexdigest()
+    vault_file.file_size_bytes = len(html)
     vault_file.save(update_fields=["content_hash", "file_size_bytes"])
     return vault_file
 

@@ -117,14 +117,24 @@
           <i id="lock-icon" class="fa-solid fa-lock-open"></i>
         </button>
 
-        {% if cyprian_convert_url %}
-        {% comment %}CONVERT, not a second editor. A GET, because the target
-        is a page that itemises what the conversion costs and then asks — a
-        confirm() dialog cannot list four kinds of loss with counts. THIS file
-        is never touched either way.{% endcomment %}
-        <a href="{{ cyprian_convert_url }}" title="{% trans 'Convert to CTML' %}"
+        {% if preview %}
+        {% comment %}The preview toggle. A pane, not a mode: the source stays
+        the source and nothing here writes. Its predecessor on this spot was a
+        Convert-to-CTML link, and CTML was retired on 2026-08-29 — a written
+        document IS this file now.{% endcomment %}
+        <button id="toggle-preview" title="{% trans 'Toggle preview' %}"
+                class="toolbar-btn border">
+          <i class="fa-solid fa-columns"></i>
+        </button>
+        {% endif %}
+
+        {% if pdf_url %}
+        {% comment %}The PDF, which is the half a browser cannot do: WeasyPrint
+        renders it, in toto.aralia, on a worker. Absent aralia there is no
+        button and the preview pane is unaffected.{% endcomment %}
+        <a href="{{ pdf_url }}" title="{% trans 'Render to PDF' %}"
            class="toolbar-btn border">
-          <i class="fa-solid fa-feather-pointed"></i>
+          <i class="fa-solid fa-file-pdf"></i>
         </a>
         {% endif %}
 
@@ -185,12 +195,32 @@
     </div>
 
     <!-- ── Editor ──────────────────────────────────────────── -->
-    <div class="flex-1 relative">
+    <div class="flex-1 relative flex gap-3">
       <div id="editor"
            class="w-full rounded-xl border"
            style="height: calc(100vh - 11rem);"
            :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
       </div>
+      {% if preview %}
+      {% comment %}The preview.
+
+         `sandbox` with NEITHER allow-scripts NOR allow-same-origin, which
+         together are what make this safe to point at a document somebody else
+         wrote: the frame gets a null origin, runs nothing, and cannot reach
+         this page, its cookies or the network. That is the same posture
+         toto.htmlview takes for the same reason, and it is why the pane can
+         render an unsanitised buffer at all.
+
+         `srcdoc`, so there is no request: the bytes come straight from the ACE
+         session. A preview that round-tripped to the server would cost a
+         request per keystroke and could not work on an unsaved buffer, which
+         is the only buffer worth previewing.{% endcomment %}
+      <iframe id="preview" title="{% trans 'Preview' %}" hidden
+              sandbox
+              class="w-full rounded-xl border bg-white"
+              style="height: calc(100vh - 11rem);"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"></iframe>
+      {% endif %}
     </div>
 
     {% comment %}The versions panel, and the page's ONE fileVersions instance —
@@ -350,6 +380,50 @@ editor.session.setMode("ace/mode/{{ ace_mode }}");
 editor.setValue(`{{ content|escapejs }}`, -1);
 editor.setOptions({ fontSize: "14px", showPrintMargin: false, wrap: {{ wrap_lines }}, readOnly: false });
 window.VaultEditor = editor;
+
+{% if preview %}
+/* The preview pane.
+ *
+ * Debounced, because `srcdoc` reparses the whole document on every assignment
+ * and a keystroke-rate rewrite makes the editor feel slow on a long page. 250ms
+ * is below the threshold where a preview stops feeling live and well above the
+ * cost of a reparse.
+ *
+ * Hidden by default: an editor that opens as two half-width panes is a worse
+ * editor for anyone who came to edit rather than to look. The toggle is
+ * remembered per browser, not per file — it is a preference about how you work.
+ */
+(function () {
+  const frame = document.getElementById("preview");
+  const button = document.getElementById("toggle-preview");
+  if (!frame || !button) return;
+
+  let timer = null;
+  function paint() {
+    frame.srcdoc = editor.getValue();
+  }
+  function schedule() {
+    if (frame.hidden) return;          /* nothing to repaint while closed */
+    clearTimeout(timer);
+    timer = setTimeout(paint, 250);
+  }
+  function show(on) {
+    frame.hidden = !on;
+    editor.container.classList.toggle("w-1/2", on);
+    frame.classList.toggle("w-1/2", on);
+    editor.resize();
+    if (on) paint();
+    try { localStorage.setItem("editorPreview", on ? "1" : "0"); } catch (e) { /* private window */ }
+  }
+
+  button.addEventListener("click", () => show(frame.hidden));
+  editor.session.on("change", schedule);
+
+  let remembered = "0";
+  try { remembered = localStorage.getItem("editorPreview") || "0"; } catch (e) { /* ignore */ }
+  if (remembered === "1") show(true);
+})();
+{% endif %}
 
 
 {% if steven_surface %}

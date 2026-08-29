@@ -86,7 +86,7 @@ class TabTests(OfficeTestCase):
 
 class ListingTests(OfficeTestCase):
     def test_each_tab_lists_only_its_own_types(self):
-        self.make("doc", "document")
+        self.make("doc", "html")
         self.make("deck", "pxml")
         self.make("draw", "svg")
         documents = self.client.get(self.section_url("documents"))
@@ -108,22 +108,22 @@ class ListingTests(OfficeTestCase):
         other_bucket = Bucket.objects.create(name="Theirs", slug="theirs",
                                              owner=stranger)
         hidden = VaultFile(owner=stranger, title="secret.x", key="secret",
-                           file_type="document", bucket=other_bucket)
+                           file_type="html", bucket=other_bucket)
         hidden.file.save("secret.x", SimpleUploadedFile("secret.x", b"hi"),
                          save=True)
         response = self.client.get(self.section_url("documents"))
         self.assertEqual(response.context["total"], 0)
 
     def test_search_narrows_the_list(self):
-        self.make("alpha", "document", title="Quarterly report")
-        self.make("beta", "document", title="Handbook")
+        self.make("alpha", "html", title="Quarterly report")
+        self.make("beta", "html", title="Handbook")
         response = self.client.get(self.section_url(), {"q": "quarterly"})
         self.assertEqual([r["file"].key for r in response.context["rows"]],
                          ["alpha"])
 
     def test_sorting_is_honoured_and_garbage_falls_back(self):
-        self.make("b", "document", title="Beta")
-        self.make("a", "document", title="Alpha")
+        self.make("b", "html", title="Beta")
+        self.make("a", "html", title="Alpha")
         by_name = self.client.get(self.section_url(), {"sort": "name"})
         self.assertEqual([r["file"].title for r in by_name.context["rows"]],
                          ["Alpha", "Beta"])
@@ -132,14 +132,14 @@ class ListingTests(OfficeTestCase):
         self.assertEqual(junk.context["sort"], office.DEFAULT_SORT)
 
     def test_a_folder_filter_narrows_the_list(self):
-        self.make("loose", "document")
-        self.make("filed", "document", directory=self.folder)
+        self.make("loose", "html")
+        self.make("filed", "html", directory=self.folder)
         response = self.client.get(self.section_url(), {"dir": self.folder.pk})
         self.assertEqual([r["file"].key for r in response.context["rows"]],
                          ["filed"])
 
     def test_a_garbage_folder_id_is_ignored_not_fatal(self):
-        self.make("loose", "document")
+        self.make("loose", "html")
         response = self.client.get(self.section_url(), {"dir": "banana"})
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context["directory_id"])
@@ -149,7 +149,7 @@ class ListingTests(OfficeTestCase):
         different next actions, so they are never the same sentence."""
         empty = self.client.get(self.section_url())
         self.assertContains(empty, "Nothing here yet.")
-        self.make("doc", "document", title="Handbook")
+        self.make("doc", "html", title="Handbook")
         no_match = self.client.get(self.section_url(), {"q": "zzzz"})
         self.assertContains(no_match, "Nothing matches that.")
 
@@ -190,13 +190,13 @@ class OpenTests(OfficeTestCase):
         stranger = User.objects.create_user("stranger", password="pw")
         other = Bucket.objects.create(name="T", slug="t", owner=stranger)
         hidden = VaultFile(owner=stranger, title="x.x", key="x",
-                           file_type="document", bucket=other)
+                           file_type="html", bucket=other)
         hidden.file.save("x.x", SimpleUploadedFile("x.x", b"hi"), save=True)
         response = self.client.get(self.open_url(hidden.pk))
         self.assertEqual(response.status_code, 404)
 
     def test_an_encrypted_file_opens_nowhere(self):
-        sealed = self.make("sealed", "document")
+        sealed = self.make("sealed", "html")
         VaultFile.objects.filter(pk=sealed.pk).update(is_encrypted=True)
         sealed.refresh_from_db()
         self.assertEqual(office.open_url(sealed), "")
@@ -224,7 +224,7 @@ class DelegationTests(OfficeTestCase):
     """The paywall rule, asserted rather than trusted."""
 
     def test_no_office_route_accepts_a_write(self):
-        self.make("doc", "document")
+        self.make("doc", "html")
         for url in (reverse("office:index"), self.section_url("documents"),
                     self.open_url(VaultFile.objects.first().pk)):
             response = self.client.post(url, {})
@@ -236,7 +236,7 @@ class DelegationTests(OfficeTestCase):
         that owns the file type, never at /office/."""
         import re
 
-        self.make("doc", "document")
+        self.make("doc", "html")
         body = self.client.get(self.section_url()).content.decode()
         actions = re.findall(r'<form[^>]+action="([^"]+)"', body)
         self.assertTrue(actions, "the page rendered no action at all")
@@ -261,14 +261,17 @@ class DelegationTests(OfficeTestCase):
         else:
             self.assertEqual(office.creatable_types(drawings), [])
         documents = office.SECTIONS_BY_SLUG["documents"]
-        if django_apps.is_installed("toto.cyprian"):
+        # `html`, and cyprian is not what decides it any more: the writer owns
+        # no file type since CTML was retired, so what makes a document
+        # creatable here is an EDITOR claiming `html`.
+        if django_apps.is_installed("toto.editor"):
             self.assertEqual([t for t, _ext in office.creatable_types(documents)],
-                             ["ctml"])
+                             ["html"])
 
 
 class FolderPanelTests(OfficeTestCase):
     def test_the_panel_shows_this_tab_s_files(self):
-        self.make("filed", "document", directory=self.folder)
+        self.make("filed", "html", directory=self.folder)
         self.make("deck", "pxml")
         tree = self.client.get(self.section_url()).context["tree"]
         titles = [f["title"] for node in tree for group in node["groups"]
@@ -276,13 +279,13 @@ class FolderPanelTests(OfficeTestCase):
         self.assertEqual(titles, ["filed.x"])
 
     def test_the_panel_carries_a_folder_id_to_link_with(self):
-        self.make("filed", "document", directory=self.folder)
+        self.make("filed", "html", directory=self.folder)
         tree = self.client.get(self.section_url()).context["tree"]
         group = next(g for node in tree for g in node["groups"] if g["dir"])
         self.assertEqual(group["dir_id"], self.folder.pk)
 
     def test_folder_names_render_as_filter_links(self):
-        self.make("filed", "document", directory=self.folder)
+        self.make("filed", "html", directory=self.folder)
         response = self.client.get(self.section_url())
         self.assertContains(response, f"?dir={self.folder.pk}")
 
@@ -351,7 +354,7 @@ class HtmlDocumentTests(OfficeTestCase):
     """
 
     def test_the_documents_tab_holds_both_kinds(self):
-        self.make("written", "document", title="Handbook.xml")
+        self.make("written", "html", title="Handbook.xml")
         self.make("page", "html", title="Report.html")
         response = self.client.get(self.section_url("documents"))
         keys = {row["file"].key for row in response.context["rows"]}

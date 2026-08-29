@@ -50,6 +50,33 @@ class CsvEditorPlugin(VaultEditorPlugin):
 @VaultEditorPlugin.plugin(key="html", title="HTML Editor", order=48)
 class HtmlEditorPlugin(VaultEditorPlugin):
     file_type = "html"
+    #: Declared since 2026-08-29, and it is what puts a New button back on
+    #: Office's Documents tab. CTML's plugin used to be the only thing there
+    #: that could seed a document; retiring the format took the button with it
+    #: until this line, and a Documents tab you can read but never write to is
+    #: not a documents tab.
+    new_file_extension = ".html"
+
+    def blank_content(self, title: str) -> str:
+        """A whole page, not an empty string.
+
+        `blank_content` must return something the app's own reader accepts, and
+        for HTML the reader is a browser: a bare fragment renders as unstyled
+        text the moment anybody downloads the file. The page mirrors what
+        `toto.cyprian.htmldoc.page` writes for a wiki page, so a document
+        created here and a document created by the writer are the same shape.
+        """
+        stem = (title or "").rsplit(".", 1)[0].strip() or "Document"
+        safe = (stem.replace("&", "&amp;").replace("<", "&lt;")
+                    .replace(">", "&gt;"))
+        return (
+            '<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n'
+            f"<title>{safe}</title>\n"
+            "<style>\nbody { font-family: Georgia, 'Times New Roman', serif; "
+            "margin: 3rem auto; max-width: 46rem; line-height: 1.5; }\n"
+            "</style>\n</head>\n<body>\n"
+            f"<h1>{safe}</h1>\n<p></p>\n</body>\n</html>\n"
+        )
 
     def get_editor_url(self, vault_file) -> str:
         """The HTML source editor. Always, on every host.
@@ -59,8 +86,9 @@ class HtmlEditorPlugin(VaultEditorPlugin):
         rich-text twin and opened THAT, with a bridge rewriting the page on
         every save. Edit is now what it says: it opens this file, as HTML.
 
-        Becoming a CTML document is a separate, named action that produces a
-        separate file. See `cyprian:html_to_ctml`.
+        There is no second format to become. CTML was retired on 2026-08-29;
+        a written document IS an HTML file, edited here, with a live preview
+        beside the source and `toto.aralia` for the PDF.
         """
         return reverse("editor:html_display", args=[vault_file.pk])
 

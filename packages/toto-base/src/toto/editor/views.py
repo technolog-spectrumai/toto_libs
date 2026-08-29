@@ -289,32 +289,55 @@ class HtmlFileDisplayView(BaseFileDisplayView):
     save_url_name = "editor:html_save"
     delete_url_name = "editor:html_delete"
 
-    def get_extra_context(self, vault_file) -> dict:
-        """An HTML file opens HERE, as HTML, and nowhere else.
+    #: The editor renders a live preview beside the source. Read by the
+    #: template, which only draws the pane when a renderer is actually there.
+    preview = True
 
-        There used to be a second mode on this page: a wand-toggle that swapped
+    def get_extra_context(self, vault_file) -> dict:
+        """An HTML file opens HERE, as HTML, with its rendering beside it.
+
+        There used to be a second MODE on this page: a wand-toggle that swapped
         ACE for a TipTap pane over the same bytes and serialised back on save.
         It was removed because it was not an HTML editor — TipTap's schema has
         no node for `<head>`, `<style>`, a class or an inline style, so a round
         trip through it silently discarded all four. A rich-text editor that
         quietly rewrites the file it was given is worse than no rich-text
-        editor.
+        editor. That reasoning is unchanged and the toggle is not coming back.
 
-        What remains is the one link out: an EXPLICIT conversion to CTML, which
-        creates a new file beside this one and never touches the page.
+        There was also a link out to an explicit CTML conversion. CTML was
+        retired on 2026-08-29, so there is nothing to convert to; a written
+        document IS this file.
+
+        What replaces both is a PREVIEW, which differs from an editor in the one
+        way that matters: it never writes.
+
+        THE PREVIEW IS CLIENT-SIDE, and deliberately so. It is a sandboxed
+        iframe fed from the ACE buffer — no round trip, no CSRF, no server cost,
+        and it updates as you type, which is the whole point of a preview. A
+        browser rendering HTML is exactly the tool for the job; asking the
+        server to render HTML into HTML would be ceremony.
+
+        `toto.aralia` supplies the other half — the PDF — and that IS a server
+        job, because WeasyPrint is what produces the file. So the button is
+        aralia's and the pane is the browser's, and the split is honest: the
+        pane shows what a browser makes of the page, the PDF shows what the
+        renderer makes of it, and those are two different questions.
+
+        Absent aralia there is still a preview and simply no PDF button. An
+        editor that lost its preview because a renderer was missing would be a
+        worse editor for no reason.
         """
         from django.apps import apps as django_apps
+        from django.urls import NoReverseMatch, reverse
 
-        if not django_apps.is_installed("toto.cyprian"):
-            return {}
-        from django.urls import reverse
-
-        return {
-            # Cyprian's converter mints a CTML document beside this page and
-            # never touches the HTML. It is a conversion, not a second editor.
-            "cyprian_convert_url": reverse("cyprian:html_to_ctml",
-                                           args=[vault_file.pk]),
-        }
+        if not django_apps.is_installed("toto.aralia"):
+            return {"pdf_url": ""}
+        try:
+            return {"pdf_url": reverse("aralia:editor") + f"?file={vault_file.pk}"}
+        except NoReverseMatch:
+            # Installed but not mounted is a real shape on this platform. No
+            # button rather than a 500 in the middle of somebody's editor.
+            return {"pdf_url": ""}
 
 
 class CsvFileDisplayView(BaseFileDisplayView):

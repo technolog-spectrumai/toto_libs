@@ -361,7 +361,7 @@ class BridgeTests(WikiWorld):
 
     def test_the_document_is_seeded_from_the_body_once_only(self):
         """Re-seeding on each open would revert whatever the last save wrote."""
-        from toto.cyprian import ctml
+        from toto.cyprian import htmldoc
         from toto.cyprian.bridge import read_raw
 
         self._write(self.member_user)
@@ -372,7 +372,7 @@ class BridgeTests(WikiWorld):
         self.page.save(update_fields=["body_html"])
         self._write(self.member_user)
         self.page.refresh_from_db()
-        document = ctml.loads(read_raw(self.page.vault_file))
+        document = htmldoc.Document.from_html(read_raw(self.page.vault_file))
         self.assertIn("hello", document.content)
         self.assertNotIn("changed elsewhere", document.content)
 
@@ -567,24 +567,27 @@ class BridgeTests(WikiWorld):
         prose then renders from a file the page never pointed at.
         """
         from django.core.files.base import ContentFile
-        from toto.cyprian import ctml
+        from toto.cyprian import htmldoc
         from toto.cyprian.bridge import DocumentBridge
 
         bucket = Bucket.objects.create(name="S", slug="s",
                                        owner=self.stranger_user,
                                        storage_backend="local")
-        document = ctml.new_document("Forged")
-        document.meta["kanban_page"] = str(self.page.pk)
-        forged = VaultFile(owner=self.stranger_user, title="forged.xml",
-                           key="forged", file_type="document", bucket=bucket)
+        # No meta to forge any more — the writer's container went with CTML and
+        # `Document` carries a title and a body and nothing else. The test is
+        # stronger for it: the only way to claim a wiki page was ALWAYS the
+        # column, and now it is the only way there is.
+        forged = VaultFile(owner=self.stranger_user, title="forged.html",
+                           key="forged", file_type="html", bucket=bucket)
         forged.save()
-        forged.file.save("forged.xml",
-                         ContentFile(ctml.dumps(document).encode()),
-                         save=True)
+        forged.file.save(
+            "forged.html",
+            ContentFile(htmldoc.page("Forged", "<p>not yours</p>").encode()),
+            save=True)
 
         # No page points at this file, so nothing claims it — the meta is a
         # breadcrumb and never a permission.
-        self.assertIsNone(DocumentBridge.for_file(forged, document))
+        self.assertIsNone(DocumentBridge.for_file(forged))
 
         self.client.force_login(self.member_user)
         self.assertEqual(

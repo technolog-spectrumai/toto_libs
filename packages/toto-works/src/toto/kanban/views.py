@@ -1205,7 +1205,10 @@ def wiki_page_write(request, pk, slug):
         page.vault_file = open_document(
             key=KANBAN_PAGE_META,
             ref=str(page.pk),
-            title=f"{page.slug or 'page'}-{page.pk}.ctml",
+            # .html since 2026-08-29: the writer stores an ordinary HTML
+            # page now, and a file's extension is what every ingest door on
+            # this platform derives its type from.
+            title=f"{page.slug or 'page'}-{page.pk}.html",
             seed_html=page.body_html,
             owner=owner,
             document_title=page.title,

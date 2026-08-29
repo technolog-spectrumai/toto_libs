@@ -109,8 +109,11 @@ def _stub_fields(row: dict) -> dict:
     file_type = row.get("file_type") or "text"
     if file_type == "presentation":
         file_type = "pxml"
-    elif file_type == "document":
-        file_type = "ctml"
+    elif file_type in ("document", "ctml"):
+        # Both spellings of the retired writer format. A peer still running it
+        # can send us one; we store it as what it actually is — HTML — rather
+        # than reviving a type this platform no longer has a reader for.
+        file_type = "html"
     return {
         "title": row.get("title") or row.get("key") or "",
         "file_type": file_type,

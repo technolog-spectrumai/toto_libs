@@ -160,7 +160,7 @@ def export_worktree(repo: GitRepo) -> dict:
     _sources = {
         (vf.directory_id, (vf.title or "").rsplit(".", 1)[0])
         for vf in files
-        if (vf.file_type or "") in ("ctml", "document", "pxml", "presentation")
+        if (vf.file_type or "") in ("html", "pxml", "presentation")
     }
 
     for vf in files:

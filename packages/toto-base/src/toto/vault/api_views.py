@@ -20,11 +20,9 @@ EDITABLE_FILE_TYPES = {
     # it is the authoring client now, so leaving pxml out 415s every cloud deck.
     # "presentation" is the legacy spelling of the same class.
     "pxml", "presentation",
-    # Cyprian documents, for the same reason: the desktop writer edits them, and
-    # they are XML text like everything else here. Adding decks but not
-    # documents left the desktop app able to open half of what it can edit.
-    "ctml",
-    "document",
+    # No "ctml"/"document": the writer's own format was retired on 2026-08-29
+    # and a document is an ordinary "html" file now, which this list already
+    # carries by another route.
     # "sheet" is ABSENT, but NOT for the reason this comment used to give.
     #
     # It said primula keeps its own SheetVersion history that a raw PUT would
