@@ -68,6 +68,15 @@ Your communities decide what you pay. Each one may take a percentage off a plan,
         {% if row.plan.description %}
           <p class="pt-1 text-sm opacity-75">{{ row.plan.description }}</p>
         {% endif %}
+
+        {% if row.audience %}
+          {% comment %}Only rendered for someone the offer REACHES — the
+             queryset already dropped this card for everyone else — so the
+             sentence is why you can see it, not who is excluded.{% endcomment %}
+          <p class="pt-1 text-xs font-semibold opacity-70">
+            <i class="fa-solid fa-people-group"></i>
+            {% blocktrans with who=row.audience|join:", " %}Offered through {{ who }}{% endblocktrans %}</p>
+        {% endif %}
       </header>
 
       {% comment %}The entitlement list is rendered from the SAME registry the

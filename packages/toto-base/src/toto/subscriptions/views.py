@@ -34,10 +34,17 @@ def plans(request):
     current = plan_for(user) if user.is_authenticated else None
 
     rows = []
-    for plan in SubscriptionPlan.objects.filter(active=True):
+    # `visible_plans`, not `.filter(active=True)`: a plan with audience rows
+    # is offered only to members of those communities, and this page and the
+    # subscribe endpoint below must read the SAME queryset or hiding is a
+    # bluff. The card says which community brought the offer — a plan that
+    # appears for reasons the reader cannot see looks like a pricing bug.
+    for plan in services.visible_plans(user).prefetch_related(
+            "audiences__community"):
         quote = services.quote(user, plan)
         quote["entitlements"] = plan.entitlement_rows()
         quote["is_current"] = current is not None and plan.pk == current.pk
+        quote["audience"] = [a.community.name for a in plan.audiences.all()]
         rows.append(quote)
 
     subscription = None
@@ -86,7 +93,11 @@ def mine(request):
 @login_required
 @require_POST
 def subscribe(request, code):
-    plan = get_object_or_404(SubscriptionPlan, code=code, active=True)
+    # The visible queryset, NOT `active=True`: a plan offered to communities
+    # this user is in none of must be as unreachable by POST as it is absent
+    # from the page — 404, the same answer a stranger gets for a draft
+    # bounty, because a 403 would confirm the code exists.
+    plan = get_object_or_404(services.visible_plans(request.user), code=code)
     services.subscribe(request.user, plan)
     messages.success(request, _("You are on the %(plan)s plan.") % {"plan": plan.name})
     return redirect("subscriptions:mine")
@@ -113,6 +124,55 @@ def _is_operator(user) -> bool:
 
 
 @login_required
+def audience(request):
+    """Which communities each plan is offered to — the Communities tab.
+
+    Operators only, like Discounts, and for the same reason: this decides
+    what people can BUY, and a page that shows the dial to someone who
+    cannot turn it is just a tease.
+
+    The grid is communities × plans, plans as columns because there are few
+    of them. A COLUMN with no ticks anywhere is a public plan — the page
+    says so in the header, because "restricted to nobody" and "offered to
+    everyone" being the same state is the one thing an operator must not
+    have to deduce.
+    """
+    from django.http import HttpResponseForbidden
+
+    if not _is_operator(request.user):
+        return HttpResponseForbidden(_("Plan audiences are set by staff."))
+
+    from toto.socialhub.models import Community
+
+    from .models import PlanAudience
+
+    if request.method == "POST":
+        added, removed = services.set_audiences(request.POST)
+        if added or removed:
+            messages.success(request, _(
+                "Saved: %(added)d audience(s) added, %(removed)d removed.") % {
+                    "added": added, "removed": removed})
+        else:
+            messages.info(request, _("Nothing changed."))
+        return redirect("subscriptions:audience")
+
+    plans = list(SubscriptionPlan.objects.filter(active=True))
+    ticked = set(PlanAudience.objects.values_list("community_id", "plan_id"))
+    rows = [{"community": community,
+             "members": community.members.count(),
+             "cells": [{"plan": plan,
+                        "on": (community.pk, plan.pk) in ticked}
+                       for plan in plans]}
+            for community in Community.objects.order_by("name")]
+    restricted = {plan_id for _c, plan_id in ticked}
+    return _render(request, "subscriptions/audience.html", {
+        "active_tab": "audience",
+        "plans": [{"plan": plan, "restricted": plan.pk in restricted}
+                  for plan in plans],
+        "rows": rows,
+    })
+
+
 def discounts(request):
     """Set what each community takes off its members' subscriptions.
 

@@ -72,6 +72,13 @@
                   {% if active_tab == 'discounts' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
            {% if active_tab == 'discounts' %}aria-current="page"{% endif %}>
           <i class="fa-solid fa-tag"></i>{% trans "Discounts" %}</a>
+        {% url 'subscriptions:audience' as audience_url %}
+        <a href="{{ audience_url }}"
+           :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+           class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
+                  {% if active_tab == 'audience' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+           {% if active_tab == 'audience' %}aria-current="page"{% endif %}>
+          <i class="fa-solid fa-people-group"></i>{% trans "Communities" %}</a>
       {% endif %}
     </nav>
 

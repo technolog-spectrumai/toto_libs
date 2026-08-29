@@ -1,0 +1,100 @@
+{% extends "subscriptions/base.html" %}
+{% load i18n %}
+{% comment %}Which communities each plan is offered to.
+
+A grid, communities down and plans across, because the question is asked both
+ways: "what can this community buy" reads along a row, "who can buy this plan"
+reads down a column. A column with no ticks anywhere is a PUBLIC plan, and the
+header says so on the column itself — "restricted to nobody" and "offered to
+everybody" being the same stored state is the one thing an operator must never
+have to deduce.{% endcomment %}
+
+{% block sub_title %}{% trans "Communities" %}{% endblock %}
+{% block sub_heading %}{% trans "Communities" %}{% endblock %}
+
+{% block sub_content %}
+
+<p class="text-sm opacity-70">
+  {% trans "Which communities each plan is offered to. A plan with nothing ticked is public — everyone sees it and anyone may subscribe. Tick a community and the plan becomes visible only to its members, who then see it beside the public ones." %}
+</p>
+<p class="text-xs opacity-55">
+  {% trans "This changes what people are OFFERED, never what they already have: somebody already on a plan keeps it if they leave the community, exactly as they keep it when a discount lapses." %}
+</p>
+
+<form method="post" class="space-y-4">
+  {% csrf_token %}
+
+  {% if plans and rows %}
+    <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="overflow-x-auto rounded-xl border shadow-sm">
+      <table class="w-full text-sm">
+        <thead>
+          <tr :class="darkMode ? 'border-b border-accent-1/30' : 'border-b border-accent-2/30'"
+              class="text-left">
+            <th scope="col" class="px-4 py-3 font-semibold">{% trans "Community" %}</th>
+            {% for column in plans %}
+              <th scope="col" class="px-3 py-3 text-center font-semibold">
+                <span class="block">{{ column.plan.name }}</span>
+                {% if column.restricted %}
+                  <span class="block text-xs font-normal opacity-55">{% trans "restricted" %}</span>
+                {% else %}
+                  <span class="block text-xs font-normal opacity-55">{% trans "public" %}</span>
+                {% endif %}
+              </th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr :class="darkMode ? 'border-b border-accent-1/20' : 'border-b border-accent-2/20'"
+                class="last:border-b-0">
+              <td class="px-4 py-3">
+                <span class="font-semibold">{{ row.community.name }}</span>
+                <span class="ml-2 text-xs opacity-50">
+                  <i class="fa-solid fa-user-group mr-1"></i>{{ row.members }}</span>
+              </td>
+              {% for cell in row.cells %}
+                <td class="px-3 py-3 text-center">
+                  {% comment %}The paired hidden field is what makes a stale
+                     page safe to submit: the view diffs the ticks against the
+                     pairs it actually RENDERED, so a plan or community created
+                     since this page loaded is left alone rather than silently
+                     cleared by a checkbox that never arrived.{% endcomment %}
+                  <input type="hidden" name="aud-seen"
+                         value="{{ row.community.pk }}-{{ cell.plan.pk }}">
+                  <input type="checkbox"
+                         name="aud-{{ row.community.pk }}-{{ cell.plan.pk }}"
+                         {% if cell.on %}checked{% endif %}
+                         aria-label="{{ row.community.name }} — {{ cell.plan.name }}"
+                         class="h-4 w-4 rounded">
+                </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-3">
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="rounded-lg px-5 py-2 text-sm font-bold transition hover:opacity-90">
+        <i class="fa-solid fa-check mr-1"></i>{% trans "Save audiences" %}
+      </button>
+      <p class="text-xs opacity-55">
+        {% trans "Clearing every tick in a column makes that plan public again." %}
+      </p>
+    </div>
+  {% else %}
+    <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="rounded-xl border px-4 py-10 text-center text-sm opacity-50 shadow-sm">
+      {% if not rows %}
+        {% trans "There are no communities yet. An audience belongs to one, so there is nothing to set." %}
+      {% else %}
+        {% trans "There are no active plans to offer." %}
+      {% endif %}
+    </div>
+  {% endif %}
+</form>
+
+{% endblock %}

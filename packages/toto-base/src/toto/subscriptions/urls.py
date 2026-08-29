@@ -10,4 +10,5 @@ urlpatterns = [
     path("subscribe/<slug:code>/", views.subscribe, name="subscribe"),
     path("cancel/", views.cancel, name="cancel"),
     path("discounts/", views.discounts, name="discounts"),
+    path("communities/", views.audience, name="audience"),
 ]

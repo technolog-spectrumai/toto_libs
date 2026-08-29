@@ -44,8 +44,10 @@ from .models import (
     METRIC,
     ChargeStatus,
     CommunityDiscount,
+    PlanAudience,
     Subscription,
     SubscriptionCharge,
+    SubscriptionPlan,
     SubscriptionState,
     SubscriptionUsageEvent,
     add_months,
@@ -137,6 +139,81 @@ def set_discounts(posted) -> tuple[int, int]:
             community_id=community_pk, defaults={"percent": percent})
         saved += 1
     return saved, cleared
+
+
+def visible_plans(user):
+    """The plans this user may SEE — and therefore may subscribe to.
+
+    ONE definition, read by the plans page and by the subscribe endpoint,
+    which is what makes hiding real: a plan absent from this queryset cannot
+    be reached by POSTing its code either, so `subscribe` answers 404 exactly
+    as the page implied. Two hand-written filters would drift, and the drift
+    would be a paywall bypass or a phantom offer.
+
+    The rule is `PlanAudience`'s: no audience rows = public, offered to
+    everyone including anonymous readers; any audience rows = offered only to
+    members of those communities. Staff see everything — they administer the
+    audiences, and a dial you cannot see is a dial you cannot check.
+
+    `.distinct()` is load-bearing: a member of two audience communities of the
+    same plan would otherwise see the plan's card twice.
+    """
+    from django.db.models import Q
+
+    qs = SubscriptionPlan.objects.filter(active=True)
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return qs
+    public = Q(audiences__isnull=True)
+    person = getattr(user, "community_profile", None) \
+        if getattr(user, "is_authenticated", False) else None
+    if person is None:
+        return qs.filter(public)
+    return qs.filter(
+        public | Q(audiences__community__in=person.communities.all())
+    ).distinct()
+
+
+def set_audiences(posted) -> tuple[int, int]:
+    """Apply a Communities-tab submission. Returns (added, removed).
+
+    Reads ``aud-<community_pk>-<plan_pk>`` checkbox fields against the posted
+    ``aud-seen`` list of ``<community_pk>-<plan_pk>`` pairs the form rendered.
+    Diffing against what was RENDERED rather than against the whole table is
+    what makes the form safe to submit from a stale page: a pair the form
+    never showed (a plan created since, a community created since) is left
+    exactly as it is, never silently cleared because a checkbox for it did
+    not arrive.
+    """
+    from toto.socialhub.models import Community
+
+    valid_communities = set(Community.objects.values_list("pk", flat=True))
+    valid_plans = set(SubscriptionPlan.objects.values_list("pk", flat=True))
+
+    def _pair(text):
+        try:
+            community_pk, plan_pk = (int(part) for part in text.split("-"))
+        except (TypeError, ValueError):
+            return None
+        if community_pk not in valid_communities or plan_pk not in valid_plans:
+            return None
+        return community_pk, plan_pk
+
+    seen = {pair for raw in posted.getlist("aud-seen")
+            if (pair := _pair(raw)) is not None}
+    ticked = {pair for key in posted
+              if key.startswith("aud-") and key != "aud-seen"
+              and (pair := _pair(key.removeprefix("aud-"))) is not None}
+
+    added = removed = 0
+    for community_pk, plan_pk in (ticked & seen):
+        _row, created = PlanAudience.objects.get_or_create(
+            plan_id=plan_pk, community_id=community_pk)
+        added += int(created)
+    for community_pk, plan_pk in (seen - ticked):
+        deleted, _ignored = PlanAudience.objects.filter(
+            plan_id=plan_pk, community_id=community_pk).delete()
+        removed += int(bool(deleted))
+    return added, removed
 
 
 def billed_units(plan, percent: int) -> Decimal:

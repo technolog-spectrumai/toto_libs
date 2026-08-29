@@ -165,6 +165,50 @@ class CommunityDiscount(models.Model):
         return f"{self.community}: −{self.percent}%"
 
 
+class PlanAudience(models.Model):
+    """One community a plan is OFFERED TO. No rows at all means everyone.
+
+    The second community-shaped dial on a plan, and deliberately not a field
+    on `CommunityDiscount`: a discount changes what a member PAYS, an audience
+    changes what a member is OFFERED, and fusing them would mean a community
+    cannot have one without the other.
+
+    THE ABSENT-ROWS RULE IS THE WHOLE DESIGN. A plan with no audience rows is
+    public — every seeded plan, every plan that existed before this table, and
+    every plan an operator creates without thinking about audiences behaves
+    exactly as before. Restriction is a thing somebody switched on, never a
+    default that arrived with a migration.
+
+    What an audience does NOT do: it never touches a subscription that already
+    exists. Visibility gates the plans page and the subscribe endpoint — the
+    OFFER — and a member who leaves the community keeps the plan they are on,
+    exactly as a lapsed discount keeps the plan and changes the price. A rule
+    that cancelled subscriptions on membership changes would let a community
+    head unsubscribe people by expelling them, which is a power nobody asked
+    to create.
+    """
+
+    plan = models.ForeignKey(SubscriptionPlan, on_delete=models.CASCADE,
+                             related_name="audiences")
+    community = models.ForeignKey("socialhub.Community",
+                                  on_delete=models.CASCADE,
+                                  related_name="plan_audiences")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["plan", "community"],
+                name="subscriptions_one_audience_per_plan_community"),
+        ]
+        ordering = ["plan__order", "community__name"]
+        verbose_name = _("plan audience")
+        verbose_name_plural = _("plan audiences")
+
+    def __str__(self):
+        return f"{self.plan.code} → {self.community}"
+
+
 class Subscription(models.Model):
     """One row per user, mutated in place.
 

@@ -11,6 +11,8 @@ from unittest import skipIf
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
+from django.db import IntegrityError, transaction
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
@@ -26,6 +28,7 @@ from .gate import ALWAYS_FREE, SubscriptionGateMiddleware, is_entitled
 from .models import (
     ChargeStatus,
     CommunityDiscount,
+    PlanAudience,
     Subscription,
     SubscriptionCharge,
     SubscriptionPlan,
@@ -187,6 +190,260 @@ class WhatThisHostSellsTests(TestCase):
         self.assertNotIn("not-a-real-app", shown)
         if "mandragora" not in catalogue.mounted_app_names():
             self.assertNotIn("mandragora", shown)
+
+
+class PlanAudienceTests(TestCase):
+    """Plans offered to particular communities.
+
+    The invariant under test is the ABSENCE rule: no audience rows means
+    public. Every plan that existed before this feature has no rows, so a
+    regression here would not error — it would quietly hide the whole price
+    list from everybody, which is why the public case is asserted first and
+    from several angles.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        # An active Platform row, or every page render 404s — the same
+        # requirement ViewTests states.
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+        cls.free, cls.standard, cls.professional = make_plans()
+        cls.students = Community.objects.create(name="Students")
+        cls.founders = Community.objects.create(name="Founders")
+
+    def _codes(self, user):
+        return set(services.visible_plans(user).values_list("code", flat=True))
+
+    # -- the absence rule --------------------------------------------------
+
+    def test_a_plan_with_no_audience_is_public(self):
+        self.assertEqual(self._codes(member("nobody")),
+                         {"free", "standard", "professional"})
+
+    def test_anonymous_readers_see_every_public_plan(self):
+        """The plans page is deliberately not login_required — what a platform
+        charges is not a secret."""
+        self.assertEqual(self._codes(AnonymousUser()),
+                         {"free", "standard", "professional"})
+
+    def test_a_user_with_no_person_profile_still_sees_the_public_plans(self):
+        user = User.objects.create_user("profileless", "p@example.com", "pw")
+        self.assertEqual(self._codes(user),
+                         {"free", "standard", "professional"})
+
+    # -- restriction -------------------------------------------------------
+
+    def test_an_audience_hides_the_plan_from_everybody_else(self):
+        PlanAudience.objects.create(plan=self.professional,
+                                    community=self.students)
+        self.assertNotIn("professional", self._codes(member("outsider")))
+        self.assertNotIn("professional", self._codes(AnonymousUser()))
+        self.assertIn("professional",
+                      self._codes(member("student", self.students)))
+
+    def test_restricting_one_plan_leaves_the_others_public(self):
+        PlanAudience.objects.create(plan=self.professional,
+                                    community=self.students)
+        self.assertEqual(self._codes(member("outsider")), {"free", "standard"})
+
+    def test_a_plan_may_be_offered_through_several_communities(self):
+        for community in (self.students, self.founders):
+            PlanAudience.objects.create(plan=self.professional,
+                                        community=community)
+        self.assertIn("professional",
+                      self._codes(member("f", self.founders)))
+        self.assertIn("professional",
+                      self._codes(member("s", self.students)))
+
+    def test_membership_of_two_audience_communities_lists_the_plan_once(self):
+        """`.distinct()` is load-bearing — the join multiplies rows and the
+        page would render the same card twice."""
+        for community in (self.students, self.founders):
+            PlanAudience.objects.create(plan=self.professional,
+                                        community=community)
+        user = member("both", self.students, self.founders)
+        codes = list(services.visible_plans(user)
+                     .values_list("code", flat=True))
+        self.assertEqual(codes.count("professional"), 1)
+
+    def test_staff_see_restricted_plans_they_are_not_in(self):
+        """They administer the audiences; a dial you cannot see is a dial you
+        cannot check."""
+        PlanAudience.objects.create(plan=self.professional,
+                                    community=self.students)
+        staff = User.objects.create_user("ops", "ops@example.com", "pw",
+                                         is_staff=True)
+        self.assertIn("professional", self._codes(staff))
+
+    def test_an_inactive_plan_is_never_visible_however_it_is_offered(self):
+        PlanAudience.objects.create(plan=self.professional,
+                                    community=self.students)
+        SubscriptionPlan.objects.filter(pk=self.professional.pk).update(
+            active=False)
+        self.assertNotIn("professional",
+                         self._codes(member("student", self.students)))
+
+    def test_one_row_per_plan_and_community(self):
+        PlanAudience.objects.create(plan=self.professional,
+                                    community=self.students)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                PlanAudience.objects.create(plan=self.professional,
+                                            community=self.students)
+
+    # -- the offer and the gate agree --------------------------------------
+
+    def test_subscribing_to_a_plan_you_cannot_see_is_a_404(self):
+        """Hiding a card is a bluff unless the endpoint refuses too — and 404,
+        not 403, because a 403 confirms the code exists."""
+        PlanAudience.objects.create(plan=self.professional,
+                                    community=self.students)
+        user = member("outsider")
+        self.client.force_login(user)
+        response = self.client.post(
+            reverse("subscriptions:subscribe", args=["professional"]))
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(Subscription.objects.filter(user=user).exists())
+
+    def test_a_member_of_the_audience_may_subscribe(self):
+        PlanAudience.objects.create(plan=self.professional,
+                                    community=self.students)
+        user = member("student", self.students)
+        self.client.force_login(user)
+        self.client.post(
+            reverse("subscriptions:subscribe", args=["professional"]))
+        self.assertEqual(
+            Subscription.objects.get(user=user).plan_id, self.professional.pk)
+
+    def test_leaving_the_community_keeps_the_plan_already_held(self):
+        """Visibility gates the OFFER, never an existing subscription — or a
+        community head could unsubscribe people by expelling them."""
+        PlanAudience.objects.create(plan=self.professional,
+                                    community=self.students)
+        user = member("student", self.students)
+        services.subscribe(user, self.professional)
+        user.community_profile.communities.remove(self.students)
+
+        user.refresh_from_db()
+        self.assertNotIn("professional", self._codes(user))
+        self.assertEqual(
+            Subscription.objects.get(user=user).plan_id, self.professional.pk)
+
+    # -- the page ----------------------------------------------------------
+
+    def test_the_plans_page_lists_only_what_this_reader_may_have(self):
+        PlanAudience.objects.create(plan=self.professional,
+                                    community=self.students)
+        self.client.force_login(member("outsider"))
+        response = self.client.get(reverse("subscriptions:plans"))
+        codes = {row["plan"].code for row in response.context["rows"]}
+        self.assertEqual(codes, {"free", "standard"})
+
+    def test_the_card_says_which_community_brought_the_offer(self):
+        PlanAudience.objects.create(plan=self.professional,
+                                    community=self.students)
+        self.client.force_login(member("student", self.students))
+        response = self.client.get(reverse("subscriptions:plans"))
+        self.assertContains(response, "Students")
+
+
+class AudienceTabTests(TestCase):
+    """The staff tab that sets them."""
+
+    @classmethod
+    def setUpTestData(cls):
+        # An active Platform row, or every page render 404s — the same
+        # requirement ViewTests states.
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+        cls.free, cls.standard, cls.professional = make_plans()
+        cls.students = Community.objects.create(name="Students")
+        cls.founders = Community.objects.create(name="Founders")
+
+    def _staff(self):
+        user = User.objects.create_user("ops", "ops@example.com", "pw",
+                                        is_staff=True)
+        self.client.force_login(user)
+        return user
+
+    def test_the_tab_is_staff_only(self):
+        self.client.force_login(member("ordinary"))
+        response = self.client.get(reverse("subscriptions:audience"))
+        self.assertEqual(response.status_code, 403)
+
+    def test_staff_get_a_grid_of_communities_by_plan(self):
+        self._staff()
+        response = self.client.get(reverse("subscriptions:audience"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["active_tab"], "audience")
+        self.assertEqual(len(response.context["rows"]), 2)
+        self.assertEqual(len(response.context["rows"][0]["cells"]), 3)
+
+    def test_a_column_reports_whether_that_plan_is_restricted(self):
+        PlanAudience.objects.create(plan=self.professional,
+                                    community=self.students)
+        self._staff()
+        response = self.client.get(reverse("subscriptions:audience"))
+        flags = {c["plan"].code: c["restricted"]
+                 for c in response.context["plans"]}
+        self.assertTrue(flags["professional"])
+        self.assertFalse(flags["standard"])
+
+    def test_ticking_a_box_restricts_the_plan(self):
+        self._staff()
+        self.client.post(reverse("subscriptions:audience"), {
+            "aud-seen": [f"{self.students.pk}-{self.professional.pk}"],
+            f"aud-{self.students.pk}-{self.professional.pk}": "on",
+        })
+        self.assertTrue(PlanAudience.objects.filter(
+            plan=self.professional, community=self.students).exists())
+
+    def test_clearing_every_tick_makes_the_plan_public_again(self):
+        PlanAudience.objects.create(plan=self.professional,
+                                    community=self.students)
+        self._staff()
+        self.client.post(reverse("subscriptions:audience"), {
+            "aud-seen": [f"{self.students.pk}-{self.professional.pk}"],
+        })
+        self.assertFalse(PlanAudience.objects.exists())
+        self.assertIn("professional",
+                      set(services.visible_plans(member("anyone"))
+                          .values_list("code", flat=True)))
+
+    def test_a_pair_the_form_never_rendered_is_left_alone(self):
+        """Diffing against what was RENDERED, not against the whole table, is
+        what makes a stale page safe to submit: a plan created since the page
+        loaded must not be silently un-restricted by a checkbox that could
+        not have been there."""
+        PlanAudience.objects.create(plan=self.professional,
+                                    community=self.founders)
+        self._staff()
+        self.client.post(reverse("subscriptions:audience"), {
+            "aud-seen": [f"{self.students.pk}-{self.professional.pk}"],
+        })
+        self.assertTrue(PlanAudience.objects.filter(
+            plan=self.professional, community=self.founders).exists())
+
+    def test_rubbish_field_names_change_nothing(self):
+        self._staff()
+        self.client.post(reverse("subscriptions:audience"), {
+            "aud-seen": ["not-a-pair", "999999-999999"],
+            "aud-not-a-pair": "on",
+            "aud-999999-999999": "on",
+        })
+        self.assertFalse(PlanAudience.objects.exists())
+
+    def test_the_tab_is_hidden_from_ordinary_members(self):
+        url = reverse("subscriptions:audience")
+        self.client.force_login(member("ordinary"))
+        page = self.client.get(reverse("subscriptions:plans"))
+        self.assertNotContains(page, url)
+        self._staff()
+        page = self.client.get(reverse("subscriptions:plans"))
+        self.assertContains(page, url)
 
 
 class DiscountTests(TestCase):

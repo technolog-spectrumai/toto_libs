@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     CommunityDiscount,
+    PlanAudience,
     Subscription,
     SubscriptionCharge,
     SubscriptionPlan,
@@ -59,3 +60,14 @@ class SubscriptionChargeAdmin(admin.ModelAdmin):
 @admin.register(SubscriptionQuotaPolicy)
 class SubscriptionQuotaPolicyAdmin(admin.ModelAdmin):
     list_display = ("metric_code", "limit", "period", "mode", "active")
+
+
+@admin.register(PlanAudience)
+class PlanAudienceAdmin(admin.ModelAdmin):
+    # No rows for a plan = offered to everybody. The Communities tab is the
+    # everyday door; this is the escape hatch, and the same rule applies —
+    # deleting the last row here makes the plan public again.
+    list_display = ("plan", "community", "created_at")
+    list_filter = ("plan",)
+    autocomplete_fields = ("plan", "community")
+    search_fields = ("plan__name", "plan__code", "community__name")
