@@ -173,6 +173,12 @@ class Plan:
     total_bytes: int = 0
     generated_at: object = None
     actor: str = ""
+    #: The slug of the ONE room this plan covers, or "" for the whole forum.
+    #: Recorded at survey time so the index page and the manifest can say what
+    #: the file IS — a per-room archive is handed to that room's members, and
+    #: one that declares itself a whole-forum staff export overstates both what
+    #: it holds and who must have made it.
+    channel_slug: str = ""
 
 
 def _storage():
@@ -198,7 +204,8 @@ def survey(*, actor="", channel=None) -> Plan:
     """
     from .models import ForumChannel, ForumMessage
 
-    plan = Plan(generated_at=timezone.now(), actor=actor)
+    plan = Plan(generated_at=timezone.now(), actor=actor,
+                channel_slug=channel.slug if channel is not None else "")
     channels = ([channel] if channel is not None
                 else list(ForumChannel.objects.all().order_by("slug", "pk")))
     if len(channels) > MAX_ROOMS:
@@ -354,6 +361,7 @@ def render_index(plan) -> str:
         "total_bytes": plan.total_bytes,
         "total_messages": plan.total_messages,
         "skipped": plan.skipped,
+        "channel_slug": plan.channel_slug,
     })
 
 
@@ -363,7 +371,12 @@ def manifest(plan, *, written, language) -> str:
         "generated_at": plan.generated_at.isoformat(),
         "exported_by": plan.actor,
         "language": language,
-        "scope": "all-rooms-operator-export",
+        # The one machine-readable field that says what this file is. The
+        # per-room value matters MORE than the wide one: that archive is the
+        # one handed to a room's members, and for a day it declared itself an
+        # operator export of every room, private ones included.
+        "scope": (f"single-room-export:{plan.channel_slug}"
+                  if plan.channel_slug else "all-rooms-operator-export"),
         "rooms": [{"name": r.name, "slug": r.slug, "file": r.member,
                    "messages": r.messages} for r in plan.rooms],
         "messages": plan.total_messages,

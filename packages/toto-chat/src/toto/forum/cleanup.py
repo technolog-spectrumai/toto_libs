@@ -7,8 +7,11 @@ started a worker.
 
 ## What it deletes, and what it deliberately does not
 
-Only `ForumMessage` rows older than the boundary, in every channel, and their
-attachment bytes. NOT:
+`ForumMessage` rows older than the boundary and their attachment bytes, and —
+since retention went per-room on 2026-08-29 — `RoomPoll` rows older than the
+boundary with their choices and ballots, **open or closed** (see
+`_doomed_polls` for the reversal: retention is a promise the history is GONE,
+and a poll is a thing people said with their names on it). NOT:
 
 * **channels**, even ones left empty — deleting a room is a second,
   differently-shaped destruction nobody asked for;
@@ -17,7 +20,9 @@ attachment bytes. NOT:
   authenticated user". A retention sweep must not be able to publish a library;
 * **the room's vault library** — those files are the vault's, and Stage 2 left
   them there on purpose;
-* **polls** — a poll is a decision record, not a conversation.
+* **rooms that set their own retention** — every forum-wide pass skips them,
+  scheduled and manual alike; `override_channel_ids()` is the one definition
+  of "their own".
 
 ## Why the bytes need their own line
 
@@ -71,6 +76,22 @@ def boundary(policy=None, *, now=None):
     from .models import ForumRetentionPolicy
 
     return (policy or ForumRetentionPolicy.current()).boundary(now=now)
+
+
+def override_channel_ids():
+    """Channels that set their own retention — enabled OR disabled.
+
+    THE definition every forum-wide pass uses, and it includes the disabled
+    ones on purpose: a room whose own dial is OFF said "nothing expires here",
+    and the platform default must not overrule that. Turning the platform rule
+    back on for a room is done by DELETING its override (the Settings tab's
+    Reset), never by flipping its dial off.
+    """
+    from .models import ForumRetentionPolicy
+
+    return list(ForumRetentionPolicy.objects
+                .filter(channel__isnull=False)
+                .values_list("channel_id", flat=True))
 
 
 def _doomed(cutoff, channel=None, exclude=None):
@@ -129,7 +150,11 @@ def preview(policy=None, *, now=None, channel=None) -> dict:
 
     policy = policy or ForumRetentionPolicy.current(channel)
     cutoff = policy.boundary(now=now)
-    rows = _doomed(cutoff, channel)
+    # The same exclusion the run itself applies (see run_cleanup): a
+    # forum-wide preview that counted the override rooms would promise more
+    # deletion than the button delivers.
+    exclude = override_channel_ids() if channel is None else None
+    rows = _doomed(cutoff, channel, exclude)
 
     # Trailing order_by(): ForumMessage.Meta.ordering folds into the GROUP BY
     # and would return one row per message instead of one per channel.
@@ -138,7 +163,7 @@ def preview(policy=None, *, now=None, channel=None) -> dict:
     attachments = rows.exclude(attachment="").exclude(attachment__isnull=True)
     sizes = attachments.aggregate(n=models.Count("id"),
                                   total=models.Sum("attachment_size"))
-    doomed_polls = _doomed_polls(cutoff, channel)
+    doomed_polls = _doomed_polls(cutoff, channel, exclude)
     scoped_messages = ForumMessage.objects.filter(channel=channel) \
         if channel is not None else ForumMessage.objects.all()
     return {
@@ -193,6 +218,15 @@ def run_cleanup(run, *, deadline_seconds=None, exclude=None) -> "ForumCleanupRun
     started = time.monotonic()
     cutoff = run.boundary
     channel = run.channel
+    if channel is None and exclude is None:
+        # A FORUM-WIDE run skips the rooms with their own retention no matter
+        # who started it. `run_scheduled` always passed this list; the manual
+        # "Run cleanup now" on the forum desk passed nothing, and for one day
+        # that button deleted history in rooms whose own dial said to keep it
+        # — the exact overrule the scheduled path was built to prevent.
+        # Deriving it HERE, at the one place every run goes through, is what
+        # stops the next caller repeating that.
+        exclude = override_channel_ids()
     touched_channels = set()
 
     # Polls first, and in one pass rather than chunked: a room has tens of
@@ -369,15 +403,37 @@ def run_scheduled(*, deadline_seconds=None) -> dict:
                      .filter(channel__isnull=False)
                      .select_related("channel"))
 
+    # ONE deadline for the whole task, not one per pass. Each pass used to get
+    # the full budget, so N enabled overrides could run the task N times past
+    # the number `tasks.py` promised was "comfortably inside celery's soft
+    # limit" — at which point celery kills it mid-chunk, the exact death the
+    # deadline exists to prevent. A pass that gets no time is skipped and says
+    # so; every chunk already committed, and the next night resumes it.
+    started = time.monotonic()
+
+    def _remaining():
+        if deadline_seconds is None:
+            return None
+        return deadline_seconds - (time.monotonic() - started)
+
     for policy in overrides:
         if not policy.enabled:
             continue
-        results.append(_run_one(policy, policy.channel, deadline_seconds))
+        left = _remaining()
+        if left is not None and left <= 0:
+            results.append({"skipped": "out_of_time",
+                            "channel": policy.channel.slug})
+            continue
+        results.append(_run_one(policy, policy.channel, left))
 
     default = ForumRetentionPolicy.default()
     if default.enabled:
-        results.append(_run_one(default, None, deadline_seconds,
-                                exclude=[p.channel_id for p in overrides]))
+        left = _remaining()
+        if left is not None and left <= 0:
+            results.append({"skipped": "out_of_time", "channel": None})
+        else:
+            results.append(_run_one(default, None, left,
+                                    exclude=[p.channel_id for p in overrides]))
 
     if not results:
         return {"skipped": "disabled"}

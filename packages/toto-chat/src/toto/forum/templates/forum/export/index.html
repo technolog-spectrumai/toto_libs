@@ -6,19 +6,24 @@ must stand on its own.{% endcomment %}<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% load i18n %}{% trans "Forum archive" %}</title>
+<title>{% load i18n %}{% if channel_slug %}{% blocktrans with room=channel_slug %}Room archive — {{ room }}{% endblocktrans %}{% else %}{% trans "Forum archive" %}{% endif %}</title>
 {% include "forum/export/_style.html" %}
 </head>
 <body>
 <div class="wrap">
-  <h1>{% trans "Forum archive" %}</h1>
+  <h1>{% if channel_slug %}{% trans "Room archive" %}{% else %}{% trans "Forum archive" %}{% endif %}</h1>
   <p class="lede">
     {% blocktrans with when=generated_at|date:"Y-m-d H:i" %}Exported {{ when }}{% endblocktrans %}{% if actor %} · {% blocktrans with who=actor %}by {{ who }}{% endblocktrans %}{% endif %}
   </p>
 
   <div class="note">
-    <p style="margin:0 0 .4rem"><strong>{% trans "This archive contains every room, including private ones." %}</strong>
-      {% trans "It was made by a staff account, which can export rooms it never joined. Treat it as you would the forum itself." %}</p>
+    {% if channel_slug %}
+      <p style="margin:0 0 .4rem"><strong>{% blocktrans with room=channel_slug %}This archive contains one room — {{ room }} — and nothing else.{% endblocktrans %}</strong>
+        {% trans "It was made by a staff account from that room's Settings tab. It can be handed to the people in the room: nothing from any other room is in it." %}</p>
+    {% else %}
+      <p style="margin:0 0 .4rem"><strong>{% trans "This archive contains every room, including private ones." %}</strong>
+        {% trans "It was made by a staff account, which can export rooms it never joined. Treat it as you would the forum itself." %}</p>
+    {% endif %}
     <p style="margin:0">{% trans "It is a copy of one moment, not a live view and not a backup. Deleted messages appear as a note saying only that something was removed." %}</p>
     {% if skipped %}
       <p style="margin:.4rem 0 0">

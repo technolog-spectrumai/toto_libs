@@ -98,6 +98,13 @@ class ToolTabTests(OfficeTestCase):
         kinds = [t["is_tool"] for t in tabs]
         self.assertEqual(kinds, sorted(kinds),
                          "a tool was rendered between two sections")
+        if not any(office.available_tools()):
+            # A build with neither tool app is legitimate (this suite also
+            # runs against wheel-only hosts); asserting a tool reaches the
+            # strip there would test the BUILD, not the merge. The gate's
+            # viewer block sets BUILD_OCR and BUILD_ARALIA so the real
+            # assertion runs at least once per gate.
+            self.skipTest("no tool app installed on this build")
         self.assertTrue(any(t["is_tool"] for t in tabs),
                         "no tool reached the strip at all")
 

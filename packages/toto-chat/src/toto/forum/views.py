@@ -557,8 +557,14 @@ def cleanup_page(request):
         "confirm_form": ConfirmCleanupForm(),
         "boundary": policy.boundary(),
         "preview": cleanup_engine.preview(policy),
-        "last_run": ForumCleanupRun.objects.first(),
-        "recent_runs": ForumCleanupRun.objects.all()[:10],
+        # Forum-wide runs only. Per-room sweeps live on their room's Settings
+        # tab; shown here, in a table with no room column, a small room's
+        # sweep would read as a forum-wide run that somehow removed nine
+        # messages.
+        "last_run": ForumCleanupRun.objects.filter(
+            channel__isnull=True, channel_name="").first(),
+        "recent_runs": ForumCleanupRun.objects.filter(
+            channel__isnull=True, channel_name="")[:10],
         "next_run": cleanup_engine.next_scheduled_run(),
         # Asked once, and said out loud on the page: without a worker the
         # schedule never fires and "next run" is a time nothing will act on.
@@ -847,15 +853,22 @@ def room_retention(request, slug):
     channel = get_object_or_404(ForumChannel, slug=slug)
     permissions.require_operator(request)
 
-    policy = ForumRetentionPolicy.for_channel(channel)
-    form = RetentionSettingsForm(request.POST, instance=policy)
+    # Validate FIRST, against no instance, and only then touch the database.
+    # `for_channel()` CREATES the override row, and creating it is what makes
+    # the room stop following the platform — run_scheduled excludes every
+    # override channel from the wide sweep, disabled ones included. Minting it
+    # before is_valid() meant a rejected save (an empty retention_days) still
+    # detached the room, silently and permanently, with the page reporting
+    # only that the form was bad.
+    form = RetentionSettingsForm(request.POST)
     if form.is_valid():
-        saved = form.save(commit=False)
-        # Belt and braces: the form has no `channel` field, so this cannot be
-        # posted from another room's page to move an override across rooms.
-        saved.channel = channel
-        saved.updated_by = request.user
-        saved.save()
+        policy = ForumRetentionPolicy.for_channel(channel)
+        policy.enabled = form.cleaned_data["enabled"]
+        policy.retention_days = form.cleaned_data["retention_days"]
+        # The form has no `channel` field and the row is minted from the slug
+        # in the URL, so a forged POST cannot move an override across rooms.
+        policy.updated_by = request.user
+        policy.save()
         messages.success(request, _("Retention settings saved for this room."))
     else:
         messages.error(request, "; ".join(

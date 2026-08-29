@@ -758,6 +758,28 @@ class IngressTests(TestCase):
         call_command("ingress_subscriptions", *args, stdout=out)
         return out.getvalue()
 
+    def test_every_paid_entitlement_is_granted_by_some_seeded_plan(self):
+        """The catalogue and the plan lists change together — the standing rule.
+
+        A code declared paid in the catalogue but granted by no plan is the
+        worst kind of wrong: the tile disappears for everybody (superusers
+        included) and every write 402s under ENFORCE, silently. It has now
+        happened twice — the whole compute tier, then `ocr` and
+        `fileservices` — found by audit both times. This reads the seed
+        module's own PLANS constant, so it holds on any build regardless of
+        which apps are installed here.
+        """
+        from .management.commands.ingress_subscriptions import PLANS
+
+        granted = set()
+        for plan in PLANS:
+            granted.update(plan["entitlements"])
+        missing = [e.code for e in registry.all()
+                   if not e.free and e.code not in granted]
+        self.assertEqual(missing, [], (
+            "declared paid in the catalogue, granted by no seeded plan — "
+            f"tiles hidden and writes 402 for everybody: {missing}"))
+
     def test_it_seeds_three_plans(self):
         self._seed()
 

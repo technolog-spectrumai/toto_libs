@@ -22,7 +22,7 @@ behind it re-checks; neither is trusted alone.{% endcomment %}
       {% trans "Cleanup deletes this room's conversation permanently." %}</h2>
     <ul class="mt-2 space-y-1 text-sm opacity-85">
       <li>{% trans "Messages and replies older than the retention period are removed from the database, and the images and voice recordings posted with them are deleted from disk." %}</li>
-      <li>{% trans "Polls that closed before the boundary go with them, and so do the votes cast in them." %}</li>
+      <li>{% trans "Polls older than the boundary go with them — open ones still taking votes included — and so does every vote cast in them." %}</li>
       <li>{% trans "There are no exceptions. Nothing can be marked important enough to survive, pinned or otherwise." %}</li>
       <li>{% trans "There is no undo and no recycle bin. Cleanup keeps no copy — download the archive below first if you want one." %}</li>
       <li>{% trans "Only this room is affected. Other rooms keep their own settings and their own history." %}</li>

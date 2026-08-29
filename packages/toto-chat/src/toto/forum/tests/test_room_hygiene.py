@@ -91,14 +91,17 @@ class RoomHygieneBase(TestCase):
 
     # -- fixtures ---------------------------------------------------------
 
-    def _message(self, room, *, days_old=0, attach=False, body="hi"):
+    def _message(self, room, *, days_old=0, attach=False, body="hi",
+                 attach_bytes=None):
         from toto.forum import store
 
         kwargs = {}
         if attach:
-            kwargs = {"attachment": ContentFile(b"x" * 12, name="a.png"),
+            payload = attach_bytes if attach_bytes is not None else b"x" * 12
+            kwargs = {"attachment": ContentFile(payload, name="a.png"),
                       "attachment_name": "a.png",
-                      "attachment_mime": "image/png", "attachment_size": 12}
+                      "attachment_mime": "image/png",
+                      "attachment_size": len(payload)}
         row = store.store_message(
             room, msg_type=("image_message" if attach else "chat_message"),
             body=body, sender=self.member, sender_name="M", **kwargs)
@@ -310,6 +313,82 @@ class ScheduledSweepTests(RoomHygieneBase):
         self.assertTrue(ForumMessage.objects.filter(pk=kept.pk).exists())
 
 
+class WideRunRespectsOverridesTests(RoomHygieneBase):
+    """The forum-wide MANUAL run defers to room overrides, like the nightly one.
+
+    For one day it did not: `run_cleanup` only excluded override rooms when
+    `run_scheduled` passed the list in, and the wide desk's button passed
+    nothing — so the platform dial overruled every room that had asked to keep
+    its history, from the one entry point a person presses by hand.
+    """
+
+    def test_a_wide_manual_run_spares_rooms_with_their_own_dial(self):
+        own = ForumRetentionPolicy.for_channel(self.alpha)
+        own.retention_days = 365
+        own.enabled = True
+        own.save()
+        kept = self._message(self.alpha, days_old=90)
+        swept = self._message(self.beta, days_old=90)
+
+        self._run(channel=None)
+
+        self.assertTrue(ForumMessage.objects.filter(pk=kept.pk).exists(),
+                        "the wide manual run overruled a room's own retention")
+        self.assertFalse(ForumMessage.objects.filter(pk=swept.pk).exists())
+
+    def test_a_disabled_override_also_shields_its_room_from_the_wide_run(self):
+        """Disabled means "nothing expires here", not "back to the platform".
+        Going back to the platform is the Reset button, which deletes the row.
+        """
+        own = ForumRetentionPolicy.for_channel(self.alpha)
+        own.enabled = False
+        own.save()
+        kept = self._message(self.alpha, days_old=900)
+        kept_poll = self._poll(self.alpha, days_old=900)
+
+        self._run(channel=None)
+
+        self.assertTrue(ForumMessage.objects.filter(pk=kept.pk).exists())
+        self.assertTrue(RoomPoll.objects.filter(pk=kept_poll.pk).exists(),
+                        "the wide run deleted a shielded room's poll")
+
+    def test_the_wide_preview_counts_what_the_wide_run_would_delete(self):
+        """The desk's numbers and the button's deletions come from one rule —
+        a preview that counted the override rooms would promise more deletion
+        than pressing the button delivers."""
+        own = ForumRetentionPolicy.for_channel(self.alpha)
+        own.retention_days = 365
+        own.enabled = True
+        own.save()
+        self._message(self.alpha, days_old=90)
+        self._message(self.beta, days_old=90)
+        self._poll(self.alpha, days_old=90)
+        self._poll(self.beta, days_old=90)
+
+        wide = cleanup.preview()
+        self.assertEqual(wide["messages"], 1)
+        self.assertEqual(wide["polls"], 1)
+
+
+class SharedDeadlineTests(RoomHygieneBase):
+    def test_the_nightly_deadline_is_one_budget_not_one_per_pass(self):
+        """With N enabled overrides a per-pass budget could run the task N
+        times past what tasks.py promised celery. An exhausted budget skips
+        the remaining passes and says so; every chunk already committed, so
+        the next night resumes."""
+        for room in (self.alpha, self.beta):
+            own = ForumRetentionPolicy.for_channel(room)
+            own.enabled = True
+            own.save()
+
+        with self.captureOnCommitCallbacks(execute=True):
+            out = cleanup.run_scheduled(deadline_seconds=0)
+
+        self.assertTrue(out["runs"], "no passes were even attempted")
+        self.assertIn({"skipped": "out_of_time", "channel": None},
+                      [r for r in out["runs"] if "skipped" in r])
+
+
 class RaceTests(RoomHygieneBase):
     """The in-flight refusal, which is asymmetric on purpose."""
 
@@ -380,13 +459,28 @@ class ScopedExportTests(RoomHygieneBase):
                          "a room archive named another room")
 
     def test_a_room_archive_carries_no_other_rooms_files(self):
-        self._message(self.alpha, attach=True)
-        self._message(self.beta, attach=True)
+        """Asserted by COUNT and by BYTES, never by filename.
 
-        names = self._zip(self.alpha).namelist()
-        self.assertTrue(any("alpha" in n for n in names))
-        self.assertFalse(any("beta" in n for n in names),
-                         f"another room's media reached the archive: {names}")
+        Attachment members are content-addressed (`attachments/<sha256>-…`) —
+        no room slug ever appears in a member name, so a name-based assertion
+        passes vacuously forever. The two fixtures also carry DIFFERENT bytes,
+        because identical files collapse onto one member by design and would
+        make the count prove nothing.
+        """
+        import hashlib
+
+        self._message(self.alpha, attach=True, attach_bytes=b"alpha-bytes-1")
+        self._message(self.beta, attach=True, attach_bytes=b"beta-bytes-02")
+
+        archive = self._zip(self.alpha)
+        members = [n for n in archive.namelist()
+                   if n.startswith("attachments/")]
+        self.assertEqual(len(members), 1,
+                         f"expected exactly alpha's one file: {members}")
+        self.assertEqual(archive.read(members[0]), b"alpha-bytes-1")
+        beta_sha = hashlib.sha256(b"beta-bytes-02").hexdigest()
+        self.assertFalse(any(beta_sha in n for n in archive.namelist()),
+                         "beta's content hash reached the archive")
 
     def test_the_survey_is_what_scopes_it_not_the_renderer(self):
         """Scoping later would still have measured, and named in the manifest,
@@ -396,6 +490,24 @@ class ScopedExportTests(RoomHygieneBase):
         plan = export.survey(actor="s", channel=self.alpha)
         self.assertEqual([r.channel_id for r in plan.rooms], [self.alpha.pk])
         self.assertEqual(plan.total_messages, 1)
+
+    def test_the_manifest_and_front_page_declare_the_narrow_scope(self):
+        """A per-room archive is HANDED to that room's members. For a day its
+        manifest said `all-rooms-operator-export` and its front page said
+        "contains every room, including private ones" — a file that overstates
+        both what it holds and who must have made it."""
+        import json
+
+        self._message(self.alpha)
+        archive = self._zip(self.alpha)
+        data = json.loads(archive.read("manifest.json"))
+        self.assertEqual(data["scope"], "single-room-export:alpha")
+        index = archive.read("index.html").decode()
+        self.assertNotIn("every room", index)
+        self.assertIn("alpha", index)
+
+        wide = json.loads(self._zip().read("manifest.json"))
+        self.assertEqual(wide["scope"], "all-rooms-operator-export")
 
     def test_the_filename_names_the_room(self):
         name = export.export_filename(channel=self.alpha)
@@ -430,22 +542,33 @@ class SettingsTabTests(RoomHygieneBase):
     def test_the_tab_link_is_hidden_from_members_and_shown_to_staff(self):
         """A tab that always answers 403 is worse than no tab.
 
-        Read off two DIFFERENT pages on purpose: the member is checked on a
-        tab they may see (Statistics), because a member cannot open Settings
-        to look at its own tab strip, and staff are checked on Settings, which
-        includes the same strip. Both pages render `_room_tabs.html`, so one
-        strip is under test either way.
+        BOTH halves read the Statistics page, never Settings: on the Settings
+        page the tab's URL is a prefix of every form action, so asserting it
+        there passes with the tab deleted from the strip — a check that cannot
+        fail. Statistics renders the same `_room_tabs.html` and contains no
+        other settings-URL, which is what makes the staff half real. The staff
+        account is enrolled in the room first, because Statistics is
+        member-gated and staffhood does not imply membership here.
         """
+        from toto.forum.models import ForumMember
+
         url = reverse("forum:room_settings", args=[self.alpha.slug])
+        stats = reverse("forum:room_stats", args=[self.alpha.slug])
 
         self.client.force_login(self.member)
-        member_page = self.client.get(
-            reverse("forum:room_stats", args=[self.alpha.slug]))
+        member_page = self.client.get(stats)
         self.assertEqual(member_page.status_code, 200)
         self.assertNotContains(member_page, url)
 
+        from toto.people.models import Person
+
+        staff_person = Person.objects.create(user=self.staff,
+                                             display_name="S")
+        ForumMember.objects.create(channel=self.alpha, person=staff_person,
+                                   is_active=True)
         self.client.force_login(self.staff)
-        staff_page = self.client.get(url)
+        staff_page = self.client.get(stats)
+        self.assertEqual(staff_page.status_code, 200)
         self.assertContains(staff_page, url)
 
     def test_saving_gives_the_room_its_own_setting(self):
@@ -474,6 +597,19 @@ class SettingsTabTests(RoomHygieneBase):
             77)
         self.assertFalse(
             ForumRetentionPolicy.objects.filter(channel=self.beta).exists())
+
+    def test_a_rejected_save_does_not_mint_an_override(self):
+        """The write happens only after the form validates. `for_channel()`
+        CREATES the override row, and an override row — disabled included —
+        removes the room from the platform-wide sweep; minting it before
+        `is_valid()` meant a typo detached the room silently and for good."""
+        self.client.force_login(self.staff)
+        self.client.post(
+            reverse("forum:room_retention", args=[self.alpha.slug]),
+            {"enabled": "on", "retention_days": "not-a-number"})
+        self.assertFalse(
+            ForumRetentionPolicy.objects.filter(channel=self.alpha).exists(),
+            "a rejected save still detached the room from the platform")
 
     def test_resetting_deletes_the_override_rather_than_disabling_it(self):
         """Those are different states: a disabled override is a room that

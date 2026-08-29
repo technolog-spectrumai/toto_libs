@@ -33,7 +33,8 @@ optional act somebody has to take themselves.
         <li>{% trans "Messages older than the retention period are removed from the database, and the images and voice recordings posted with them are deleted from disk." %}</li>
         <li>{% trans "There is no undo, no archive and no recycle bin. Cleanup keeps no copy of anything it removes." %}</li>
         <li>{% trans "There are no exceptions. Nothing can be marked important enough to survive." %}</li>
-        <li>{% trans "Rooms, members and polls are left alone — only messages and their files are removed." %}</li>
+        <li>{% trans "Polls older than the boundary are deleted too — open or closed — together with every vote cast in them." %}</li>
+        <li>{% trans "Rooms and members are left alone. So is any room with retention settings of its own: those rooms follow their own dial, on their own Settings tab, and this sweep never touches them." %}</li>
         <li>{% trans "Anyone with the room open keeps seeing removed messages until they reload the page." %}</li>
       </ul>
     </section>
@@ -115,13 +116,15 @@ optional act somebody has to take themselves.
           <span class="opacity-60">{% blocktrans with total=preview.total_messages %}of {{ total }} in the forum{% endblocktrans %}</span></li>
         <li><strong>{{ preview.attachments }}</strong> {% trans "files" %},
           <strong>{{ preview.bytes|filesizeformat }}</strong></li>
+        <li><strong>{{ preview.polls }}</strong> {% trans "polls" %},
+          <strong>{{ preview.ballots }}</strong> {% trans "votes" %}</li>
         <li>{% blocktrans with n=preview.channels total=preview.total_channels %}across {{ n }} of {{ total }} rooms{% endblocktrans %}</li>
       </ul>
 
       {% if in_flight %}
         <p class="text-sm opacity-70"><i class="fa-solid fa-spinner"></i>
           {% trans "A cleanup is running. This page shows the result when it finishes." %}</p>
-      {% elif preview.messages == 0 %}
+      {% elif preview.messages == 0 and preview.polls == 0 %}
         <p class="text-sm opacity-70">{% trans "Nothing is old enough to remove." %}</p>
       {% else %}
         <button type="button" @click="confirming = true"

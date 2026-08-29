@@ -88,12 +88,18 @@ PLANS = [
         # dashboard tiles from everybody, superusers included, and 402'd their
         # write endpoints wherever BUILD_SUBSCRIPTIONS_ENFORCE was on. The
         # description above has promised "notebooks" and "media" the whole time.
+        # `ocr` and `fileservices` were missing from BOTH plans until
+        # 2026-08-29 while declared paid in the catalogue — the exact failure
+        # the comment above records for the compute tier, found the same way:
+        # tiles hidden from everybody, writes 402ing under ENFORCE. The
+        # catalogue and these lists change together, always.
         "entitlements": [
             "cyprian", "memo", "primula", "sketch", "editor",
             "kanban", "locations",
             "aralia", "mandragora", "notarius",
             "repo", "gitea", "vod", "steven", "travels",
             "anastasia", "dracena", "texlab", "manta",
+            "ocr", "fileservices",
         ],
     },
 ]
