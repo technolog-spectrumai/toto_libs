@@ -7,7 +7,7 @@ Business Center renders through aralia rather than through anything of its own.
 **The dependency is SOFT, and it has to be.** This wheel installs on any host;
 `toto.aralia` is host-owned and not every host carries it. So every aralia
 import lives behind `available()`, exactly the way
-`toto.hesperis.integration.ledger` treats this package's own ledger — a wheel
+`toto_libs/limbo/hesperis/integration/ledger.py` treats this package's own ledger — a wheel
 that hard-imported a host app would refuse to install anywhere else. Where
 the renderer is absent, `export` refuses with a message instead of rendering.
 """

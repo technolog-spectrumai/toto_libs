@@ -131,13 +131,17 @@ def test_migrations_are_packaged(all_names, owner):
     # rows and one sent-record per recipient. It is NOT jess: jess is the
     # platform's own outbox for transactional mail, and this is people's
     # accounts, which is why it owns tables rather than extending that app's.
-    # 48 again: toto.polls went OUT — parked to limbo/ when the Forum stopped
+    # 47 now: toto.hesperis went OUT — parked to limbo/ on 2026-08-29 and
+    # succeeded by toto.lacedo, a HOST portion on zenobia, which is why the
+    # replacement does not come back into this count. It took its six models
+    # and the toto-economy edge with it; see limbo/hesperis/PARKED.md.
+    # 48 before that: toto.polls went OUT — parked to limbo/ when the Forum stopped
     # borrowing it and started owning its polls. It came in (entry 49 above) so
     # that a wheel could reach it at all; a room's poll is a `forum` model with
     # a real ForeignKey to its channel now, so the app it was reached FOR no
     # longer needs it. Its tables are deliberately left in place, and the quiz
     # desk it carried is parked with it — see limbo/polls/PARKED.md.
-    assert len(apps_with_migrations) == 48, sorted(apps_with_migrations)
+    assert len(apps_with_migrations) == 47, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"

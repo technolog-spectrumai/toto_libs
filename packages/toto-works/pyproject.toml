@@ -21,18 +21,17 @@ requires-python = ">=3.10"
 # scripts/release.py — never edit them by hand.
 dependencies = [
     "toto-base==1.50",
-    # Added 2026-08-22, when the ban on this edge was lifted. toto.hesperis
-    # (in this wheel) carries real foreign keys into assets.Asset and
+    # NO toto-economy edge any more. It was added 2026-08-22 solely because
+    # toto.hesperis carried real foreign keys into assets.Asset and
     # assets.LedgerAccount, and a ForeignKey("assets.Asset") string is a HARD
-    # edge to scripts/check_package_graph.py — so the edge has to be declared.
+    # edge to scripts/check_package_graph.py. hesperis was parked to
+    # toto_libs/limbo on 2026-08-29 and limbo/ is not scanned, so the edge went
+    # with it.
     #
-    # It does NOT make the economy compulsory for the boards. toto.kanban has
-    # no FK into assets and never imports it at module scope: aurelian runs
-    # kanban with toto.assets absent from INSTALLED_APPS, and an FK into an app
-    # the registry lacks is fields.E300 on every command. The wheel is on the
-    # path there; the app is not installed; kanban degrades to
-    # NullRewardBackend. See toto/kanban/rewards.py.
-    "toto-economy==1.50",
+    # What remains is soft and must stay soft: toto.kanban has no FK into
+    # assets and imports it only inside the method that settles a reward, so
+    # aurelian runs the boards with toto.assets absent from INSTALLED_APPS and
+    # kanban degrades to NullRewardBackend. See toto/kanban/rewards.py.
 ]
 
 [tool.setuptools.packages.find]

@@ -171,6 +171,10 @@ _DEFAULTS = (
     Entitlement("kanban", "Tasks", order=25,
                 icon="fa-solid fa-list-check",
                 description="Boards, missions and sprints."),
+    Entitlement("lacedo", "Bounties", order=26,
+                icon="fa-solid fa-binoculars",
+                description="Open calls from the lodges: contribute, follow, "
+                            "and read every decision."),
     Entitlement("locations", "Maps", order=27,
                 icon="fa-solid fa-map-location-dot",
                 description="Addresses, territories and what is on them."),

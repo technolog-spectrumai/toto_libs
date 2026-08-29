@@ -14,7 +14,7 @@ leaf. The chain of custody: a company decision is voted through `voting`,
 committed to `ledger`, and exported through `documents`.
 
 Two integrations stay SOFT (lazy imports behind `apps.is_installed`, the
-`toto.hesperis.integration.ledger` pattern): PDF rendering goes through
+`toto_libs/limbo/hesperis/integration/ledger.py` pattern): PDF rendering goes through
 **`toto.aralia`** where a host carries it, and `ingress_company --full`
 seeds a spreadsheet only where **`toto.primula`** is present. A host without
 either installs and runs this wheel fine; exports refuse politely instead.
