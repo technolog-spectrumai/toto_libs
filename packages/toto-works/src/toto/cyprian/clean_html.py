@@ -72,7 +72,7 @@ def _esc_attr(value: str) -> str:
     ``{{ asset('logo') }}`` is Jinja source, and `&#x27;` is not a quote to
     Jinja, so escaping it would hand Aralia a template that cannot compile.
     Attributes are emitted double-quoted, so `"` is the only quote that matters.
-    This is ctml._esc_attr's rule.
+    This is `htmldoc._text`'s rule, applied to an attribute.
     """
     return ((value or "").replace("&", "&amp;").replace("<", "&lt;")
             .replace(">", "&gt;").replace('"', "&quot;"))

@@ -26,7 +26,7 @@ class StevenFileServicePlugin(FileServicePlugin):
     #: answer from the bytes, and offering it would be a lie in a menu.
     accepted_file_types = [
         "text", "html", "json", "yaml", "xml", "csv", "latex", "bib",
-        "python", "svg", "ctml", "document", "neojson",
+        "python", "svg", "neojson",
         # Decks are text too. They reached this list as "xml" before they had a
         # class of their own; "presentation" is the legacy spelling.
         "pxml", "presentation",
