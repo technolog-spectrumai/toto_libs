@@ -33,6 +33,14 @@ PNG = (b"\x89PNG\r\n\x1a\n" + b"\x00" * 40)
 
 
 @override_settings(FORUM_ATTACHMENT_ROOT=_ROOT, MEDIA_ROOT=_ROOT)
+# The forum-LEVEL Cleanup and Export desks were removed on 2026-08-29 — both
+# operations are per-room now, on each room's Settings tab — so the classes
+# that drove `/forum/cleanup/` and `/forum/export/` went with them. Their
+# coverage did not: `tests/test_room_hygiene.py` asserts the staff gate, the
+# confirmation word, the boundary re-derivation and the archive scoping
+# against the room endpoints that replaced them.
+
+
 class ExportBase(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -298,55 +306,6 @@ class ResilienceTests(ExportBase):
         ForumChannel.objects.create(name="Auxiliary", slug="aux")
         zf, _plan = self._archive()
         self.assertIn("rooms/aux-room.html", zf.namelist())
-
-
-class PermissionTests(ExportBase):
-    def test_a_member_is_refused_both_doors(self):
-        self.client.force_login(self.member)
-        self.assertEqual(self.client.get(reverse("forum:export")).status_code, 403)
-        self.assertEqual(
-            self.client.post(reverse("forum:export_download")).status_code, 403)
-
-    def test_anonymous_is_sent_to_log_in(self):
-        response = self.client.get(reverse("forum:export"))
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("login", response["Location"])
-
-    def test_staff_see_the_desk(self):
-        self.client.force_login(self.staff)
-        response = self.client.get(reverse("forum:export"))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "including private ones you never joined")
-
-    def test_the_download_refuses_a_get(self):
-        self.client.force_login(self.staff)
-        self.assertEqual(
-            self.client.get(reverse("forum:export_download")).status_code, 405)
-
-    def test_the_desk_does_not_walk_every_message(self):
-        """Aggregates only: a desk that surveyed the forum on each visit would
-        read every blob on disk to draw a number."""
-        for n in range(5):
-            self._say(f"m{n}")
-        self.client.force_login(self.staff)
-        with self.assertNumQueries(self.baseline()):
-            self.client.get(reverse("forum:export"))
-
-    def baseline(self):
-        from django.db import connection
-        from django.test.utils import CaptureQueriesContext
-
-        with CaptureQueriesContext(connection) as ctx:
-            self.client.get(reverse("forum:export"))
-        return len(ctx)
-
-    def test_the_link_is_hidden_from_members(self):
-        self.client.force_login(self.member)
-        self.assertNotContains(self.client.get(reverse("forum:channel_list")),
-                               reverse("forum:export"))
-        self.client.force_login(self.staff)
-        self.assertContains(self.client.get(reverse("forum:channel_list")),
-                            reverse("forum:export"))
 
 
 class ReservedSlugTests(ExportBase):
