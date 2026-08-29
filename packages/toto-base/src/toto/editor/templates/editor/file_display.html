@@ -17,9 +17,9 @@
 {% include "steven/_head.html" %}
 {% endif %}
 {% comment %}Versions and the editing lock, shared with cyprian, memo and
-   primula. Deferred, like Alpine itself, so `fileVersions` is defined before
-   Alpine initialises the component that calls it.{% endcomment %}
-{% comment %}NOT deferred, and that is the whole point. oya/alpine.js is
+   primula.
+
+   NOT deferred, and that is the whole point. oya/alpine.js is
    deferred, and this bundle ends with `queueMicrotask(() => Alpine.start())`
    rather than a DOMContentLoaded listener — so Alpine walks the DOM in the
    microtask right after its own script runs, BEFORE any later deferred script

@@ -628,9 +628,17 @@ def cleanup_run(request):
         return redirect("forum:cleanup")
 
     if celery_available():
-        from .tasks import forum_cleanup
+        # `forum_cleanup_run(run.pk)`, NOT `forum_cleanup()`. The claim already
+        # happened above: `trigger()` created a RUNNING row. `forum_cleanup` is
+        # the SCHEDULED entry point — it calls `run_scheduled`, which claims a
+        # row per policy — so dispatching it here made every pass collide with
+        # the row this very request had just made, refuse with
+        # CleanupInProgress, delete nothing, and leave that row RUNNING to
+        # block cleanup until the stuck-run sweeper closed it. The room
+        # Settings button was written the right way round; this one was not.
+        from .tasks import forum_cleanup_run
 
-        forum_cleanup.delay()
+        forum_cleanup_run.delay(run.pk)
         messages.success(request, _("Cleanup started. This page shows the "
                                     "result when it finishes."))
         return redirect("forum:cleanup")
