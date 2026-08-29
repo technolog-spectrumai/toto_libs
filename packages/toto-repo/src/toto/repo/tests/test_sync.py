@@ -49,16 +49,69 @@ class ArtifactExclusionTests(RepoTestCase):
     def test_the_source_a_rendition_came_from_still_travels(self):
         # Only the DERIVED file is skipped. Losing the document itself would
         # be a far worse bug than versioning its pdf.
-        self._file("report.xml", b"<document/>\n", self.root,
-                   key="report-xml", file_type="document")
+        #
+        # The source is an `html` file, not the old `document`/report.xml: a
+        # written document IS ordinary html since CTML was retired on
+        # 2026-08-29, and this fixture kept asserting a spelling the platform
+        # had deleted from VaultFile.FILE_TYPE_CHOICES.
+        self._file("report.html", b"<h1>R</h1>\n", self.root,
+                   key="report-html", file_type="html")
         self._file("report.pdf", b"%PDF-1.4\n", self.root,
                    key="report-pdf", file_type="pdf")
 
         result = sync.export_worktree(
             GitRepo.objects.create(directory=self.root, owner=self.user))
 
-        self.assertIn("report.xml", result["written"])
+        self.assertIn("report.html", result["written"])
         self.assertNotIn("report.pdf", result["written"])
+
+    def test_a_document_is_never_its_own_rendition(self):
+        """The regression that made every html document vanish from git.
+
+        `html` is on both sides of the rendition test — a document is html,
+        and "Save as HTML" from a deck is html too. While the index held bare
+        stems, a lone report.html matched the key it had itself contributed,
+        was skipped, never entered `seen_paths`, and was then UNLINKED by the
+        orphan sweep and deleted from git on the next commit. Documents are
+        the thing this repo exists to version.
+        """
+        self._file("solo.html", b"<h1>S</h1>\n", self.root,
+                   key="solo-html", file_type="html")
+
+        result = sync.export_worktree(
+            GitRepo.objects.create(directory=self.root, owner=self.user))
+
+        self.assertIn("solo.html", result["written"])
+
+    def test_two_documents_sharing_a_title_both_travel(self):
+        """Vault titles are not unique, so a same-stem sibling must not be
+        mistaken for a source. Keying the index by pk instead of by TYPE
+        would drop both of these."""
+        self._file("dup.html", b"<h1>A</h1>\n", self.root,
+                   key="dup-a", file_type="html")
+        self._file("dup.html", b"<h1>B</h1>\n", self.root,
+                   key="dup-b", file_type="html")
+
+        result = sync.export_worktree(
+            GitRepo.objects.create(directory=self.root, owner=self.user))
+
+        self.assertEqual(
+            len([p for p in result["written"] if p.startswith("dup")]), 2,
+            result["written"])
+
+    def test_html_saved_from_a_deck_is_still_a_rendition(self):
+        """The rule survives from the other side: a DIFFERENT source type
+        beside it still makes an html file derived."""
+        self._file("talk.pxml", b"<deck/>\n", self.root,
+                   key="talk-pxml", file_type="pxml")
+        self._file("talk.html", b"<h1>T</h1>\n", self.root,
+                   key="talk-html", file_type="html")
+
+        result = sync.export_worktree(
+            GitRepo.objects.create(directory=self.root, owner=self.user))
+
+        self.assertIn("talk.pxml", result["written"])
+        self.assertNotIn("talk.html", result["written"])
 
 
 class ExportTests(RepoTestCase):

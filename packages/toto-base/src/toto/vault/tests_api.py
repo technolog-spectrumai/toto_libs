@@ -791,9 +791,15 @@ class FileCreateWithContentApiTests(TestCase):
     def test_the_desktop_writer_can_reach_a_cyprian_document(self):
         # Decks were added and documents were not, which left the desktop app
         # able to open half of what it can edit.
-        res = self.create(bucket_slug="push", title="notes.xml",
-                          file_type="document",
-                          content='<?xml version="1.0"?><document title="N"/>')
+        #
+        # A document is an ordinary `html` file since CTML was retired on
+        # 2026-08-29 — the CAPABILITY this pins did not go away, its spelling
+        # did. `document` is gone from VaultFile.FILE_TYPE_CHOICES and
+        # deliberately absent from EDITABLE_FILE_TYPES, so posting it now
+        # earns the 415 that comment promises.
+        res = self.create(bucket_slug="push", title="notes.html",
+                          file_type="html",
+                          content='<h1>N</h1>')
         self.assertEqual(res.status_code, 201)
         key = res.json()["key"]
         self.assertEqual(

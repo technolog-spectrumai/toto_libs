@@ -153,24 +153,39 @@ def export_worktree(repo: GitRepo) -> dict:
     mappings = {m.vault_file_id: m for m in repo.files.all()}
 
     files = list(subtree_files(root))
-    # Renditions: the document editor saves report.pdf / report.html beside the
-    # report.xml they came from. A .pdf on its own is a legitimate source (a
-    # figure, a reference), so it is only skipped when a document of the same
-    # stem sits in the same folder — the shape "Save PDF to the vault" makes.
-    _sources = {
-        (vf.directory_id, (vf.title or "").rsplit(".", 1)[0])
-        for vf in files
-        if (vf.file_type or "") in ("html", "pxml", "presentation")
-    }
+    # Renditions: the editor saves report.pdf / report.html beside the document
+    # they came from. A .pdf on its own is a legitimate source (a figure, a
+    # reference), so it is only skipped when a source of the same stem sits in
+    # the same folder — the shape "Save PDF to the vault" makes.
+    #
+    # THE INDEX MAPS A STEM TO THE SOURCE TYPES THAT CLAIMED IT, never to a
+    # bare "yes", because since CTML was retired a written document IS an
+    # ordinary `html` file — so `html` sits on BOTH sides of this test. With a
+    # plain set of stems every html document matched the key it had itself
+    # contributed: it was dropped from the export, then unlinked from the
+    # worktree by the orphan sweep below, and deleted from git on the next
+    # commit. A file is a rendition only when a source of a DIFFERENT type
+    # sits beside it.
+    #
+    # Keyed by TYPE and not by pk on purpose: vault titles are not unique
+    # (see `_relpath_for`, which exists to dedupe them), and two documents
+    # both called report.html in one folder would each be "another row with
+    # my key" and both vanish — the same catastrophe by a subtler route.
+    _sources: dict = {}
+    for vf in files:
+        if (vf.file_type or "") in ("html", "pxml", "presentation"):
+            key = (vf.directory_id, (vf.title or "").rsplit(".", 1)[0])
+            _sources.setdefault(key, set()).add(vf.file_type or "")
 
     for vf in files:
         if vf.is_encrypted:
             continue
         if _is_artifact(vf, root_full):
             continue
-        if (vf.file_type or "") in ("pdf", "html"):
+        file_type = vf.file_type or ""
+        if file_type in ("pdf", "html"):
             stem = (vf.title or "").rsplit(".", 1)[0]
-            if (vf.directory_id, stem) in _sources:
+            if _sources.get((vf.directory_id, stem), frozenset()) - {file_type}:
                 continue
         current_pks.add(vf.pk)
         relpath = _relpath_for(vf, root_full, seen_paths)
