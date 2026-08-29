@@ -66,12 +66,6 @@ class Features:
     # unless a host says otherwise, and turning it off only drops toto.kanban.
     # Nothing has a model FK into it, so it leaves nothing dangling.
     kanban: bool
-    # Crowdsourced collection over the kanban work engine (the Bounty Board,
-    # accepted observations, versioned datasets). ADDITIVE and off by default,
-    # unlike kanban: it brings a new surface, real foreign keys into
-    # assets.Asset, and an AppConfig that refuses to start without the ledger.
-    # A host adopts it deliberately or not at all.
-    hesperis: bool
     # The zenobia workspace labs (host-owned apps, resolved here since 1.47 so
     # their closures cannot be forgotten: a Python lab whose image lacks the
     # jupyter packages, or a TeX lab whose image lacks pdflatex, is a lab in
@@ -261,20 +255,17 @@ def resolve_features(get) -> Features:
     # kanban models on the zone page, but guards that with apps.is_installed and
     # imports them inside the view, so a kanban-less host just shows the zone.
     kanban = flag(get, "BUILD_KANBAN", default=True)          # toto.kanban — project/task boards
-    # toto.hesperis — the Bounty Board and its datasets. Opt-in, and it implies
-    # kanban: it is a surface over that engine and its models FK into it, so
-    # BUILD_HESPERIS=1 with BUILD_KANBAN=0 is a contradiction rather than a
-    # preference. Same shape as the travels/geo closure below.
+    # No `hesperis` here any more. The Bounty Board was parked to
+    # `toto_libs/limbo/hesperis` on 2026-08-29 and succeeded by `toto.lacedo`,
+    # a HOST portion on zenobia — so its flag is host-local (`BUILD_LACEDO` in
+    # that host's settings) and this resolver, which is library code every host
+    # vendors, has nothing to say about it. `BUILD_PLACIDIA`, the pre-rename
+    # fallback, went with it: no config in the tree sets either name.
     #
-    # BUILD_PLACIDIA is the app's former name, kept as a fallback so a config
-    # written before the rename keeps its Bounty Board instead of silently
-    # losing it — the same courtesy BUILD_ANTARESIA gets for dracena. An
-    # explicit BUILD_HESPERIS always wins.
-    hesperis = flag(get, "BUILD_HESPERIS", flag(get, "BUILD_PLACIDIA"))
-    if hesperis and not kanban:
-        raise FeatureConfigError(
-            "BUILD_HESPERIS=1 needs BUILD_KANBAN=1: hesperis is a surface over "
-            "the kanban work engine and its models have foreign keys into it.")
+    # Note what is NOT inherited: hesperis raised a FeatureConfigError unless
+    # BUILD_KANBAN was also on, because it was a surface over the kanban engine
+    # with foreign keys into it. Lacedo owns its own models and runs on a build
+    # with no boards, so there is no closure to restate.
 
     # Map-dependent apps cannot run without geometry — fail loud rather than
     # silently pulling GIS back in (the coordinate reads and map overlays in
@@ -460,7 +451,6 @@ def resolve_features(get) -> Features:
         subscriptions=subscriptions,
         geo=geo,
         kanban=kanban,
-        hesperis=hesperis,
         dracena=dracena,
         texlab=texlab,
         editor=editor,
