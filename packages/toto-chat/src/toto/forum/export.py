@@ -129,8 +129,13 @@ def room_member_name(slug: str, seen: set) -> str:
     return f"rooms/{candidate}.html"
 
 
-def export_filename(when=None) -> str:
+def export_filename(when=None, *, channel=None) -> str:
     stamp = (when or timezone.now()).strftime("%Y%m%d-%H%M%S")
+    if channel is not None:
+        # The room's slug is already filename-safe (SlugField), and naming the
+        # room is the point: an operator with a folder of these needs to know
+        # which is which without opening them.
+        return f"forum-{channel.slug}-{stamp}.zip"
     return f"forum-export-{stamp}.zip"
 
 
@@ -176,12 +181,26 @@ def _storage():
     return ForumMessage._meta.get_field("attachment").storage
 
 
-def survey(*, actor="") -> Plan:
-    """Measure everything and decide whether to refuse. Writes nothing."""
+def survey(*, actor="", channel=None) -> Plan:
+    """Measure everything and decide whether to refuse. Writes nothing.
+
+    With `channel`, the archive is ONE ROOM — which is the difference between
+    an operator's snapshot of the platform and a room's own record of itself.
+    The narrow form is what the room's Settings tab offers, and it is the one
+    that can be handed to the people in that room: it contains their
+    conversation and nothing from any room they are not in.
+
+    THE SCOPING IS HERE AND NOWHERE ELSE. Every later pass — `_days`,
+    `render_room`, `render_index`, `manifest`, `stream_archive` — walks
+    `plan.rooms`, so narrowing this list is what makes a per-room export
+    leak-proof. A filter applied in the renderer instead would still have
+    measured, and named in the manifest, rooms the reader may not see.
+    """
     from .models import ForumChannel, ForumMessage
 
     plan = Plan(generated_at=timezone.now(), actor=actor)
-    channels = list(ForumChannel.objects.all().order_by("slug", "pk"))
+    channels = ([channel] if channel is not None
+                else list(ForumChannel.objects.all().order_by("slug", "pk")))
     if len(channels) > MAX_ROOMS:
         raise ExportTooLarge(_("Rooms"), MAX_ROOMS, len(channels))
 

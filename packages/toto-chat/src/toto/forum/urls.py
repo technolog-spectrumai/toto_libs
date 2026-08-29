@@ -52,6 +52,17 @@ urlpatterns = [
     path("<slug:slug>/polls/<slug:poll_slug>/close/", views.room_poll_close, name="room_poll_close"),
     path("<slug:slug>/polls/<slug:poll_slug>/delete/", views.room_poll_delete, name="room_poll_delete"),
     path("<slug:slug>/stats/", views.room_stats, name="room_stats"),
+    # The Settings tab and its three write endpoints. Staff-only in the view,
+    # not merely absent from the tab strip.
+    path("<slug:slug>/settings/", views.room_settings, name="room_settings"),
+    path("<slug:slug>/settings/retention/", views.room_retention,
+         name="room_retention"),
+    path("<slug:slug>/settings/retention/reset/", views.room_retention_reset,
+         name="room_retention_reset"),
+    path("<slug:slug>/settings/cleanup/", views.room_cleanup_run,
+         name="room_cleanup_run"),
+    path("<slug:slug>/settings/archive/", views.room_export_download,
+         name="room_export_download"),
     path("<slug:slug>/", ChannelDetailView.as_view(), name="channel_detail"),
 
     # JSON API

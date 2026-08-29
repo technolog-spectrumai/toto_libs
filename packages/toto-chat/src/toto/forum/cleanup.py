@@ -73,24 +73,63 @@ def boundary(policy=None, *, now=None):
     return (policy or ForumRetentionPolicy.current()).boundary(now=now)
 
 
-def _doomed(cutoff):
-    """Every message older than the cutoff, in every channel.
+def _doomed(cutoff, channel=None, exclude=None):
+    """Every message older than the cutoff, in one channel or in all of them.
 
     Soft-deleted rows included: this is the one pass that removes their bytes,
     and they are older conversations by any reading.
+
+    PINNED MESSAGES ARE NOT EXEMPT, and there is nothing here that could exempt
+    one: this forum has no pin. If pinning is ever added, it must not add a
+    filter here — retention is an unconditional promise, and a pin that
+    survived it would make "removed after N days" false in exactly the cases
+    somebody cared enough to pin.
     """
     from .models import ForumMessage
 
-    return ForumMessage.objects.filter(created_at__lt=cutoff)
+    rows = ForumMessage.objects.filter(created_at__lt=cutoff)
+    if channel is not None:
+        rows = rows.filter(channel=channel)
+    if exclude:
+        # The forum-wide sweep skips rooms that set their own retention. See
+        # `run_scheduled`: without this, the platform dial would overrule every
+        # override it was supposed to defer to.
+        rows = rows.exclude(channel_id__in=exclude)
+    return rows
 
 
-def preview(policy=None, *, now=None) -> dict:
+def _doomed_polls(cutoff, channel=None, exclude=None):
+    """Polls older than the cutoff, and the votes cast in them.
+
+    THIS APP CHANGED ITS MIND, and the reversal is worth recording. The sweep
+    used to spare polls, on the stated grounds that "a poll is a decision
+    record, not a conversation". That was defensible while retention was a
+    tidying-up of chatter; it is not, once retention is a promise that a room's
+    history is GONE after N days. A poll is a thing people said, with their
+    names on it and their votes attached, and leaving it behind means the
+    promise was never true.
+
+    `PollChoice` and `PollBallot` are CASCADE off `RoomPoll`, so deleting the
+    poll takes them — the ballots are counted first, for the record.
+    """
+    from .models import RoomPoll
+
+    rows = RoomPoll.objects.filter(created_at__lt=cutoff)
+    if channel is not None:
+        rows = rows.filter(channel=channel)
+    if exclude:
+        rows = rows.exclude(channel_id__in=exclude)
+    return rows
+
+
+def preview(policy=None, *, now=None, channel=None) -> dict:
     """What a run right now would destroy. Counts only; deletes nothing."""
-    from .models import ForumChannel, ForumMessage, ForumRetentionPolicy
+    from .models import (ForumChannel, ForumMessage, ForumRetentionPolicy,
+                         PollBallot, RoomPoll)
 
-    policy = policy or ForumRetentionPolicy.current()
+    policy = policy or ForumRetentionPolicy.current(channel)
     cutoff = policy.boundary(now=now)
-    rows = _doomed(cutoff)
+    rows = _doomed(cutoff, channel)
 
     # Trailing order_by(): ForumMessage.Meta.ordering folds into the GROUP BY
     # and would return one row per message instead of one per channel.
@@ -99,15 +138,21 @@ def preview(policy=None, *, now=None) -> dict:
     attachments = rows.exclude(attachment="").exclude(attachment__isnull=True)
     sizes = attachments.aggregate(n=models.Count("id"),
                                   total=models.Sum("attachment_size"))
+    doomed_polls = _doomed_polls(cutoff, channel)
+    scoped_messages = ForumMessage.objects.filter(channel=channel) \
+        if channel is not None else ForumMessage.objects.all()
     return {
         "boundary": cutoff,
         "retention_days": policy.retention_days,
+        "channel": channel,
         "messages": rows.count(),
         "attachments": sizes["n"] or 0,
         "bytes": sizes["total"] or 0,
-        "channels": len(list(channels)),
-        "total_messages": ForumMessage.objects.count(),
-        "total_channels": ForumChannel.objects.count(),
+        "polls": doomed_polls.count(),
+        "ballots": PollBallot.objects.filter(poll__in=doomed_polls).count(),
+        "channels": 1 if channel is not None else len(list(channels)),
+        "total_messages": scoped_messages.count(),
+        "total_channels": 1 if channel is not None else ForumChannel.objects.count(),
     }
 
 
@@ -136,25 +181,43 @@ def _delete_blobs(names, run_id):
             blobs_missing=models.F("blobs_missing") + missing)
 
 
-def run_cleanup(run, *, deadline_seconds=None) -> "ForumCleanupRun":
+def run_cleanup(run, *, deadline_seconds=None, exclude=None) -> "ForumCleanupRun":
     """Do the deleting, chunk by chunk, recording as it goes.
 
     Every chunk commits, so stopping early is never inconsistent — and the job
     is resumable precisely because the boundary is re-derived from the clock
     on the next run rather than carried around.
     """
-    from .models import ForumMessage, RunStatus
+    from .models import ForumMessage, PollBallot, RunStatus
 
     started = time.monotonic()
     cutoff = run.boundary
+    channel = run.channel
     touched_channels = set()
+
+    # Polls first, and in one pass rather than chunked: a room has tens of
+    # them where it has thousands of messages, and the cascade to choices and
+    # ballots is the database's work rather than ours.
+    if not run.polls_deleted:
+        with transaction.atomic():
+            doomed = _doomed_polls(cutoff, channel, exclude)
+            ballots = PollBallot.objects.filter(poll__in=doomed).count()
+            polls = doomed.count()
+            if polls:
+                touched_channels.update(
+                    doomed.values_list("channel_id", flat=True))
+                doomed.delete()
+            run.polls_deleted = polls
+            run.ballots_deleted = ballots
+            run.save(update_fields=["polls_deleted", "ballots_deleted"])
 
     while True:
         if deadline_seconds is not None and (time.monotonic() - started) > deadline_seconds:
             return _close(run, RunStatus.PARTIAL)
 
         with transaction.atomic():
-            chunk = list(_doomed(cutoff).order_by("created_at", "id")
+            chunk = list(_doomed(cutoff, channel, exclude)
+                         .order_by("created_at", "id")
                          .values("id", "channel_id", "attachment",
                                  "attachment_size")[:DELETE_CHUNK])
             if not chunk:
@@ -193,7 +256,10 @@ def _close(run, status, *, error=""):
     run.finished_at = timezone.now()
     run.save(update_fields=["status", "error", "finished_at"])
 
-    policy = ForumRetentionPolicy.current()
+    # The policy that GOVERNED this run, which for a per-room sweep is the
+    # room's own override — writing the outcome onto the platform default
+    # would make one room's failure read as the whole forum's.
+    policy = ForumRetentionPolicy.current(run.channel)
     policy.last_run_at = run.finished_at
     policy.last_run_status = status
     policy.last_error = run.error
@@ -215,8 +281,8 @@ def fail_run(run, reason=""):
                   error=str(reason or _("The run stopped without finishing.")))
 
 
-def in_flight() -> bool:
-    """Whether a sweep is already going.
+def in_flight(channel=None) -> bool:
+    """Whether a sweep that would collide with this one is already going.
 
     Asked of the RUN rows, not of the policy's `last_run_status`: a killed
     worker leaves the policy saying RUNNING with nothing to reset it, and a
@@ -224,13 +290,20 @@ def in_flight() -> bool:
     failure this check exists to prevent. The stuck-run sweeper closes
     abandoned rows, so this answer heals itself.
     """
+    from django.db.models import Q
+
     from .models import ForumCleanupRun, RunStatus
 
-    return ForumCleanupRun.objects.filter(
-        status__in=(RunStatus.PENDING, RunStatus.RUNNING)).exists()
+    live = ForumCleanupRun.objects.filter(
+        status__in=(RunStatus.PENDING, RunStatus.RUNNING))
+    if channel is not None:
+        # This room's own sweep, or a forum-wide one that already covers it.
+        # Another room's sweep is none of its business.
+        live = live.filter(Q(channel=channel) | Q(channel__isnull=True))
+    return live.exists()
 
 
-def trigger(*, triggered_by, user=None, policy=None):
+def trigger(*, triggered_by, user=None, policy=None, channel=None):
     """Claim the sweep and create its run row, or raise CleanupInProgress.
 
     The claim is taken inside a transaction with `select_for_update()` on the
@@ -239,19 +312,31 @@ def trigger(*, triggered_by, user=None, policy=None):
     SQLite ignores `select_for_update()` silently, so the refusal must be
     correct without it, which is why the in-flight predicate is re-read inside
     the claim rather than trusted from before it.
+
+    THE IN-FLIGHT CHECK IS PER CHANNEL, and the shape matters. A sweep of one
+    room and a sweep of another are independent and may overlap; a sweep of one
+    room and a FORUM-WIDE sweep are not, because the wide one covers the narrow
+    one. So a room refuses while its own run or a forum-wide run is live, and a
+    forum-wide run refuses while anything at all is live. Without that, two
+    passes could delete the same message and the second would count rows that
+    were already gone.
     """
     from .models import ForumCleanupRun, ForumRetentionPolicy, RunStatus
 
     with transaction.atomic():
+        governing = ForumRetentionPolicy.current(channel)
         policy = (ForumRetentionPolicy.objects.select_for_update()
-                  .filter(pk=1).first()) or ForumRetentionPolicy.current()
-        if in_flight():
+                  .filter(pk=governing.pk).first()) or governing
+        if in_flight(channel):
             raise CleanupInProgress(
-                _("A cleanup is already running. Wait for it to finish."))
+                _("A cleanup covering this room is already running. Wait for "
+                  "it to finish."))
         run = ForumCleanupRun.objects.create(
             status=RunStatus.RUNNING,
             triggered_by=triggered_by,
             triggered_by_user=user,
+            channel=channel,
+            channel_name=channel.name if channel is not None else "",
             boundary=policy.boundary(),
             retention_days=policy.retention_days,
         )
@@ -264,22 +349,57 @@ def trigger(*, triggered_by, user=None, policy=None):
 
 
 def run_scheduled(*, deadline_seconds=None) -> dict:
-    """The nightly entry point. Silent and harmless while the dial is off."""
+    """The nightly entry point. Silent and harmless while every dial is off.
+
+    ONE PASS PER POLICY, not one pass over the forum. Each room that set its
+    own retention gets a sweep at its own boundary, and the platform default
+    gets one covering everything that did not — so the wide sweep is scoped to
+    exclude the rooms with overrides, or a room asking to keep two years of
+    history would lose it to a platform dial set to thirty days.
+
+    A room whose own dial is OFF is likewise excluded from the wide sweep: it
+    said "not here", and the platform default must not overrule that. Turning
+    a room's override off and expecting the platform's to apply again is done
+    by deleting the override, which is what the settings tab's Reset does.
+    """
     from .models import ForumRetentionPolicy, RunStatus, TriggeredBy
 
-    policy = ForumRetentionPolicy.current()
-    if not policy.enabled:
+    results = []
+    overrides = list(ForumRetentionPolicy.objects
+                     .filter(channel__isnull=False)
+                     .select_related("channel"))
+
+    for policy in overrides:
+        if not policy.enabled:
+            continue
+        results.append(_run_one(policy, policy.channel, deadline_seconds))
+
+    default = ForumRetentionPolicy.default()
+    if default.enabled:
+        results.append(_run_one(default, None, deadline_seconds,
+                                exclude=[p.channel_id for p in overrides]))
+
+    if not results:
         return {"skipped": "disabled"}
+    return {"runs": results}
+
+
+def _run_one(policy, channel, deadline_seconds, exclude=None) -> dict:
+    from .models import RunStatus, TriggeredBy
+
     try:
-        run = trigger(triggered_by=TriggeredBy.BEAT, policy=policy)
+        run = trigger(triggered_by=TriggeredBy.BEAT, policy=policy,
+                      channel=channel)
     except CleanupInProgress:
-        return {"skipped": "in_progress"}
+        return {"skipped": "in_progress",
+                "channel": channel.slug if channel else None}
     try:
-        run_cleanup(run, deadline_seconds=deadline_seconds)
+        run_cleanup(run, deadline_seconds=deadline_seconds, exclude=exclude)
     except Exception as exc:  # noqa: BLE001 — a failed sweep must close its row
         _close(run, RunStatus.FAILED, error=repr(exc))
         raise
     return {"run": run.pk, "status": run.status,
+            "channel": channel.slug if channel else None,
             "messages": run.messages_deleted, "bytes": run.bytes_freed}
 
 

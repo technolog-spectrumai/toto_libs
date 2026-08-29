@@ -29,4 +29,17 @@
             {% if active_tab == 'stats' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
      {% if active_tab == 'stats' %}aria-current="page"{% endif %}>
     <i class="fa-solid fa-chart-simple"></i>{% trans "Statistics" %}</a>
+  {% if user.is_staff or user.is_superuser %}
+  {% comment %}Settings is staff-only, and hidden rather than shown-and-refused:
+     a tab that always answers 403 is worse than no tab. The view re-checks —
+     this is chrome, not the gate. The predicate matches permissions.is_operator
+     exactly, superuser included, because is_superuser does not imply is_staff
+     in Django.{% endcomment %}
+  <a href="{% url 'forum:room_settings' channel.slug %}"
+     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+     class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+            {% if active_tab == 'settings' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+     {% if active_tab == 'settings' %}aria-current="page"{% endif %}>
+    <i class="fa-solid fa-sliders"></i>{% trans "Settings" %}</a>
+  {% endif %}
 </nav>

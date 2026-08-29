@@ -738,3 +738,245 @@ def forum_export_download(request):
     response["Content-Disposition"] = (
         f'attachment; filename="{export_engine.export_filename()}"')
     return response
+
+
+# ---------------------------------------------------------------------------
+# Room settings — the fourth tab, and the room's own half of forum hygiene.
+#
+# The forum-level `/forum/cleanup/` and `/forum/export/` desks above are NOT
+# replaced by this: they are the platform view, they set the default every room
+# follows until it says otherwise, and they archive everything at once. This
+# tab is the same two operations SCOPED TO ONE ROOM, which is what makes them
+# usable — a retention period is a property of a conversation, not of a server,
+# and an archive somebody can hand to the people in a room must not contain
+# every other room.
+#
+# The comment above `cleanup_page` said the dial was "deliberately NOT a room
+# tab, because a global dial edited from inside one room reads as if it applied
+# to that room only". That reasoning was sound and its conclusion is now wrong:
+# the dial edited here IS this room's, so the reading it warned against is
+# simply the truth. The forum-wide dial stays where it was.
+#
+# STAFF ONLY, checked in every one of these views and not merely hidden in the
+# tab strip. `require_operator` answers 403 rather than 404 for the reason it
+# documents: the URL is derived from a slug the member already knows.
+# ---------------------------------------------------------------------------
+
+
+def _room_hygiene_context(request, channel):
+    """Everything the Settings tab shows, in one place.
+
+    Shared by the GET and by every POST that falls back to re-rendering, so a
+    form with errors cannot come back beside numbers computed differently.
+    """
+    from toto.celery_utils import celery_available
+
+    from . import cleanup as cleanup_engine
+    from . import export as export_engine
+    from .forms import ConfirmCleanupForm, RetentionSettingsForm
+    from .models import ForumCleanupRun, ForumMessage, ForumRetentionPolicy
+
+    governing = ForumRetentionPolicy.current(channel)
+    own = ForumRetentionPolicy.objects.filter(channel=channel).first()
+
+    files = (ForumMessage.objects.filter(channel=channel,
+                                         deleted_at__isnull=True)
+             .exclude(attachment="").exclude(attachment__isnull=True)
+             .aggregate(n=models.Count("id"),
+                        total=models.Sum("attachment_size")))
+
+    context = _room_context(request, channel, "settings")
+    context.update({
+        # `policy` is what GOVERNS the room, which may be the platform
+        # default; `own_policy` is None until this room overrides it. The
+        # template needs both to say "following the platform" honestly.
+        "policy": governing,
+        "own_policy": own,
+        "follows_default": own is None,
+        "settings_form": RetentionSettingsForm(instance=own or governing),
+        "confirm_form": ConfirmCleanupForm(),
+        "boundary": governing.boundary(),
+        "preview": cleanup_engine.preview(governing, channel=channel),
+        "last_run": ForumCleanupRun.objects.filter(channel=channel).first(),
+        "recent_runs": ForumCleanupRun.objects.filter(channel=channel)[:10],
+        "next_run": cleanup_engine.next_scheduled_run(),
+        "worker_available": celery_available(),
+        "in_flight": cleanup_engine.in_flight(channel),
+        # Archive counts. Cheap aggregates only — the survey that walks every
+        # message and reads every blob is the POST's job, exactly as on the
+        # forum-wide desk.
+        "message_count": ForumMessage.objects.filter(channel=channel).count(),
+        "attachments": files["n"] or 0,
+        "attachment_bytes": files["total"] or 0,
+        "caps": {
+            "messages_per_room": export_engine.MAX_MESSAGES_PER_ROOM,
+            "attachments": export_engine.MAX_ATTACHMENTS,
+            "total_mb": export_engine.MAX_TOTAL_BYTES // (1024 * 1024),
+        },
+        "page_title": f"{channel.name} — settings",
+    })
+    return context
+
+
+@login_required
+@require_safe
+def room_settings(request, slug):
+    """This room's retention period, its cleanup history, and its archive."""
+    from django.shortcuts import render
+
+    channel = get_object_or_404(ForumChannel, slug=slug)
+    permissions.require_operator(request)
+    return render(request, "forum/room_settings.html",
+                  _room_hygiene_context(request, channel))
+
+
+@login_required
+@require_POST
+def room_retention(request, slug):
+    """Set this room's own retention period.
+
+    Saving here is what makes the room STOP following the platform default:
+    `for_channel` mints the override row from the default's value, so a staff
+    member who opens the form and presses Save without changing anything gets
+    the same number they were already on — pinned, and no longer moving when
+    the platform dial does.
+    """
+    from .forms import RetentionSettingsForm
+    from .models import ForumRetentionPolicy
+
+    channel = get_object_or_404(ForumChannel, slug=slug)
+    permissions.require_operator(request)
+
+    policy = ForumRetentionPolicy.for_channel(channel)
+    form = RetentionSettingsForm(request.POST, instance=policy)
+    if form.is_valid():
+        saved = form.save(commit=False)
+        # Belt and braces: the form has no `channel` field, so this cannot be
+        # posted from another room's page to move an override across rooms.
+        saved.channel = channel
+        saved.updated_by = request.user
+        saved.save()
+        messages.success(request, _("Retention settings saved for this room."))
+    else:
+        messages.error(request, "; ".join(
+            m for errors in form.errors.values() for m in errors))
+    return redirect("forum:room_settings", slug=channel.slug)
+
+
+@login_required
+@require_POST
+def room_retention_reset(request, slug):
+    """Give up the override and follow the platform default again.
+
+    Deletes the row rather than disabling it, because those two are different
+    states and the difference is visible: a row with `enabled=False` is a room
+    that has decided to keep everything, and `run_scheduled` excludes it from
+    the forum-wide sweep for that reason. No row at all is a room that has not
+    decided, and the platform dial governs it.
+    """
+    from .models import ForumRetentionPolicy
+
+    channel = get_object_or_404(ForumChannel, slug=slug)
+    permissions.require_operator(request)
+
+    deleted, _ignored = (ForumRetentionPolicy.objects
+                         .filter(channel=channel).delete())
+    if deleted:
+        messages.success(request, _("This room follows the platform "
+                                    "retention setting again."))
+    return redirect("forum:room_settings", slug=channel.slug)
+
+
+@login_required
+@require_POST
+def room_cleanup_run(request, slug):
+    """Run this room's cleanup now, after an explicit confirmation.
+
+    The boundary is re-derived from the governing policy and the clock, never
+    read from the page — the forum-wide endpoint carries the same rule and the
+    same reason: a cutoff in a form field is a cutoff somebody can edit.
+    """
+    from toto.celery_utils import celery_available
+
+    from . import cleanup as cleanup_engine
+    from .forms import ConfirmCleanupForm
+    from .models import TriggeredBy
+
+    channel = get_object_or_404(ForumChannel, slug=slug)
+    permissions.require_operator(request)
+
+    form = ConfirmCleanupForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, _("Nothing was deleted — the confirmation "
+                                  "did not match."))
+        return redirect("forum:room_settings", slug=channel.slug)
+
+    try:
+        run = cleanup_engine.trigger(triggered_by=TriggeredBy.MANUAL,
+                                     user=request.user, channel=channel)
+    except cleanup_engine.CleanupInProgress as exc:
+        messages.error(request, str(exc))
+        return redirect("forum:room_settings", slug=channel.slug)
+
+    if celery_available():
+        from .tasks import forum_cleanup_run
+
+        forum_cleanup_run.delay(run.pk)
+        messages.success(request, _("Cleanup started. This page shows the "
+                                    "result when it finishes."))
+        return redirect("forum:room_settings", slug=channel.slug)
+
+    cleanup_engine.run_cleanup(run, deadline_seconds=25)
+    run.refresh_from_db()
+    if run.status == "partial":
+        messages.warning(request, _(
+            "Removed %(n)s message(s) before running out of time. Press Run "
+            "cleanup now again, or start a worker.") % {
+                "n": run.messages_deleted})
+    else:
+        messages.success(request, _(
+            "Removed %(n)s message(s) and %(f)s file(s), permanently.") % {
+                "n": run.messages_deleted, "f": run.attachments_deleted})
+    return redirect("forum:room_settings", slug=channel.slug)
+
+
+@login_required
+@require_POST
+def room_export_download(request, slug):
+    """Archive THIS ROOM and stream it.
+
+    `survey(channel=...)` is what keeps the archive to one room — the plan it
+    returns holds one `RoomPlan`, so the index, the manifest and the media
+    folder all name this room and nothing else. Scoping anywhere later would
+    still have measured, and listed, rooms the reader may not see.
+    """
+    from asgiref.sync import sync_to_async
+    from django.http import StreamingHttpResponse
+
+    from . import export as export_engine
+
+    channel = get_object_or_404(ForumChannel, slug=slug)
+    permissions.require_operator(request)
+
+    try:
+        plan = export_engine.survey(actor=request.user.get_username(),
+                                    channel=channel)
+    except export_engine.ExportTooLarge as exc:
+        messages.error(request, str(exc))
+        return redirect("forum:room_settings", slug=channel.slug)
+
+    chunks = export_engine.stream_archive(plan)
+
+    async def astream():
+        while True:
+            chunk = await sync_to_async(next, thread_sensitive=True)(
+                chunks, None)
+            if chunk is None:
+                return
+            yield chunk
+
+    response = StreamingHttpResponse(astream(), content_type="application/zip")
+    response["Content-Disposition"] = (
+        'attachment; filename="'
+        f'{export_engine.export_filename(channel=channel)}"')
+    return response

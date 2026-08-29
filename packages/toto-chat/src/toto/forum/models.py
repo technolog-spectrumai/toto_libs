@@ -464,7 +464,30 @@ class TriggeredBy(models.TextChoices):
 
 
 class ForumRetentionPolicy(models.Model):
-    """How long the forum keeps what was said. One row, edited by staff."""
+    """How long the forum keeps what was said.
+
+    ONE ROW PER CHANNEL, plus one with `channel=NULL` that is the platform
+    default. That default row IS the singleton this model used to be — the same
+    pk, the same dial, the same meaning — so an existing deployment keeps
+    exactly the retention it had and gains the ability to say something
+    different about one room.
+
+    Resolution is `current(channel)`: the channel's own row if it has one, else
+    the default. A channel row is created only when somebody sets one, so
+    "most rooms follow the platform" costs no rows and, more importantly, means
+    changing the platform dial still moves those rooms. A per-channel row is an
+    OVERRIDE, and overriding is a thing you do on purpose.
+
+    Staff only, everywhere. A retention period is a destruction schedule, and a
+    room's own members must not be able to set one for each other — the same
+    call every destructive surface on this platform makes.
+    """
+
+    channel = models.ForeignKey(
+        "forum.ForumChannel", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="retention_policies",
+        help_text=_("The room this covers. Empty means every room that has no "
+                    "policy of its own."))
 
     #: Off on arrival, and this is not timidity. An app that begins destroying
     #: history the moment somebody installs it is a bug with a release note.
@@ -488,16 +511,62 @@ class ForumRetentionPolicy(models.Model):
 
     class Meta:
         verbose_name = _("forum retention policy")
-        verbose_name_plural = _("forum retention policy")
+        verbose_name_plural = _("forum retention policies")
+        constraints = [
+            # One override per channel. A partial constraint, because NULL is
+            # the default row and SQL does not consider two NULLs equal — so a
+            # plain UniqueConstraint on `channel` would permit any number of
+            # default rows, which is the one thing that must not happen.
+            models.UniqueConstraint(
+                fields=["channel"], condition=models.Q(channel__isnull=False),
+                name="forum_one_retention_policy_per_channel"),
+        ]
 
     def __str__(self):
         state = _("on") if self.enabled else _("off")
-        return f"{self.retention_days} days ({state})"
+        where = self.channel.name if self.channel_id else _("every room")
+        return f"{where}: {self.retention_days} days ({state})"
+
+    @property
+    def is_default(self) -> bool:
+        return self.channel_id is None
 
     @classmethod
-    def current(cls):
-        policy, _created = cls.objects.get_or_create(pk=1)
+    def default(cls):
+        """The platform-wide row. pk=1 by construction, as it always was."""
+        policy, _created = cls.objects.get_or_create(
+            pk=1, defaults={"channel": None})
         return policy
+
+    @classmethod
+    def current(cls, channel=None):
+        """The policy that governs this channel.
+
+        The channel's own row if it has one, else the platform default. Note
+        it does NOT create a channel row: a room without an override follows
+        the platform, and it must keep following it when the platform dial
+        moves.
+        """
+        if channel is not None:
+            own = cls.objects.filter(channel=channel).first()
+            if own is not None:
+                return own
+        return cls.default()
+
+    @classmethod
+    def for_channel(cls, channel):
+        """The channel's OWN row, creating it from the default if absent.
+
+        Only for the settings form — asking for one is what makes a room stop
+        following the platform.
+        """
+        existing = cls.objects.filter(channel=channel).first()
+        if existing is not None:
+            return existing
+        base = cls.default()
+        return cls.objects.create(
+            channel=channel, enabled=False,
+            retention_days=base.retention_days)
 
     def boundary(self, now=None):
         """The cutoff: everything strictly older than this goes.
@@ -521,6 +590,18 @@ class ForumCleanupRun(models.Model):
     NOTE for any future aggregate over this model: `Meta.ordering` folds into
     a GROUP BY, so every `.values().annotate()` needs a trailing `.order_by()`.
     """
+
+    #: The room this sweep covered, or NULL for a forum-wide one. Recorded
+    #: rather than derived, so a run's own row says what it was asked to do
+    #: even after the channel is renamed — or deleted, which is why this is
+    #: SET_NULL and not CASCADE: destroying a room must not erase the record
+    #: that its history was destroyed.
+    channel = models.ForeignKey(
+        "forum.ForumChannel", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="cleanup_runs")
+    channel_name = models.CharField(
+        max_length=100, blank=True,
+        help_text=_("The room's name as it was, kept for when the row is gone."))
 
     status = models.CharField(max_length=10, choices=RunStatus.choices,
                               default=RunStatus.PENDING, db_index=True)
@@ -546,6 +627,12 @@ class ForumCleanupRun(models.Model):
     #: Replies whose quoted parent was removed. They keep their own text and
     #: lose the quote (`reply_to` is SET_NULL).
     replies_orphaned = models.PositiveIntegerField(default=0)
+    #: Polls and the votes cast in them. Counted separately because deleting
+    #: them is a decision this app reversed: the sweep used to spare a poll on
+    #: the grounds that "a poll is a decision record, not a conversation", and
+    #: retention is now an unconditional promise instead.
+    polls_deleted = models.PositiveIntegerField(default=0)
+    ballots_deleted = models.PositiveIntegerField(default=0)
     channels_touched = models.PositiveIntegerField(default=0)
 
     error = models.TextField(blank=True)

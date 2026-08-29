@@ -24,3 +24,31 @@ def forum_cleanup():
     # closes itself as `partial` and records what it managed rather than being
     # killed mid-chunk with nothing written.
     return cleanup.run_scheduled(deadline_seconds=1500)
+
+
+@shared_task(name="toto.forum.tasks.forum_cleanup_run", ignore_result=True,
+             soft_time_limit=1740, time_limit=1800)
+def forum_cleanup_run(run_id):
+    """Finish a run somebody already claimed — the room Settings tab's button.
+
+    Takes the run id rather than a channel id BECAUSE THE CLAIM ALREADY
+    HAPPENED. `cleanup.trigger()` created the row inside a locked transaction
+    and that is what stops two sweeps overlapping; a task that re-derived the
+    channel and claimed again would race with the request that queued it, and
+    the second claim would raise `CleanupInProgress` into a worker where
+    nobody would read it.
+
+    A missing row is not an error: the run can have been closed by the
+    stuck-run sweeper, or the room deleted, between the request and the
+    worker picking this up.
+    """
+    from . import cleanup
+    from .models import ForumCleanupRun, RunStatus
+
+    run = ForumCleanupRun.objects.filter(
+        pk=run_id, status__in=(RunStatus.PENDING, RunStatus.RUNNING)).first()
+    if run is None:
+        return {"skipped": True, "run": run_id}
+    cleanup.run_cleanup(run, deadline_seconds=1500)
+    return {"run": run.pk, "status": run.status,
+            "messages_deleted": run.messages_deleted}
