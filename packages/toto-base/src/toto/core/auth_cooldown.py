@@ -63,3 +63,28 @@ def start_captcha_retry_cooldown(request) -> None:
 
 def clear_captcha_retry_cooldown(request) -> None:
     _clear_cooldown(request, CAPTCHA_RETRY_COOLDOWN_SESSION_KEY)
+
+
+# --- password reset / recovery request cooldown -----------------------------
+# Session-keyed like the two above, applied to BOTH reset entry flows (the
+# email form and the patron-ticket form). Deliberately longer than the login
+# cooldown: a reset request does real work (an SMTP send or a ticket row) and
+# a human needs it at most once a minute. The recovery LINK's set-password
+# POST is deliberately NOT cooled: its token is 122 random bits, single-use
+# and expiring, and a cooldown there would punish an honest user fixing a
+# form error.
+
+RESET_REQUEST_COOLDOWN_SESSION_KEY = "reset_request_cooldown_until"
+
+
+def reset_request_cooldown_seconds() -> int:
+    return _cooldown_seconds("RESET_REQUEST_COOLDOWN_SECONDS", 60)
+
+
+def reset_request_cooldown_remaining(request) -> int:
+    return _cooldown_remaining(request, RESET_REQUEST_COOLDOWN_SESSION_KEY)
+
+
+def start_reset_request_cooldown(request) -> None:
+    _start_cooldown(request, RESET_REQUEST_COOLDOWN_SESSION_KEY,
+                    reset_request_cooldown_seconds())

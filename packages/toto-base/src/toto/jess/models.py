@@ -69,7 +69,8 @@ class EmailProvider(models.Model):
     backend = models.CharField(
         max_length=20, choices=BACKEND_CHOICES, default=BACKEND_CONSOLE,
         help_text="How to send. Console and Dummy do not deliver, and Jess reports "
-                  "that honestly — the 'Forgot password?' link hides itself.",
+                  "that honestly — the reset page then serves patron-approved "
+                  "recovery instead of promising an email.",
     )
 
     # --- SMTP transport ---

@@ -59,8 +59,10 @@ Jess unlocks its own strongbox, `jess-system`, with `JESS_VAULT_PASSWORD`.
 
 When the vault is unavailable Jess does not crash: a send is recorded as `failed` with a
 message naming the passphrase, and `email_delivery_configured()` reports that mail cannot
-go out — so the "Forgot password?" link hides itself instead of promising a reset email
-that could never arrive.
+go out — the reset page then serves patron-approved recovery (`sso_core.password_reset`'s
+flow 2) instead of promising a reset email that could never arrive. (The "Forgot
+password?" link used to hide itself outright; since the two-flow rework it always has
+somewhere honest to lead.)
 
 ## Manual-release custody (`JESS_MANUAL_RELEASE=1`)
 
@@ -86,6 +88,22 @@ sits held until an admin releases it. The outbox shows the held count so the bac
 impossible to miss. A held **password-reset link is a one-time credential**, so its body
 is never shown on any staff page — an admin releases it (sends it) without being able to
 read it.
+
+## Session custody (no stored password at all)
+
+The third mode, and the only one with **nothing at rest**: the provider row carries host,
+port and username but no secret. A staff member types the account password once per login
+session on `/jess/unlock/` (proven with one SMTP handshake before it is held); it lives in
+that web process's memory (`credentials.py`) — never the database, never `request.session`
+(DB-backed on real hosts), never disk — and is gone on logout, expiry or restart.
+
+Because no other process can see that memory, mail that depends on it **sends inline in
+the web request** (`delivery.send_single_now`, used by the password-reset flow) rather
+than through the Celery queue. And because the store is per process, a multi-worker
+deployment holds the credential only in the worker that took the unlock POST — the
+optional `JESS_EMAIL_PASSWORD` env bootstrap (a stated trade: plaintext in `.env`, read
+once into memory at boot) is what arms every worker at once. When no process holds a
+credential, the reset page falls back to patron-approved recovery on its own.
 
 ## The staff pages
 

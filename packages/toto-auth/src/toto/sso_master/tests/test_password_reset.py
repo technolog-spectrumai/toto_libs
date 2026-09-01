@@ -197,39 +197,41 @@ class PasswordResetConfirmTests(TestCase):
 
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.console.EmailBackend")
-class PasswordResetUnavailableTests(TestCase):
-    """Without a delivering email backend the reset flow is not offered: the
-    "Forgot password?" link is hidden, and the reset page itself renders an apology
-    and sends nothing rather than accepting a request it cannot honour."""
+class PasswordResetTicketFallbackTests(TestCase):
+    """Without a delivering email backend the SAME page serves flow 2: the
+    username form that files a patron-recovery ticket (sso_core.recovery). The
+    old behaviour — an apology and a hidden "Forgot password?" link — died with
+    the two-flow rework: there is now always a path back into an account."""
 
     def setUp(self):
         _platform()
         self.client = Client()
 
-    def test_reset_view_shows_a_sorry_message_not_the_form(self):
+    def test_reset_view_shows_the_username_form_not_the_email_form(self):
         response = self.client.get(reverse("sso:password_reset"))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "sso/password_reset.html")
-        self.assertContains(response, "Password reset is unavailable")
+        self.assertContains(response, "Request Recovery")
         self.assertNotContains(response, "Send Reset Link")
 
-    def test_reset_post_sends_nothing_and_still_shows_the_message(self):
-        # A direct POST (stale bookmark) is short-circuited before the form is even
-        # built, so no mail is attempted and the apology is shown, not the done page.
+    def test_reset_post_sends_no_mail_and_lands_on_the_generic_done_page(self):
         response = self.client.post(
-            reverse("sso:password_reset"), {"email": "alice@example.com"}
+            reverse("sso:password_reset"), {"username": "alice"}
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Password reset is unavailable")
+        self.assertRedirects(
+            response, reverse("sso:password_reset_done") + "?flow=ticket"
+        )
         self.assertEqual(len(mail.outbox), 0)
 
-    def test_sso_login_page_hides_forgot_password_link(self):
+    def test_sso_login_page_shows_forgot_password_link(self):
+        # The link used to hide itself when no mail could leave; with flow 2
+        # behind the same URL it stops dead-ending, so it stays visible.
         response = self.client.get(reverse("sso:login"))
-        self.assertNotContains(response, reverse("sso:password_reset"))
+        self.assertContains(response, reverse("sso:password_reset"))
 
-    def test_core_login_page_hides_forgot_password_link(self):
+    def test_core_login_page_shows_forgot_password_link(self):
         response = self.client.get(reverse("core:login"))
-        self.assertNotContains(response, reverse("sso:password_reset"))
+        self.assertContains(response, reverse("sso:password_reset"))
 
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")

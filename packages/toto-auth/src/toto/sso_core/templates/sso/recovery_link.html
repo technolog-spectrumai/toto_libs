@@ -1,0 +1,54 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Recovery link" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-2xl space-y-6">
+
+    <div>
+      <h1 class="text-2xl font-bold">{% trans "Recovery link approved" %}</h1>
+      <p class="mt-1 text-sm opacity-70">
+        {% blocktrans with username=ticket.user.username hours=link_ttl_hours %}Hand this link to {{ username }} yourself, over a channel you trust. It opens a set-new-password form, works exactly once, and expires after {{ hours }} hours.{% endblocktrans %}
+      </p>
+    </div>
+
+    <div
+      :class="darkMode ? 'border-warn-dark' : 'border-warn-light'"
+      class="rounded-xl border p-4 text-sm">
+      <p class="font-semibold"><i class="fa-solid fa-triangle-exclamation"></i> {% trans "Shown only once" %}</p>
+      <p class="mt-1 text-xs opacity-70">
+        {% trans "This page cannot be reopened — only a fingerprint of the link is kept. If the link is lost, nothing is broken: the user simply requests recovery again. Whoever holds the link can set the password, so treat it like a key, not like a message." %}
+      </p>
+    </div>
+
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="space-y-3 rounded-xl border p-5">
+      <label for="id_link" class="block text-sm font-semibold">{% trans "One-time recovery link" %}</label>
+      <input
+        type="text"
+        id="id_link"
+        readonly
+        value="{{ link }}"
+        onclick="this.select()"
+        :class="darkMode
+          ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
+          : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+        class="w-full rounded-lg border px-3 py-2.5 font-mono text-xs shadow-sm">
+      <p class="text-xs opacity-60">{% trans "Click the field to select the whole link, then copy it." %}</p>
+    </div>
+
+    <p class="text-sm opacity-70">
+      <a href="{{ back_url }}"
+         :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="font-semibold hover:underline"><i class="fa-solid fa-arrow-left"></i> {% trans "Back to your profile" %}</a>
+    </p>
+
+  </div>
+</section>
+{% endblock %}

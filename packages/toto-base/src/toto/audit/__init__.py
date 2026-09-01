@@ -23,4 +23,12 @@ def event(*args, **kwargs):
     return service_event(*args, **kwargs)
 
 
-__all__ = ["change", "event", "record"]
+def system_actor():
+    """The SYSTEM sentinel for record(actor_user=...) — an event with no
+    actor at all, as opposed to None's "use the ambient request's user"."""
+    from toto.audit.services import SYSTEM
+
+    return SYSTEM
+
+
+__all__ = ["change", "event", "record", "system_actor"]

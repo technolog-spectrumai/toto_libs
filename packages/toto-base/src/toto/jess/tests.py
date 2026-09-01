@@ -715,32 +715,44 @@ class DeliveryConfiguredTests(JessTestCase):
         self.assertEqual(UserStrongbox.objects.count(), before)
 
     @override_settings(EMAIL_BACKEND=JESS_BACKEND)
-    def test_activating_a_provider_is_what_makes_the_reset_link_appear(self):
+    def test_activating_a_provider_is_what_switches_the_reset_page_to_email(self):
         """The whole feature, at the only place a user ever sees it.
 
-        ``core.auth_views`` sets ``password_reset_available`` from
-        ``email_delivery_configured()``, and the login template renders the link only when
-        that is true. Everything else in this class tests the predicate; this tests the
-        consequence — which is the thing studio's local accounts actually depend on, and
-        the reason ``can_deliver()`` had to stop guessing from a settings string.
+        This used to assert that the "Forgot password?" link HID until a
+        delivering provider existed. The two-flow rework dissolved that: the
+        link is available whenever the route is (``core.auth_views``), because
+        with no way to send mail the same page serves patron-authorized
+        recovery instead of dead-ending. What a provider now decides is which
+        FLOW the page renders — the thing this asserts across the same three
+        states the old test walked.
         """
-        url = reverse("core:login")
+        login = reverse("core:login")
+        reset = reverse("sso:password_reset")
 
-        # Nothing configured: the platform cannot send, so it does not offer.
-        res = self.client.get(url)
-        self.assertFalse(res.context["password_reset_available"])
+        # Nothing configured: the link still offers (flow 2 catches the user)...
+        res = self.client.get(login)
+        self.assertTrue(res.context["password_reset_available"])
+        # ...and the reset page serves the ticket flow, not the email form.
+        page = self.client.get(reset)
+        self.assertContains(page, "Request Recovery")
+        self.assertNotContains(page, "Send Reset Link")
 
-        # A console provider still cannot send. This is the case a settings-string check
-        # got right by accident and a reachability guess would get wrong.
+        # A console provider still cannot send, so still the ticket flow. This
+        # is the case a settings-string check got right by accident and a
+        # reachability guess would get wrong.
         console = self._provider(label="Console", backend="console")
-        self.assertFalse(self.client.get(url).context["password_reset_available"])
+        page = self.client.get(reset)
+        self.assertNotContains(page, "Send Reset Link")
 
-        # A delivering provider, and the link appears.
+        # A delivering provider, and the email flow takes over.
         console.delete()
         self._smtp_provider(label="Relay")
-        res = self.client.get(url)
+        res = self.client.get(login)
         self.assertTrue(res.context["password_reset_available"])
         self.assertContains(res, res.context["password_reset_url"])
+        page = self.client.get(reset)
+        self.assertContains(page, "Send Reset Link")
+        self.assertNotContains(page, "Request Recovery")
 
     def test_describe_names_the_problem_in_each_state(self):
         self.assertIn("No active email provider", jess_status.describe())

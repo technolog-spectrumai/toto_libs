@@ -16,7 +16,6 @@ from toto.core.auth_cooldown import (
     login_retry_cooldown_seconds,
     start_login_retry_cooldown,
 )
-from toto.core.email_config import email_delivery_configured
 from toto.core.forms import LoginForm
 from toto.ui import PageProcessor
 
@@ -40,10 +39,12 @@ def password_login_view(request, *, template_name, page_title, extra_context=Non
         "form": form,
         "page_title": page_title,
         "next": next_url,
-        # Password reset needs a working email backend and the sso_master
-        # urlconf; without either the "Forgot password?" link would dead-end,
-        # so it is hidden.
-        "password_reset_available": bool(password_reset_url) and email_delivery_configured(),
+        # Password reset needs only the sso_core urlconf now: with no working
+        # email backend the same page serves patron-authorized recovery
+        # instead (sso_core.password_reset's two flows), so the link stops
+        # dead-ending the moment the route exists. Local mode still mounts no
+        # such route and still hides the link.
+        "password_reset_available": bool(password_reset_url),
         "password_reset_url": password_reset_url,
     }
     if extra_context:

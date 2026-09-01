@@ -21,6 +21,9 @@ urlpatterns = [
     # Manual-release custody: type the passphrase to send held mail, and manage the
     # vault. The passphrase never leaves the request that carries it.
     path("release/", views.release, name="release"),
+    # Session custody: type the SMTP password once per login session; it lives in
+    # process memory (jess.credentials) and nowhere else. See views.unlock.
+    path("unlock/", views.unlock, name="unlock"),
     path("vault/set-up/", views.vault_setup, name="vault_setup"),
     path("vault/password/", views.provider_secret, name="provider_secret"),
     path("vault/passphrase/", views.vault_rotate_passphrase, name="rotate_passphrase"),

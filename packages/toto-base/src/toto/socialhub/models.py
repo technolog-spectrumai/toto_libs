@@ -366,4 +366,14 @@ class ReferenceRequest(models.Model):
 
                 # 3. Add them to the community they applied to
                 member.communities.add(application.community)
+
+                # 4. The referrer becomes the patron, unless one is already
+                #    set. Historically NOTHING wrote Person.patron — the
+                #    person who actually vouched lived only on this row — so
+                #    password recovery (sso_core.recovery) had to fall back to
+                #    this table for every account. Writing it here closes that
+                #    gap going forward; existing rows stay as they are and the
+                #    fallback keeps covering them.
+                if member.patron_id is None and self.referrer.pk != member.pk:
+                    member.patron = self.referrer
                 member.save()

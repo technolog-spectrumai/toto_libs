@@ -127,6 +127,7 @@
           <i class="fa-solid fa-floppy-disk"></i> {% trans "Save account" %}
         </button>
         <a href="{{ outbox_url }}" class="text-sm font-medium opacity-70 hover:opacity-100">{% trans "Outbox" %}</a>
+        <a href="{% url 'jess:unlock' %}" class="text-sm font-medium opacity-70 hover:opacity-100">{% trans "Session unlock" %}</a>
       </div>
     </form>
 

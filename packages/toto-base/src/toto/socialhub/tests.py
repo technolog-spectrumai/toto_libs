@@ -219,6 +219,56 @@ class ReferenceRequestPasswordTests(TestCase):
         self.assertFalse(self.applicant.check_password("anything"))  # no real password set
 
 
+class ReferencePatronTests(TestCase):
+    """Accepting a reference now writes ``Person.patron`` — the forward fix for
+    the gap password recovery (sso_core.recovery) works around: the field was
+    historically written by NOTHING in this pipeline, so the person who
+    actually vouched lived only on the ReferenceRequest row."""
+
+    def setUp(self):
+        Platform.objects.create(site_name="Toto", author="Test", publication_year=2026)
+        self.community = Community.objects.create(name="Cedar Guild")
+        self.applicant = User.objects.create(
+            username="mentee", email="mentee@example.com", is_active=False
+        )
+        self.application = MembershipApplication.objects.create(
+            email="mentee@example.com",
+            community=self.community,
+            code="111222",
+            verified_at=timezone.now(),
+            status="verified",
+            expires_at=timezone.now() + timezone.timedelta(days=7),
+        )
+        ref_user = User.objects.create_user(username="voucher", password="x")
+        self.referrer = Person.objects.create(user=ref_user, display_name="Voucher")
+        self.referrer.communities.add(self.community)
+        self.ref = ReferenceRequest.objects.create(
+            application=self.application, referrer=self.referrer,
+        )
+
+    def _accept(self):
+        self.ref.status = "accepted"
+        self.ref.save()
+
+    def test_accepting_sets_the_referrer_as_patron(self):
+        self._accept()
+        person = Person.objects.get(user=self.applicant)
+        self.assertEqual(person.patron_id, self.referrer.pk)
+
+    def test_an_existing_patron_is_never_overwritten(self):
+        # A patron set on purpose — by an admin, or by an earlier acceptance —
+        # outranks the pipeline: accepting a second reference must not
+        # reassign whose mentee this person is.
+        other_user = User.objects.create_user(username="elder", password="x")
+        elder = Person.objects.create(user=other_user, display_name="Elder")
+        person = Person.objects.create(
+            user=self.applicant, display_name="Mentee", patron=elder,
+        )
+        self._accept()
+        person.refresh_from_db()
+        self.assertEqual(person.patron_id, elder.pk)
+
+
 class MembershipApplicationUsernameTests(TestCase):
     """The signup form takes a login username distinct from the email; the email
     stays the key for the application/verification flow."""

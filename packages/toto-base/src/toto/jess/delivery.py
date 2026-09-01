@@ -35,7 +35,7 @@ def resolve_provider(message) -> EmailProvider:
     return provider
 
 
-def build_connection(provider: EmailProvider, *, session=None):
+def build_connection(provider: EmailProvider, *, session=None, password=None):
     """A real Django email connection for ``provider``.
 
     Raises ``vault.VaultUnavailable`` when the password cannot be read, and ``ValueError``
@@ -44,6 +44,11 @@ def build_connection(provider: EmailProvider, *, session=None):
     ``session`` injects an unlocked, typed-passphrase gervazy session (manual release):
     the SMTP password is decrypted through it instead of through the ambient env session,
     which is what lets a human release held mail without a passphrase living on the box.
+
+    ``password`` bypasses the vault entirely — the third custody mode, where the
+    SMTP password lives only in process memory (``credentials.py``) and there is
+    no stored secret to read. The caller hands the credential in; nothing here
+    writes it anywhere.
     """
     path = BACKEND_PATHS.get(provider.backend)
     if path is None:                                        # pragma: no cover
@@ -59,12 +64,13 @@ def build_connection(provider: EmailProvider, *, session=None):
         # them raises TypeError.
         return get_connection(backend=path, fail_silently=False)
 
-    password = ""
-    if provider.secret_id:
-        # Raises VaultUnavailable, which the caller records as a failed row rather than
-        # letting it become a 500 somewhere. In manual mode a wrong typed passphrase
-        # surfaces here as VaultUnavailable before any row is touched.
-        password = vault.read_secret(provider.secret, session=session)
+    if password is None:
+        password = ""
+        if provider.secret_id:
+            # Raises VaultUnavailable, which the caller records as a failed row rather
+            # than letting it become a 500 somewhere. In manual mode a wrong typed
+            # passphrase surfaces here as VaultUnavailable before any row is touched.
+            password = vault.read_secret(provider.secret, session=session)
 
     return get_connection(
         backend=path,
@@ -148,3 +154,35 @@ def release_message(row, *, session, connection, released_by) -> bool:
         released_by=released_by, released_at=timezone.now(),
     )
     return True
+
+
+def send_single_now(*, subject, body, to, purpose, password) -> bool:
+    """One message, one outbox row, sent inline on a caller-supplied credential.
+
+    The send path for the in-memory custody mode: the password came from
+    ``credentials.credential()``, never from the vault, and the send happens in
+    the calling request because no other process holds that credential. The
+    outbox row is written first and the outcome recorded on it, exactly as the
+    queue and release paths do — however a message leaves, the outbox tells the
+    same story. Returns True when the provider accepted the message.
+
+    ``release_message`` does the recording; its ``released_by`` stays None
+    because the "releaser" here is an anonymous password-reset request.
+    """
+    from .models import MailMessage
+
+    row = MailMessage.objects.create(
+        to=list(to), subject=subject or "", body=body or "", purpose=purpose,
+    )
+    try:
+        provider = resolve_provider(row)
+        connection = build_connection(provider, password=password)
+    except Exception as exc:                    # noqa: BLE001 — record, never propagate
+        from django.utils import timezone
+
+        MailMessage.objects.filter(pk=row.pk).update(
+            status=MailMessage.FAILED, finished_at=timezone.now(),
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        return False
+    return release_message(row, session=None, connection=connection, released_by=None)

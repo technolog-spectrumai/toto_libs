@@ -826,3 +826,73 @@ def vault_rotate_passphrase(request):
         "works, and no stored password had to change.",
     )
     return redirect(reverse("jess:outbox"))
+
+
+@sensitive_post_parameters("password")
+def unlock(request):
+    """Hold the email account password for this login session, in memory only.
+
+    The custody mode with nothing at rest: the active provider row carries host,
+    port and username but NO stored secret, and the password a staff member
+    types here goes into ``credentials.py`` — a dict in this web process, keyed
+    by this session, dropped on logout, expiry or restart. It is deliberately
+    NOT put in ``request.session``: sessions are database-backed on the hosts
+    that use this, and the database is the one place the password must not be.
+
+    The typed password is proven before it is held — one SMTP handshake, opened
+    and closed — so a typo surfaces here as the server's own words rather than
+    later as a failed reset that nobody sees.
+    """
+    _staff_only(request)
+    from . import credentials
+
+    provider = EmailProvider.active_provider()
+    eligible = bool(
+        provider and provider.delivers and provider.needs_secret
+        and not provider.secret_id
+    )
+    context = {
+        "page_title": _("Unlock email sending"),
+        "provider": provider,
+        "eligible": eligible,
+        "held_here": credentials.held_for(request.session.session_key),
+        "process_ready": credentials.available(),
+        "bootstrap": credentials.bootstrap_present(),
+        "delivery_status": jess_status.describe(),
+        "error": None,
+    }
+    if request.method != "POST":
+        return _render(request, "jess/unlock.html", context)
+
+    if request.POST.get("action") == "lock":
+        credentials.lock(request.session.session_key)
+        messages.success(request, _("Credential dropped for this session."))
+        return redirect(reverse("jess:unlock"))
+
+    if not eligible:
+        context["error"] = _(
+            "The active provider does not take a session credential — it either "
+            "stores its password in the vault or needs none."
+        )
+        return _render(request, "jess/unlock.html", context)
+
+    password = request.POST.get("password") or ""
+    if not password:
+        context["error"] = _("Type the email account password.")
+        return _render(request, "jess/unlock.html", context)
+
+    try:
+        connection = delivery.build_connection(provider, password=password)
+        connection.open()
+        connection.close()
+    except Exception as exc:                    # noqa: BLE001 — show, never hold
+        context["error"] = f"{type(exc).__name__}: {exc}"
+        return _render(request, "jess/unlock.html", context)
+
+    if not request.session.session_key:
+        # A key is what logout revokes by; make sure one exists to hold under.
+        request.session.save()
+    credentials.unlock(request.session.session_key, password)
+    messages.success(request, _("Unlocked — reset emails send from this process "
+                                "while your session lasts."))
+    return redirect(reverse("jess:unlock"))

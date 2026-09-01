@@ -35,6 +35,37 @@ def can_queue() -> bool:
         return False
 
 
+def can_send_inline() -> bool:
+    """Could a reset email be sent RIGHT NOW, inline, on an in-memory credential?
+
+    The third custody mode (``credentials.py``): the active provider has a
+    username but no stored secret, and this web process holds the password a
+    staff member typed (or the env bootstrap). ``can_queue``/``can_deliver``
+    both answer False for such a provider — nothing stored means nothing a
+    Celery worker could ever decrypt — so the password-reset flow asks this
+    beside them and, when it says yes, sends in the request itself.
+
+    Never raises: it is called while rendering an anonymous login page, on a
+    host whose tables may not exist yet.
+    """
+    try:
+        provider = EmailProvider.active_provider()
+        if provider is None or not provider.delivers:
+            return False
+        if not provider.needs_secret:
+            # An open relay needs no credential; can_deliver already says True
+            # and the ordinary queue path handles it.
+            return False
+        if provider.secret_id:
+            # A stored secret means the ordinary custody modes apply.
+            return False
+        from . import credentials
+
+        return credentials.available()
+    except Exception:
+        return False
+
+
 def can_deliver() -> bool:
     """True only when a message queued right now could actually reach a person.
 
@@ -92,7 +123,19 @@ def describe() -> str:
                 f"({provider.get_backend_display()}) does not deliver."
             )
         if provider.needs_secret and not provider.secret_id:
-            return f"'{provider.label}' has a username but no stored password."
+            # Session custody: no stored password is a mode, not only a gap.
+            from . import credentials
+
+            if credentials.available():
+                return (
+                    f"Session custody — sending through '{provider.label}' on a "
+                    "credential held in this process's memory."
+                )
+            return (
+                f"'{provider.label}' has a username but no stored password. "
+                "Unlock one per session (Jess → Unlock), or resets fall back "
+                "to patron-approved recovery."
+            )
         if vault.manual_release_enabled():
             # Never read the secret here — there is no ambient passphrase. Report the
             # custody state and the backlog an admin has to release.

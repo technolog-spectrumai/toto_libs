@@ -7,6 +7,7 @@ log, and shortening it is how they come back.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -58,6 +59,18 @@ def sanitize(value, *, key=""):
     return str(value)[:1000]
 
 
+#: A UUID anywhere in a path. Several routes carry one as a BEARER credential —
+#: sso_core's password-recovery link is redeemed at recover/<uuid>/ — and the
+#: audit row must never become the durable copy of a secret: request_source is
+#: a persisted JSONField AND part of the hash-chain material, so it cannot be
+#: scrubbed after the fact without breaking verify_chain. UUIDs that are mere
+#: object ids lose nothing by the redaction; the record's own object_id names
+#: the object properly.
+_UUID_SEGMENT = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
+
+
 def request_source(request):
     if request is None:
         return {}
@@ -65,7 +78,7 @@ def request_source(request):
     ip = forwarded.split(",", 1)[0].strip() if forwarded else request.META.get("REMOTE_ADDR", "")
     return sanitize({
         "method": request.method,
-        "path": request.path[:1000],
+        "path": _UUID_SEGMENT.sub("[uuid]", request.path)[:1000],
         "ip_address": ip,
         "user_agent": request.META.get("HTTP_USER_AGENT", "")[:500],
     })
@@ -113,6 +126,12 @@ def record_material(record):
     }
 
 
+#: Pass as ``actor_user`` for an event with NO actor — one the system did on
+#: its own timetable, whoever's request happened to host it. Plain ``None``
+#: means "unspecified" and falls back to the ambient request's user.
+SYSTEM = object()
+
+
 @transaction.atomic
 def record(
     action,
@@ -144,7 +163,12 @@ def record(
 
     context = current_context()
     request = request if request is not None else (context.request if context else None)
-    if actor_user is None and context is not None:
+    if actor_user is SYSTEM:
+        # A system event that merely HAPPENS during somebody's request — an
+        # expiry sweep on a page render, say. The ambient context would name
+        # the browsing user as the actor of something they did not do.
+        actor_user = None
+    elif actor_user is None and context is not None:
         actor_user = context.user
     # AnonymousUser has no pk and cannot be a FK target.
     if actor_user is not None and not getattr(actor_user, "pk", None):

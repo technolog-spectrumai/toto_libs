@@ -1,0 +1,112 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Unlock email sending" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-3xl space-y-6">
+
+    <div>
+      <h1 class="text-2xl font-bold">{% trans "Unlock email sending" %}</h1>
+      <p class="mt-1 text-sm opacity-70">
+        {% trans "Type the email account password to hold it in this server process for your login session. It is never written to the database or to disk — logging out, expiry or a restart drops it, and password-reset emails then fall back to patron-approved recovery." %}
+      </p>
+    </div>
+
+    {% if error %}
+      <p :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+         class="rounded-lg border px-4 py-3 text-sm font-medium">{{ error }}</p>
+    {% endif %}
+
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="space-y-2 rounded-xl border p-5 text-sm">
+      <p class="font-semibold">{% trans "Current state" %}</p>
+      <p class="opacity-80">{{ delivery_status }}</p>
+      {% if process_ready %}
+        <p :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="font-medium">
+          <i class="fa-solid fa-lock-open"></i>
+          {% if bootstrap and not held_here %}
+            {% trans "This process holds a credential from the deploy configuration — reset emails send." %}
+          {% else %}
+            {% trans "This process holds a session credential — reset emails send." %}
+          {% endif %}
+        </p>
+      {% else %}
+        <p class="font-medium opacity-80">
+          <i class="fa-solid fa-lock"></i>
+          {% trans "No credential in this process — reset requests go to the patron flow." %}
+        </p>
+      {% endif %}
+    </div>
+
+    {% if eligible %}
+      <form method="POST"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="space-y-4 rounded-xl border p-5">
+        {% csrf_token %}
+        <div>
+          <label for="id_password" class="mb-2 block text-sm font-semibold">
+            {% blocktrans with label=provider.label %}Password for '{{ label }}'{% endblocktrans %}
+            <span class="opacity-60">({{ provider.username }})</span>
+          </label>
+          <input
+            type="password"
+            name="password"
+            id="id_password"
+            autocomplete="off"
+            autofocus
+            :class="darkMode
+              ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
+              : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+            class="w-full rounded-lg border px-3 py-2.5 text-sm shadow-sm">
+          <p class="mt-2 text-xs opacity-60">
+            {% trans "The password is proven with one SMTP handshake before it is held, so a typo fails here rather than in a reset nobody sees." %}
+          </p>
+          <p class="mt-2 text-xs opacity-60">
+            {% trans "Held per PROCESS: on a deployment running several workers, this unlock arms only the worker that happens to take it — the JESS_EMAIL_PASSWORD deploy setting is what arms them all at once." %}
+          </p>
+        </div>
+        <button
+          type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-lock-open"></i>{% trans "Unlock for this session" %}</button>
+      </form>
+    {% else %}
+      <p
+        :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+        class="rounded-xl border border-dashed p-5 text-sm italic opacity-70">
+        {% trans "The active provider does not take a session credential — it either stores its password in the vault or needs none. Configure the account without a stored password to use session custody." %}
+      </p>
+    {% endif %}
+
+    {% if held_here %}
+      <form method="POST">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="lock">
+        <button
+          type="submit"
+          :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+          class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-lock"></i>{% trans "Drop my session credential" %}</button>
+      </form>
+    {% endif %}
+
+    <p class="text-sm opacity-70">
+      <a href="{% url 'jess:account' %}"
+         :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="font-semibold hover:underline">{% trans "Email account settings" %}</a>
+      ·
+      <a href="{% url 'jess:outbox' %}"
+         :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="font-semibold hover:underline">{% trans "Outbox" %}</a>
+    </p>
+
+  </div>
+</section>
+{% endblock %}
