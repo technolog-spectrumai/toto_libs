@@ -1,0 +1,201 @@
+{% extends "ambrosia/base.html" %}
+{% load i18n %}
+
+{% block ambrosia_subheading %}
+  <p class="max-w-2xl text-sm opacity-70">
+    {% blocktrans %}A workspace is a folder of code you can edit and run. It lives
+    in a folder inside one of your vault buckets, so the files are ordinary vault
+    files — downloadable, movable, and counted against the same storage. One
+    bucket can hold as many workspaces as you like.{% endblocktrans %}
+  </p>
+{% endblock %}
+
+{% block ambrosia_content %}
+<style>
+  /* Django renders these widgets; match the hand-written selects beside them. */
+  #ambrosia-create input[type="text"] {
+    width: 100%; border-radius: 0.5rem; border-width: 1px; border-color: currentColor;
+    background: transparent; padding: 0.5rem 0.75rem; font-size: 0.875rem;
+  }
+</style>
+
+  {% if not can_execute %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="flex items-start gap-3 rounded-2xl border p-4 text-sm shadow-sm">
+      <i class="fa-solid fa-circle-info mt-0.5 opacity-60"></i>
+      <p class="opacity-80">{{ execution_refusal }}</p>
+    </div>
+  {% endif %}
+
+  <div x-data="{ open: false }"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="overflow-hidden rounded-2xl border shadow-sm">
+    <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+         class="flex flex-col gap-2 border-b p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+      <h2 class="flex items-center gap-2 text-lg font-semibold">
+        <i class="fa-solid fa-folder-tree"></i> {% trans "Your workspaces" %}
+        <span class="text-sm font-normal opacity-55">({{ workspaces|length }})</span>
+      </h2>
+      <button type="button" @click="open = !open"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-plus"></i> {% trans "New workspace" %}
+      </button>
+    </div>
+
+    {% if not has_buckets %}
+      <div x-show="open" x-cloak
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="border-b p-5 text-sm sm:p-6">
+        <p class="font-semibold">{% trans "You have no buckets yet." %}</p>
+        <p class="mt-1 opacity-70">
+          {% blocktrans %}A workspace lives in a folder inside one of your vault
+          buckets, so make a bucket first.{% endblocktrans %}
+        </p>
+        <a href="{% url 'vault:public_list' %}"
+           class="mt-3 inline-flex items-center gap-2 text-sm font-semibold underline">
+          <i class="fa-solid fa-box-archive"></i> {% trans "Open the vault" %}
+        </a>
+      </div>
+    {% else %}
+      {{ directory_map|json_script:"ambrosia-dirs" }}
+      <form x-show="open" x-cloak method="post" action="{% url ns|add:':workspace_create' %}"
+            x-data="workspaceForm()" x-init="init()" id="ambrosia-create"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="grid grid-cols-1 gap-3 border-b p-5 sm:grid-cols-2 sm:p-6">
+        {% csrf_token %}
+
+        <label class="space-y-1 text-sm">
+          <span class="block font-semibold">{{ form.name.label }}</span>
+          {{ form.name }}
+        </label>
+
+        {% comment %} Under a language app's namespace the kind is the
+        namespace's own — the form dropped the field and the view locks the
+        value, so there is nothing to choose here.{% endcomment %}
+        {% if form.fields.kind %}
+        <label class="space-y-1 text-sm">
+          <span class="block font-semibold">{{ form.kind.label }}</span>
+          <select name="kind"
+                  class="w-full rounded-lg border border-current bg-transparent px-3 py-2 text-sm">
+            {% for value, label in form.fields.kind.choices %}
+              <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+          <span class="block text-xs opacity-55">
+            {% trans "Python runs in an interpreter; LaTeX compiles to a PDF." %}
+          </span>
+        </label>
+        {% endif %}
+
+        <label class="space-y-1 text-sm">
+          <span class="block font-semibold">{{ form.bucket.label }}</span>
+          <select name="bucket" x-model="bucket" @change="onBucket()" required
+                  class="w-full rounded-lg border border-current bg-transparent px-3 py-2 text-sm">
+            {% for b in form.fields.bucket.queryset %}
+              <option value="{{ b.pk }}">{{ b.name }}</option>
+            {% endfor %}
+          </select>
+          <span class="block text-xs opacity-55">{{ form.bucket.help_text }}</span>
+        </label>
+
+        <label class="space-y-1 text-sm">
+          <span class="block font-semibold">{{ form.directory.label }}</span>
+          <select name="directory" x-model="directory"
+                  class="w-full rounded-lg border border-current bg-transparent px-3 py-2 text-sm">
+            <option value="">{% trans "— bucket root —" %}</option>
+            <template x-for="d in dirs" :key="d.id">
+              <option :value="d.id" x-text="d.label"></option>
+            </template>
+          </select>
+          <span class="block text-xs opacity-55">{{ form.directory.help_text }}</span>
+        </label>
+
+        <label class="space-y-1 text-sm sm:col-span-2">
+          <span class="block font-semibold">{{ form.new_directory_name.label }}</span>
+          {{ form.new_directory_name }}
+          <span class="block text-xs opacity-55">
+            {% trans "Created inside the folder chosen above. Leave empty to use that folder as it is." %}
+          </span>
+        </label>
+
+        <div class="sm:col-span-2">
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-code"></i> {% trans "Create workspace" %}
+          </button>
+        </div>
+      </form>
+
+      <script>
+        function workspaceForm() {
+          return {
+            byBucket: {}, bucket: "", directory: "", dirs: [],
+            init() {
+              try {
+                this.byBucket = JSON.parse(
+                  document.getElementById("ambrosia-dirs").textContent) || {};
+              } catch (e) { this.byBucket = {}; }
+              const first = this.$el.querySelector('select[name="bucket"]');
+              this.bucket = first ? first.value : "";
+              this.onBucket();
+            },
+            onBucket() {
+              // Only folders in the chosen bucket. The server re-checks the
+              // pairing — a select is a suggestion, a POST is not.
+              this.dirs = this.byBucket[String(this.bucket)] || [];
+              this.directory = "";
+            }
+          };
+        }
+      </script>
+    {% endif %}
+
+    {% if workspaces %}
+      <ul class="space-y-3 p-4 sm:p-5">
+        {% for ws in workspaces %}
+          <li :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="group rounded-xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div class="min-w-0">
+                <a href="{% url ns|add:':workspace' ws.slug %}"
+                   class="block truncate text-base font-semibold hover:underline">
+                  {{ ws.name }}
+                </a>
+                <p class="truncate text-xs opacity-55">
+                  <i class="fa-solid fa-folder-tree"></i> {{ ws.path_label }}
+                </p>
+                <p class="text-xs uppercase tracking-wide opacity-55">
+                  {{ ws.get_kind_display }} ·
+                  {{ ws.get_execution_display }}
+                  {% if ws.last_opened_at %}
+                    · {% blocktrans with when=ws.last_opened_at|timesince %}opened {{ when }} ago{% endblocktrans %}
+                  {% endif %}
+                </p>
+              </div>
+              <div class="flex shrink-0 gap-2">
+                <a href="{% url ns|add:':workspace' ws.slug %}"
+                   :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                   class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+                  <i class="fa-solid fa-arrow-right-to-bracket"></i> {% trans "Open" %}
+                </a>
+              </div>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="p-8">
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="flex flex-col items-center gap-3 rounded-2xl border border-dashed p-8 text-center">
+          <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+               class="flex h-14 w-14 items-center justify-center rounded-2xl border">
+            <i class="fa-solid fa-folder-open opacity-40"></i>
+          </div>
+          <p class="text-sm opacity-55">{% trans "No workspaces yet." %}</p>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

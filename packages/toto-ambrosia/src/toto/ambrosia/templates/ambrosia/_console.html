@@ -1,0 +1,106 @@
+{% load i18n %}
+{% comment %}The interactive console, and the compile log.
+
+It is a transcript, not a viewport: every execution APPENDS an entry and nothing
+above it is ever rewritten. Clear empties the transcript and deliberately does
+NOT restart the kernel — tidying the screen and losing your variables are
+different actions, and a console that conflates them is a papercut.
+
+A LaTeX workspace reuses the same transcript for pdflatex output — an entry per
+compile, so the run before last is still there to compare against. It loses the
+`>>>` prompt, because pdflatex has no REPL to type into.
+{% endcomment %}
+
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="overflow-hidden rounded-2xl border shadow-sm">
+
+  <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+       class="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2">
+    <span class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-70">
+      {% if workspace.is_latex %}
+        <i class="fa-solid fa-receipt"></i> {% trans "Compile log" %}
+      {% else %}
+        <i class="fa-solid fa-terminal"></i> {% trans "Console" %}
+      {% endif %}
+      <span x-show="entries.length" class="font-normal normal-case opacity-60"
+            x-text="`(${entries.length})`"></span>
+    </span>
+    <span class="flex items-center gap-3">
+      <label class="flex items-center gap-1.5 text-xs opacity-70">
+        <input type="checkbox" x-model="autoScroll" class="h-3 w-3">
+        {% trans "Follow output" %}
+      </label>
+      <button type="button" @click="clearConsole()"
+              class="inline-flex items-center gap-1.5 text-xs underline opacity-70 hover:opacity-100">
+        <i class="fa-solid fa-eraser"></i> {% trans "Clear" %}
+      </button>
+    </span>
+  </div>
+
+  <div id="ambrosia-console" x-ref="transcript"
+       class="max-h-[22rem] min-h-[9rem] overflow-y-auto px-4 py-3 font-mono text-xs leading-relaxed">
+
+    <template x-for="entry in entries" :key="entry.id">
+      <div class="mb-3 border-l-2 pl-3"
+           :class="entry.status === 'error' ? 'border-red-500/60'
+                 : entry.status === 'timeout' ? 'border-amber-500/60'
+                 : (darkMode ? 'border-accent-1' : 'border-accent-2')">
+
+        <div class="flex items-baseline gap-2 opacity-60">
+          <span x-text="entry.label"></span>
+          <span class="truncate text-[0.65rem]" x-text="entry.source"></span>
+        </div>
+
+        <pre x-show="entry.stdout" class="whitespace-pre-wrap" x-text="entry.stdout"></pre>
+        <pre x-show="entry.stderr" class="whitespace-pre-wrap text-red-500"
+             x-text="entry.stderr"></pre>
+
+        {% comment %} Rich output. The kernel returns image/png as base64, which is exactly
+           what matplotlib's inline backend produces on plt.show().{% endcomment %}
+        <template x-for="(item, i) in entry.rich" :key="i">
+          <div class="mt-2">
+            <template x-if="item.mime === 'image/png'">
+              <img class="max-w-full rounded-lg border" :alt="'{% trans "Figure" %}'"
+                   :src="'data:image/png;base64,' + item.data">
+            </template>
+            <template x-if="item.mime === 'image/svg+xml'">
+              <div class="max-w-full overflow-x-auto rounded-lg border p-2"
+                   x-html="item.data"></div>
+            </template>
+            <template x-if="item.mime === 'text/html'">
+              <div class="max-w-full overflow-x-auto rounded-lg border p-2"
+                   x-html="item.data"></div>
+            </template>
+            <template x-if="item.mime === 'text/plain'">
+              <pre class="whitespace-pre-wrap opacity-90" x-text="item.data"></pre>
+            </template>
+          </div>
+        </template>
+      </div>
+    </template>
+
+    <p x-show="!entries.length" class="py-6 text-center opacity-40">
+      {% if workspace.is_latex %}
+        {% trans "Compile to see pdflatex's output here." %}
+      {% else %}
+        {% trans "Run something, or type below." %}
+      {% endif %}
+    </p>
+  </div>
+
+  {% if not workspace.is_latex %}
+  <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+       class="flex items-start gap-2 border-t px-4 py-2">
+    <span class="pt-2 font-mono text-xs opacity-50">&gt;&gt;&gt;</span>
+    <textarea x-model="prompt" rows="2" :disabled="!kernelReady && kernelBusy"
+              @keydown.enter="if (!$event.shiftKey) { $event.preventDefault(); runPrompt(); }"
+              placeholder="{% trans 'Python — Enter to run, Shift+Enter for a new line' %}"
+              class="flex-1 resize-y rounded-lg border border-current bg-transparent px-2 py-1 font-mono text-xs"></textarea>
+    <button type="button" @click="runPrompt()" :disabled="kernelBusy"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="mt-0.5 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-30">
+      <i class="fa-solid fa-play"></i>
+    </button>
+  </div>
+  {% endif %}
+</div>

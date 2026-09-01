@@ -1,0 +1,35 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% block ambrosia_title %}{% trans "Ambrosia" %}{% endblock %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>
+  [x-cloak] { display: none !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto {% block ambrosia_width %}max-w-5xl{% endblock %} space-y-6">
+
+    <header class="space-y-2">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">
+        {% trans "Workspace" %}
+      </p>
+      <h1 class="flex flex-wrap items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-code"></i>
+        {% block ambrosia_heading %}{% trans "Ambrosia" %}{% endblock %}
+      </h1>
+      {% block ambrosia_subheading %}{% endblock %}
+    </header>
+
+    {% block ambrosia_content %}{% endblock %}
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% load i18n %}
+{% load quota_tags %}
+{% comment %}
+  One card per time dial the workspace's language app contributed. Rendered
+  only for the owner (the apps gate extra_context on ownership) and only when
+  the levy engine is mounted (set_url is "" otherwise). Posts to the tax
+  app's one door for every dial platform-wide.
+{% endcomment %}
+{% for dial in time_dials %}
+{% if dial.set_url %}
+<div class="space-y-2">
+  <h3 class="text-sm font-semibold">{% trans "Time" %} — {{ dial.label }}</h3>
+  <p class="text-xs opacity-70">{{ dial.description }}</p>
+  <p class="text-xs opacity-70">
+    {% blocktrans with free=dial.free_seconds %}Free up to {{ free }} s.{% endblocktrans %}
+    {% trans "Above that it is demurrage:" %} {% price_hint "time.hold" %}
+    {% if dial.daily_estimate %}
+      <span class="font-semibold">{% blocktrans with amount=dial.daily_estimate.amount|floatformat:"-9" asset=dial.daily_estimate.asset %}currently ≈ {{ amount }} {{ asset }}/day{% endblocktrans %}</span>
+    {% endif %}
+  </p>
+  <form method="post" action="{{ dial.set_url }}" class="flex flex-wrap items-end gap-2">
+    {% csrf_token %}
+    <input type="hidden" name="key" value="{{ dial.key }}">
+    <input type="hidden" name="scope_id" value="{{ dial.scope_id }}">
+    <input type="hidden" name="next" value="{{ request.path }}">
+    <label class="space-y-1 text-xs">
+      <span class="block opacity-70">{% trans "Limit in seconds" %}
+        ({{ dial.free_seconds }}–{{ dial.ceiling_seconds }})</span>
+      <input type="text" inputmode="numeric" name="seconds"
+             value="{{ dial.effective_seconds }}"
+             class="rounded-lg border border-current bg-transparent px-3 py-2 text-xs font-mono">
+    </label>
+    <button type="submit"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition hover:opacity-85">
+      <i class="fa-solid fa-clock"></i> {% trans "Save" %}
+    </button>
+    <button type="submit" name="seconds" value=""
+            class="inline-flex items-center gap-2 rounded-lg border border-current/30 px-3 py-2 text-xs font-semibold opacity-70 transition hover:opacity-100">
+      {% trans "Reset to free" %}
+    </button>
+  </form>
+  <p class="text-xs opacity-55">
+    <a href="{{ dial.manage_url }}" class="underline hover:opacity-80">{% trans "All your extensions and their daily cost" %}</a>
+  </p>
+</div>
+{% endif %}
+{% endfor %}

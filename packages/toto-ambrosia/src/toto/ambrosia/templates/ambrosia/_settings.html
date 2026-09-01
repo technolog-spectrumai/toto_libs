@@ -1,0 +1,235 @@
+{% load i18n %}
+{% comment %} The workspace settings drawer.
+
+   One surface for everything that configures a room: the shared fields the
+   base renders from the lab's own declaration (`settings_fields`, described as
+   plain data in the config island), the kind-specific section the lab owns
+   (`settings_template`), and the danger zone that used to sit in a disclosure
+   at the bottom of the page.
+
+   Lives inside the `ambrosiaRoom()` component, so it reads `settingsOpen`,
+   `settingsDraft` and friends directly rather than carrying an island of its
+   own. z-index sits above the file context menu (z-60). {% endcomment %}
+
+<div x-show="settingsOpen" x-cloak @keydown.escape.window="closeSettings()">
+
+  {# backdrop #}
+  <div x-show="settingsOpen" x-transition.opacity
+       @click="closeSettings()"
+       class="fixed inset-0 z-[65] bg-black/50 backdrop-blur-sm"></div>
+
+  {# drawer #}
+  <div x-show="settingsOpen"
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="translate-x-full"
+       x-transition:enter-end="translate-x-0"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="translate-x-0"
+       x-transition:leave-end="translate-x-full"
+       role="dialog" aria-modal="true"
+       aria-label="{% trans "Workspace settings" %}"
+       :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1' : 'bg-primary-bg-light text-text-main-light border-accent-2'"
+       class="fixed inset-y-0 right-0 z-[70] flex w-full max-w-md flex-col border-l shadow-2xl">
+
+    <div class="flex items-center justify-between gap-3 border-b border-current/10 px-5 py-4">
+      <div class="flex items-center gap-3">
+        <span :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'"
+              class="flex h-9 w-9 items-center justify-center rounded-xl">
+          <i class="fa-solid fa-sliders"></i>
+        </span>
+        <div>
+          <h3 class="text-base font-bold">{% trans "Workspace settings" %}</h3>
+          <p class="text-xs opacity-60">{{ workspace.name }}</p>
+        </div>
+      </div>
+      <button type="button" @click="closeSettings()"
+              title="{% trans "Close" %}" aria-label="{% trans "Close" %}"
+              class="rounded p-2 opacity-60 transition hover:opacity-100">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <div class="flex-1 space-y-6 overflow-y-auto px-5 py-4 text-sm">
+
+      {% if readonly %}
+        <p :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'"
+           class="rounded-xl px-3 py-2 text-xs opacity-80">
+          <i class="fa-solid fa-eye"></i>
+          {% trans "You are looking at someone else's workspace. Its settings are read-only." %}
+        </p>
+      {% elif not can_execute %}
+        <p :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'"
+           class="rounded-xl px-3 py-2 text-xs opacity-80">
+          <i class="fa-solid fa-circle-info"></i> {{ execution_refusal }}
+        </p>
+      {% endif %}
+
+      {% comment %} Every declared field, rendered from the lab's own description. The
+         base knows the KINDS (a number, a choice, a switch, a set of
+         variables) and nothing about what any particular key means. {% endcomment %}
+      <template x-for="field in settingsFields" :key="field.key">
+        <div class="space-y-1.5">
+          <div class="flex items-baseline justify-between gap-3">
+            <label class="text-sm font-semibold" :for="'set-' + field.key" x-text="field.label"></label>
+            <span x-show="field.restartHint" class="text-[0.65rem] uppercase tracking-wide opacity-50">
+              {% trans "on restart" %}
+            </span>
+          </div>
+
+          {# number: seconds or a plain count, bounded by the declaration #}
+          <template x-if="field.kind === 'seconds' || field.kind === 'int'">
+            <div class="flex items-center gap-2">
+              <input type="number" :id="'set-' + field.key"
+                     :min="field.min" :max="field.max"
+                     :disabled="settingsLocked(field)"
+                     x-model.number="settingsDraft[field.key]"
+                     :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                     class="w-32 rounded-lg border bg-transparent px-3 py-2 text-sm disabled:opacity-40">
+              <span class="text-xs opacity-55" x-show="field.kind === 'seconds'">{% trans "seconds" %}</span>
+              <span class="text-xs opacity-40"
+                    x-text="field.min !== null && field.max !== null ? `(${field.min}–${field.max})` : ''"></span>
+            </div>
+          </template>
+
+          {# choice: the LaTeX engine today #}
+          <template x-if="field.kind === 'choice'">
+            <select :id="'set-' + field.key" x-model="settingsDraft[field.key]"
+                    :disabled="settingsLocked(field)"
+                    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                    class="w-full rounded-lg border px-3 py-2 text-sm disabled:opacity-40">
+              <template x-for="choice in field.choices" :key="choice.value">
+                <option :value="choice.value" x-text="choice.label"></option>
+              </template>
+            </select>
+          </template>
+
+          {# switch #}
+          <template x-if="field.kind === 'bool'">
+            <label class="inline-flex cursor-pointer items-center gap-2 text-sm">
+              <input type="checkbox" :id="'set-' + field.key"
+                     :disabled="settingsLocked(field)"
+                     x-model="settingsDraft[field.key]" class="h-4 w-4 disabled:opacity-40">
+              <span class="opacity-70" x-text="settingsDraft[field.key] ? '{% trans "on" %}' : '{% trans "off" %}'"></span>
+            </label>
+          </template>
+
+          {# environment variables: a small name/value editor #}
+          <template x-if="field.kind === 'env'">
+            <div class="space-y-2">
+              <template x-for="(row, index) in settingsEnvRows" :key="index">
+                <div class="flex items-center gap-2">
+                  <input type="text" x-model="row.name" placeholder="NAME"
+                         :disabled="settingsLocked(field)"
+                         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                         class="w-2/5 rounded-lg border bg-transparent px-2 py-1.5 font-mono text-xs disabled:opacity-40">
+                  <input type="text" x-model="row.value" placeholder="value"
+                         :disabled="settingsLocked(field)"
+                         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                         class="flex-1 rounded-lg border bg-transparent px-2 py-1.5 font-mono text-xs disabled:opacity-40">
+                  <button type="button" @click="settingsEnvRows.splice(index, 1)"
+                          :disabled="settingsLocked(field)"
+                          title="{% trans "Remove" %}" aria-label="{% trans "Remove" %}"
+                          class="rounded p-1.5 opacity-50 transition hover:opacity-100 disabled:opacity-20">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+              </template>
+              <button type="button" @click="settingsEnvRows.push({ name: '', value: '' })"
+                      :disabled="settingsLocked(field)"
+                      class="text-xs underline opacity-60 transition hover:opacity-100 disabled:opacity-30">
+                <i class="fa-solid fa-plus"></i> {% trans "Add a variable" %}
+              </button>
+            </div>
+          </template>
+
+          <p class="text-xs opacity-55" x-text="field.help"></p>
+          <p x-show="settingsFieldErrors[field.key]" x-cloak
+             class="text-xs text-red-500" x-text="(settingsFieldErrors[field.key] || []).join(' ')"></p>
+        </div>
+      </template>
+
+      {% comment %} Anything the kind wants beyond its declared fields — texlab's main
+         document picker, for instance. Empty for a kind that offers none. {% endcomment %}
+      {% if settings_template %}{% include settings_template %}{% endif %}
+
+      <div x-show="settingsError" x-cloak
+           class="rounded-xl border border-red-500/50 px-3 py-2 text-xs text-red-500">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <span x-text="settingsError"></span>
+      </div>
+
+      <div x-show="settingsRestartHint" x-cloak
+           class="rounded-xl border border-amber-500/50 px-3 py-2 text-xs text-amber-500">
+        <i class="fa-solid fa-rotate-right"></i>
+        {% trans "Saved. Restart the kernel for this to take effect." %}
+      </div>
+
+      {% if not readonly %}
+      {# ---- danger zone: close keeps the files, destroy does not ---- #}
+      <div class="space-y-4 border-t border-current/10 pt-5">
+        <div class="space-y-2">
+          <h4 class="text-sm font-semibold">{% trans "Close workspace" %}</h4>
+          <p class="text-xs opacity-70">
+            {% blocktrans %}Removes the workspace from Ambrosia. The folder and
+            every file in it stay exactly where they are in the vault.{% endblocktrans %}
+          </p>
+          <form method="post" action="{% url ns|add:':workspace_close' workspace.slug %}">
+            {% csrf_token %}
+            <button type="submit"
+                    :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                    class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition hover:opacity-85">
+              <i class="fa-solid fa-box-archive"></i> {% trans "Close, keep files" %}
+            </button>
+          </form>
+        </div>
+
+        <div class="space-y-2">
+          <h4 class="text-sm font-semibold text-red-500">{% trans "Destroy project" %}</h4>
+          <p class="text-xs opacity-70">
+            {% blocktrans with path=workspace.path_label %}Permanently deletes
+            <strong>{{ path }}</strong> and everything inside it — every file, every
+            sub-folder. This cannot be undone.{% endblocktrans %}
+          </p>
+          <form method="post" action="{% url ns|add:':workspace_destroy' workspace.slug %}"
+                class="space-y-2"
+                {% comment %}Alpine evaluates this as an EXPRESSION, so a bare
+                `return` is a syntax error that kills the component and leaves
+                the button submitting UNCONFIRMED — on the one form here that
+                deletes every file in a folder. Found while adding the same
+                control to the forum's polls.{% endcomment %}
+                @submit="if (!confirm('{% trans "Delete every file in this folder permanently?" %}')) $event.preventDefault()">
+            {% csrf_token %}
+            <label class="block space-y-1 text-xs">
+              <span class="block opacity-70">
+                {% blocktrans with n=workspace.name %}Type “{{ n }}” to confirm{% endblocktrans %}
+              </span>
+              <input type="text" name="confirm" required autocomplete="off"
+                     placeholder="{{ workspace.name }}"
+                     class="w-full rounded-lg border border-current bg-transparent px-3 py-2 text-xs">
+            </label>
+            <button type="submit"
+                    class="inline-flex items-center gap-2 rounded-lg border border-red-500/60 px-3 py-2 text-xs font-semibold text-red-500 transition hover:bg-red-500/10">
+              <i class="fa-solid fa-trash"></i> {% trans "Destroy project" %}
+            </button>
+          </form>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if not readonly %}
+    <div class="flex items-center justify-between gap-3 border-t border-current/10 px-5 py-4">
+      <button type="button" @click="resetSettings()" :disabled="settingsSaving"
+              class="text-xs underline opacity-60 transition hover:opacity-100 disabled:opacity-30">
+        {% trans "Reset to defaults" %}
+      </button>
+      <button type="button" @click="saveSettings()" :disabled="settingsSaving"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30">
+        <i class="fa-solid" :class="settingsSaving ? 'fa-spinner fa-spin' : 'fa-check'"></i>
+        {% trans "Save settings" %}
+      </button>
+    </div>
+    {% endif %}
+  </div>
+</div>

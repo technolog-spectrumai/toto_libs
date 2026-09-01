@@ -1,0 +1,355 @@
+{% extends "ambrosia/base.html" %}
+{% load i18n quota_tags %}
+{% load static %}
+
+{% block ambrosia_title %}{{ workspace.name }}{% endblock %}
+{% block ambrosia_heading %}{{ workspace.name }}{% endblock %}
+{% block ambrosia_width %}max-w-[110rem]{% endblock %}
+
+{% block ambrosia_subheading %}
+  <p class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm opacity-70">
+    <span>{{ workspace.get_kind_display }}</span>
+    <span>·</span>
+    <a href="{% url 'vault:public_list' %}" class="hover:underline">
+      <i class="fa-solid fa-folder-tree"></i> {{ workspace.path_label }}
+    </a>
+    {% if readonly %}
+      <span>· <i class="fa-solid fa-eye"></i> {% trans "read only" %}</span>
+    {% endif %}
+  </p>
+{% endblock %}
+
+{% block ambrosia_content %}
+{{ tree_data|json_script:"ambrosia-tree" }}
+{{ config_data|json_script:"ambrosia-config" }}
+
+<div id="ambrosia-room" x-data="ambrosiaRoom()" x-init="boot()" class="space-y-3">
+
+  {# ---- toolbar ---- #}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="flex flex-wrap items-center gap-2 rounded-2xl border p-3 shadow-sm">
+
+    {% comment %} Labels collapse below sm: the bar keeps every control reachable on a
+       phone by showing icons alone, so nothing is hidden behind an overflow
+       menu. title= carries the name when the label is not rendered. {% endcomment %}
+    <button type="button" @click="saveActive()" :disabled="!activeTab || readonly"
+            title="{% trans "Save" %}" aria-label="{% trans "Save" %}"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30">
+      <i class="fa-solid fa-floppy-disk"></i>
+      <span class="hidden sm:inline">{% trans "Save" %}</span>
+      <span x-show="activeTab && activeTab.dirty" class="opacity-70">•</span>
+    </button>
+
+    {% if can_execute and workspace.is_latex %}
+      <button type="button" @click="compile()" :disabled="busy"
+              title="{% trans "Compile" %}" aria-label="{% trans "Compile" %}"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30">
+        <i class="fa-solid" :class="busy ? 'fa-spinner fa-spin' : 'fa-hammer'"></i>
+        <span class="hidden sm:inline">{% trans "Compile" %}</span>
+        {% price_hint "texlab.compile" %}
+      </button>
+      <span x-show="runState && busy" x-cloak
+            class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs"
+            :class="darkMode ? 'bg-bubble-bg-dark text-primary-text-dark' : 'bg-bubble-bg-light text-primary-text-light'">
+        <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+        <span x-text="runState === 'running' ? '{% trans "running" %}' : '{% trans "queued" %}'"></span>
+      </span>
+      <span class="hidden sm:inline-flex items-center gap-1.5 text-xs opacity-70">
+        <i class="fa-solid fa-file-lines opacity-60"></i>
+        <span x-text="mainName || '{% trans "no main document" %}'"></span>
+      </span>
+      {% if not latex_available %}
+        <span class="inline-flex items-center gap-1.5 text-xs text-amber-500"
+              title="{% trans "The engine this workspace compiles with is not installed on this host." %}">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <span class="hidden sm:inline">{% trans "the LaTeX engine is not installed on this host" %}</span>
+        </span>
+      {% endif %}
+      {% if not worker_available %}
+        <span class="inline-flex items-center gap-1.5 text-xs text-amber-500"
+              title="{% trans "No background worker — compiling is unavailable." %}">
+          <i class="fa-solid fa-plug-circle-xmark"></i>
+          <span class="hidden sm:inline">{% trans "no background worker — compiling is unavailable" %}</span>
+        </span>
+      {% endif %}
+    {% elif can_execute %}
+      <button type="button" @click="runFile()" :disabled="!activeTab || !kernelReady"
+              title="{% trans "Run file" %}" aria-label="{% trans "Run file" %}"
+              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-30">
+        <i class="fa-solid fa-play"></i>
+        <span class="hidden sm:inline">{% trans "Run file" %}</span>
+        {% price_hint "dracena.execute" %}
+      </button>
+      {% if config_data.stevenSurface %}
+        {% include "steven/_ai.html" with surface=config_data.stevenSurface %}
+      {% endif %}
+      <button type="button" @click="runSelection()" :disabled="!activeTab || !kernelReady"
+              title="{% trans "Run selection" %}" aria-label="{% trans "Run selection" %}"
+              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-30">
+        <i class="fa-solid fa-square-caret-right"></i>
+        <span class="hidden sm:inline">{% trans "Run selection" %}</span>
+      </button>
+
+      <span class="mx-1 hidden h-6 w-px opacity-20 sm:inline-block" :class="darkMode ? 'bg-text-main-dark' : 'bg-text-main-light'"></span>
+
+      <span class="inline-flex items-center gap-2 text-xs opacity-70">
+        <span class="h-2 w-2 rounded-full"
+              :class="kernelReady ? 'bg-green-500' : (kernelBusy ? 'bg-amber-500' : 'bg-gray-400')"></span>
+        <span class="hidden sm:inline" x-text="kernelLabel"></span>
+      </span>
+      <button type="button" @click="kernelAction('restart')"
+              title="{% trans "Restart the kernel" %}" aria-label="{% trans "Restart the kernel" %}"
+              class="text-xs opacity-70 hover:opacity-100">
+        <i class="fa-solid fa-rotate-right sm:hidden"></i>
+        <span class="hidden underline sm:inline">{% trans "Restart" %}</span>
+      </button>
+      <button type="button" @click="kernelAction('stop')"
+              title="{% trans "Stop the kernel" %}" aria-label="{% trans "Stop the kernel" %}"
+              class="text-xs opacity-70 hover:opacity-100">
+        <i class="fa-solid fa-stop sm:hidden"></i>
+        <span class="hidden underline sm:inline">{% trans "Stop" %}</span>
+      </button>
+    {% endif %}
+
+    <span class="flex-1"></span>
+    {% if repo_ctx and not readonly %}
+      {% include "repo/_git_toolbar_buttons.html" %}
+    {% endif %}
+    <span class="hidden text-xs opacity-55 sm:inline" x-text="statusLine"></span>
+    {% comment %} Pinned right, after the spacer, so it is the last thing on the bar at
+       every width and never collapses away — it is how the room is configured
+       and how it is closed or destroyed. {% endcomment %}
+    <button type="button" @click="openSettings()"
+            title="{% trans "Workspace settings" %}" aria-label="{% trans "Workspace settings" %}"
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+      <i class="fa-solid fa-sliders"></i>
+      <span class="hidden lg:inline">{% trans "Settings" %}</span>
+    </button>
+  </div>
+
+  {# ---- the three panes ---- #}
+  <div class="grid grid-cols-1 gap-3 lg:grid-cols-[18rem_1fr]">
+
+    {# sidebar #}
+    <aside :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="overflow-hidden rounded-2xl border shadow-sm">
+      <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+           class="flex items-center justify-between border-b px-3 py-2">
+        <span class="text-xs font-semibold uppercase tracking-wide opacity-70">
+          {% trans "Explorer" %}
+        </span>
+        <span class="flex gap-1">
+          <button type="button" @click="promptNewFile(null)" :disabled="readonly"
+                  title="{% trans 'New file' %}"
+                  class="rounded p-1 opacity-60 transition hover:opacity-100 disabled:opacity-20">
+            <i class="fa-solid fa-file-circle-plus text-xs"></i>
+          </button>
+          <button type="button" @click="promptNewDir(null)" :disabled="readonly"
+                  title="{% trans 'New folder' %}"
+                  class="rounded p-1 opacity-60 transition hover:opacity-100 disabled:opacity-20">
+            <i class="fa-solid fa-folder-plus text-xs"></i>
+          </button>
+          <button type="button" @click="refreshTree()" title="{% trans 'Refresh' %}"
+                  class="rounded p-1 opacity-60 transition hover:opacity-100">
+            <i class="fa-solid fa-rotate text-xs"></i>
+          </button>
+        </span>
+      </div>
+
+      <div class="px-2 py-2">
+        <input type="search" x-model="filter" placeholder="{% trans 'Filter files' %}"
+               class="mb-2 w-full rounded-lg border border-current bg-transparent px-2 py-1 text-xs opacity-80">
+        <ul class="max-h-[28rem] space-y-0.5 overflow-y-auto text-sm">
+          <template x-for="item in visibleItems" :key="item.t + '-' + item.id">
+            <li>
+              <div class="group flex items-center gap-1 rounded px-1 py-1 transition"
+                   :class="isActive(item) ? (darkMode ? 'bg-sunken-dark' : 'bg-sunken-light') : 'hover:opacity-80'"
+                   :style="`padding-left: calc(${item.depth} * 0.9rem + 0.25rem)`"
+                   @contextmenu.prevent="openMenu($event, item)">
+
+                <template x-if="item.t === 'dir'">
+                  <button type="button" @click="toggle(item.id)"
+                          class="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+                    <i class="fa-solid fa-chevron-right text-[0.6rem] opacity-50 transition"
+                       :class="isOpen(item.id) ? 'rotate-90' : ''"></i>
+                    <i class="fa-solid fa-folder text-xs opacity-60"></i>
+                    <span class="truncate" x-text="item.name"></span>
+                  </button>
+                </template>
+
+                <template x-if="item.t === 'file'">
+                  <button type="button" @click="openFile(item)"
+                          class="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+                    <span class="w-[0.6rem]"></span>
+                    <i class="fa-solid text-xs opacity-60"
+                       :class="fileIcon(item)"></i>
+                    <span class="truncate"
+                          :class="[item.editable || item.viewable ? '' : 'opacity-50',
+                                   item.readonly ? 'italic opacity-65' : '',
+                                   item.main ? 'font-semibold' : '']"
+                          x-text="item.name"></span>
+                    <i x-show="item.main" class="fa-solid fa-star text-[0.55rem] opacity-60"
+                       title="{% trans 'Main document' %}"></i>
+                    <i x-show="item.encrypted" class="fa-solid fa-lock text-[0.6rem] opacity-50"></i>
+                  </button>
+                </template>
+
+                <button type="button" @click.stop="openMenu($event, item)"
+                        class="rounded p-1 opacity-0 transition group-hover:opacity-60 hover:!opacity-100">
+                  <i class="fa-solid fa-ellipsis text-[0.65rem]"></i>
+                </button>
+              </div>
+            </li>
+          </template>
+          <li x-show="!visibleItems.length" class="px-2 py-6 text-center text-xs opacity-50">
+            {% trans "Nothing here yet." %}
+          </li>
+        </ul>
+      </div>
+    </aside>
+
+    {% comment %} editor, then the console underneath. No preview pane: a LaTeX compile
+       files its output into build/ and the tree on the left is where it is
+       found, like any other file in the bucket. {% endcomment %}
+    <div class="min-w-0 space-y-3">
+
+      <div class="grid min-w-0 grid-cols-1 gap-3">
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="min-w-0 overflow-hidden rounded-2xl border shadow-sm">
+        {# tabs #}
+        <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+             class="flex items-center gap-1 overflow-x-auto border-b px-2 py-1.5">
+          <template x-for="tab in tabs" :key="tab.pk">
+            <button type="button" @click="activate(tab.pk)"
+                    class="inline-flex shrink-0 items-center gap-2 rounded-t px-3 py-1.5 text-xs font-semibold transition"
+                    :class="tab.pk === activePk
+                      ? (darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light')
+                      : 'opacity-55 hover:opacity-100'">
+              <i x-show="tab.readonly" class="fa-solid fa-lock text-[0.6rem] opacity-50"
+                 title="{% trans 'Generated — read only' %}"></i>
+              <span x-text="tab.name"></span>
+              <span x-show="tab.dirty" class="opacity-70">•</span>
+              <span @click.stop="closeTab(tab.pk)"
+                    class="ml-1 opacity-50 hover:opacity-100">✕</span>
+            </button>
+          </template>
+          <span x-show="!tabs.length" class="px-2 py-1 text-xs opacity-50">
+            {% trans "Open a file from the explorer" %}
+          </span>
+        </div>
+
+        <div x-show="activeTab && (activeTab.readonly || activeTab.truncated)" x-cloak
+             class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs">
+          <span x-show="activeTab && activeTab.readonly">
+            <i class="fa-solid fa-lock opacity-60"></i>
+            {% trans "Generated by the last compile — edit the source instead." %}
+          </span>
+          <span x-show="activeTab && activeTab.truncated" class="opacity-70">
+            <i class="fa-solid fa-scissors opacity-60"></i>
+            {% trans "Long file — only the end is shown." %}
+          </span>
+        </div>
+
+        <div id="ambrosia-editor" class="h-[26rem] w-full"></div>
+        <div x-show="!tabs.length" x-cloak
+             class="flex h-[26rem] items-center justify-center text-sm opacity-40">
+          {% trans "No file open" %}
+        </div>
+      </div>
+
+      </div>
+
+      {% comment %} Cards this workspace KIND contributes — a Libraries panel for
+         Python or LaTeX, say. Registry-driven: the base renders whatever the
+         language app declared in `room_panels` and knows nothing about what is
+         inside them. Above the console, because a package list is something you
+         consult while writing, not something you read output from. {% endcomment %}
+      {% for panel in room_panels %}{% include panel %}{% endfor %}
+
+      {% if can_execute %}
+        {% include "ambrosia/_console.html" %}
+      {% else %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-2xl border p-4 text-sm shadow-sm">
+          <p class="opacity-70"><i class="fa-solid fa-circle-info"></i> {{ execution_refusal }}</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% comment %} The settings drawer — everything that configures this room, including the
+     danger zone that used to live in a disclosure down here. {% endcomment %}
+  {% include "ambrosia/_settings.html" %}
+
+  {# context menu #}
+  <div x-show="menu.open" x-cloak @click.outside="menu.open = false"
+       @keydown.escape.window="menu.open = false"
+       :style="`position: fixed; left: ${menu.x}px; top: ${menu.y}px; z-index: 60;`"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="min-w-[11rem] overflow-hidden rounded-xl border py-1 text-sm shadow-lg">
+    <button type="button" x-show="menu.item && menu.item.t === 'file' && menu.item.editable"
+            @click="openFile(menu.item); menu.open = false"
+            class="block w-full px-3 py-1.5 text-left hover:opacity-70">
+      <i class="fa-solid fa-pen w-4 opacity-60"></i> {% trans "Open" %}
+    </button>
+    <button type="button"
+            x-show="menu.item && menu.item.t === 'file' && menu.item.viewable"
+            @click="openRaw(menu.item); menu.open = false"
+            class="block w-full px-3 py-1.5 text-left hover:opacity-70">
+      <i class="fa-solid fa-up-right-from-square w-4 opacity-60"></i> {% trans "Open in new tab" %}
+    </button>
+    {% if workspace.is_latex %}
+      <button type="button"
+              x-show="menu.item && menu.item.file_type === 'latex' && !menu.item.main"
+              @click="setMain(menu.item); menu.open = false" :disabled="readonly"
+              class="block w-full px-3 py-1.5 text-left hover:opacity-70 disabled:opacity-30">
+        <i class="fa-solid fa-star w-4 opacity-60"></i> {% trans "Set as main document" %}
+      </button>
+    {% endif %}
+    <button type="button" x-show="menu.item && menu.item.t === 'dir'"
+            @click="promptNewFile(menu.item.id); menu.open = false" :disabled="readonly"
+            class="block w-full px-3 py-1.5 text-left hover:opacity-70 disabled:opacity-30">
+      <i class="fa-solid fa-file-circle-plus w-4 opacity-60"></i> {% trans "New file here" %}
+    </button>
+    <button type="button" x-show="menu.item && menu.item.t === 'dir'"
+            @click="promptNewDir(menu.item.id); menu.open = false" :disabled="readonly"
+            class="block w-full px-3 py-1.5 text-left hover:opacity-70 disabled:opacity-30">
+      <i class="fa-solid fa-folder-plus w-4 opacity-60"></i> {% trans "New folder here" %}
+    </button>
+    <button type="button" x-show="menu.item && menu.item.t === 'file'"
+            @click="promptRename(menu.item); menu.open = false" :disabled="readonly"
+            class="block w-full px-3 py-1.5 text-left hover:opacity-70 disabled:opacity-30">
+      <i class="fa-solid fa-i-cursor w-4 opacity-60"></i> {% trans "Rename" %}
+    </button>
+    <button type="button" x-show="menu.item && menu.item.t === 'file'"
+            @click="confirmDelete(menu.item); menu.open = false" :disabled="readonly"
+            class="block w-full px-3 py-1.5 text-left hover:opacity-70 disabled:opacity-30">
+      <i class="fa-solid fa-trash w-4 opacity-60"></i> {% trans "Delete" %}
+    </button>
+  </div>
+</div>
+
+{% if repo_ctx and not readonly %}
+  {% include "repo/_git_ui.html" %}
+{% endif %}
+{% endblock %}
+
+{% block end_script %}
+{% if config_data.stevenSurface %}{% include "steven/_head.html" %}{% endif %}
+<script src="{% static 'vendor/ace/ace.js' %}"></script>
+<script src="{% static 'vendor/ace/mode-python.min.js' %}"></script>
+{% if workspace.is_latex %}
+  <script src="{% static 'vendor/ace/mode-latex.min.js' %}"></script>
+  <script src="{% static 'vendor/ace/mode-bibtex.min.js' %}"></script>
+{% endif %}
+{# textmate/twilight are the two themes actually vendored under core/static/vendor/ace #}
+<script src="{% static 'vendor/ace/theme-textmate.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-twilight.min.js' %}"></script>
+<script src="{% static 'ambrosia/console.js' %}"></script>
+<script src="{% static 'ambrosia/workspace.js' %}"></script>
+{% endblock %}
