@@ -9,6 +9,9 @@ app_name = "core"
 urlpatterns = [
     path("welcome/", views.welcome_view, name="welcome"),
     path("dashboard/", views.dashboard_view, name="dashboard"),
+    # The merged operator destination. A dispatcher, not a page: it redirects
+    # to whichever of the four Monitoring tabs this viewer may open.
+    path("monitoring/", views.monitoring_view, name="monitoring"),
     path("manual/", views.manual_view, name="manual"),
     path("not-implemented/", views.not_implemented, name="not_implemented"),
     path("maintenance/", views.maintenance_view, name="maintenance"),

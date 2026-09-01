@@ -1,12 +1,18 @@
 {% extends "oya/base.html" %}
-{% load static %}
 {% load i18n %}
 
 {% block title %}{% trans "Monitoring" %}{% endblock %}
 
+{% comment %}
+No Chart.js and no dim.html here since 2026-09-01: the six charts they existed
+for moved to the History tab (monit/history.html) when the operator tiles
+merged. This page draws nothing, so loading a charting library on it would be
+weight spent on every refresh of a page that has no canvas.
+
+The 120 s meta refresh stays. Each tab is its own URL now, so a reload lands
+back on the tab you were reading rather than bouncing you to a default one.
+{% endcomment %}
 {% block start_script %}
-<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
-{% include "oya/partials/dim.html" %}
 <meta http-equiv="refresh" content="120">
 {% endblock %}
 
@@ -20,10 +26,12 @@
         <i class="fa-solid fa-heart-pulse"></i>{% trans "Monitoring" %}
       </h1>
       <p class="mt-2 text-sm opacity-70">
-        {% trans "Read-only server status. Live values are measured in the web container serving this page; history is sampled in the worker container." %}
+        {% trans "Read-only server status. Live values are measured in the web container serving this page; sampled history is on the History tab." %}
         {% trans "Page refreshes every 2 minutes." %}
       </p>
     </header>
+
+    {% include "oya/_monitoring_tabs.html" %}
 
     {# ---- Now: system cards (web container, this page view) ---- #}
     <section>
@@ -94,66 +102,6 @@
     </section>
     {% endif %}
 
-    {# ---- History charts ---- #}
-    <section>
-      <h2 class="mb-3 text-lg font-bold"><i class="fa-solid fa-chart-line mr-2"></i>
-        {% blocktrans with hours=window_hours %}History — last {{ hours }} h{% endblocktrans %}</h2>
-      {% if has_history %}
-      <p class="mb-3 text-xs opacity-60">
-        {% blocktrans with n=snapshot_count %}{{ n }} snapshots (sampled in the worker container).{% endblocktrans %}
-        {% if web_restarts %}{% blocktrans with n=web_restarts %}Web tier restarted ~{{ n }}× in this window.{% endblocktrans %}{% endif %}
-        {% if web_scrape_enabled %}{% trans "Request rates are a per-worker sample — gaps appear where consecutive scrapes hit different workers." %}{% endif %}
-      </p>
-      <div class="grid gap-4 lg:grid-cols-2">
-        <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-xl p-4">
-          <h3 class="mb-2 text-sm font-semibold opacity-80">{% trans "CPU — sampler container" %}</h3>
-          <div class="h-48">{% include "oya/partials/chart.html" with chart_id="monit_cpu" data=cpu_chart_json %}</div>
-        </div>
-        <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-xl p-4">
-          <h3 class="mb-2 text-sm font-semibold opacity-80">{% trans "Load average — host" %}</h3>
-          <div class="h-48">{% include "oya/partials/chart.html" with chart_id="monit_load" data=load_chart_json %}</div>
-        </div>
-        <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-xl p-4">
-          <h3 class="mb-2 text-sm font-semibold opacity-80">{% trans "Memory" %}</h3>
-          <div class="h-48">{% include "oya/partials/chart.html" with chart_id="monit_mem" data=mem_chart_json %}</div>
-        </div>
-        <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-xl p-4">
-          <h3 class="mb-2 text-sm font-semibold opacity-80">{% trans "Disk" %}</h3>
-          <div class="h-48">{% include "oya/partials/chart.html" with chart_id="monit_disk" data=disk_chart_json %}</div>
-        </div>
-        <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-xl p-4">
-          <h3 class="mb-2 text-sm font-semibold opacity-80">{% trans "Service latency" %}</h3>
-          <div class="h-48">{% include "oya/partials/chart.html" with chart_id="monit_latency" data=latency_chart_json %}</div>
-        </div>
-        {% if rate_chart_json %}
-        <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-xl p-4">
-          <h3 class="mb-2 text-sm font-semibold opacity-80">{% trans "Request rate — per web worker" %}</h3>
-          <div class="h-48">{% include "oya/partials/chart.html" with chart_id="monit_rate" data=rate_chart_json %}</div>
-        </div>
-        {% endif %}
-      </div>
-      <script>
-      /* Dark-mode series colors: datasets carry darkBorderColor; the shared
-         chart partial themes text/grid only, so swap line colors here. */
-      (function () {
-        if (localStorage.getItem('darkMode') !== 'true' || !window.Chart) return;
-        ["monit_cpu", "monit_load", "monit_mem", "monit_disk",
-         "monit_latency", "monit_rate"].forEach(function (id) {
-          var chart = window.Chart.getChart(id);
-          if (!chart) return;
-          chart.data.datasets.forEach(function (ds) {
-            if (ds.darkBorderColor) ds.borderColor = ds.darkBorderColor;
-          });
-          chart.update('none');
-        });
-      })();
-      </script>
-      {% else %}
-      <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-xl p-6 text-sm opacity-70">
-        {% blocktrans %}No history yet. Snapshots appear once the sampler has run (every few minutes; requires the celery beat + worker stack).{% endblocktrans %}
-      </div>
-      {% endif %}
-    </section>
 
   </div>
 </section>

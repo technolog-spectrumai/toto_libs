@@ -37,7 +37,13 @@ class OverviewViewTests(TestCase):
             "monit-user", "user@example.com", "pw")
 
     def test_anonymous_forbidden(self):
-        self.assertEqual(self.client.get(reverse("monit:overview")).status_code, 403)
+        # 403 from MonitAccessMixin, or 302 where the HOST refuses anonymous
+        # traffic before the view is reached (zenobia's
+        # LoginRequiredEverywhereMiddleware). Refused either way, and which
+        # mechanism gets there first is the deployment's business — the same
+        # pair tests_record.py accepts for the Database page.
+        self.assertIn(self.client.get(reverse("monit:overview")).status_code,
+                      (302, 403))
 
     def test_non_superuser_forbidden(self):
         self.client.force_login(self.plain)
@@ -49,6 +55,53 @@ class OverviewViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Monitoring")
 
+    def test_the_overview_no_longer_draws_history(self):
+        """The six charts moved to the History tab on 2026-09-01. Asserted from
+        this side too: a page that still names a chart id would be one that
+        kept the section and the Chart.js load with it."""
+        self.client.force_login(self.superuser)
+        for _ in range(3):
+            Snapshot.objects.create(sys_cpu_percent=1.0, db_ok=True)
+        body = self.client.get(reverse("monit:overview")).content.decode()
+        self.assertNotIn("monit_cpu", body)
+        self.assertNotIn("chart.umd.min.js", body)
+
+    def test_the_overview_offers_the_tab_strip(self):
+        self.client.force_login(self.superuser)
+        tabs = self.client.get(reverse("monit:overview")).context["monitoring_tabs"]
+        self.assertEqual([t["slug"] for t in tabs if t["active"]], ["monitoring"])
+
+
+class HistoryViewTests(OverviewViewTests):
+    """The 48 h charts, on their own tab since 2026-09-01.
+
+    Subclasses OverviewViewTests for its fixture, and re-runs its permission
+    tests against this URL — the History tab carries the same superuser gate as
+    the rest of monit, and a tab that quietly relaxed it would hand the machine
+    trends to anyone with an account.
+    """
+
+    def test_anonymous_forbidden(self):
+        self.assertIn(self.client.get(reverse("monit:history")).status_code,
+                      (302, 403))
+
+    def test_non_superuser_forbidden(self):
+        self.client.force_login(self.plain)
+        self.assertEqual(self.client.get(reverse("monit:history")).status_code, 403)
+
+    def test_superuser_renders(self):
+        self.client.force_login(self.superuser)
+        response = self.client.get(reverse("monit:history"))
+        self.assertEqual(response.status_code, 200)
+
+    def test_the_overview_no_longer_draws_history(self):
+        """Inherited name, opposite meaning here — skip the parent's version."""
+
+    def test_the_overview_offers_the_tab_strip(self):
+        self.client.force_login(self.superuser)
+        tabs = self.client.get(reverse("monit:history")).context["monitoring_tabs"]
+        self.assertEqual([t["slug"] for t in tabs if t["active"]], ["history"])
+
     def test_superuser_renders_with_history(self):
         now = timezone.now()
         for i in range(5):
@@ -58,20 +111,31 @@ class OverviewViewTests(TestCase):
                 web_process_start=1000.0, web_requests_total=100 * (5 - i),
                 web_responses_5xx=i)
         self.client.force_login(self.superuser)
-        response = self.client.get(reverse("monit:overview"))
+        response = self.client.get(reverse("monit:history"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "monit_cpu")
+
+    def test_it_loads_the_chart_library_the_partial_needs(self):
+        """oya/partials/chart.html calls dim() at parse time and constructs the
+        Chart itself, so the PAGE must load chart.umd.min.js and include
+        dim.html. Both moved here with the section; without either the charts
+        draw nothing and say nothing."""
+        Snapshot.objects.create(sys_cpu_percent=1.0)
+        self.client.force_login(self.superuser)
+        body = self.client.get(reverse("monit:history")).content.decode()
+        self.assertIn("chart.umd.min.js", body)
+        self.assertIn("function dim(", body)
 
     @override_settings(MONIT_WEB_METRICS_URL="http://web:8000/metrics")
     def test_rate_chart_shown_only_with_web_scrape(self):
         Snapshot.objects.create(sys_cpu_percent=1.0)
         self.client.force_login(self.superuser)
-        self.assertContains(self.client.get(reverse("monit:overview")), 'id="monit_rate"')
+        self.assertContains(self.client.get(reverse("monit:history")), 'id="monit_rate"')
 
     def test_rate_chart_hidden_without_web_scrape(self):
         Snapshot.objects.create(sys_cpu_percent=1.0)
         self.client.force_login(self.superuser)
-        self.assertNotContains(self.client.get(reverse("monit:overview")), 'id="monit_rate"')
+        self.assertNotContains(self.client.get(reverse("monit:history")), 'id="monit_rate"')
 
 
 class TaskTests(TestCase):

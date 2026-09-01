@@ -1,21 +1,26 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
 
-{% block title %}{% trans "Status" %} - {{ platform.site_name }}{% endblock %}
+{% block title %}{% trans "Database" %} - {{ platform.site_name }}{% endblock %}
 
 {% block content %}
 <main :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
       class="min-h-screen px-4 py-8">
   <div class="mx-auto max-w-4xl space-y-6">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h1 class="text-2xl font-bold">{% trans "Status" %}</h1>
-        <p class="mt-1 text-sm opacity-70">{% trans "Is the record intact, and is it backed up?" %}</p>
-      </div>
-      <a href="{% url 'monit:overview' %}"
-         class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold">
-        <i class="fa-solid fa-heart-pulse" aria-hidden="true"></i>{% trans "Machine metrics" %}</a>
+    {% comment %}"Database" since 2026-09-01, when Monitoring, Status and Audit
+    became one destination with four tabs. The page itself is unchanged — it
+    still answers for the database, migrations, the media store, disk, backups
+    and the audit chain — and only the name above it moved.
+
+    The "Machine metrics" cross-link that stood here is gone: the strip below
+    leads there, and to the two surfaces this page could not reach at all
+    before.{% endcomment %}
+    <div>
+      <h1 class="text-2xl font-bold">{% trans "Database" %}</h1>
+      <p class="mt-1 text-sm opacity-70">{% trans "Is the record intact, and is it backed up?" %}</p>
     </div>
+
+    {% include "oya/_monitoring_tabs.html" %}
 
     {% comment %}The verdict first: an operator opening this at 3am wants one
     line before any table.{% endcomment %}
@@ -72,7 +77,7 @@
         </tbody>
       </table>
       <p class="mt-3 text-xs opacity-60">
-        {% trans "Measured when this page loaded. Machine trends — CPU, memory, services over time — live on the monitoring page." %}</p>
+        {% trans "Measured when this page loaded. Machine trends — CPU, memory, services over time — are on the History tab." %}</p>
     </section>
   </div>
 </main>

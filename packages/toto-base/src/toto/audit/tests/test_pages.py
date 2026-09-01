@@ -58,6 +58,40 @@ class IndexPageTests(AuditPageTestCase):
         self.assertEqual(response.status_code, 302)
 
 
+class MonitoringStripTests(AuditPageTestCase):
+    """Audit is a TAB now, since 2026-09-01 — one of four in the merged
+    Monitoring destination, and the only one a staff-not-superuser may open.
+
+    The fixture creates the staff user but does not log anybody in — every
+    other class here logs in per test — so this one does it in setUp.
+    """
+
+    def setUp(self):
+        self.client.force_login(self.staff)
+
+    def test_the_index_renders_the_strip_with_audit_lit(self):
+        response = self.client.get(reverse("audit:index"))
+        tabs = response.context["monitoring_tabs"]
+        self.assertEqual([t["slug"] for t in tabs if t["active"]], ["audit"])
+
+    def test_a_staff_member_sees_only_the_audit_tab(self):
+        """monit's three tabs are superuser-only. Showing them to staff would
+        be three doors that answer 403 — the strip hides what the viewer
+        cannot open, which is the forum's hide-don't-refuse convention."""
+        response = self.client.get(reverse("audit:index"))
+        self.assertEqual([t["slug"] for t in response.context["monitoring_tabs"]],
+                         ["audit"])
+
+    def test_a_superuser_sees_all_four(self):
+        from django.contrib.auth import get_user_model
+
+        root = get_user_model().objects.create_superuser("root2", password="x")
+        self.client.force_login(root)
+        response = self.client.get(reverse("audit:index"))
+        self.assertEqual([t["slug"] for t in response.context["monitoring_tabs"]],
+                         ["monitoring", "database", "audit", "history"])
+
+
 class DetailPageTests(AuditPageTestCase):
     def test_one_record_renders(self):
         self.client.force_login(self.staff)

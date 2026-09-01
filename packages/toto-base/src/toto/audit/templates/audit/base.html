@@ -6,12 +6,22 @@ A `<div>`, not a `<main>`: oya/base.html already opens `<main>` around
 {% block content %}, so a second one here would nest them. ledger/* and
 monit/status.html both get this wrong — do not copy them.
 
-No tab strip, deliberately. Every strip in the tree carries three or more peer
-destinations; audit has two pages and an orphan, since `detail` is a CHILD of the
-record list and would light no tab. And verifying is an action, not a place —
-which is how the structural twin models it: ledger/_header.html renders "Verify"
-as a button and puts a back-link on the result page. toto.monit, also two pages,
-does the same. events/base.html is the shape followed here: a title beside a row
+A tab strip on the INDEX only, since 2026-09-01, and the reason this comment
+used to give against one is the reason it now has one. "Every strip in the tree
+carries three or more peer destinations; audit has two pages and an orphan" —
+audit is one of FOUR peers now (Monitoring, Database, Audit, History), one
+destination merged out of three dashboard tiles, so the peers exist.
+
+The rest of that argument survives intact and is why `detail` and `verify` still
+render a back-link instead: `detail` is a CHILD of the record list and would
+light no tab, and verifying is an action, not a place — which is how the
+structural twin models it (ledger/_header.html renders "Verify" as a button and
+puts a back-link on the result page).
+
+The strip itself is `oya/_monitoring_tabs.html`, built by
+`core.monitoring.monitoring_tabs`, and it filters by ROLE: audit is staff-gated
+while monit's three tabs are superuser-only, so a staff-not-superuser opening
+this page sees a one-tab strip rather than three tabs that would refuse them. events/base.html is the shape followed here: a title beside a row
 of action buttons.
 {% endcomment %}
 {% load i18n %}

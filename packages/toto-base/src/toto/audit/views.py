@@ -16,6 +16,7 @@ from django.shortcuts import get_object_or_404, render
 
 from toto.audit.models import AuditRecord
 from toto.audit.services import verify_chain
+from toto.core.monitoring import monitoring_tabs
 from toto.ui import PageProcessor
 
 #: Rows per page. A module constant, the way every other paginated page on the
@@ -74,6 +75,10 @@ def index(request):
         # an empty page with `total` above zero means the filter matched
         # nothing, which is a different sentence from "nothing recorded yet".
         "total": AuditRecord.objects.count(),
+        # The merged Monitoring strip, filtered to what THIS viewer may open:
+        # audit is staff-gated and monit's three tabs are superuser-only, so a
+        # staff-not-superuser gets a one-tab strip rather than three refusals.
+        "monitoring_tabs": monitoring_tabs(request.user, active="audit"),
     }, request))
 
 

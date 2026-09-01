@@ -1,6 +1,13 @@
 {% extends "audit/base.html" %}
 {% load i18n %}
 
+{% block audit_nav %}
+  {% comment %}The merged Monitoring strip. Index only: detail is a child of
+  this list and verify is an action, so neither lights a tab — see the note in
+  audit/base.html.{% endcomment %}
+  {% include "oya/_monitoring_tabs.html" %}
+{% endblock %}
+
 {% block audit_subtitle %}
   <p class="mt-1 text-sm opacity-70">
     {% blocktrans count counter=total %}{{ counter }} record. Each one hashes its predecessor, so a removed or edited row is detectable.{% plural %}{{ counter }} records. Each one hashes its predecessor, so a removed or edited row is detectable.{% endblocktrans %}

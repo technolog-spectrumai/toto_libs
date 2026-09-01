@@ -1,7 +1,8 @@
 from toto.core.models import Platform
 from toto.ui import PageProcessor
 from django.contrib.auth import get_user_model
-from django.shortcuts import render
+from django.core.exceptions import PermissionDenied
+from django.shortcuts import redirect, render
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_safe
 import logging
@@ -194,6 +195,32 @@ def _resolve_all_items(user):
                 en_key = str(item["title"])
             items_by_key[en_key] = resolved
     return items_by_key
+
+
+@login_required
+def monitoring_view(request):
+    """The one operator door: send each role to the tab it can actually open.
+
+    Monitoring, Status and Audit were three dashboard tiles until 2026-09-01.
+    They are one tile now, and one tile needs one link — but the surfaces
+    behind it are gated differently: monit's three tabs are superuser-only
+    (MonitAccessMixin raises 403) and audit's is staff. A single link straight
+    to /monit/ would land the tile's own staff audience on a 403, which is the
+    tile-matches-gate failure with one redirect added.
+
+    So the tile points HERE and this decides. The gate below is the dashboard's
+    own reading of "staff" — is_staff OR is_superuser (see
+    `_resolve_dashboard_item`) — and not `staff_member_required`, because
+    Django's is_superuser does not imply is_staff and a superuser minted
+    without the staff bit must not be refused their own monitoring page.
+    """
+    user = request.user
+    if not (user.is_staff or user.is_superuser):
+        raise PermissionDenied
+    if user.is_superuser:
+        return redirect("monit:overview")
+    # Staff, not superuser: Audit is the one tab they may open.
+    return redirect("audit:index")
 
 
 def dashboard_view(request):

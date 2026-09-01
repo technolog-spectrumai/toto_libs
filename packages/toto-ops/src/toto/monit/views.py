@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.views import View
 from django.views.generic import TemplateView
 
+from toto.core.monitoring import monitoring_tabs
 from toto.ui import PageProcessor
 
 from . import collectors
@@ -157,6 +158,42 @@ class OverviewView(MonitAccessMixin, TemplateView):
         context["live_requests"] = (
             collectors.collect_request_metrics() if has_prometheus else None)
 
+        context["monitoring_tabs"] = monitoring_tabs(
+            self.request.user, active="monitoring")
+        return PageProcessor().decorate(context, self.request)
+
+
+class HistoryView(MonitAccessMixin, TemplateView):
+    """Sampled machine trends — the "History — last 48 h" section, moved here.
+
+    It was the bottom half of the overview page until 2026-09-01, when the
+    three operator tiles became one destination with four tabs. Nothing about
+    the section changed: the same snapshots, the same six charts, the same
+    downsampling and the same empty state. What changed is that the live panel
+    above it no longer loads Chart.js for a section further down the page, and
+    the trends have a URL somebody can link to.
+
+    Same superuser gate as the rest of monit, and the same 120 s page refresh:
+    the charts were redrawn by a whole-page reload before, and a tab that is
+    its own URL keeps that behaviour instead of bouncing an operator back to a
+    default tab.
+    """
+
+    template_name = "monit/history.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        now = timezone.now()
+
+        # `redis_configured` and `web_scrape_enabled` are read by the chart
+        # builders below, and the overview computes them too — they describe
+        # the deployment, not either page, so both surfaces ask.
+        redis_configured = (
+            "django_redis" in settings.CACHES.get("default", {}).get("BACKEND", "")
+            or bool(getattr(settings, "MONIT_REDIS_URL", "")))
+        web_scrape_enabled = bool(getattr(settings, "MONIT_WEB_METRICS_URL", ""))
+        context["web_scrape_enabled"] = web_scrape_enabled
+
         window_start = now - timedelta(hours=WINDOW_HOURS)
         snapshots = list(Snapshot.objects.filter(created__gte=window_start)
                          .order_by("created"))
@@ -166,7 +203,8 @@ class OverviewView(MonitAccessMixin, TemplateView):
         context["has_history"] = bool(snapshots)
         context["snapshot_count"] = len(snapshots)
         context["window_hours"] = WINDOW_HOURS
-        context["latest_snapshot"] = snapshots[-1] if snapshots else None
+        # No `latest_snapshot`: it was computed here for years and read by no
+        # template. Dropped with the move rather than carried across.
         starts = {s.web_process_start for s in snapshots
                   if s.web_process_start is not None}
         context["web_restarts"] = max(0, len(starts) - 1)
@@ -206,6 +244,8 @@ class OverviewView(MonitAccessMixin, TemplateView):
                      _dataset("5xx/min", _per_worker_rates(snapshots, "web_responses_5xx"), VIOLET, dashed=True)],
                     y_title="per min")
 
+        context["monitoring_tabs"] = monitoring_tabs(
+            self.request.user, active="history")
         return PageProcessor().decorate(context, self.request)
 
 

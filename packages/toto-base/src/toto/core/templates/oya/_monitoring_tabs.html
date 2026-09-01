@@ -1,0 +1,36 @@
+{% comment %}
+The Monitoring tab strip: Monitoring | Database | Audit | History.
+
+It lives in oya/ for the reason _office_tabs.html states: Django only loads the
+template directories of INSTALLED apps, and this strip spans two wheels —
+Monitoring, Database and History come from toto.monit (toto-ops), Audit from
+toto.audit (toto-base) — so no one app can own it.
+
+The tabs themselves are built in the view (core.monitoring.monitoring_tabs),
+not guarded here, and that builder does one thing Office's does not: it filters
+by the VIEWER's role, because the tabs' own gates differ — monit's pages are
+superuser-only, audit's are staff. A staff-not-superuser therefore sees a
+one-tab strip rather than three refusals, which is the forum's
+hide-don't-refuse convention.
+
+Each page passes its own `monitoring_tabs` from monitoring_tabs(user, active=…);
+the active tab is decided there and never from the request path — the tabs live
+in two apps under two prefixes, so there is no one path to compare against.
+{% endcomment %}
+{% load i18n %}
+<div class="flex flex-wrap items-end justify-between gap-3 border-b"
+     x-bind:class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">
+<nav class="flex flex-wrap gap-1"
+     x-bind:class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'"
+     aria-label="{% trans 'Monitoring sections' %}">
+  {% for tab in monitoring_tabs %}
+    <a href="{{ tab.url }}"{% if tab.blurb %} title="{{ tab.blurb }}"{% endif %}
+       {% if tab.active %}aria-current="page"{% endif %}
+       class="-mb-px inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition
+              {% if tab.active %}border-accent-2 text-accent-2{% else %}border-transparent opacity-70 hover:opacity-100{% endif %}"
+       {% if tab.active %}x-bind:class="darkMode ? 'border-accent-1 text-accent-1' : 'border-accent-2 text-accent-2'"{% endif %}>
+      <i class="{{ tab.icon }}" aria-hidden="true"></i>{{ tab.label }}
+    </a>
+  {% endfor %}
+</nav>
+</div>
