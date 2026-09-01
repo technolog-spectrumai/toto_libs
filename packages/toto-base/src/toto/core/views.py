@@ -384,6 +384,45 @@ def _reverse_or_blank(url_name: str) -> str:
 
 @login_required
 @require_safe
+def tools_view(request):
+    """The Tools hub: everything this host can DO to a file, in one place.
+
+    Tools were tabs in Office's strip until 2026-09-01. That placement made a
+    real claim — "the things Office does" — and it stopped being true once the
+    set grew past reading a scan: turning HTML into a PDF is not an act on a
+    document you keep in Office, it is a tool you bring your own input to.
+
+    So they get a destination of their own, built the way Office is built: one
+    view over a list of dataclasses, each resolved lazily and dropped when its
+    app is unmounted. `available_tools()` already did exactly that work, and it
+    is unchanged — this page is a second reader of it, not a second copy.
+
+    A GET and nothing else. Every tool keeps its own writes in its own app.
+    """
+    from django.shortcuts import redirect
+
+    from toto.core import office
+
+    tools = office.available_tools()
+    if not tools:
+        # Nothing installed that Tools could offer. The dashboard is a better
+        # answer than an empty room, and the same one office_view gives.
+        return redirect("core:dashboard")
+
+    context = {
+        "page_title": "Tools",
+        "tools": tools,
+        # The same strip every tool page renders, so the tab you clicked stays
+        # lit and the set stays navigable. `active` is empty here: the hub is
+        # not one of the tools.
+        "sections": office.tools_tabs(),
+    }
+    return render(request, _get_template("tools.html"),
+                  PageProcessor().decorate(context, request))
+
+
+@login_required
+@require_safe
 def office_view(request, section=None):
     """One tab of Office: its list, its folder panel, its actions.
 

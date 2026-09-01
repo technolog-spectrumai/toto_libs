@@ -23,6 +23,17 @@ class SurfaceLinkTests(RepoTestCase):
         # repositories render as an unclickable folder path.
         if not django_apps.is_installed("toto.ambrosia"):
             self.skipTest("no workspace app on this host")
+        # ambrosia is NOT enough on its own, and that stopped being a detail on
+        # 2026-09-01. `_surface_link` links a repo to its workspace ROOM, and a
+        # room belongs to a LANGUAGE app — toto.texlab or toto.dracena — which
+        # went to the placidia repository. zenobia keeps ambrosia for version
+        # control over workspace folders and installs neither language, so
+        # `_workspace_namespace` correctly returns nothing and the repo renders
+        # as a folder. Asserting a room here would demand a link to a page this
+        # host does not serve.
+        if not any(django_apps.is_installed(app)
+                   for app in ("toto.texlab", "toto.dracena")):
+            self.skipTest("no language app, so a workspace has no room to link to")
 
         from toto.ambrosia.models import Workspace
 

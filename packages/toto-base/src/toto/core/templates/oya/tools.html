@@ -1,0 +1,53 @@
+{% extends "oya/base.html" %}
+{% comment %}
+Tools: everything this host can DO to a file, as opposed to what it KEEPS.
+
+These were tabs in Office's strip until 2026-09-01, and the strip made a claim
+that stopped being true as the set grew: "the things Office does". Reading a
+scan fits that. Turning arbitrary HTML into a PDF does not — you bring your own
+input to it, and Office is a list of what you already have.
+
+So this is a room of its own, built the way Office is: one view over
+`core/office.py`'s TOOLS, each entry resolved lazily and dropped when its app is
+unmounted, so an offer never leads nowhere.
+
+Every tool keeps its own writes in its own app. This page is doors and nothing
+else — see core/tools_urls.py.
+{% endcomment %}
+{% load i18n %}
+
+{% block title %}{% trans "Tools" %} - {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<main :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+      class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-4xl space-y-6">
+
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Tools" %}</p>
+      <h1 class="text-2xl font-bold">
+        <i class="fa-solid fa-screwdriver-wrench opacity-70" aria-hidden="true"></i>
+        {% trans "Tools" %}
+      </h1>
+      <p class="mt-1 text-sm opacity-70">
+        {% trans "Things this platform can do to a file. Bring your own input — what you keep lives in Office." %}
+      </p>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2">
+      {% for tool in tools %}
+        <a href="{{ tool.url }}"
+           :class="darkMode ? 'border-white/10 bg-white/5 hover:bg-white/10' : 'border-black/10 bg-black/5 hover:bg-black/10'"
+           class="block rounded-xl border p-4 transition">
+          <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <i class="{{ tool.icon }} opacity-70" aria-hidden="true"></i>
+            {{ tool.label }}
+          </h2>
+          <p class="mt-1 text-sm opacity-70">{{ tool.blurb }}</p>
+        </a>
+      {% endfor %}
+    </div>
+
+  </div>
+</main>
+{% endblock %}

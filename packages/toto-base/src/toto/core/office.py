@@ -256,9 +256,16 @@ def office_tabs(active: str = "") -> list:
     compare against, and the page that renders the strip is the only thing that
     knows which tab it is.
 
-    Sections come first and tools last, deliberately: the strip reads "here is
-    what you have" then "here is what you can do with it", and a tool wedged
-    between Presentations and Sheets would break that sentence.
+    TOOLS LEFT THIS STRIP on 2026-09-01 and the `active` slug is now always a
+    section. They have a room of their own at /tools/, because the sentence the
+    strip used to read — "here is what you have, then here is what you can do
+    with it" — only held while a tool acted on something Office lists. Reading a
+    scan does; turning arbitrary HTML into a PDF does not, and by then the
+    strip was making a promise about its own contents that it could not keep.
+
+    `active` is still a SLUG rather than a URL: `available_sections()` is
+    filtered per host, so the page that renders the strip is the only thing
+    that knows which tab it is.
     """
     from django.urls import NoReverseMatch, reverse
 
@@ -272,10 +279,28 @@ def office_tabs(active: str = "") -> list:
         tabs.append({"slug": section.slug, "label": section.label,
                      "icon": section.icon, "url": url, "blurb": section.blurb,
                      "is_tool": False, "active": section.slug == active})
-    for tool in available_tools():
-        tabs.append({**tool, "is_tool": True,
-                     "active": tool["slug"] == active})
     return tabs
+
+
+def tools_tabs(active: str = "") -> list:
+    """THE tools strip — the same shape Office's is, for the same reason.
+
+    Tools were tabs in `office_tabs()` until 2026-09-01. They have a room of
+    their own now, and a room with one door per tool and no way between them
+    would be a worse version of what they left: the tool pages live in
+    different apps (`/ocr/`, `/aralia/`), so without a shared strip, arriving at
+    one drops you out of the set you picked it from. That is the exact
+    complaint that made tools tabs in the first place.
+
+    So the hub and every tool page render THIS, and one builder produces it —
+    a tool cannot appear on the hub and be missing from its own page.
+
+    `active` is a SLUG, not a URL, for the reason `office_tabs` gives: the page
+    is in another app entirely, so there is no request path to compare against
+    and only the page knows which tab it is.
+    """
+    return [{**tool, "active": tool["slug"] == active}
+            for tool in available_tools()]
 
 
 def files_for(user, section, *, search="", sort=DEFAULT_SORT, directory_id=None):
