@@ -192,29 +192,56 @@ class LiveEnforcementTests(MatrixTestCase):
     middleware chain, the real 402 — what BUILD_SUBSCRIPTIONS_ENFORCE=1
     deploys."""
 
+    #: The live path needs a real mounted URL whose app is NON-FREE in the
+    #: catalogue and which answers both GET and POST — GET to prove reads pass,
+    #: POST to prove the gate refuses. This was `kanban:api_project_list` until
+    #: 2026-09-01, when zenobia retired the boards and every test here died with
+    #: NoReverseMatch on a host that had simply stopped installing an app.
+    #:
+    #: `locations:api_address_list` is the same shape (AddressListCreateApiView
+    #: — get + post) and a strictly better anchor: toto.locations is CORE, in
+    #: the unconditional INSTALLED_APPS on every host, so no build decision can
+    #: unmount it. Picking a retire-able app for a library test is the defect
+    #: this replaces, not just the app that happened to be retired.
+    #: Two URLs, not one, and the reason is a SECOND gate. Locations' API views
+    #: are `MeshGatedApiView`: a GET from somebody outside the data mesh is 403
+    #: before the view runs (toto/api/cors.py). That still proves "not 402", but
+    #: it proves it without the read ever rendering — a test passing on a
+    #: technicality. So the write half uses the API (POST is unaffected by the
+    #: mesh gate) and the read half uses the ordinary page, which renders.
+    LIVE_WRITE_URL = "locations:api_address_list"
+    LIVE_READ_URL = "locations:locations_all"
+    LIVE_APP = "locations"
+
     def _post(self, combo):
         from django.urls import reverse
 
         self.client.force_login(self.users[combo])
         return self.client.post(
-            reverse("kanban:api_project_list"),
+            reverse(self.LIVE_WRITE_URL),
             HTTP_X_REQUESTED_WITH="XMLHttpRequest")
 
-    def test_kanban_write_by_plan(self):
-        # kanban is not in make_plans' entitlement lists, so it resolves via
+    def test_write_is_refused_by_plan(self):
+        # The app is not in make_plans' entitlement lists, so it resolves via
         # the CATALOGUE (non-free there) — denied without a granting plan.
         from .catalogue import registry
 
-        entitlement = registry.get("kanban")
+        entitlement = registry.get(self.LIVE_APP)
         if entitlement is None or entitlement.free:
-            self.skipTest("kanban is not a paid entitlement on this host")
+            self.skipTest(
+                f"{self.LIVE_APP} is not a paid entitlement on this host")
         resp = self._post("never-subscribed")
         self.assertEqual(resp.status_code, 402)
-        self.assertEqual(json.loads(resp.content)["entitlement"], "kanban")
+        self.assertEqual(json.loads(resp.content)["entitlement"],
+                         self.LIVE_APP)
 
     def test_reads_render_for_everyone(self):
         from django.urls import reverse
 
         self.client.force_login(self.users["never-subscribed"])
-        resp = self.client.get(reverse("kanban:api_project_list"))
+        resp = self.client.get(reverse(self.LIVE_READ_URL))
         self.assertNotEqual(resp.status_code, 402)
+        # Stronger than "not 402": the page must actually render for somebody
+        # who has never subscribed. That is the half a mesh-gated API URL
+        # could not assert.
+        self.assertEqual(resp.status_code, 200)
