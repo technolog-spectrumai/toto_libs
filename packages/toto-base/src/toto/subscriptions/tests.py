@@ -1133,7 +1133,14 @@ class ManualTests(TestCase):
         body = self.client.get(reverse("core:manual")).content.decode()
 
         self.assertIn("Your plan", body)
-        self.assertIn("Your communities decide what you pay", body)
+        # BOTH halves of what a community decides, because they are two
+        # different rules and only one of them was ever written down here.
+        # A community decides what a plan COSTS you (the discount) and, since
+        # 2026-09-02, WHETHER YOU MAY BUY IT AT ALL — a plan nobody offers is
+        # a plan nobody sees, and a reader who cannot find the tier they
+        # expected needs the manual to say where to ask.
+        self.assertIn("decide which plans you can choose", body)
+        self.assertIn("decide what you pay", body)
 
     def test_it_says_nothing_is_deleted(self):
         """The promise the code keeps, written where somebody will read it."""
