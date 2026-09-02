@@ -373,6 +373,27 @@ class EligibilityTests(TestCase):
         services.subscribe(self.outsider, self.professional, force=True)
         self.assertEqual(plan_for(self.outsider).key, "professional")
 
+    def test_an_approver_is_not_a_second_way_past_the_community_rule(self):
+        """`approved_by` says who is accountable for money, not who may buy.
+
+        The guard read `not force and approved_by is None and not
+        is_eligible(...)` for a day, which made naming an approver an
+        undocumented bypass — and the docstring directly above it promised
+        that calling the service directly could not route around the rule.
+        One bypass, and it is `force`.
+        """
+        approver = Person.objects.create(display_name="Eligibility approver")
+
+        with self.assertRaises(services.IneligiblePlan):
+            services.subscribe(self.insider, self.professional,
+                               approved_by=approver)
+
+    def test_force_is_the_one_door_and_it_still_opens(self):
+        """The operator path an offer-less subscription needs."""
+        subscription = services.subscribe(self.insider, self.professional,
+                                          force=True)
+
+        self.assertEqual(subscription.plan_key, "professional")
 
 class OfferTabTests(TestCase):
     """The Communities tab: the grid an operator actually turns."""
@@ -756,7 +777,8 @@ class SettleTests(TestCase):
         user = member("engineer-1")
         subscription = services.subscribe(
             user, stipend,
-            approved_by=Person.objects.create(display_name="Approver engineer-1"))
+            approved_by=Person.objects.create(display_name="Approver engineer-1"),
+            force=True)
         services.materialize(subscription)
         charge = subscription.charges.get()
 
@@ -779,7 +801,8 @@ class SettleTests(TestCase):
         user = member("tech-1")
         subscription = services.subscribe(
             user, stipend,
-            approved_by=Person.objects.create(display_name="Approver tech-1"))
+            approved_by=Person.objects.create(display_name="Approver tech-1"),
+            force=True)
         services.materialize(subscription)
         charge = subscription.charges.get()
 
@@ -809,7 +832,8 @@ class SettleTests(TestCase):
         user = member("board-1")
         subscription = services.subscribe(
             user, stipend,
-            approved_by=Person.objects.create(display_name="Approver board-1"))
+            approved_by=Person.objects.create(display_name="Approver board-1"),
+            force=True)
         services.materialize(subscription)
         charge = subscription.charges.get()
 

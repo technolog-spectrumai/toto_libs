@@ -145,8 +145,15 @@ Three exceptions, each narrow:
 
 The check is `services.is_eligible(user, plan_key)`, and it is asked **twice**:
 `views.subscribe` 404s an ineligible key, and `services.subscribe` re-checks, so
-calling the URL or the API directly is refused the same way. `force=True` exists
-for the admin and the seeder and is never reachable from a request.
+calling the URL or the API directly is refused the same way.
+
+`force=True` is the **only** bypass. No shipped caller passes it — the one
+production call site is `views.subscribe`, which passes neither it nor
+`approved_by` — so it is unreachable from a request and exists for an operator
+at a shell, plus the tests that stand in for one. In particular `approved_by` is
+**not** a bypass: it names who is accountable for a recurring outbound payment
+and says nothing about whether somebody may hold a tier. Seeding a stipend on a
+plan no community offers takes both arguments, deliberately.
 
 `CommunityPlanOffer` stores a `plan_key` string, not a foreign key — which is
 what lets the ladder change without a migration, and what makes a stale row

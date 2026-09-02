@@ -376,14 +376,25 @@ def subscribe(user, plan, *, approved_by=None, force=False) -> Subscription:
     an ineligible plan with a 404 before it ever gets this far, and this is
     the belt to that braces: an API, an admin action or a management command
     cannot route around the community rule by calling the service directly.
-    ``force`` is the operator path — the same door the stipend uses.
+
+    ``force`` is the ONE bypass, and it is deliberately the only one. This
+    guard read ``not force and approved_by is None and not is_eligible(...)``
+    for a day, which made naming an approver a second, undocumented way past
+    the community rule — and an approver answers a different question. It says
+    who is accountable for a recurring outbound payment; it says nothing about
+    whether this person may hold this tier. Two doors where the docstring
+    above promises one is the failure this line is about.
+
+    So an operator seeding a stipend on a plan no community offers passes BOTH:
+    ``approved_by`` because the money needs an owner, ``force`` because the
+    eligibility rule is being set aside. Neither is reachable from a request.
     """
     if getattr(plan, "units", 0) < 0 and approved_by is None:
         raise UnapprovedStipend(
             f"Plan {plan.key!r} pays its holder ({plan.units} units per period). "
             "Assigning it needs an accountable approver: pass approved_by, or "
             "create it through an accepted Offer in toto.jobs.")
-    if not force and approved_by is None and not is_eligible(user, plan.key):
+    if not force and not is_eligible(user, plan.key):
         raise IneligiblePlan(
             f"{plan.key!r} is not offered to any community this person is in.")
 
