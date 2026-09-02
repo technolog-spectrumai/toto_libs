@@ -10,7 +10,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Apps that intentionally have no migrations (non-model / base apps).
-NO_MIGRATION_APPS = {"editor", "neo_editor", "sso_core"}
+# sso_core left this set when it gained the RecoveryTicket table: the app had
+# no models for years, and the exemption outlived the fact. An entry here is
+# read as "this app must NOT ship migrations", so a stale one turns a real
+# table into a test failure — and the failure was invisible behind the count
+# assertion above, which stopped this test before it ever got here.
+NO_MIGRATION_APPS = {"editor", "neo_editor"}
 # Non-app packages inside toto/ (no AppConfig, no migrations expected).
 NON_APP_PACKAGES = {"ui", "ingress"}
 # The shared host API every host imports; all of it lives in toto-base.
@@ -141,7 +146,42 @@ def test_migrations_are_packaged(all_names, owner):
     # a real ForeignKey to its channel now, so the app it was reached FOR no
     # longer needs it. Its tables are deliberately left in place, and the quiz
     # desk it carried is parked with it — see limbo/polls/PARKED.md.
-    assert len(apps_with_migrations) == 47, sorted(apps_with_migrations)
+    #
+    # ---- 54, and a reconciliation rather than another entry ----------------
+    #
+    # The ledger above stopped describing reality. It was last correct at 49;
+    # after that the number was hand-DECREMENTED for each app that left while
+    # eight arrived unnoticed, so it read 47 against a real 54 and had been
+    # failing on every host's gate for weeks. It could not do otherwise: dist/
+    # holds only the wheels a host PINS, and the conftest falls back to
+    # building all sixteen packages, so whether this assertion was even
+    # reachable depended on which host ran it.
+    #
+    # Everything that moved since 49, in one list rather than eight entries:
+    #
+    #   IN   toto.ambrosia  — the workspace base became its OWN wheel when the
+    #                         labs went to placidia and both hosts needed it.
+    #   IN   toto.anastasia — Compute Gears: the reservation and the run.
+    #   IN   toto.audit     — placidia's hash-chained audit trail, promoted to
+    #                         toto-base so both hosts share one chain.
+    #   IN   toto.company   ) the Business Center's three apps, moved host →
+    #   IN   toto.ledger    ) wheel as toto-business (8/2026). One move, three
+    #   IN   toto.voting    ) app labels, so it costs three here.
+    #   IN   toto.sketch    — it shipped in toto-works with NO models and was
+    #                         explicitly not counted; the SVG editor gained a
+    #                         table and the exemption lapsed.
+    #   IN   toto.sso_core  — same shape: years with no models, then the
+    #                         RecoveryTicket table. It is why the app had to
+    #                         leave NO_MIGRATION_APPS below.
+    #   OUT  toto.backup    — DELETED (32/130 coverage); pg_dump and media-tar
+    #                         sidecars in deploy.py replace it.
+    #   OUT  toto.polls     — parked, as the entry above records.
+    #   OUT  toto.primula   — parked to zenobia/limbo/primula on 2026-09-02.
+    #
+    # 49 + 8 - 3 = 54. Rebuild the wheels before trusting a failure here: the
+    # assertion reads what is in dist/, and a stale wheel is why two of these
+    # drifted in without anybody seeing it.
+    assert len(apps_with_migrations) == 54, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"
