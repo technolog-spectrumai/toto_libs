@@ -12,7 +12,7 @@ _APPS = [
     ("/socialhub/", "Community"),
     ("/events/", "Events"),
     ("/kanban/", "Tasks"),
-    ("/office/", "Office"),
+    ("/tools/", "Tools"),
     ("/memo/", "Presentations"),
     ("/robots/", "Robots"),
     ("/vod/", "Video"),

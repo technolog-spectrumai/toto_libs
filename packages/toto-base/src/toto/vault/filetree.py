@@ -78,9 +78,9 @@ def build_file_tree(user, *, file_types=None, bucket=None, exclude_pk=None,
         # The id beside the label, so a caller that wants to LINK a folder has
         # something addressable. Grouping stays keyed on the path — two folders
         # of the same name in one bucket are one heading here, as they always
-        # were — and `dir_id` names the first of them, which is enough for the
-        # "filter to this folder" links Office draws and is ignored by every
-        # caller that only reads `dir`.
+        # were — and `dir_id` names the first of them, which is enough for a
+        # caller drawing "filter to this folder" links (Office did, until it
+        # retired) and is ignored by every caller that only reads `dir`.
         bnode["dir_ids"].setdefault(dlabel, f.directory_id)
 
     out = []

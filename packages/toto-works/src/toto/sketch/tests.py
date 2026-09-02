@@ -293,18 +293,18 @@ class SketchLifecycleTests(_SketchFixture):
 
 
 class SketchIndexRedirectTests(_SketchFixture):
-    """`/sketch/` is Office's Drawings tab now.
+    """`/sketch/` hands you to the vault.
 
-    The flat list this replaced had no folders, no search and no sort — which
-    is what Office already does — and two answers to "what drawings are there"
-    drift apart. Its own listing tests went with it: `accessible_files` is what
-    decides now, and toto.core.tests_office owns that property.
+    It was Office's Drawings tab until Office retired to limbo (2026-09-02),
+    and this app's own flat list had already been given up to that hub. The
+    vault is the listing that remains; `accessible_files` is still what
+    decides, and ListingAgreementTests below owns that property.
     """
 
-    def test_the_index_sends_you_to_office(self):
+    def test_the_index_sends_you_to_the_vault(self):
         response = self.client.get(reverse("sketch:index"))
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["Location"], "/office/drawings/")
+        self.assertEqual(response["Location"], reverse("vault:root"))
 
     def test_the_index_is_not_a_write_route(self):
         """RedirectView answers every verb unless pinned; a POST must 405."""
@@ -691,13 +691,13 @@ class CsrfTests(_SketchFixture):
 
 
 class ListingAgreementTests(_SketchFixture):
-    """What Office lists, this view opens.
+    """What a listing offers, this view opens.
 
     `_get_readable_file` restated the vault's permission rule with two of its
     five clauses, so a bucket owner or a shared-directory member saw a drawing
-    in the Drawings tab and got a 404 on click. The list and the page have to
-    agree by construction, which means asking `access.may_read` and not
-    re-deriving it.
+    listed (in Office's Drawings tab then; in the vault now) and got a 404 on
+    click. The list and the page have to agree by construction, which means
+    asking `access.may_read` and not re-deriving it.
     """
 
     def test_a_bucket_owner_who_is_not_the_file_owner_can_open_it(self):
@@ -710,7 +710,7 @@ class ListingAgreementTests(_SketchFixture):
         # Readable, but not writable: every write route is owner-only.
         self.assertFalse(response.context["can_edit"])
 
-    def test_everything_office_lists_actually_opens(self):
+    def test_everything_the_listing_offers_actually_opens(self):
         from toto.vault.filetree import accessible_files
         for vault_file in accessible_files(self.user, file_types=("svg",)):
             with self.subTest(title=vault_file.title):

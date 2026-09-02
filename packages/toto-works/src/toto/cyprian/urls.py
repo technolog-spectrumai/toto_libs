@@ -3,8 +3,8 @@
 Only what an owning app drives, and since 2026-08-29 there is exactly one:
 kanban's wiki. Cyprian stopped being a destination when the editors moved to
 the zinnia desktop app, and it stopped owning a FILE TYPE when CTML was
-retired — it claims nothing in the vault, offers no conversion, and appears in
-no Office tab. What remains is the rich-text surface a wiki page opens (see
+retired — it claims nothing in the vault and offers no conversion. What
+remains is the rich-text surface a wiki page opens (see
 bridge.py) and the media endpoints that surface needs.
 """
 from django.urls import path

@@ -3,7 +3,7 @@
 Monitoring, Database and Audit were three dashboard tiles until 2026-09-01, and
 History was a section at the bottom of the Monitoring page. They are one
 destination now, and this module is its table of contents — built the way
-`office.py` builds Office's: tabs as data, apps named as STRINGS for
+`tools.py` builds the Tools strip: tabs as data, apps named as STRINGS for
 `apps.is_installed`, URLs reversed lazily and dropped on NoReverseMatch, so an
 uninstalled or unmounted app offers nothing rather than 500ing the strip.
 
@@ -12,8 +12,8 @@ the strip renders on the Audit page too, audit ships in toto-base, and
 toto-base may not import toto-ops. toto.monit imports THIS, which is the way
 that arrow already points.
 
-THE GATES ARE PER TAB, and that is the one thing this strip does that Office's
-does not. monit's pages are superuser-only (MonitAccessMixin raises 403);
+THE GATES ARE PER TAB, and that is the one thing this strip does that the
+Tools strip does not. monit's pages are superuser-only (MonitAccessMixin raises 403);
 audit's are staff (staff_member_required redirects). The strip shows each
 viewer only the tabs their role can open — the forum's hide-don't-refuse
 convention — so a staff-not-superuser sees a one-tab strip rather than three
@@ -75,7 +75,7 @@ def _may_open(user, gate: str) -> bool:
 def monitoring_tabs(user, active: str = "") -> list:
     """THE strip — every tab this host serves that this viewer may open.
 
-    `active` is a SLUG, not a URL, for the reason office_tabs gives: the tabs
+    `active` is a SLUG, not a URL, for the reason tools_tabs gives: the tabs
     live in two different apps under two different prefixes, so there is no one
     request path to compare against — the page that renders the strip is the
     only thing that knows which tab it is.

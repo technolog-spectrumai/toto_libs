@@ -1,7 +1,9 @@
-"""How OCR is reached: from Office, and from a file you already have.
+"""How OCR is reached: from the Tools hub, and from a file you already have.
 
 Two doors, because people arrive two ways — with a file in hand, and with one
-already stored. The vault's wand covers the second.
+already stored. The vault's wand covers the second. (This module was
+tests_office.py while the hub was Office's strip; Office retired to limbo on
+2026-09-02 and the tools kept their room.)
 """
 
 from __future__ import annotations
@@ -15,12 +17,12 @@ from django.core.files.base import ContentFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from toto.core import office
+from toto.core import tools as tools_hub
 from toto.core.models import Platform
 from toto.vault.models import Bucket, VaultFile
 from toto.vault.plugins import FileServicePlugin
 
-MEDIA = tempfile.mkdtemp(prefix="ocr-office-")
+MEDIA = tempfile.mkdtemp(prefix="ocr-tools-")
 
 
 def make_file(owner, bucket, title, file_type, data=b"x"):
@@ -31,7 +33,7 @@ def make_file(owner, bucket, title, file_type, data=b"x"):
 
 
 @override_settings(MEDIA_ROOT=MEDIA)
-class OfficeToolTests(TestCase):
+class ToolsHubTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         Platform.objects.create(site_name="Test", author="t",
@@ -41,38 +43,28 @@ class OfficeToolTests(TestCase):
     def setUp(self):
         self.client.force_login(self.user)
 
-    def test_office_offers_the_tool_when_ocr_is_installed(self):
-        tools = {t["slug"]: t for t in office.available_tools()}
+    def test_the_hub_offers_the_tool_when_ocr_is_installed(self):
+        tools = {t["slug"]: t for t in tools_hub.available_tools()}
         if django_apps.is_installed("toto.ocr"):
             self.assertIn("ocr", tools)
             self.assertEqual(tools["ocr"]["url"], reverse("ocr:home"))
         else:
             self.assertNotIn("ocr", tools)
 
-    def test_a_tool_is_not_a_section(self):
-        """Still not a `Section` — a Section is defined by the vault file types
-        it LISTS and this one lists none, so it has no rows, no folder panel
-        and no New button.
-
-        It was a tab in Office's strip from 2026-08-29 to 2026-09-01, when the
-        tools moved to a room of their own — the strip claimed to be "the
-        things Office does", which held for reading a scan you keep here and
-        stopped holding once HTML-to-PDF joined it. So the structural
-        distinction is now also a positional one, and BOTH are asserted: not a
-        section, and not in Office's strip either.
-        """
-        self.assertNotIn("ocr", {s.slug for s in office.SECTIONS})
-        self.assertNotIn("ocr", {t["slug"] for t in office.office_tabs()})
+    def test_the_tool_is_in_the_tools_strip(self):
+        """A tool lists no vault file types — it has no rows, no folder panel
+        and no New button; what it has is a tab in the TOOLS strip. (The
+        not-an-Office-section half of this assertion retired with Office:
+        there is no Section table left to stay out of.)"""
         if django_apps.is_installed("toto.ocr"):
-            self.assertIn("ocr", {t["slug"] for t in office.tools_tabs()})
+            self.assertIn("ocr", {t["slug"] for t in tools_hub.tools_tabs()})
 
     def test_the_tool_page_shows_the_tools_strip_with_its_own_tab_lit(self):
         """Clicking a tab must not drop you out of the tabbed interface.
 
-        The strip is the TOOLS one since 2026-09-01, not Office's. The active
-        tab is still passed as a slug, because this page lives in another app
-        and there is no hub URL for the strip to compare the request path
-        against.
+        The active tab is passed as a slug, because this page lives in
+        another app and there is no hub URL for the strip to compare the
+        request path against.
         """
         if not django_apps.is_installed("toto.ocr"):
             self.skipTest("toto.ocr is not installed on this host")
@@ -80,39 +72,21 @@ class OfficeToolTests(TestCase):
         self.assertEqual(response.status_code, 200)
         tabs = response.context["sections"]
         self.assertEqual([t["slug"] for t in tabs if t["active"]], ["ocr"])
-        # And the OTHER TOOLS are really there to click — Office's sections
-        # are not, and must not be: this page is not in that strip any more.
-        for tool in office.available_tools():
+        # And the OTHER TOOLS are really there to click.
+        for tool in tools_hub.available_tools():
             self.assertContains(response, tool["url"])
 
     def test_the_hub_renders_the_link(self):
-        """Office's index did this until 2026-09-01. The tools hub does it now,
-        and it is the only page that should: Office lists what you keep."""
+        """The one page whose job is offering the tool's door."""
         response = self.client.get(reverse("tools:index"))
         self.assertEqual(response.status_code, 200)
         if django_apps.is_installed("toto.ocr"):
             self.assertContains(response, reverse("ocr:home"))
 
-    def test_office_does_not_advertise_the_tool(self):
-        """The other half, and the one that would rot silently: a tool left in
-        Office's strip would put the same door in two rooms.
-
-        Asserted on the STRIP rather than on Office's rendered HTML, and that
-        distinction cost a red gate to learn. Scanning the whole page for the
-        tool's URL passes alone and fails in company: an Office list renders
-        whatever vault files the run happens to have made, and any of them may
-        legitimately carry a `/ocr/` link of its own — "open this scan with the
-        thing that reads scans" is a per-FILE action and always was. What must
-        not exist is a tool in the tab strip, and that is exactly what this now
-        says.
-        """
-        self.assertNotIn("ocr", {t["slug"] for t in office.office_tabs()})
-        self.assertFalse(any(t.get("is_tool") for t in office.office_tabs()))
-
-    def test_the_tool_page_is_not_mounted_under_office(self):
+    def test_the_tool_page_is_not_mounted_under_the_hub(self):
         """The subscription gate reads the entitlement from the URL namespace,
-        and Office's is deliberately free and GET-only — so a POST-accepting
-        page under /office/ would be a way to create paid content for nothing.
+        and the hub's is deliberately free and GET-only — so a POST-accepting
+        page under /tools/ would be a way to use paid tools for nothing.
         """
         self.assertTrue(reverse("ocr:submit").startswith("/ocr/"))
 

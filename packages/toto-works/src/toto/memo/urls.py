@@ -44,14 +44,16 @@ urlpatterns = [
     # things you make, rather than one flat list per app. The NAME stays put so
     # every existing reverse() and template link keeps working.
     #
-    # The gallery itself is kept, not deleted: it renders a real cover slide
-    # per deck, which Office's generic rows cannot reproduce without toto.core
-    # importing this app. It moves one path segment down and the tab links to
-    # it. It is also the only deck listing an ANONYMOUS visitor can see —
-    # Office requires a login, so retiring this would quietly un-publish every
-    # public deck.
-    path('', RedirectView.as_view(http_method_names=SAFE_ONLY, pattern_name='office:section',
-                                  query_string=True), {'section': 'presentations'},
+    # The gallery is the index again. /memo/ redirected to Office's
+    # Presentations tab from 2026-08 until Office retired to limbo on
+    # 2026-09-02; the gallery had been kept the whole time because it renders
+    # a real cover slide per deck and serves ANONYMOUS visitors, both of which
+    # the hub never did. NOTE the old target was an unguarded
+    # `office:section` reverse in an unconditionally-installed app — on any
+    # build without Office mounted, GET /memo/ was a NoReverseMatch 500.
+    path('', RedirectView.as_view(http_method_names=SAFE_ONLY,
+                                  pattern_name='memo:gallery',
+                                  query_string=True),
          name='index'),
     path('gallery/', PresentationIndexView.as_view(), name='gallery'),
     path('read/<int:file_pk>/', PresentationReadView.as_view(), name='read'),

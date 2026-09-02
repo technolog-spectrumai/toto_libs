@@ -1,16 +1,16 @@
 """Text recognition: submit a scan, watch it, take the text.
 
-An Office application. Until 1.51 this ran Tesseract inside an Anastasia
+A Tools application. Until 1.51 this ran Tesseract inside an Anastasia
 Compute Gear, synchronously, from the POST handler — and before that it ran it
 inline with no size cap, no type check and no meter. It now runs on this host,
 on a worker, one Celery task per page.
 
 **This app keeps its own URL namespace, and that is load-bearing.**
 `toto.subscriptions.gate` reads the entitlement from `resolver_match.app_name`;
-Office's namespace is deliberately free and GET-only, because (its own words)
-"an Office-owned write route would be a way to create paid content for nothing".
-A POST-accepting page mounted under /office/ would be exactly that bypass. So
-Office LINKS here, and the writes stay under `ocr:`.
+the Tools hub's namespace is deliberately free and GET-only, because a
+hub-owned write route would be a way to use paid tools for nothing. A
+POST-accepting page mounted under /tools/ would be exactly that bypass. So the
+hub LINKS here, and the writes stay under `ocr:`.
 
 Permissions, at a glance: anyone signed in may read their own scans; a run is
 readable by its owner and by staff and NOT FOUND to anybody else — 404 rather
@@ -115,7 +115,7 @@ def _settings():
 @login_required
 def ocr_home(request):
     """Upload something and read it — or pick up where a scan got to."""
-    from toto.core import office
+    from toto.core import tools as tools_hub
     from toto.ocr import engine
     from toto.ocr.models import OcrRun
 
@@ -143,14 +143,14 @@ def ocr_home(request):
         "vault_file": vault_file,
         "recent": OcrRun.objects.filter(owner=request.user)[:10],
         # The TOOLS tab strip, with this page's own tab lit. Reading a scan
-        # was an Office tab until 2026-09-01 and this asked for `office_tabs`;
-        # tools have a room of their own now, and the strip moved with them.
+        # was an Office tab until 2026-09-01 (and Office itself retired the
+        # day after); tools kept their room, and this strip is theirs.
         #
         # Still asked rather than hardcoded, for the same reason: a host that
         # mounts no tools renders an empty strip instead of a row of dead
         # links, and a host that adds one gets it here for free. Arriving here
         # must not drop you out of the set you picked this from.
-        "sections": office.tools_tabs(active="ocr"),
+        "sections": tools_hub.tools_tabs(active="ocr"),
     }
     return render(request, "ocr/ocr.html",
                   PageProcessor().decorate(context, request))

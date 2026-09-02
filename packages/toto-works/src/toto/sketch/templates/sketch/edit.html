@@ -101,8 +101,8 @@ a JS string is never a place to render a template tag into. {% endcomment %}
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
               class="inline-flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-40">
         <i class="fa-solid fa-floppy-disk"></i> {% trans "Save" %}</button>
-      {% comment %}Deleting used to live on the sketch index, which Office
-         replaced — so this is now the only door to it. A plain HTML `onsubmit`,
+      {% comment %}Deleting used to live on the sketch index, long since
+         given up (to Office, retired in turn) — this is the only door to it. A plain HTML `onsubmit`,
          NOT Alpine's `@submit`: Alpine evaluates that attribute as an
          expression, and a bare `return` in one is a syntax error that kills the
          whole component while the form still submits, unconfirmed.{% endcomment %}

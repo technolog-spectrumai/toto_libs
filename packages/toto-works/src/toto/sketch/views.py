@@ -71,8 +71,8 @@ def _get_readable_file(request, file_pk) -> VaultFile:
     ACL — and this view had two of them, which silently 404'd bucket owners and
     shared-directory members on drawings they plainly may read. That mattered
     little while sketch had its own flat index listing the same two clauses; it
-    matters now, because Office lists with all five and every row here links
-    into this view. The list and the page must agree by construction.
+    matters now, because the vault lists with all five and every row there
+    links into this view. The list and the page must agree by construction.
 
     A refusal is Not Found rather than Forbidden — a private file's existence is
     not this app's to disclose.

@@ -395,18 +395,12 @@ def logout_view(request):
 
 
 # ---------------------------------------------------------------------------
-# Office — the shared home for documents, decks, sheets and drawings.
-# The tab table, the queries and the plugin lookups live in toto/core/office.py;
-# these two views are the doors. Both GET, on purpose: see that module's header
-# for why an Office-owned write route would be a paywall bypass.
+# Tools — everything this host can DO to a file. The tab table lives in
+# toto/core/tools.py; this view is the door. GET only, on purpose: see that
+# module's header for why a hub-owned write route would be a paywall bypass.
+# (Office — the sibling hub over the things people MAKE — was retired to limbo
+# on 2026-09-02; its two views and their module half went with it.)
 # ---------------------------------------------------------------------------
-
-
-def _reverse_or_blank(url_name: str) -> str:
-    try:
-        return reverse(url_name)
-    except NoReverseMatch:
-        return ""
 
 
 @login_required
@@ -414,26 +408,24 @@ def _reverse_or_blank(url_name: str) -> str:
 def tools_view(request):
     """The Tools hub: everything this host can DO to a file, in one place.
 
-    Tools were tabs in Office's strip until 2026-09-01. That placement made a
-    real claim — "the things Office does" — and it stopped being true once the
-    set grew past reading a scan: turning HTML into a PDF is not an act on a
-    document you keep in Office, it is a tool you bring your own input to.
+    Tools were tabs in Office's strip until 2026-09-01, and Office itself was
+    retired the day after. The placement argument stands on its own: turning
+    HTML into a PDF is not an act on a document you keep anywhere, it is a
+    tool you bring your own input to — so the tools kept their room when the
+    hub over kept-things died.
 
-    So they get a destination of their own, built the way Office is built: one
-    view over a list of dataclasses, each resolved lazily and dropped when its
-    app is unmounted. `available_tools()` already did exactly that work, and it
-    is unchanged — this page is a second reader of it, not a second copy.
-
-    A GET and nothing else. Every tool keeps its own writes in its own app.
+    One view over a list of dataclasses, each resolved lazily and dropped when
+    its app is unmounted. A GET and nothing else. Every tool keeps its own
+    writes in its own app.
     """
     from django.shortcuts import redirect
 
-    from toto.core import office
+    from toto.core import tools as tools_hub
 
-    tools = office.available_tools()
+    tools = tools_hub.available_tools()
     if not tools:
         # Nothing installed that Tools could offer. The dashboard is a better
-        # answer than an empty room, and the same one office_view gives.
+        # answer than an empty room.
         return redirect("core:dashboard")
 
     context = {
@@ -442,135 +434,7 @@ def tools_view(request):
         # The same strip every tool page renders, so the tab you clicked stays
         # lit and the set stays navigable. `active` is empty here: the hub is
         # not one of the tools.
-        "sections": office.tools_tabs(),
+        "sections": tools_hub.tools_tabs(),
     }
     return render(request, _get_template("tools.html"),
                   PageProcessor().decorate(context, request))
-
-
-@login_required
-@require_safe
-def office_view(request, section=None):
-    """One tab of Office: its list, its folder panel, its actions.
-
-    One view for every tab rather than four near-identical ones — the tabs
-    differ only by which vault file types they list, and `Section` carries that
-    difference as data.
-    """
-    from django.core.paginator import Paginator
-    from django.shortcuts import redirect
-
-    from toto.core import office
-    from toto.vault.filetree import build_file_tree
-
-    sections = office.available_sections()
-    if not sections:
-        # Nothing installed that Office could show. Better the dashboard than
-        # an empty room with four dead tabs.
-        return redirect("core:dashboard")
-
-    current = office.SECTIONS_BY_SLUG.get(section or "")
-    if current is None or current not in sections:
-        # An unknown slug, or a tab this host does not serve (BUILD_PRIMULA
-        # off, say). Land on the first real tab instead of 404-ing a URL that
-        # was correct on another deployment.
-        return redirect("office:section", section=sections[0].slug)
-
-    search = (request.GET.get("q") or "").strip()
-    sort = request.GET.get("sort") or office.DEFAULT_SORT
-    if sort not in office.SORTS:
-        sort = office.DEFAULT_SORT
-    try:
-        directory_id = int(request.GET.get("dir") or 0) or None
-    except (TypeError, ValueError):
-        directory_id = None
-
-    files = office.files_for(request.user, current, search=search, sort=sort,
-                             directory_id=directory_id)
-    page = Paginator(files, 30).get_page(request.GET.get("page"))
-
-    rows = [{"file": f,
-             "open_url": office.open_url(f),
-             # Offered beside the name rather than instead of it: a list is for
-             # finding and reading, and editing is the deliberate second act.
-             "edit_url": office.edit_url(request.user, f)}
-            for f in page.object_list]
-
-    context = {
-        "page_title": "Office",
-        # ONE list, sections and tools together — `office_tabs` builds the
-        # same strip the OCR and Aralia pages render, so a tab looks the same
-        # and sits in the same place whichever of the three you are on.
-        "sections": office.office_tabs(active=current.slug),
-        "section": current,
-        # Resolved here and dropped on NoReverseMatch, the same way the
-        # dashboard treats a tile whose app is unmounted: an offer that leads
-        # nowhere is worse than no offer.
-        "alt_view_url": (_reverse_or_blank(current.alt_view)
-                         if current.alt_view else ""),
-        "rows": rows,
-        "page": page,
-        "search": search,
-        "sort": sort,
-        "sorts": [{"key": k, "label": label} for k, (label, _o) in office.SORTS.items()],
-        "directory_id": directory_id,
-        # The folder panel is scoped to THIS tab's types, so it shows where
-        # this kind of thing lives rather than the whole vault.
-        "tree": build_file_tree(request.user, file_types=current.file_types),
-        # The two link prefixes the shared tree partial appends an id to.
-        # Reversed here rather than written as literals: the mount point is the
-        # host's to choose, and a hardcoded "/office/" would be wrong the first
-        # time somebody mounts this anywhere else.
-        "open_prefix": reverse("office:open") + "?file=",
-        "dir_link_prefix": reverse("office:section", args=[current.slug]) + "?dir=",
-        "creatable": (creatable := office.creatable_types(current, request.user)),
-        # Whether anything can open this tab's types at all. Only the
-        # Drawings tab can be editor-less, and its read-only note must
-        # not contradict an Edit button once toto.sketch is installed.
-        "type_is_editable": office.type_is_editable(current),
-        # Still published, though the strip no longer renders it separately:
-        # tools are tabs now and arrive inside `sections`. Kept because
-        # something other than the strip may want to ask what this host can do.
-        "tools": office.available_tools(),
-        # The same context key primula's and memo's own listings published, so
-        # the gate test that used to walk those pages can walk this one.
-        "can_create": bool(creatable),
-        "total": page.paginator.count,
-    }
-    return render(request, _get_template("office.html"),
-                  PageProcessor().decorate(context, request))
-
-
-@login_required
-@require_safe
-def office_open(request):
-    """Open one file with whatever this host has for its type.
-
-    A redirect and nothing else, so the tree rows and the list rows can share
-    one href without either of them learning the plugin registries. Access is
-    checked here and not left to the target: `accessible_files` decides what is
-    listed, and `may_read` must decide what opens, or the two disagree.
-    """
-    from django.http import Http404
-    from django.shortcuts import get_object_or_404, redirect
-
-    from toto.core import office
-    from toto.vault import access
-    from toto.vault.models import VaultFile
-
-    try:
-        file_pk = int(request.GET.get("file") or 0)
-    except (TypeError, ValueError):
-        raise Http404("No such file.")
-    vault_file = get_object_or_404(
-        VaultFile.objects.select_related("bucket", "directory"), pk=file_pk)
-    if not access.may_read(request.user, vault_file):
-        # 404 rather than 403, the same reason the vault download door gives:
-        # a 403 confirms the file exists and turns this into an oracle for
-        # other people's filenames.
-        raise Http404("No such file.")
-
-    url = office.open_url(vault_file)
-    if not url:
-        raise Http404("Nothing on this server opens that file.")
-    return redirect(url)

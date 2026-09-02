@@ -2,14 +2,12 @@
 {% comment %}
 Tools: everything this host can DO to a file, as opposed to what it KEEPS.
 
-These were tabs in Office's strip until 2026-09-01, and the strip made a claim
-that stopped being true as the set grew: "the things Office does". Reading a
-scan fits that. Turning arbitrary HTML into a PDF does not — you bring your own
-input to it, and Office is a list of what you already have.
+These were tabs in Office's strip until 2026-09-01; Office itself retired to
+limbo the day after, and the tools kept their room — you bring your own input
+to a tool, so none of them ever depended on a hub listing what you keep.
 
-So this is a room of its own, built the way Office is: one view over
-`core/office.py`'s TOOLS, each entry resolved lazily and dropped when its app is
-unmounted, so an offer never leads nowhere.
+One view over `core/tools.py`'s TOOLS, each entry resolved lazily and dropped
+when its app is unmounted, so an offer never leads nowhere.
 
 Every tool keeps its own writes in its own app. This page is doors and nothing
 else — see core/tools_urls.py.
@@ -30,7 +28,7 @@ else — see core/tools_urls.py.
         {% trans "Tools" %}
       </h1>
       <p class="mt-1 text-sm opacity-70">
-        {% trans "Things this platform can do to a file. Bring your own input — what you keep lives in Office." %}
+        {% trans "Things this platform can do to a file. Bring your own input — what you keep lives in the vault." %}
       </p>
     </div>
 

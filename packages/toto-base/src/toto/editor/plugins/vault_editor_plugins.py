@@ -50,11 +50,10 @@ class CsvEditorPlugin(VaultEditorPlugin):
 @VaultEditorPlugin.plugin(key="html", title="HTML Editor", order=48)
 class HtmlEditorPlugin(VaultEditorPlugin):
     file_type = "html"
-    #: Declared since 2026-08-29, and it is what puts a New button back on
-    #: Office's Documents tab. CTML's plugin used to be the only thing there
-    #: that could seed a document; retiring the format took the button with it
-    #: until this line, and a Documents tab you can read but never write to is
-    #: not a documents tab.
+    #: Declared since 2026-08-29 for Office's Documents tab (retired to limbo
+    #: 2026-09-02); kept because new_file_extension is what lets ANY surface
+    #: that consults the editor registry seed an .html document — the vault's
+    #: New menu included, not just the hub that first wanted it.
     new_file_extension = ".html"
 
     def blank_content(self, title: str) -> str:

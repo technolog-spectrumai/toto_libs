@@ -158,8 +158,9 @@ class PresentationReadTests(TestCase):
         legacy = self._deck(theme="black", font="sans", file_type="presentation",
                             key="legacy-deck", name="legacy.xml")
         self.client.force_login(self.user)
-        # The gallery kept its cover-rendering job and moved one segment down
-        # when /memo/ became Office's Presentations tab.
+        # The gallery kept its cover-rendering job through the Office era
+        # (/memo/ was that hub's Presentations tab until 2026-09-02) and is
+        # the index again now.
         response = self.client.get(reverse("memo:gallery"))
         listed = {row["file_pk"] for row in response.context["presentations"]}
         self.assertEqual(listed, {self.deck.pk, legacy.pk})

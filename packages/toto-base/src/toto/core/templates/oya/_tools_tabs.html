@@ -1,29 +1,29 @@
 {% comment %}
-The Office tab strip.
+The Tools tab strip. (Named _office_tabs.html until 2026-09-02, when Office
+retired to limbo and the strip's only remaining renderers were Tools pages.)
 
 It lives in oya/ rather than in any one app for the reason _economy_tabs.html
 states at length: Django only loads the template directories of INSTALLED apps,
-so a strip that spans several wheels and a host portion would vanish the moment
-its home app was switched off. Documents come from toto-works, sheets from a
-zenobia host portion, drawings from nowhere in particular — no app can own this.
+so a strip that spans a wheel and a host portion would vanish the moment its
+home app was switched off. OCR ships in toto-media, HTML-to-PDF is a zenobia
+host portion — no app can own this.
 
-The tabs themselves are built in the view (core.office.office_tabs), not
-guarded here: whether a host serves a tab is a question about INSTALLED_APPS,
-and answering it in a template means answering it again in every other template
+The tabs themselves are built in the view (core.tools.tools_tabs), not guarded
+here: whether a host serves a tab is a question about INSTALLED_APPS, and
+answering it in a template means answering it again in every other template
 that ever wants to know.
 
-Rendered by THREE pages now, not one: Office itself, and the two tool pages
-(Text recognition, HTML to PDF) that used to be small buttons off to the side.
-Each passes its own `sections` from `office_tabs(active=…)`, which is why the
-active tab is decided there and never from the request path — a tool's page
-lives in another app and has no Office URL to compare against.
+Rendered by THREE pages: the Tools hub and both tool pages. Each passes its
+own `sections` from `tools_tabs(active=…)`, which is why the active tab is
+decided there and never from the request path — a tool's page lives in another
+app and has no hub URL to compare against.
 {% endcomment %}
 {% load i18n %}
 <div class="flex flex-wrap items-end justify-between gap-3 border-b"
      x-bind:class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">
 <nav class="flex flex-wrap gap-1"
      x-bind:class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'"
-     aria-label="{% trans 'Office sections' %}">
+     aria-label="{% trans 'Tools' %}">
   {% for tab in sections %}
     <a href="{{ tab.url }}"{% if tab.blurb %} title="{{ tab.blurb }}"{% endif %}
        {% if tab.active %}aria-current="page"{% endif %}

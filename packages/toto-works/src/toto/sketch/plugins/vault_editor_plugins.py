@@ -17,9 +17,9 @@ class SvgEditorPlugin(VaultEditorPlugin):
 
     file_type = "svg"
 
-    #: A drawing is a `.svg` file. Declaring the extension is what puts SVG in
-    #: the vault's "New file" menu and gives Office's Drawings tab a New
-    #: button at all — `office.creatable_types()` skips any plugin without it.
+    #: A drawing is a `.svg` file. Declaring the extension is what puts SVG
+    #: in the vault's "New file" menu — any surface that consults the editor
+    #: registry for creatable types skips a plugin without it.
     new_file_extension = ".svg"
 
     def blank_content(self, title: str) -> str:

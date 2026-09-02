@@ -17,14 +17,15 @@ app_name = "sketch"
 SAFE_ONLY = ["get", "head", "options"]
 
 urlpatterns = [
-    # Drawings are an Office tab now. This app kept a flat list of its own with
-    # no folders, no search and no sort — which is exactly what Office replaces,
-    # and two answers to "what drawings are there" would drift apart. The name
+    # Drawings were an Office tab until Office retired to limbo (2026-09-02),
+    # and this app's own flat list had already been given up to it. The vault
+    # is the listing that remains — every drawing is a vault file and the
+    # vault's rows carry the same Open/Edit plugins the tab used. The name
     # survives so every existing reverse() still resolves.
     path("", RedirectView.as_view(http_method_names=SAFE_ONLY,
-                                  pattern_name="office:section",
+                                  pattern_name="vault:root",
                                   query_string=True),
-         {"section": "drawings"}, name="index"),
+         name="index"),
     path("new/", SketchCreateView.as_view(), name="create"),
     path("edit/<int:file_pk>/", SketchEditView.as_view(), name="edit"),
     path("save/<int:file_pk>/", sketch_save, name="save"),
