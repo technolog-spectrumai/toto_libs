@@ -20,6 +20,33 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+#: Gitignored asset trees that a wheel must never carry, relative to a package
+#: directory. `download_vendor.py` fetches these at IMAGE build time, straight
+#: into the installed package under site-packages; a developer who points it at
+#: a source checkout instead leaves 2.3 MB of fontawesome, htmx and alpine
+#: inside packages/toto-base/src, and every wheel built afterwards ships them.
+#:
+#: pyproject's `exclude-package-data` was written to prevent exactly this and
+#: CANNOT: `packages.find` runs with `namespaces = true`, so setuptools
+#: discovers `toto.core.static.vendor.fontawesome` and its siblings as packages
+#: in their own right, and an exclusion keyed on `toto.core` never sees files
+#: that belong to a different package. Every pattern shape was tried; the four
+#: files directly under vendor/ drop out and the nine in subdirectories do not.
+#:
+#: So it is pruned here, the same way and for the same reason as `build/` below:
+#: both are gitignored, both are regenerable, and both otherwise produce a
+#: silently wrong wheel on one machine and a correct one on another.
+PRUNE_BEFORE_BUILD = ("src/toto/core/static/vendor",)
+
+
+def prune_downloaded_assets(pkg: Path) -> None:
+    """Remove gitignored downloaded assets from a package before building it."""
+    for relative in PRUNE_BEFORE_BUILD:
+        tree = pkg / relative
+        if tree.is_dir():
+            print(f"    pruning downloaded assets: {tree.relative_to(REPO_ROOT)}")
+            shutil.rmtree(tree)
+
 
 def package_dirs(only: str | None) -> list[Path]:
     available = {p.name: p for p in sorted((REPO_ROOT / "packages").iterdir()) if p.is_dir()}
@@ -57,6 +84,7 @@ def main() -> int:
         stale_build = pkg / "build"
         if stale_build.is_dir():
             shutil.rmtree(stale_build)
+        prune_downloaded_assets(pkg)
 
         if args.sdist:
             subprocess.run([sys.executable, "-m", "build", "--sdist", "--outdir", str(out), str(pkg)], check=True)

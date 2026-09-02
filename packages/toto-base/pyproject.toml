@@ -48,6 +48,17 @@ namespaces = true
 "toto.subscriptions" = ["*.yaml", "*.md"]
 
 [tool.setuptools.exclude-package-data]
-# Vendor assets are downloaded at deploy time (download_vendor.py); keep
-# wheels deterministic even when built from a checkout that fetched them.
+# Vendor assets are downloaded at deploy time (download_vendor.py). This was
+# written to keep wheels deterministic when built from a checkout that fetched
+# them, AND IT CANNOT DO THAT — `packages.find` runs with `namespaces = true`,
+# so setuptools discovers toto.core.static.vendor.fontawesome and its siblings
+# as packages in their own right, and an exclusion keyed on `toto.core` never
+# sees a file that belongs to a different package. It drops the four files
+# directly under vendor/ and leaves the nine in subdirectories, which is why
+# test_no_foreign_payload was failing rather than this line preventing it.
+#
+# It stays because those four are real, and because deleting it would read as
+# "nothing guards this". The guard that WORKS is a prune before the build, in
+# scripts/build_wheels.py and both pip-wheel call sites in the monorepo's
+# clean_env_lib.sh. Do not trust this key alone.
 "toto.core" = ["static/vendor/**"]
