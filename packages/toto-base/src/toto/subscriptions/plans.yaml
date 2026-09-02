@@ -1,0 +1,97 @@
+# The plans this platform sells.
+#
+# Read once at startup into immutable objects (toto/subscriptions/plans.py) and
+# validated by a Django system check, so a mistake here stops a deploy instead
+# of surfacing as a missing tier weeks later. NOTHING in this file is a
+# database row: a subscription stores `plan_key`, and a community offer stores
+# `plan_key`, so the ladder can change without a migration.
+#
+# A host ships a different ladder by pointing settings.SUBSCRIPTION_PLANS_FILE
+# at another file. That REPLACES this one — never merges — because merging
+# re-opens the duplicate-key question at runtime.
+#
+# See PLANS.md for the schema and every validation rule.
+
+version: 1
+
+plans:
+  - key: free
+    name: Free
+    default: true
+    units: 0
+    order: 10
+    description: >
+      Everything you need to be here: your profile, your files, your
+      communities and your wallet. Costs nothing, and never expires.
+    features: []
+
+  - key: standard
+    name: Standard
+    units: 200
+    order: 20
+    description: >
+      The everyday tools — text and code, tasks and maps. Read and export
+      documents, sheets and decks; writing them is Professional. Metered work
+      is still charged per use on top.
+    # cyprian, memo and primula are deliberately NOT here. The three rich
+    # editors are Professional, and the gate is what makes that a partial
+    # rather than a total exclusion: it refuses unsafe methods only, so a
+    # Standard subscriber still opens, reads, prints and downloads every
+    # document, deck and workbook they can see — they just cannot save one.
+    # That is why this list can shrink without anybody losing their own files.
+    #
+    # editor stays: the ACE editor is text and code, it is not metered, and
+    # taking plain-text editing off Standard would be a different decision.
+    #
+    # polls is absent from every plan, and from the catalogue. Polls became a
+    # Forum feature, the gate reads the entitlement off the URL namespace, and
+    # forum is free — so the row was selling something nobody could be charged
+    # for.
+    features:
+      - editor
+      - kanban
+      - locations
+
+  - key: professional
+    name: Professional
+    units: 600
+    order: 30
+    description: >
+      Everything in Standard, plus the writing tools — documents, sheets and
+      presentations — and the heavy end: PDF generation, notebooks, version
+      control, media, signatures and the assistant.
+    # Functionality only. Workflows and email are machinery and belong to every
+    # plan: plans differ by what you can DO, not by which internals run.
+    #
+    # The compute tier is listed WITH anastasia, never without it — a plan that
+    # included the labs but not the capacity to run them would sell four
+    # buttons that all refuse.
+    #
+    # Every key here must also be declared in catalogue.py. A feature declared
+    # paid and granted by NO plan hides its dashboard tile from everybody,
+    # superusers included, and 402s its writes wherever enforcement is on. That
+    # has happened twice — to the compute tier, and to ocr/fileservices — and
+    # the check that now fails the build on it (subscriptions.W001) exists
+    # because both times it was found by audit rather than by a test.
+    features:
+      - cyprian
+      - memo
+      - primula
+      - sketch
+      - editor
+      - kanban
+      - locations
+      - aralia
+      - mandragora
+      - notarius
+      - repo
+      - gitea
+      - vod
+      - steven
+      - travels
+      - anastasia
+      - dracena
+      - texlab
+      - manta
+      - ocr
+      - fileservices

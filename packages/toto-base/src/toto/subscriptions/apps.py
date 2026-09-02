@@ -12,6 +12,16 @@ class SubscriptionsConfig(AppConfig):
         # autodiscovery lets any app add its own entitlements afterwards.
         from toto.core.plugin_autodiscover import autodiscover_plugins
 
-        from . import catalogue, metrics  # noqa: F401
+        from . import catalogue, checks, metrics  # noqa: F401
 
         autodiscover_plugins("entitlements")
+
+        # The ladder, AFTER autodiscovery: a plan may name a feature an app
+        # ships itself, so the catalogue has to be complete before the file is
+        # validated against it. A structural fault raises here and the host
+        # does not boot — an unreadable plan file is a build defect, and
+        # `manage.py check` catches it before a deploy gets this far.
+        from . import plans
+
+        plans.reload()
+        plans.load()

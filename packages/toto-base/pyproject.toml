@@ -42,6 +42,10 @@ namespaces = true
     "static/**/*",
     "graph/*.yaml",
 ]
+# The plan ladder and its documentation. A data file left out of this list
+# works from a checkout and VANISHES in the wheel — the failure the packaging
+# suite exists to catch — and here it would take every plan with it.
+"toto.subscriptions" = ["*.yaml", "*.md"]
 
 [tool.setuptools.exclude-package-data]
 # Vendor assets are downloaded at deploy time (download_vendor.py); keep

@@ -7,7 +7,7 @@ drift — the plan that sells it, the gate that enforces it, and the sentence on
 the plans page that tells somebody what they are buying. One declaration, and
 the page renders itself from the same rows the gate reads.
 
-**The code is an app label.** ``"cyprian"``, not ``"documents"`` — because the
+**The feature key is an app label.** ``"cyprian"``, not ``"documents"`` — because the
 gate resolves ``request.resolver_match.app_name`` and nothing else, and a
 mapping table between two naming schemes is a thing to keep in step.
 
@@ -30,15 +30,23 @@ from typing import Iterator
 
 
 class DuplicateEntitlement(Exception):
-    """Two declarations claimed the same code."""
+    """Two declarations claimed the same feature key."""
 
 
 @dataclass(frozen=True)
 class Entitlement:
-    """One thing a plan can unlock, described in the words a buyer reads."""
+    """One thing a plan can unlock, described in the words a buyer reads.
+
+    ``feature_key`` is the stable, globally unique name a plan lists. It IS the
+    Django ``app_name``, deliberately: the gate resolves
+    ``resolver_match.app_name`` and nothing else, so a mapping table between
+    two naming schemes would be a thing to keep in step. ``code`` remains as a
+    read-only alias — it was the field's name until 2026-09-02 and every
+    positional construction below still reads the same.
+    """
 
     #: The Django ``app_name`` this gates. This IS the identity.
-    code: str
+    feature_key: str
     label: str
     #: One sentence, in the second person, about what you get.
     description: str = ""
@@ -49,27 +57,39 @@ class Entitlement:
     #: Ordering on the plan card. Lower first.
     order: int = 100
 
+    @property
+    def code(self) -> str:
+        """The pre-2026-09-02 name for :attr:`feature_key`."""
+        return self.feature_key
+
 
 class EntitlementRegistry:
     def __init__(self):
         self._items: dict[str, Entitlement] = {}
 
     def register(self, entitlement: Entitlement) -> Entitlement:
-        existing = self._items.get(entitlement.code)
+        existing = self._items.get(entitlement.feature_key)
         if existing is not None and existing != entitlement:
             raise DuplicateEntitlement(
-                f"{entitlement.code!r} is already declared by another app.")
-        self._items[entitlement.code] = entitlement
+                f"{entitlement.feature_key!r} is already declared by another app.")
+        self._items[entitlement.feature_key] = entitlement
         return entitlement
 
     def get(self, code: str) -> Entitlement | None:
         return self._items.get(code)
 
+    def declared_keys(self) -> set[str]:
+        """Every registered feature_key. What the plan validator checks against."""
+        return set(self._items)
+
     def all(self) -> Iterator[Entitlement]:
         return iter(sorted(self._items.values(), key=lambda e: (e.order, e.label)))
 
-    def free_codes(self) -> set[str]:
-        return {e.code for e in self._items.values() if e.free}
+    def free_keys(self) -> set[str]:
+        return {e.feature_key for e in self._items.values() if e.free}
+
+    #: The pre-2026-09-02 name. Kept: gate.py and host tests both call it.
+    free_codes = free_keys
 
     def installed(self) -> Iterator[Entitlement]:
         """Only entitlements this host actually serves.
@@ -97,9 +117,9 @@ class EntitlementRegistry:
 
         mounted = mounted_app_names()
         for entitlement in self.all():
-            if not apps.is_installed(f"toto.{entitlement.code}"):
+            if not apps.is_installed(f"toto.{entitlement.feature_key}"):
                 continue
-            if entitlement.code not in mounted:
+            if entitlement.feature_key not in mounted:
                 continue
             yield entitlement
 
