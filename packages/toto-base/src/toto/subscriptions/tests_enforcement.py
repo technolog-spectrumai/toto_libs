@@ -36,6 +36,21 @@ from . import services
 from .gate import SubscriptionGateMiddleware, is_entitled
 from .models import Subscription, SubscriptionState
 from .tests import make_plans
+from .tests import setUpModule as _install_fixture_ladder
+from .tests import tearDownModule as _restore_shipped_ladder
+
+
+def setUpModule():
+    """Borrow tests.py's fixture ladder.
+
+    This module can run on its own — the gate names it separately — so it
+    cannot rely on the other module having installed the file first.
+    """
+    _install_fixture_ladder()
+
+
+def tearDownModule():
+    _restore_shipped_ladder()
 
 User = get_user_model()
 
@@ -85,7 +100,7 @@ class MatrixTestCase(TestCase):
             user = User.objects.create_user(combo, password="x")
             if plan_attr is not None:
                 subscription = services.subscribe(
-                    user, getattr(cls, plan_attr))
+                    user, getattr(cls, plan_attr), force=True)
                 if state != SubscriptionState.ACTIVE:
                     Subscription.objects.filter(pk=subscription.pk).update(
                         state=state)

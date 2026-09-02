@@ -22,16 +22,15 @@ from toto.socialhub.models import Community
 
 from django.apps import apps
 
-from . import catalogue, services
+from . import catalogue, plans, services
 from .catalogue import Entitlement, registry
 from .gate import ALWAYS_FREE, SubscriptionGateMiddleware, is_entitled
 from .models import (
     ChargeStatus,
     CommunityDiscount,
-    PlanAudience,
+    CommunityPlanOffer,
     Subscription,
     SubscriptionCharge,
-    SubscriptionPlan,
     SubscriptionState,
     add_months,
     period_label,
@@ -62,16 +61,103 @@ needs_public_pages = skipIf(
     "no public plans page to test")
 
 
+#: The fixture ladder, as a FILE — because that is what a ladder is now.
+#: Same three keys the shipped one has and the same tiering `tests_enforcement`
+#: reads, so its truth table survives the move from rows to a registry.
+FIXTURE_YAML = """
+version: 1
+plans:
+  - key: free
+    name: Free
+    default: true
+    units: 0
+    order: 10
+  - key: standard
+    name: Standard
+    units: 200
+    order: 20
+    features: [cyprian, primula]
+  - key: professional
+    name: Professional
+    units: 600
+    order: 30
+    features: [cyprian, primula, aralia, mandragora]
+  - key: stipend
+    name: Stipend
+    units: -500
+    order: 44
+    features: [cyprian]
+"""
+
+_FIXTURE_DIR = None
+_REAL_PLANS_FILE = None
+
+
+def setUpModule():
+    """Point the registry at the fixture ladder for this whole module.
+
+    A module-level swap rather than a decorator on seventeen classes, and a
+    real FILE rather than a patched dict: the thing under test is that a file
+    becomes plans, so a fixture that skipped the file would test past the
+    interesting part.
+    """
+    global _FIXTURE_DIR, _REAL_PLANS_FILE
+    import tempfile
+    from pathlib import Path
+
+    from django.conf import settings
+
+    _FIXTURE_DIR = tempfile.mkdtemp(prefix="toto-plans-")
+    path = Path(_FIXTURE_DIR) / "plans.yaml"
+    path.write_text(FIXTURE_YAML)
+    _REAL_PLANS_FILE = getattr(settings, "SUBSCRIPTION_PLANS_FILE", "")
+    settings.SUBSCRIPTION_PLANS_FILE = str(path)
+    plans.reload()
+
+
+def tearDownModule():
+    import shutil
+
+    from django.conf import settings
+
+    settings.SUBSCRIPTION_PLANS_FILE = _REAL_PLANS_FILE
+    plans.reload()
+    if _FIXTURE_DIR:
+        shutil.rmtree(_FIXTURE_DIR, ignore_errors=True)
+
+
 def make_plans():
-    free = SubscriptionPlan.objects.create(
-        code="free", name="Free", units=0, is_default=True, order=10)
-    standard = SubscriptionPlan.objects.create(
-        code="standard", name="Standard", units=200, order=20,
-        entitlements=["cyprian", "primula"])
-    professional = SubscriptionPlan.objects.create(
-        code="professional", name="Professional", units=600, order=30,
-        entitlements=["cyprian", "primula", "aralia", "mandragora"])
-    return free, standard, professional
+    """The three fixture plans, from the registry. No rows are created."""
+    return (plans.plan("free"), plans.plan("standard"),
+            plans.plan("professional"))
+
+
+def stipend_plan():
+    """The negative tier. The platform pays its holder — one mechanism, read
+    in the other direction, and the only thing that puts value back into a
+    hard-capped supply."""
+    return plans.plan("stipend")
+
+
+def _posted(data):
+    """A QueryDict-ish stand-in: set_offers calls .getlist() and iterates keys."""
+    from django.http import QueryDict
+
+    query = QueryDict(mutable=True)
+    for key, value in data.items():
+        if isinstance(value, list):
+            query.setlist(key, value)
+        else:
+            query[key] = value
+    return query
+
+
+def offer(plan, *communities):
+    """Make `plan` buyable by members of `communities`. Eligibility is CLOSED
+    by default, so a test that wants somebody eligible must say so."""
+    for community in communities:
+        CommunityPlanOffer.objects.get_or_create(
+            community=community, plan_key=plan.key)
 
 
 def member(name, *communities):
@@ -180,270 +266,188 @@ class WhatThisHostSellsTests(TestCase):
             self.assertEqual(catalogue.mounted_app_names(), set())
 
     def test_a_plan_card_lists_only_what_this_host_serves(self):
-        """The end of the chain, through the model rather than the registry:
-        a plan may name a code this build does not carry — the seed data is
-        written once for every build — and the card must simply not show it."""
-        plan = SubscriptionPlan.objects.create(
-            code="probe", name="Probe", active=True,
-            entitlements=["cyprian", "mandragora", "not-a-real-app"])
-        shown = {e.code for e in plan.entitlement_rows()}
+        """The end of the chain: a plan may name a feature this build does not
+        carry — one ladder is written for every build — and the card must
+        simply not show it. Unknown keys cannot reach a real plan (the
+        validator refuses them), so this asks the Plan object directly."""
+        from .plans import Plan
+
+        plan = Plan(key="probe", name="Probe",
+                    features=("cyprian", "mandragora", "not-a-real-app"))
+        shown = {e.feature_key for e in plan.feature_rows()}
         self.assertNotIn("not-a-real-app", shown)
         if "mandragora" not in catalogue.mounted_app_names():
             self.assertNotIn("mandragora", shown)
 
 
-class PlanAudienceTests(TestCase):
-    """Plans offered to particular communities.
+class EligibilityTests(TestCase):
+    """Who may buy what. CLOSED BY DEFAULT, which inverts the old rule.
 
-    The invariant under test is the ABSENCE rule: no audience rows means
-    public. Every plan that existed before this feature has no rows, so a
-    regression here would not error — it would quietly hide the whole price
-    list from everybody, which is why the public case is asserted first and
-    from several angles.
+    This class replaced PlanAudienceTests on 2026-09-02 and every assertion in
+    it flipped. The table it tested said "a plan with no audience rows is
+    public"; CommunityPlanOffer says "a plan nobody is offered reaches
+    nobody". The tests are rewritten rather than adjusted because the sentence
+    they were written to protect is the one that changed.
     """
 
     @classmethod
     def setUpTestData(cls):
-        # An active Platform row, or every page render 404s — the same
-        # requirement ViewTests states.
-        Platform.objects.get_or_create(
-            site_name="Test",
-            defaults={"author": "t", "publication_year": 2026, "active": True})
+        Platform.objects.create(site_name="T", author="t",
+                                publication_year=2026, active=True)
         cls.free, cls.standard, cls.professional = make_plans()
-        cls.students = Community.objects.create(name="Students")
-        cls.founders = Community.objects.create(name="Founders")
+        cls.guild = Community.objects.create(name="Guild", slug="guild")
+        cls.club = Community.objects.create(name="Club", slug="club")
+        cls.insider = member("elig_insider", cls.guild)
+        cls.outsider = member("elig_outsider", cls.club)
+        cls.loner = User.objects.create_user("elig_loner", "l@example.com", "pw")
+        cls.staff = User.objects.create_user("elig_staff", "s@example.com", "pw",
+                                             is_staff=True)
 
-    def _codes(self, user):
-        return set(services.visible_plans(user).values_list("code", flat=True))
+    def _keys(self, user):
+        return {plan.key for plan in services.eligible_plans(user)}
 
-    # -- the absence rule --------------------------------------------------
+    def test_with_no_offers_at_all_nobody_gets_a_paid_plan(self):
+        """The inversion, stated once. An empty table used to mean everything
+        was public; it now means nothing is for sale."""
+        self.assertEqual(self._keys(self.insider), {"free"})
+        self.assertEqual(self._keys(self.outsider), {"free"})
+        self.assertFalse(services.is_eligible(self.insider, "professional"))
 
-    def test_a_plan_with_no_audience_is_public(self):
-        self.assertEqual(self._codes(member("nobody")),
-                         {"free", "standard", "professional"})
+    def test_a_member_of_an_offering_community_is_eligible(self):
+        offer(self.professional, self.guild)
+        self.assertIn("professional", self._keys(self.insider))
+        self.assertTrue(services.is_eligible(self.insider, "professional"))
 
-    def test_anonymous_readers_see_every_public_plan(self):
-        """The plans page is deliberately not login_required — what a platform
-        charges is not a secret."""
-        self.assertEqual(self._codes(AnonymousUser()),
-                         {"free", "standard", "professional"})
+    def test_a_member_of_another_community_is_not(self):
+        offer(self.professional, self.guild)
+        self.assertNotIn("professional", self._keys(self.outsider))
+        self.assertFalse(services.is_eligible(self.outsider, "professional"))
 
-    def test_a_user_with_no_person_profile_still_sees_the_public_plans(self):
-        user = User.objects.create_user("profileless", "p@example.com", "pw")
-        self.assertEqual(self._codes(user),
-                         {"free", "standard", "professional"})
+    def test_the_default_plan_is_always_eligible_for_a_signed_in_person(self):
+        """Otherwise the page denies the plan `plan_for` puts them on."""
+        self.assertTrue(services.is_eligible(self.loner, "free"))
+        self.assertIn("free", self._keys(self.loner))
 
-    # -- restriction -------------------------------------------------------
+    def test_two_offering_communities_show_the_plan_once(self):
+        offer(self.professional, self.guild, self.club)
+        both = member("elig_both", self.guild, self.club)
+        keys = [plan.key for plan in services.eligible_plans(both)]
+        self.assertEqual(keys.count("professional"), 1)
 
-    def test_an_audience_hides_the_plan_from_everybody_else(self):
-        PlanAudience.objects.create(plan=self.professional,
-                                    community=self.students)
-        self.assertNotIn("professional", self._codes(member("outsider")))
-        self.assertNotIn("professional", self._codes(AnonymousUser()))
-        self.assertIn("professional",
-                      self._codes(member("student", self.students)))
+    def test_staff_see_every_plan(self):
+        self.assertEqual(self._keys(self.staff),
+                         {"free", "standard", "professional", "stipend"})
 
-    def test_restricting_one_plan_leaves_the_others_public(self):
-        PlanAudience.objects.create(plan=self.professional,
-                                    community=self.students)
-        self.assertEqual(self._codes(member("outsider")), {"free", "standard"})
+    def test_anonymous_is_eligible_for_nothing(self):
+        self.assertEqual(services.eligible_plans(AnonymousUser()), ())
+        self.assertFalse(services.is_eligible(AnonymousUser(), "free"))
 
-    def test_a_plan_may_be_offered_through_several_communities(self):
-        for community in (self.students, self.founders):
-            PlanAudience.objects.create(plan=self.professional,
-                                        community=community)
-        self.assertIn("professional",
-                      self._codes(member("f", self.founders)))
-        self.assertIn("professional",
-                      self._codes(member("s", self.students)))
+    def test_an_unknown_key_is_never_eligible(self):
+        self.assertFalse(services.is_eligible(self.staff, "no-such-plan"))
 
-    def test_membership_of_two_audience_communities_lists_the_plan_once(self):
-        """`.distinct()` is load-bearing — the join multiplies rows and the
-        page would render the same card twice."""
-        for community in (self.students, self.founders):
-            PlanAudience.objects.create(plan=self.professional,
-                                        community=community)
-        user = member("both", self.students, self.founders)
-        codes = list(services.visible_plans(user)
-                     .values_list("code", flat=True))
-        self.assertEqual(codes.count("professional"), 1)
+    def test_an_offer_naming_a_departed_plan_grants_nothing(self):
+        """A key can outlive its plan — the table has no foreign key to stop
+        it — and an offer of nothing must stay an offer of nothing."""
+        CommunityPlanOffer.objects.create(community=self.guild,
+                                          plan_key="ghost")
+        self.assertFalse(services.is_eligible(self.insider, "ghost"))
+        self.assertNotIn("ghost", self._keys(self.insider))
 
-    def test_staff_see_restricted_plans_they_are_not_in(self):
-        """They administer the audiences; a dial you cannot see is a dial you
-        cannot check."""
-        PlanAudience.objects.create(plan=self.professional,
-                                    community=self.students)
-        staff = User.objects.create_user("ops", "ops@example.com", "pw",
-                                         is_staff=True)
-        self.assertIn("professional", self._codes(staff))
-
-    def test_an_inactive_plan_is_never_visible_however_it_is_offered(self):
-        PlanAudience.objects.create(plan=self.professional,
-                                    community=self.students)
-        SubscriptionPlan.objects.filter(pk=self.professional.pk).update(
-            active=False)
-        self.assertNotIn("professional",
-                         self._codes(member("student", self.students)))
-
-    def test_one_row_per_plan_and_community(self):
-        PlanAudience.objects.create(plan=self.professional,
-                                    community=self.students)
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                PlanAudience.objects.create(plan=self.professional,
-                                            community=self.students)
-
-    # -- the offer and the gate agree --------------------------------------
-
-    def test_subscribing_to_a_plan_you_cannot_see_is_a_404(self):
-        """Hiding a card is a bluff unless the endpoint refuses too — and 404,
-        not 403, because a 403 confirms the code exists."""
-        PlanAudience.objects.create(plan=self.professional,
-                                    community=self.students)
-        user = member("outsider")
-        self.client.force_login(user)
-        response = self.client.post(
-            reverse("subscriptions:subscribe", args=["professional"]))
-        self.assertEqual(response.status_code, 404)
-        self.assertFalse(Subscription.objects.filter(user=user).exists())
-
-    def test_a_member_of_the_audience_may_subscribe(self):
-        PlanAudience.objects.create(plan=self.professional,
-                                    community=self.students)
-        user = member("student", self.students)
-        self.client.force_login(user)
-        self.client.post(
-            reverse("subscriptions:subscribe", args=["professional"]))
-        self.assertEqual(
-            Subscription.objects.get(user=user).plan_id, self.professional.pk)
-
-    def test_leaving_the_community_keeps_the_plan_already_held(self):
-        """Visibility gates the OFFER, never an existing subscription — or a
+    def test_leaving_the_community_does_not_cancel_the_subscription(self):
+        """The one PlanAudience promise that survives the inversion: an offer
+        gates the OFFER, never a subscription that already exists. Otherwise a
         community head could unsubscribe people by expelling them."""
-        PlanAudience.objects.create(plan=self.professional,
-                                    community=self.students)
-        user = member("student", self.students)
-        services.subscribe(user, self.professional)
-        user.community_profile.communities.remove(self.students)
+        offer(self.professional, self.guild)
+        services.subscribe(self.insider, self.professional)
+        self.insider.community_profile.communities.remove(self.guild)
+        self.assertFalse(services.is_eligible(self.insider, "professional"))
+        self.assertEqual(plan_for(self.insider).key, "professional")
 
-        user.refresh_from_db()
-        self.assertNotIn("professional", self._codes(user))
-        self.assertEqual(
-            Subscription.objects.get(user=user).plan_id, self.professional.pk)
+    def test_the_service_refuses_an_ineligible_plan_too(self):
+        """The view 404s first; this is the belt to that braces, so an API or
+        a management command cannot route around the rule."""
+        with self.assertRaises(services.IneligiblePlan):
+            services.subscribe(self.outsider, self.professional)
 
-    # -- the page ----------------------------------------------------------
-
-    def test_the_plans_page_lists_only_what_this_reader_may_have(self):
-        PlanAudience.objects.create(plan=self.professional,
-                                    community=self.students)
-        self.client.force_login(member("outsider"))
-        response = self.client.get(reverse("subscriptions:plans"))
-        codes = {row["plan"].code for row in response.context["rows"]}
-        self.assertEqual(codes, {"free", "standard"})
-
-    def test_the_card_says_which_community_brought_the_offer(self):
-        PlanAudience.objects.create(plan=self.professional,
-                                    community=self.students)
-        self.client.force_login(member("student", self.students))
-        response = self.client.get(reverse("subscriptions:plans"))
-        self.assertContains(response, "Students")
+    def test_an_operator_can_force_past_the_check(self):
+        services.subscribe(self.outsider, self.professional, force=True)
+        self.assertEqual(plan_for(self.outsider).key, "professional")
 
 
-class AudienceTabTests(TestCase):
-    """The staff tab that sets them."""
+class OfferTabTests(TestCase):
+    """The Communities tab: the grid an operator actually turns."""
 
     @classmethod
     def setUpTestData(cls):
-        # An active Platform row, or every page render 404s — the same
-        # requirement ViewTests states.
-        Platform.objects.get_or_create(
-            site_name="Test",
-            defaults={"author": "t", "publication_year": 2026, "active": True})
+        Platform.objects.create(site_name="T", author="t",
+                                publication_year=2026, active=True)
         cls.free, cls.standard, cls.professional = make_plans()
-        cls.students = Community.objects.create(name="Students")
-        cls.founders = Community.objects.create(name="Founders")
+        cls.guild = Community.objects.create(name="Guild", slug="guild")
+        cls.staff = User.objects.create_user("tab_staff", "ts@example.com", "pw",
+                                             is_staff=True)
+        cls.plain = User.objects.create_user("tab_plain", "tp@example.com", "pw")
 
-    def _staff(self):
-        user = User.objects.create_user("ops", "ops@example.com", "pw",
-                                        is_staff=True)
-        self.client.force_login(user)
-        return user
+    def setUp(self):
+        self.client.force_login(self.staff)
 
-    def test_the_tab_is_staff_only(self):
-        self.client.force_login(member("ordinary"))
-        response = self.client.get(reverse("subscriptions:audience"))
-        self.assertEqual(response.status_code, 403)
+    def test_a_non_operator_is_refused(self):
+        self.client.force_login(self.plain)
+        self.assertEqual(
+            self.client.get(reverse("subscriptions:audience")).status_code, 403)
 
-    def test_staff_get_a_grid_of_communities_by_plan(self):
-        self._staff()
+    def test_the_columns_come_from_the_registry(self):
         response = self.client.get(reverse("subscriptions:audience"))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["active_tab"], "audience")
-        self.assertEqual(len(response.context["rows"]), 2)
-        self.assertEqual(len(response.context["rows"][0]["cells"]), 3)
+        keys = [column["plan"].key for column in response.context["plans"]]
+        self.assertEqual(keys, ["free", "standard", "professional", "stipend"])
 
-    def test_a_column_reports_whether_that_plan_is_restricted(self):
-        PlanAudience.objects.create(plan=self.professional,
-                                    community=self.students)
-        self._staff()
+    def test_a_plan_nobody_is_offered_is_marked_so(self):
         response = self.client.get(reverse("subscriptions:audience"))
-        flags = {c["plan"].code: c["restricted"]
-                 for c in response.context["plans"]}
-        self.assertTrue(flags["professional"])
-        self.assertFalse(flags["standard"])
+        columns = {c["plan"].key: c for c in response.context["plans"]}
+        self.assertFalse(columns["professional"]["offered"])
+        self.assertContains(response, "offered to nobody")
 
-    def test_ticking_a_box_restricts_the_plan(self):
-        self._staff()
+    def test_ticking_a_box_creates_the_offer(self):
         self.client.post(reverse("subscriptions:audience"), {
-            "aud-seen": [f"{self.students.pk}-{self.professional.pk}"],
-            f"aud-{self.students.pk}-{self.professional.pk}": "on",
+            "aud-seen": [f"{self.guild.pk}-professional"],
+            f"aud-{self.guild.pk}-professional": "on",
         })
-        self.assertTrue(PlanAudience.objects.filter(
-            plan=self.professional, community=self.students).exists())
+        self.assertTrue(CommunityPlanOffer.objects.filter(
+            community=self.guild, plan_key="professional").exists())
 
-    def test_clearing_every_tick_makes_the_plan_public_again(self):
-        PlanAudience.objects.create(plan=self.professional,
-                                    community=self.students)
-        self._staff()
+    def test_unticking_removes_it(self):
+        offer(self.professional, self.guild)
         self.client.post(reverse("subscriptions:audience"), {
-            "aud-seen": [f"{self.students.pk}-{self.professional.pk}"],
+            "aud-seen": [f"{self.guild.pk}-professional"],
         })
-        self.assertFalse(PlanAudience.objects.exists())
-        self.assertIn("professional",
-                      set(services.visible_plans(member("anyone"))
-                          .values_list("code", flat=True)))
+        self.assertFalse(CommunityPlanOffer.objects.filter(
+            community=self.guild, plan_key="professional").exists())
 
     def test_a_pair_the_form_never_rendered_is_left_alone(self):
-        """Diffing against what was RENDERED, not against the whole table, is
-        what makes a stale page safe to submit: a plan created since the page
-        loaded must not be silently un-restricted by a checkbox that could
-        not have been there."""
-        PlanAudience.objects.create(plan=self.professional,
-                                    community=self.founders)
-        self._staff()
+        """Stale-page safety: diffing against what was RENDERED, not against
+        the table, is what stops a plan added since being silently cleared."""
+        offer(self.standard, self.guild)
         self.client.post(reverse("subscriptions:audience"), {
-            "aud-seen": [f"{self.students.pk}-{self.professional.pk}"],
+            "aud-seen": [f"{self.guild.pk}-professional"],
         })
-        self.assertTrue(PlanAudience.objects.filter(
-            plan=self.professional, community=self.founders).exists())
+        self.assertTrue(CommunityPlanOffer.objects.filter(
+            community=self.guild, plan_key="standard").exists())
 
-    def test_rubbish_field_names_change_nothing(self):
-        self._staff()
-        self.client.post(reverse("subscriptions:audience"), {
-            "aud-seen": ["not-a-pair", "999999-999999"],
-            "aud-not-a-pair": "on",
-            "aud-999999-999999": "on",
-        })
-        self.assertFalse(PlanAudience.objects.exists())
+    def test_a_plan_key_containing_a_hyphen_survives_the_form(self):
+        """`split("-")` would have dropped it from both sets, which reads as
+        "the operator unticked it". The key is split on the FIRST hyphen."""
+        added, _removed = services.set_offers(_posted({
+            "aud-seen": [f"{self.guild.pk}-free"],
+            f"aud-{self.guild.pk}-free": "on",
+        }))
+        self.assertEqual(added, 1)
 
-    def test_the_tab_is_hidden_from_ordinary_members(self):
-        url = reverse("subscriptions:audience")
-        self.client.force_login(member("ordinary"))
-        page = self.client.get(reverse("subscriptions:plans"))
-        self.assertNotContains(page, url)
-        self._staff()
-        page = self.client.get(reverse("subscriptions:plans"))
-        self.assertContains(page, url)
+    def test_an_unknown_plan_key_is_ignored(self):
+        added, removed = services.set_offers(_posted({
+            "aud-seen": [f"{self.guild.pk}-nonesuch"],
+            f"aud-{self.guild.pk}-nonesuch": "on",
+        }))
+        self.assertEqual((added, removed), (0, 0))
 
 
 class DiscountTests(TestCase):
@@ -505,7 +509,7 @@ class PlanResolutionTests(TestCase):
     def test_a_lapsed_subscription_resolves_to_the_default_not_its_own(self):
         """The row records what they chose; this answers what they get."""
         user = member("lapsed")
-        subscription = services.subscribe(user, self.professional)
+        subscription = services.subscribe(user, self.professional, force=True)
         subscription.state = SubscriptionState.LAPSED
         subscription.save(update_fields=["state"])
 
@@ -513,7 +517,7 @@ class PlanResolutionTests(TestCase):
 
     def test_arrears_still_grants_because_that_is_what_grace_means(self):
         user = member("behind")
-        subscription = services.subscribe(user, self.professional)
+        subscription = services.subscribe(user, self.professional, force=True)
         subscription.state = SubscriptionState.ARREARS
         subscription.save(update_fields=["state"])
 
@@ -536,7 +540,7 @@ class GateTests(TestCase):
 
     def test_a_plan_grants_exactly_what_it_lists(self):
         user = member("buyer")
-        services.subscribe(user, self.standard)
+        services.subscribe(user, self.standard, force=True)
 
         self.assertTrue(is_entitled(user, "cyprian"))
         self.assertFalse(is_entitled(user, "aralia"))
@@ -545,9 +549,19 @@ class GateTests(TestCase):
         """Installing a new app must not be a silent outage."""
         self.assertTrue(is_entitled(member("plain"), "some-new-app"))
 
-    def test_nothing_is_gated_before_any_plan_is_seeded(self):
-        SubscriptionPlan.objects.all().delete()
-        self.assertTrue(is_entitled(member("plain"), "aralia"))
+    def test_a_fresh_host_is_gated_by_the_registry(self):
+        """The inversion of `test_nothing_is_gated_before_any_plan_is_seeded`.
+
+        That test asserted a real property of the old design: plans were rows,
+        an unseeded host had none, `plan_for` answered None and the gate read
+        that as "sells nothing, gates nothing" — so SEEDING was what turned
+        gating on. A validated file is never empty, so the fully-open state is
+        unreachable and enforcement is BUILD_SUBSCRIPTIONS_ENFORCE's decision
+        alone, which is what that flag always claimed to be.
+        """
+        user = member("fresh")
+        self.assertEqual(plan_for(user).key, "free")
+        self.assertFalse(is_entitled(user, "aralia"))
 
     def test_the_always_free_list_covers_the_way_back_in(self):
         for code in ("core", "sso", "subscriptions", "assets", "quota"):
@@ -594,7 +608,7 @@ class MiddlewareTests(TestCase):
         self.assertEqual(payload["entitlement"], "aralia")
 
     def test_a_subscriber_writes_freely(self):
-        services.subscribe(self.user, self.professional)
+        services.subscribe(self.user, self.professional, force=True)
 
         response, request = self._run("post")
 
@@ -653,7 +667,7 @@ class MaterializeTests(TestCase):
 
     def test_one_row_per_elapsed_month(self):
         user = member("old")
-        subscription = services.subscribe(user, self.standard)
+        subscription = services.subscribe(user, self.standard, force=True)
         subscription.anchor_date = date.today().replace(day=1) - timedelta(days=70)
         subscription.anchor_date = subscription.anchor_date.replace(day=1)
         subscription.save(update_fields=["anchor_date"])
@@ -664,7 +678,7 @@ class MaterializeTests(TestCase):
 
     def test_running_it_twice_creates_nothing_new(self):
         user = member("twice")
-        subscription = services.subscribe(user, self.standard)
+        subscription = services.subscribe(user, self.standard, force=True)
 
         services.materialize(subscription)
         first = subscription.charges.count()
@@ -674,7 +688,7 @@ class MaterializeTests(TestCase):
 
     def test_it_never_bills_the_future(self):
         user = member("future")
-        subscription = services.subscribe(user, self.standard)
+        subscription = services.subscribe(user, self.standard, force=True)
 
         services.materialize(subscription)
 
@@ -693,7 +707,7 @@ class SettleTests(TestCase):
     def test_an_unpriced_host_settles_every_month_as_paid(self):
         """Zenobia today. A DUE row nobody can price would pile up forever."""
         user = member("unbilled")
-        subscription = services.subscribe(user, self.standard)
+        subscription = services.subscribe(user, self.standard, force=True)
         services.materialize(subscription)
         charge = subscription.charges.get()
 
@@ -707,29 +721,27 @@ class SettleTests(TestCase):
         period out of the treasury, forever, and nothing else on the platform
         creates a recurring outbound payment — so this is the one place somebody
         could arrange to be paid, including for themselves."""
-        stipend = SubscriptionPlan.objects.create(
-            code="unapproved", name="Unapproved", units=-4000, order=44)
+        stipend = stipend_plan()
         user = member("opportunist")
 
         with self.assertRaises(services.UnapprovedStipend):
-            services.subscribe(user, stipend)
+            services.subscribe(user, stipend, force=True)
 
         self.assertFalse(Subscription.objects.filter(user=user).exists())
 
     def test_an_approved_negative_plan_is_allowed(self):
-        stipend = SubscriptionPlan.objects.create(
-            code="approved", name="Approved", units=-4000, order=45)
+        stipend = stipend_plan()
         user = member("hired")
         approver = Person.objects.create(display_name="Chair")
 
-        subscription = services.subscribe(user, stipend, approved_by=approver)
+        subscription = services.subscribe(user, stipend, approved_by=approver, force=True)
 
         self.assertEqual(subscription.plan, stipend)
 
     def test_a_positive_plan_needs_no_approver(self):
         """Paying to be here is nobody's decision but the payer's."""
         user = member("customer")
-        self.assertIsNotNone(services.subscribe(user, self.standard))
+        self.assertIsNotNone(services.subscribe(user, self.standard, force=True))
 
     def test_a_negative_plan_pays_the_subscriber(self):
         """A stipend. Same plan, same period, same ledger — other direction.
@@ -740,8 +752,7 @@ class SettleTests(TestCase):
         """
         from unittest import mock
 
-        stipend = SubscriptionPlan.objects.create(
-            code="engineer", name="Engineer", units=-500, order=40)
+        stipend = stipend_plan()
         user = member("engineer-1")
         subscription = services.subscribe(
             user, stipend,
@@ -764,8 +775,7 @@ class SettleTests(TestCase):
         """The failure that would matter most: paying somebody by debiting them."""
         from unittest import mock
 
-        stipend = SubscriptionPlan.objects.create(
-            code="tech", name="Technician", units=-300, order=41)
+        stipend = stipend_plan()
         user = member("tech-1")
         subscription = services.subscribe(
             user, stipend,
@@ -785,18 +795,17 @@ class SettleTests(TestCase):
         you are owed — and ROUND_DOWN would have shrunk it silently."""
         community = Community.objects.create(name="Perks", slug="perks")
         CommunityDiscount.objects.create(community=community, percent=20)
-        stipend = SubscriptionPlan.objects.create(
-            code="marketing", name="Marketing", units=-1000, order=42)
+        stipend = stipend_plan()
 
-        self.assertEqual(services.billed_units(stipend, 20), Decimal("-1000"))
+        self.assertEqual(services.billed_units(stipend, 20), stipend.units)
+        self.assertEqual(services.billed_units(stipend, 20), Decimal("-500"))
 
     def test_an_unpayable_stipend_stays_due_without_arrears(self):
         """An empty treasury is not a default. Arrears mean 'you owe us and
         access is at risk'; a member the platform could not pay owes nothing."""
         from unittest import mock
 
-        stipend = SubscriptionPlan.objects.create(
-            code="board", name="Board", units=-900, order=43)
+        stipend = stipend_plan()
         user = member("board-1")
         subscription = services.subscribe(
             user, stipend,
@@ -816,7 +825,7 @@ class SettleTests(TestCase):
 
     def test_a_free_plan_costs_nothing_and_settles(self):
         user = member("freeloader")
-        subscription = services.subscribe(user, self.free)
+        subscription = services.subscribe(user, self.free, force=True)
         services.materialize(subscription)
         charge = subscription.charges.get()
 
@@ -830,7 +839,7 @@ class SettleTests(TestCase):
         from unittest import mock
 
         user = member("double")
-        subscription = services.subscribe(user, self.standard)
+        subscription = services.subscribe(user, self.standard, force=True)
         services.materialize(subscription)
         charge = subscription.charges.get()
         services.settle(charge)
@@ -846,7 +855,7 @@ class SettleTests(TestCase):
         from toto.quota.charge import InsufficientFunds
 
         user = member("broke")
-        subscription = services.subscribe(user, self.standard)
+        subscription = services.subscribe(user, self.standard, force=True)
         services.materialize(subscription)
         charge = subscription.charges.get()
 
@@ -873,7 +882,7 @@ class ArrearsTests(TestCase):
         from django.utils import timezone
 
         user = member(f"late{days_ago}")
-        subscription = services.subscribe(user, self.professional)
+        subscription = services.subscribe(user, self.professional, force=True)
         subscription.state = SubscriptionState.ARREARS
         subscription.arrears_since = timezone.now() - timedelta(days=days_ago)
         subscription.save(update_fields=["state", "arrears_since"])
@@ -912,7 +921,7 @@ class ArrearsTests(TestCase):
         services.lapse_if_overdue(subscription)
         self.assertEqual(plan_for(subscription.user), self.free)
 
-        services.subscribe(subscription.user, self.professional)
+        services.subscribe(subscription.user, self.professional, force=True)
 
         self.assertEqual(plan_for(subscription.user), self.professional)
 
@@ -935,7 +944,13 @@ class ViewTests(TestCase):
             site_name="Test",
             defaults={"author": "t", "publication_year": 2026, "active": True})
         cls.free, cls.standard, cls.professional = make_plans()
-        cls.user = member("shopper")
+        cls.community = Community.objects.create(name="Shop", slug="shop")
+        cls.user = member("shopper", cls.community)
+        # Eligibility is closed by default, so a shopper who is offered
+        # nothing sees nothing and can buy nothing. Offering the ladder to
+        # their community is what makes this class about the VIEWS again.
+        offer(cls.standard, cls.community)
+        offer(cls.professional, cls.community)
 
     @needs_public_pages
     def test_the_plans_page_is_readable_without_logging_in(self):
@@ -950,7 +965,7 @@ class ViewTests(TestCase):
         response = self.client.get(reverse("subscriptions:plans"))
 
         row = next(r for r in response.context["rows"]
-                   if r["plan"].code == "standard")
+                   if r["plan"].key == "standard")
         codes = {e.code for e in row["entitlements"]}
         self.assertIn("cyprian", codes)
         # The commons and the machinery are on every plan, so a card no
@@ -968,7 +983,7 @@ class ViewTests(TestCase):
         response = self.client.get(reverse("subscriptions:plans"))
 
         row = next(r for r in response.context["rows"]
-                   if r["plan"].code == "standard")
+                   if r["plan"].key == "standard")
         self.assertEqual(row["discount_percent"], 40)
         self.assertEqual(row["discount_source"], "Students")
 
@@ -984,7 +999,7 @@ class ViewTests(TestCase):
         from unittest import mock
 
         self.client.force_login(self.user)
-        services.subscribe(self.user, self.standard)
+        services.subscribe(self.user, self.standard, force=True)
 
         with mock.patch("toto.subscriptions.services.settle") as settle:
             response = self.client.get(reverse("subscriptions:mine"))
@@ -996,7 +1011,7 @@ class ViewTests(TestCase):
 
     def test_cancelling_keeps_the_free_plan(self):
         self.client.force_login(self.user)
-        services.subscribe(self.user, self.professional)
+        services.subscribe(self.user, self.professional, force=True)
 
         self.client.post(reverse("subscriptions:cancel"))
 
@@ -1004,7 +1019,15 @@ class ViewTests(TestCase):
 
 
 class IngressTests(TestCase):
-    """The seed, and the rule that seeding is what turns gating on."""
+    """The seeder, which now seeds OFFERS rather than plans.
+
+    Its old battery is gone with the table: three plans ensured, exactly one
+    default survives a hand edit, and the studio→professional rename that
+    carried subscribers across. Renaming a tier is an edit to plans.yaml now,
+    the default is guaranteed by the validator rather than fixed up after the
+    fact, and there are no rows to ensure. What is left to test is the thing
+    the command actually does: make the ladder reachable.
+    """
 
     def _seed(self, *args):
         from io import StringIO
@@ -1015,106 +1038,83 @@ class IngressTests(TestCase):
         call_command("ingress_subscriptions", *args, stdout=out)
         return out.getvalue()
 
-    def test_every_paid_entitlement_is_granted_by_some_seeded_plan(self):
-        """The catalogue and the plan lists change together — the standing rule.
+    @classmethod
+    def setUpTestData(cls):
+        Platform.objects.create(site_name="T", author="t",
+                                publication_year=2026, active=True)
+        cls.free, cls.standard, cls.professional = make_plans()
 
-        A code declared paid in the catalogue but granted by no plan is the
-        worst kind of wrong: the tile disappears for everybody (superusers
-        included) and every write 402s under ENFORCE, silently. It has now
-        happened twice — the whole compute tier, then `ocr` and
-        `fileservices` — found by audit both times. This reads the seed
-        module's own PLANS constant, so it holds on any build regardless of
-        which apps are installed here.
-        """
-        from .management.commands.ingress_subscriptions import PLANS
+    def test_the_shipped_ladder_grants_every_paid_feature(self):
+        """A feature declared paid and granted by NO plan hides its dashboard
+        tile from everybody, superusers included, and 402s its writes wherever
+        enforcement is on. That has happened twice — to the compute tier, and
+        to ocr/fileservices — and both times it was found by audit. Asserted
+        against the SHIPPED file, not the fixture."""
+        from pathlib import Path
 
-        granted = set()
-        for plan in PLANS:
-            granted.update(plan["entitlements"])
-        missing = [e.code for e in registry.all()
-                   if not e.free and e.code not in granted]
-        self.assertEqual(missing, [], (
-            "declared paid in the catalogue, granted by no seeded plan — "
-            f"tiles hidden and writes 402 for everybody: {missing}"))
+        shipped = plans.DEFAULT_PLANS_FILE
+        self.assertEqual(plans.validate(Path(shipped)), [])
 
-    def test_it_seeds_three_plans(self):
+        import yaml
+
+        raw = yaml.safe_load(Path(shipped).read_text())
+        granted = {key for plan in raw["plans"] for key in plan.get("features", [])}
+        for entitlement in registry.all():
+            if entitlement.free:
+                continue
+            with self.subTest(feature=entitlement.feature_key):
+                self.assertIn(entitlement.feature_key, granted)
+
+    def test_it_offers_the_default_plan_to_every_community(self):
+        """Closed by default means a fresh platform would otherwise be dark."""
+        guild = Community.objects.create(name="Guild", slug="ingress-guild")
+        club = Community.objects.create(name="Club", slug="ingress-club")
         self._seed()
-
-        codes = set(SubscriptionPlan.objects.values_list("code", flat=True))
-        self.assertEqual(codes, {"free", "standard", "professional"})
+        for community in (guild, club):
+            with self.subTest(community=community.name):
+                self.assertTrue(CommunityPlanOffer.objects.filter(
+                    community=community, plan_key="free").exists())
 
     def test_running_it_twice_changes_nothing(self):
+        Community.objects.create(name="Guild", slug="ingress-guild2")
         self._seed()
+        before = CommunityPlanOffer.objects.count()
         self._seed()
+        self.assertEqual(CommunityPlanOffer.objects.count(), before)
 
-        self.assertEqual(SubscriptionPlan.objects.count(), 3)
+    def test_it_says_so_when_there_is_nothing_to_offer(self):
+        self.assertIn("no communities", self._seed())
 
-    def test_exactly_one_default_survives_a_hand_edit(self):
-        """Two defaults would make 'what does a free user get' ambiguous."""
-        self._seed()
-        SubscriptionPlan.objects.filter(code="professional").update(is_default=True)
-
-        self._seed()
-
-        self.assertEqual(
-            list(SubscriptionPlan.objects.filter(is_default=True)
-                 .values_list("code", flat=True)),
-            ["free"])
-
-    def test_seeding_renames_studio_in_place_keeping_subscribers(self):
-        """The ladder's third plan was renamed studio → professional (8/2026).
-        update_or_create keys on code, so without the rename pre-pass the old
-        row would survive as an active orphan and its subscribers would stop
-        matching the seeded ladder. Renaming IN PLACE keeps every
-        Subscription FK on the same row."""
-        legacy = SubscriptionPlan.objects.create(
-            code="studio", name="Studio", units=600, order=30)
-        user = User.objects.create_user("veteran", password="x")
-        subscription = services.subscribe(user, legacy)
-
-        self._seed()
-
-        legacy.refresh_from_db()
-        self.assertEqual(legacy.code, "professional")
-        subscription.refresh_from_db()
-        self.assertEqual(subscription.plan_id, legacy.pk)
-        self.assertEqual(SubscriptionPlan.objects.count(), 3)
-        self.assertFalse(
-            SubscriptionPlan.objects.filter(code="studio").exists())
-
-    def test_seeding_deactivates_studio_when_professional_already_exists(self):
-        """Never merge two plans by guess: if an operator already created
-        professional by hand, the legacy studio row is deactivated, not
-        renamed onto it."""
-        SubscriptionPlan.objects.create(
-            code="studio", name="Studio", units=600, order=30)
-        SubscriptionPlan.objects.create(
-            code="professional", name="Professional", units=600, order=30)
-
-        self._seed()
-
-        legacy = SubscriptionPlan.objects.get(code="studio")
-        self.assertFalse(legacy.active)
-        self.assertTrue(
-            SubscriptionPlan.objects.get(code="professional").active)
+    def test_full_offers_the_paid_ladder_to_the_first_community(self):
+        guild = Community.objects.create(name="Guild", slug="ingress-guild3")
+        self._seed("--full")
+        offered = set(CommunityPlanOffer.objects
+                      .filter(community=guild).values_list("plan_key", flat=True))
+        self.assertEqual(offered, {"free", "standard", "professional", "stipend"})
 
     def test_the_demo_discount_is_full_only(self):
-        Community.objects.create(name="Demo")
-
+        Community.objects.create(name="Guild", slug="ingress-guild4")
         self._seed()
         self.assertEqual(CommunityDiscount.objects.count(), 0)
-
         self._seed("--full")
         self.assertEqual(CommunityDiscount.objects.count(), 1)
 
-    def test_seeding_is_what_starts_gating(self):
-        """A host that never seeds is fully open, with the same code deployed."""
-        user = member("early")
-        self.assertTrue(is_entitled(user, "aralia"))
+    def test_a_broken_ladder_stops_the_seed(self):
+        """ingress_all is the deploy-time leg of the same check `manage.py
+        check` performs at build time."""
+        import tempfile
+        from pathlib import Path
 
-        self._seed()
+        from django.core.management.base import CommandError
+        from django.test import override_settings
 
-        self.assertFalse(is_entitled(user, "aralia"))
+        broken = Path(tempfile.mkdtemp()) / "broken.yaml"
+        broken.write_text("version: 1\nplans: []\n")
+        with override_settings(SUBSCRIPTION_PLANS_FILE=str(broken)):
+            plans.reload()
+            with self.assertRaises(CommandError):
+                self._seed()
+        plans.reload()
 
 
 class ManualTests(TestCase):
@@ -1160,7 +1160,10 @@ class NavigationTests(TestCase):
             site_name="Test",
             defaults={"author": "t", "publication_year": 2026, "active": True})
         cls.free, cls.standard, cls.professional = make_plans()
-        cls.user = member("browser")
+        cls.community = Community.objects.create(name="Browse", slug="browse")
+        cls.user = member("browser", cls.community)
+        offer(cls.standard, cls.community)
+        offer(cls.professional, cls.community)
 
     @needs_public_pages
     def test_the_plans_page_carries_the_economy_strip(self):

@@ -212,7 +212,7 @@ def subscription_context(request):
         payload["my_plan"] = plan_for(user)
         payload["my_subscription"] = (Subscription.objects
                                       .filter(user=user)
-                                      .select_related("plan").first())
+                                      .first())
     except Exception:  # noqa: BLE001 - a context processor runs on every page
         return payload
     return payload

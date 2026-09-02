@@ -648,7 +648,7 @@ def run_billing(*, now=None) -> dict:
 
     queryset = (Subscription.objects
                 .exclude(state=SubscriptionState.CANCELLED)
-                .select_related("plan", "user"))
+                .select_related("user"))
     for subscription in queryset.iterator():
         counts["seen"] += 1
         try:

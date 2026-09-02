@@ -75,7 +75,7 @@ def plans(request):
 def mine(request):
     """Your plan, your next month, and every month you have been billed."""
     subscription = (Subscription.objects.filter(user=request.user)
-                    .select_related("plan").first())
+                    .first())
 
     charges = []
     if subscription is not None:
