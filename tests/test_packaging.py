@@ -400,25 +400,20 @@ def test_memo_ships_in_toto_works(owner):
     assert owner.get("toto/memo/render_pdf.py") == "toto-works"
 
 
-def test_primula_ships_in_toto_works(owner):
-    """Primula is a toto-works app on a per-host BUILD_PRIMULA flag, beside memo.
+def test_primula_is_parked_and_ships_in_no_wheel(all_names, owner):
+    """Primula was a toto-works app until it was PARKED on 2026-09-02.
 
-    In toto-works because it is the same shape as memo — a standalone UI over a vault
-    file type — and its only model FKs into ``vault.VaultFile``, which every host
-    already installs. The Univer JS itself is NOT in any wheel: it is downloaded into
-    ``core/static/vendor/univer/`` by each host's download_vendor.py at image build.
+    This test asserted eight files into toto-works and went on asserting them
+    after the source left the package, so it failed on every one. Inverted
+    rather than deleted, because parking is reversible and the property worth
+    holding now is the opposite one: a parked app must not ride along in a
+    wheel, where it would install, migrate and mount on every host while its
+    source sits in limbo.
     """
-    assert owner.get("toto/primula/models.py") == "toto-works"
-    # The two things a wheel silently drops.
-    assert owner.get("toto/primula/migrations/0001_initial.py") == "toto-works"
-    assert owner.get("toto/primula/templates/primula/edit.html") == "toto-works"
-    # The vault "open" routing and the seeder.
-    assert owner.get("toto/primula/plugins/vault_editor_plugins.py") == "toto-works"
-    assert owner.get("toto/primula/management/commands/ingress_primula.py") == "toto-works"
-    # The suite's own runnable settings, so a host's clean-env gate can run it.
-    assert owner.get("toto/primula/testing/settings.py") == "toto-works"
-    assert owner.get("toto/primula/tests.py") == "toto-works"
-    # The 'sheet' choice lives in vault (toto-base) — its migration must ride there.
+    assert not [n for n in all_names if n.startswith("toto/primula/")]
+    # The 'sheet' vault file type is NOT parked with it. The choice stays in
+    # toto-base because rows already carry it: dropping the migration would
+    # make every stored sheet an unreadable file_type on the next deploy.
     assert owner.get("toto/vault/migrations/0010_alter_vaultfile_file_type.py") == "toto-base"
 
 

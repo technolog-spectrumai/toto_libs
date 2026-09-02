@@ -157,15 +157,21 @@ def test_jess_is_opt_in_and_no_tier_turns_it_on():
     assert resolve(BUILD_JESS=0).jess is False
 
 
-def test_primula_is_opt_in_and_buys_nothing_else():
-    # Sheets save over a plain POST — no celery, no channels — so BUILD_PRIMULA must
-    # not pull the realtime layer in, and nothing else may switch it on: what it
-    # actually costs a host is the vendored Univer JS baked into the image.
-    assert resolve().primula is False
-    assert resolve(BUILD_PRIMULA=0).primula is False
-    f = resolve(BUILD_PRIMULA=1)
-    assert f.primula is True
-    assert (f.realtime, f.workflows, f.editor) == (True, True, False)  # realtime+workflows compulsory
+def test_no_flag_resurrects_the_parked_spreadsheet_app():
+    """toto.primula was PARKED to zenobia/limbo/primula on 2026-09-02.
+
+    This asserted BUILD_PRIMULA's closure until then, and kept asserting it
+    afterwards — raising AttributeError on a field features.py no longer
+    declares, which is a test that has stopped testing rather than one that
+    fails. Inverted instead of deleted: `flag()` reads the environment, so a
+    stale BUILD_PRIMULA=1 left in an operator's shell or an old deploy config
+    must resolve to nothing at all rather than to a half-built app.
+    """
+    assert not hasattr(resolve(), "primula")
+    assert not hasattr(resolve(BUILD_PRIMULA=1), "primula")
+    # And it buys nothing else either: the flag is not merely unnamed, it is
+    # inert, so the resolved build is identical with and without it.
+    assert resolve(BUILD_PRIMULA=1) == resolve()
 
 
 def test_fileservices_forces_workflows():
