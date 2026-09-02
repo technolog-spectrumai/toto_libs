@@ -230,22 +230,34 @@ def test_texlive_is_its_own_explicit_flag():
 def test_the_labs_carry_their_closures():
     # 1.47: the zenobia workspace labs resolve here so their closures cannot be
     # forgotten by a hand-written config. texlab compiles through the workflows
-    # engine and derives the TeX layer; antaresia's jupyter packages ride the
-    # realtime pip layer.
+    # engine and derives the TeX layer; the Python lab's jupyter packages ride
+    # the realtime pip layer.
+    #
+    # The ATTRIBUTE is `dracena`; `BUILD_ANTARESIA` is only the legacy env name,
+    # which features.py still honours. These assertions read `f.antaresia` for
+    # some time after the rename and raised AttributeError rather than failing,
+    # so both of the closures below were unchecked.
     f = resolve(BUILD_TEXLAB=1)
     assert (f.texlab, f.workflows, f.texlive, f.realtime) == (True, True, True, True)
-    f = resolve(BUILD_ANTARESIA=1)
-    assert (f.antaresia, f.realtime) == (True, True)
+    f = resolve(BUILD_DRACENA=1)
+    assert (f.dracena, f.realtime) == (True, True)
     assert f.texlive is False   # a Python lab buys no TeX (workflows is compulsory now)
+
+
+def test_the_legacy_antaresia_flag_still_resolves_the_python_lab():
+    # The rename kept the old env name working on purpose: a host config
+    # written before 1.47 must not silently lose its Python lab.
+    f = resolve(BUILD_ANTARESIA=1)
+    assert (f.dracena, f.realtime) == (True, True)
 
 
 def test_the_ambrosia_alias_still_means_both_labs():
     f = resolve(BUILD_AMBROSIA=1)
-    assert (f.antaresia, f.texlab, f.texlive, f.workflows) == (True, True, True, True)
+    assert (f.dracena, f.texlab, f.texlive, f.workflows) == (True, True, True, True)
     # An explicit "0" on a specific flag wins over the alias — and takes its
     # closure with it.
     f = resolve(BUILD_AMBROSIA=1, BUILD_TEXLAB=0)
-    assert (f.antaresia, f.texlab, f.texlive) == (True, False, False)
+    assert (f.dracena, f.texlab, f.texlive) == (True, False, False)
 
 
 def test_an_edit_only_tex_lab_is_a_deliberate_refusal():
