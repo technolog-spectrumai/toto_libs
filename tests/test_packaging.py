@@ -377,7 +377,7 @@ def test_jess_ships_in_toto_base(owner, all_names):
     assert not [n for n in all_names if n.endswith("toto/api/email_service.py")]
 
 
-def test_memo_ships_in_toto_works(owner):
+def test_memo_ships_in_toto_works(all_names, owner):
     """memo is the first app in this package to ship static files.
 
     Its `static/memo/*.css` and `*.js` reach a wheel through the
@@ -387,17 +387,24 @@ def test_memo_ships_in_toto_works(owner):
     clean-env gate. Pin them here so the failure is one line instead.
     """
     assert owner.get("toto/memo/presentation_format.py") == "toto-works"
-    assert owner.get("toto/memo/sanitize.py") == "toto-works"
-    # The three things a wheel silently drops: templates, static, and the
-    # settings module the gate needs to run the suite at all.
+    # The two things a wheel silently drops: templates and static.
     assert owner.get("toto/memo/templates/memo/edit.html") == "toto-works"
     assert owner.get("toto/memo/templates/memo/_slide.html") == "toto-works"
     assert owner.get("toto/memo/static/memo/slide.css") == "toto-works"
     assert owner.get("toto/memo/static/memo/editor.js") == "toto-works"
-    assert owner.get("toto/memo/testing/settings.py") == "toto-works"
-    assert owner.get("toto/memo/tests.py") == "toto-works"
-    assert owner.get("toto/memo/bundle.py") == "toto-works"
+    # The suite the gate actually runs. It named `toto/memo/tests.py` and
+    # `toto/memo/testing/settings.py` for some time after both left — tests.py
+    # split into tests_read + tests_gear_export, and the settings module went
+    # with the slide editor, leaving the gate to borrow kanban's harness. Every
+    # assertion below the first was therefore failing at once, which is how a
+    # packaging test stops being read.
+    assert owner.get("toto/memo/tests_read.py") == "toto-works"
+    assert owner.get("toto/memo/tests_gear_export.py") == "toto-works"
     assert owner.get("toto/memo/render_pdf.py") == "toto-works"
+    # `sanitize.py` and `bundle.py` are NOT here and may not come back: the
+    # sanitizers moved to toto.antivirus when memo went read-only, and a second
+    # copy in this wheel is the drift that module exists to prevent.
+    assert not [n for n in all_names if n.endswith("toto/memo/sanitize.py")]
 
 
 def test_primula_is_parked_and_ships_in_no_wheel(all_names, owner):
