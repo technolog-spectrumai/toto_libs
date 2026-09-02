@@ -161,11 +161,12 @@ TASK_MODULES = [
     # answers KeyError every two minutes, which is the exact failure the
     # weather and monit notes above record. Inert where the wheel is absent.
     "toto.anastasia",
-    # Ireneo's bundle export/import (BUILD_IRENEO). Its worker entry points are
-    # plain tasks a VIEW enqueues, not workflow predefined tasks — so without
-    # this line the worker answers KeyError and the page waits forever on a job
-    # that will never run. Inert where the app is absent.
-    "toto.ireneo",
+    # toto.ireneo stood here for its bundle export/import tasks. The app was
+    # PARKED to zenobia/limbo/ireneo on 2026-08-22 and ships in no wheel, so
+    # the entry named a module autodiscovery could never import — which is what
+    # test_every_task_module_ships_a_tasks_submodule catches. Removed rather
+    # than commented back: an entry for an app in limbo is not inert, it is a
+    # promise nothing keeps, and reviving the app is the moment to add it back.
     "toto.jess",        # the mail queue — every email in the platform passes through it
     "toto.clearing",    # the ledger bridge: outbox delivery, redrive, hold expiry
     "toto.tax",         # the daily levy sweep; inert where toto-economy is absent
