@@ -1,7 +1,7 @@
 """Build-time checks on the plan registry.
 
 `manage.py check` runs these, which means the gate runs them and a deploy stops
-on a bad ladder. Three findings, and the severity split is the point:
+on a bad ladder. Two findings, and the severity split is the point:
 
 * **E001** — the file cannot become a registry at all (malformed, duplicate
   plan_key, unknown feature_key, no default). An Error fails `check`.

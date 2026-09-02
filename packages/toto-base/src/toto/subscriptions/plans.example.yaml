@@ -1,0 +1,69 @@
+# An example ladder — copy this, edit it, and point a host at it with
+#
+#     SUBSCRIPTION_PLANS_FILE = "/etc/toto/plans.yaml"
+#
+# in settings (or `env: SUBSCRIPTION_PLANS_FILE:` in a deploy config). That
+# REPLACES the shipped plans.yaml wholesale; the two are never merged.
+#
+# This file is not loaded by any host. It is loaded by the test suite, which
+# asserts it validates — an example that has quietly rotted is worse than no
+# example, because it is the thing people copy.
+#
+# Full schema and every validation rule: PLANS.md, beside this file.
+
+version: 1
+
+plans:
+
+  # ---------------------------------------------------------------- required
+  # Exactly one plan must set `default: true`, and it is what everybody has
+  # before they buy anything. It may not cost units — a default nobody has
+  # agreed to pay for cannot bill them.
+  - key: free                 # stable identity: ^[a-z][a-z0-9_-]{0,63}$
+    name: Free                # what a person reads. Rename freely.
+    default: true
+    units: 0
+    order: 10                 # card order, low first. Ties break on units.
+    description: >
+      Everything you need to be here. Costs nothing, never expires.
+    features: []              # free features are never listed: see PLANS.md
+
+  # ------------------------------------------------------------------ a tier
+  # `units` is a signed QUANTITY per month, not money. What a unit costs is
+  # the tariff rate card's business, so re-pricing does not touch this file.
+  - key: standard
+    name: Standard
+    units: 200
+    order: 20
+    description: >
+      The everyday tools. Metered work is charged per use on top.
+    features:                 # every key must be REGISTERED and NOT free
+      - editor
+      - kanban
+
+  - key: professional
+    name: Professional
+    units: 600
+    order: 30
+    description: >
+      Everything in Standard, plus the writing tools.
+    features:
+      - editor
+      - kanban
+      - cyprian
+      - memo
+
+  # ------------------------------------------------------------- a stipend
+  # Negative units run the same mechanism backwards: the platform pays the
+  # holder each month. Community discounts are refused on a negative plan —
+  # a discount reduces what you owe and has no meaning when you are owed.
+  #
+  # Delete this tier unless you mean it. Nothing else in the suite creates
+  # value out of nothing, and this does.
+  - key: stipend
+    name: Stipend
+    units: -500
+    order: 90
+    description: >
+      For the people the platform pays rather than charges.
+    features: []

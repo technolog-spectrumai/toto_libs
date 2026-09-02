@@ -32,7 +32,7 @@ crashing, and their charge rows keep the name they paid under.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 #: Where the shipped ladder lives. A host replaces it wholesale by pointing

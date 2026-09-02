@@ -194,6 +194,22 @@ def test_graph_yaml_are_packaged(all_names, owner):
     assert all(owner[y] == "toto-graph" for y in yamls), {y: owner[y] for y in yamls}
 
 
+def test_plan_yaml_is_packaged(owner):
+    """The subscription ladder is DATA, and a wheel that drops it does not
+    boot: `SubscriptionsConfig.ready` loads the file and raises PlanError when
+    it is missing, so every page 500s on a host installed from wheels only.
+    That is exactly what the clean-env gate installs, and exactly the failure
+    a source checkout cannot reproduce.
+
+    PLANS.md and the example ride along: an operator asked to point
+    SUBSCRIPTION_PLANS_FILE somewhere needs the schema on the host they are
+    holding, not in a repository they may not have.
+    """
+    assert owner.get("toto/subscriptions/plans.yaml") == "toto-base"
+    assert owner.get("toto/subscriptions/plans.example.yaml") == "toto-base"
+    assert owner.get("toto/subscriptions/PLANS.md") == "toto-base"
+
+
 def test_management_commands_are_packaged(owner):
     assert owner.get("toto/core/management/commands/init_data.py") == "toto-base"
     assert owner.get("toto/core/management/commands/create_platform.py") == "toto-base"
