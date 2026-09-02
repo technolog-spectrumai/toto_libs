@@ -11,7 +11,7 @@ the page renders itself from the same rows the gate reads.
 gate resolves ``request.resolver_match.app_name`` and nothing else, and a
 mapping table between two naming schemes is a thing to keep in step.
 
-Delta's app expresses the same idea as ``plan.code.startswith("academy")``. That
+Delta's app expresses the same idea as ``plan.key.startswith("academy")``. That
 is smaller and it is not enough here: it can describe one bundle, its plan page
 can say nothing about what a plan contains, and adding a second bundle means a
 second prefix convention nobody wrote down.

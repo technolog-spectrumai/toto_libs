@@ -63,29 +63,31 @@ def entitlement_for_request(request) -> str:
     return match.app_name or ""
 
 
-def is_entitled(user, code: str) -> bool:
-    """Whether this user's current plan grants this entitlement.
+def is_entitled(user, feature_key: str) -> bool:
+    """Whether this user's current plan grants this feature.
 
-    Free entitlements and unknown apps answer True — an app nobody declared is
+    Free features and unknown apps answer True — an app nobody declared is
     not a thing somebody forgot to pay for, it is a thing nobody decided to
     sell, and refusing it would make installing a new app a silent outage.
+
+    There is no longer a "nothing seeded, so nothing is gated" branch. It
+    existed because plans were rows and a fresh host had none, which made
+    SEEDING the thing that turned gating on — a surprising place for that
+    decision to live. The ladder is a validated file now and is never empty,
+    so enforcement is decided by BUILD_SUBSCRIPTIONS_ENFORCE alone, which is
+    what the flag always claimed to do.
     """
     from .catalogue import registry
 
-    if not code or code in ALWAYS_FREE:
+    if not feature_key or feature_key in ALWAYS_FREE:
         return True
-    entitlement = registry.get(code)
+    entitlement = registry.get(feature_key)
     if entitlement is None or entitlement.free:
         return True
 
     from .models import plan_for
 
-    plan = plan_for(user)
-    if plan is None:
-        # Nothing seeded: the platform has no plans, so it sells nothing and
-        # gates nothing. This is what keeps a fresh install fully usable.
-        return True
-    return plan.grants(code)
+    return plan_for(user).grants(feature_key)
 
 
 def _wants_json(request) -> bool:

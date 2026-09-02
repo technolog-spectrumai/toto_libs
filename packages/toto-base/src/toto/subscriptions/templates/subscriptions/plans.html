@@ -104,7 +104,7 @@ Your communities decide what you pay. Each one may take a percentage off a plan,
         {% elif row.is_current %}
           <p class="text-center text-sm opacity-60">{% trans "This is what you have." %}</p>
         {% else %}
-          <form method="post" action="{% url 'subscriptions:subscribe' row.plan.code %}">
+          <form method="post" action="{% url 'subscriptions:subscribe' row.plan.key %}">
             {% csrf_token %}
             <button type="submit"
                     :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
@@ -116,7 +116,7 @@ Your communities decide what you pay. Each one may take a percentage off a plan,
     </article>
   {% empty %}
     <p class="text-sm opacity-60">
-      {% trans "No plans are set up on this server, so nothing is restricted. Everything installed here is available to everybody." %}</p>
+      {% trans "Nothing is offered to you yet. Paid plans are offered through communities — when one of yours offers a plan, it appears here." %}</p>
   {% endfor %}
 </div>
 {% endblock %}

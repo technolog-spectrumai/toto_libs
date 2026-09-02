@@ -11,8 +11,12 @@ on a bad ladder. Three findings, and the severity split is the point:
   times it was found by audit. A Warning rather than an Error because the
   catalogue stays open — an app may ship its own entitlements.py on a host
   whose ladder was written elsewhere.
-* **W002** — a plan grants something this host does not mount. Harmless on the
-  card (feature_rows filters through registry.installed()) but worth saying.
+There is deliberately NO check for "a plan grants something this host does not
+mount". One was written and removed the same day: it fired seventeen times on
+an ordinary lean build, because a ladder describes the PRODUCT while a build is
+a subset of it — every feature a host does not switch on tripped it. A warning
+that fires on a healthy system teaches people to ignore the warnings, and the
+card already filters those rows out through ``registry.installed()``.
 """
 
 from django.core.checks import Error, Warning, register
@@ -42,13 +46,4 @@ def check_subscription_plans(app_configs, **kwargs):
             hint="Add it to a plan in plans.yaml, or mark it free.",
             id="subscriptions.W001"))
 
-    mounted = {e.feature_key for e in registry.installed()}
-    declared = registry.declared_keys()
-    for key in sorted(granted):
-        if key in declared and key not in mounted:
-            findings.append(Warning(
-                f"a plan grants {key!r}, which this host does not serve",
-                hint="Harmless — the plan card filters it out — but the "
-                     "ladder is describing another host's build.",
-                id="subscriptions.W002"))
     return findings

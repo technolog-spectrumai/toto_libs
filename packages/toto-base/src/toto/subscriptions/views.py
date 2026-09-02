@@ -8,14 +8,16 @@ from __future__ import annotations
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import get_object_or_404, redirect, render
+from django.http import Http404
+from django.shortcuts import redirect, render
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
 
+from . import plans as plans_registry
 from . import services
-from .models import Subscription, SubscriptionPlan, default_plan, plan_for
+from .models import Subscription, default_plan, plan_for
 
 
 def _render(request, template_name, context):
@@ -34,23 +36,29 @@ def plans(request):
     current = plan_for(user) if user.is_authenticated else None
 
     rows = []
-    # `visible_plans`, not `.filter(active=True)`: a plan with audience rows
-    # is offered only to members of those communities, and this page and the
-    # subscribe endpoint below must read the SAME queryset or hiding is a
-    # bluff. The card says which community brought the offer — a plan that
-    # appears for reasons the reader cannot see looks like a pricing bug.
-    for plan in services.visible_plans(user).prefetch_related(
-            "audiences__community"):
+    # `eligible_plans`, read by the subscribe endpoint below through the same
+    # predicate: a plan this person is not offered must be as unreachable by
+    # POST as it is absent from here, or hiding is a bluff.
+    #
+    # An anonymous visitor gets the WHOLE ladder instead, rendered inert —
+    # what a platform charges is not a secret, and the template already
+    # answers "sign in to choose" where the buttons would be. Eligibility
+    # scopes what a logged-in person may BUY, not what a stranger may read.
+    catalogue = (services.eligible_plans(user) if user.is_authenticated
+                 else plans_registry.all_plans())
+    for plan in catalogue:
         quote = services.quote(user, plan)
-        quote["entitlements"] = plan.entitlement_rows()
-        quote["is_current"] = current is not None and plan.pk == current.pk
-        quote["audience"] = [a.community.name for a in plan.audiences.all()]
+        quote["entitlements"] = plan.feature_rows()
+        quote["is_current"] = current is not None and plan.key == current.key
+        # Why this card is here — the communities that brought the offer.
+        # Empty for the default plan, and for staff seeing a plan nobody is
+        # offered; the template says which rather than implying "public".
+        quote["audience"] = services.offering_communities(user, plan)
         rows.append(quote)
 
     subscription = None
     if user.is_authenticated:
-        subscription = (Subscription.objects.filter(user=user)
-                        .select_related("plan").first())
+        subscription = Subscription.objects.filter(user=user).first()
 
     return _render(request, "subscriptions/plans.html", {
         "active_tab": "plans",
@@ -84,7 +92,7 @@ def mine(request):
         "subscription": subscription,
         "plan": plan,
         "quote": services.quote(request.user, plan),
-        "entitlements": plan.entitlement_rows() if plan else [],
+        "entitlements": plan.feature_rows() if plan else [],
         "charges": charges,
         "grace_days": services.grace_days(),
     })
@@ -92,12 +100,14 @@ def mine(request):
 
 @login_required
 @require_POST
-def subscribe(request, code):
-    # The visible queryset, NOT `active=True`: a plan offered to communities
-    # this user is in none of must be as unreachable by POST as it is absent
-    # from the page — 404, the same answer a stranger gets for a draft
-    # bounty, because a 403 would confirm the code exists.
-    plan = get_object_or_404(services.visible_plans(request.user), code=code)
+def subscribe(request, plan_key):
+    # The SAME predicate the page renders from: a plan offered to no community
+    # this person is in must be as unreachable by POST as it is absent from
+    # the page — 404, not 403, because a 403 would confirm the key exists.
+    # An unknown key answers identically, for the same reason.
+    if not services.is_eligible(request.user, plan_key):
+        raise Http404("No such plan.")
+    plan = plans_registry.plan(plan_key)
     services.subscribe(request.user, plan)
     messages.success(request, _("You are on the %(plan)s plan.") % {"plan": plan.name})
     return redirect("subscriptions:mine")
@@ -132,10 +142,11 @@ def audience(request):
     cannot turn it is just a tease.
 
     The grid is communities × plans, plans as columns because there are few
-    of them. A COLUMN with no ticks anywhere is a public plan — the page
-    says so in the header, because "restricted to nobody" and "offered to
-    everyone" being the same state is the one thing an operator must not
-    have to deduce.
+    of them. A COLUMN WITH NO TICKS REACHES NOBODY — that is the whole
+    inversion, and the header says it in those words. The previous table read
+    an empty column as "public", so an operator who saw one had no way to
+    tell "offered to everyone" from "offered to no one"; now there is only
+    one meaning and the page states it.
     """
     from django.http import HttpResponseForbidden
 
@@ -144,31 +155,37 @@ def audience(request):
 
     from toto.socialhub.models import Community
 
-    from .models import PlanAudience
+    from .models import CommunityPlanOffer
 
     if request.method == "POST":
-        added, removed = services.set_audiences(request.POST)
+        added, removed = services.set_offers(request.POST)
         if added or removed:
             messages.success(request, _(
-                "Saved: %(added)d audience(s) added, %(removed)d removed.") % {
+                "Saved: %(added)d offer(s) added, %(removed)d removed.") % {
                     "added": added, "removed": removed})
         else:
             messages.info(request, _("Nothing changed."))
         return redirect("subscriptions:audience")
 
-    plans = list(SubscriptionPlan.objects.filter(active=True))
-    ticked = set(PlanAudience.objects.values_list("community_id", "plan_id"))
+    # The columns come from the REGISTRY, not from a table: eligibility
+    # administration is populated with plan keys, and no plan definition is
+    # copied into the database to render this page.
+    catalogue = plans_registry.all_plans()
+    ticked = set(CommunityPlanOffer.objects.values_list("community_id", "plan_key"))
     rows = [{"community": community,
              "members": community.members.count(),
              "cells": [{"plan": plan,
-                        "on": (community.pk, plan.pk) in ticked}
-                       for plan in plans]}
+                        "on": (community.pk, plan.key) in ticked}
+                       for plan in catalogue]}
             for community in Community.objects.order_by("name")]
-    restricted = {plan_id for _c, plan_id in ticked}
+    offered = {plan_key for _c, plan_key in ticked}
     return _render(request, "subscriptions/audience.html", {
         "active_tab": "audience",
-        "plans": [{"plan": plan, "restricted": plan.pk in restricted}
-                  for plan in plans],
+        # `offered` is False for a plan nobody can buy — the template paints
+        # that as a warning rather than leaving a blank column to be misread.
+        "plans": [{"plan": plan, "offered": plan.key in offered,
+                   "is_default": plan.is_default}
+                  for plan in catalogue],
         "rows": rows,
     })
 

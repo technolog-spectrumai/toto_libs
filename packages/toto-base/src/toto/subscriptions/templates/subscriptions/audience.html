@@ -4,10 +4,11 @@
 
 A grid, communities down and plans across, because the question is asked both
 ways: "what can this community buy" reads along a row, "who can buy this plan"
-reads down a column. A column with no ticks anywhere is a PUBLIC plan, and the
-header says so on the column itself — "restricted to nobody" and "offered to
-everybody" being the same stored state is the one thing an operator must never
-have to deduce.{% endcomment %}
+reads down a column. A column with no ticks anywhere REACHES NOBODY, and the
+header says so on the column itself, in red. That inverted on 2026-09-02: an
+empty column used to mean "public", so an operator who saw one could not tell
+"everybody" from "no one". Now there is one meaning and the page states
+it.{% endcomment %}
 
 {% block sub_title %}{% trans "Communities" %}{% endblock %}
 {% block sub_heading %}{% trans "Communities" %}{% endblock %}
@@ -15,7 +16,7 @@ have to deduce.{% endcomment %}
 {% block sub_content %}
 
 <p class="text-sm opacity-70">
-  {% trans "Which communities each plan is offered to. A plan with nothing ticked is public — everyone sees it and anyone may subscribe. Tick a community and the plan becomes visible only to its members, who then see it beside the public ones." %}
+  {% trans "Which communities each plan is offered to. Tick a community and its members may see and buy that plan. A plan with nothing ticked is offered to NOBODY — eligibility is closed by default, so a new plan reaches no one until it is offered here. The free plan is the exception: everybody keeps it whatever this grid says." %}
 </p>
 <p class="text-xs opacity-55">
   {% trans "This changes what people are OFFERED, never what they already have: somebody already on a plan keeps it if they leave the community, exactly as they keep it when a discount lapses." %}
@@ -35,10 +36,12 @@ have to deduce.{% endcomment %}
             {% for column in plans %}
               <th scope="col" class="px-3 py-3 text-center font-semibold">
                 <span class="block">{{ column.plan.name }}</span>
-                {% if column.restricted %}
-                  <span class="block text-xs font-normal opacity-55">{% trans "restricted" %}</span>
+                {% if column.is_default %}
+                  <span class="block text-xs font-normal opacity-55">{% trans "everybody" %}</span>
+                {% elif column.offered %}
+                  <span class="block text-xs font-normal opacity-55">{% trans "offered" %}</span>
                 {% else %}
-                  <span class="block text-xs font-normal opacity-55">{% trans "public" %}</span>
+                  <span class="block text-xs font-normal text-red-500">{% trans "offered to nobody" %}</span>
                 {% endif %}
               </th>
             {% endfor %}
@@ -61,9 +64,9 @@ have to deduce.{% endcomment %}
                      since this page loaded is left alone rather than silently
                      cleared by a checkbox that never arrived.{% endcomment %}
                   <input type="hidden" name="aud-seen"
-                         value="{{ row.community.pk }}-{{ cell.plan.pk }}">
+                         value="{{ row.community.pk }}-{{ cell.plan.key }}">
                   <input type="checkbox"
-                         name="aud-{{ row.community.pk }}-{{ cell.plan.pk }}"
+                         name="aud-{{ row.community.pk }}-{{ cell.plan.key }}"
                          {% if cell.on %}checked{% endif %}
                          aria-label="{{ row.community.name }} — {{ cell.plan.name }}"
                          class="h-4 w-4 rounded">
@@ -79,17 +82,17 @@ have to deduce.{% endcomment %}
       <button type="submit"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
               class="rounded-lg px-5 py-2 text-sm font-bold transition hover:opacity-90">
-        <i class="fa-solid fa-check mr-1"></i>{% trans "Save audiences" %}
+        <i class="fa-solid fa-check mr-1"></i>{% trans "Save offers" %}
       </button>
       <p class="text-xs opacity-55">
-        {% trans "Clearing every tick in a column makes that plan public again." %}
+        {% trans "Clearing every tick in a column takes that plan off the market — it is then offered to nobody, not to everybody." %}
       </p>
     </div>
   {% else %}
     <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
          class="rounded-xl border px-4 py-10 text-center text-sm opacity-50 shadow-sm">
       {% if not rows %}
-        {% trans "There are no communities yet. An audience belongs to one, so there is nothing to set." %}
+        {% trans "There are no communities yet. An offer belongs to one, so there is nothing to set." %}
       {% else %}
         {% trans "There are no active plans to offer." %}
       {% endif %}

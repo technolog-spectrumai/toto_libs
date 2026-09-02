@@ -45,80 +45,16 @@ class ChargeStatus(models.TextChoices):
     WAIVED = "waived", _("Waived")
 
 
-class SubscriptionPlan(models.Model):
-    """A bundle of entitlements at a size.
-
-    ``units`` is the quantity charged per month, NOT a price — the price of one
-    unit is one number on the rate card that everybody pays. A plan of 0 units
-    is free however the rate card is set, which is what makes the free plan a
-    real row rather than a special case in every query.
-
-    **The quantity is SIGNED, and the sign is the direction.** Positive means
-    the subscriber pays to be here. Negative means the platform pays *them* —
-    a stipend — and that is one mechanism, not two: the same plan, the same
-    period, the same ledger, read in the other direction.
-
-    That replaced ``socialhub.Station`` (itself removed in 8/2026), which fused three unrelated things into
-    one row: an office, an authorisation grant and a payslip. Only the payslip
-    was load-bearing, and it was load-bearing for a reason worth writing down:
-    the treasury account every tariff and levy credits was, before it existed,
-    **never debited by anything**, against a hard-capped supply. A negative
-    subscription is the only thing that puts value back, so the currency keeps
-    circulating instead of seizing.
-    """
-
-    code = models.SlugField(max_length=64, unique=True, help_text=_(
-        "Machine name, e.g. 'standard'. Referenced by seeds and never shown."))
-    name = models.CharField(max_length=120)
-    description = models.TextField(blank=True, help_text=_(
-        "One or two sentences. What the entitlement list cannot say by itself."))
-
-    units = models.IntegerField(default=0, help_text=_(
-        "Billed quantity per month of the 'subscription.month' metric. NOT a "
-        "price: one unit costs whatever the rate card says it costs, the same "
-        "for every subscriber. 0 is free on any rate card. NEGATIVE pays the "
-        "subscriber instead of charging them — a stipend."))
-
-    entitlements = models.JSONField(default=list, blank=True, help_text=_(
-        "Entitlement codes this plan unlocks — see subscriptions/catalogue.py. "
-        "Free entitlements need not be listed; they are added to every plan."))
-
-    is_default = models.BooleanField(default=False, help_text=_(
-        "The plan somebody has when they have no subscription. Exactly one, and "
-        "it should cost 0 — it is what a lapsed subscriber falls back to."))
-    active = models.BooleanField(default=True)
-    order = models.PositiveIntegerField(default=100)
-
-    class Meta:
-        ordering = ["order", "units", "name"]
-        verbose_name = _("subscription plan")
-        verbose_name_plural = _("subscription plans")
-
-    def __str__(self):
-        return self.name
-
-    def entitlement_rows(self):
-        """What this plan SELLS, as catalogue objects. Paid rows only.
-
-        The free commons and the machinery used to be unioned in, so every
-        card repeated a dozen identical rows before saying anything — and the
-        one thing a card exists to answer is "what do I get that I don't
-        already have". Rendered from the SAME registry the gate reads, so the
-        page and the middleware cannot disagree about what is being sold.
-        Codes with no declaration are skipped rather than shown as a bare
-        string: an entitlement nobody declared cannot be described, and a
-        card is not the place to find out. Free codes that leaked into a
-        plan's stored list are skipped for the same reason the union went —
-        they are not what the plan sells.
-        """
-        from .catalogue import registry
-
-        codes = set(self.entitlements or [])
-        return [e for e in registry.installed()
-                if e.code in codes and not e.free]
-
-    def grants(self, code: str) -> bool:
-        return code in set(self.entitlements or [])
+# SubscriptionPlan was a TABLE here until 2026-09-02. Plans are read-only
+# objects built from plans.yaml now (see plans.py): a plan is a decision about
+# the product, not user state, and it lived in the database only for as long as
+# the admin was its editor — which made the admin a second authoring path
+# beside the seeder, with nothing keeping the two in step.
+#
+# What stayed in the database is what is genuinely state: which plan a person
+# is ON (Subscription.plan_key), which communities may BUY one
+# (CommunityPlanOffer), what a community takes off the price
+# (CommunityDiscount), and what was actually charged (SubscriptionCharge).
 
 
 class CommunityDiscount(models.Model):
@@ -165,48 +101,63 @@ class CommunityDiscount(models.Model):
         return f"{self.community}: −{self.percent}%"
 
 
-class PlanAudience(models.Model):
-    """One community a plan is OFFERED TO. No rows at all means everyone.
+class CommunityPlanOffer(models.Model):
+    """One community that may buy one plan. NO ROWS AT ALL MEANS NOBODY.
 
-    The second community-shaped dial on a plan, and deliberately not a field
-    on `CommunityDiscount`: a discount changes what a member PAYS, an audience
-    changes what a member is OFFERED, and fusing them would mean a community
-    cannot have one without the other.
+    This is the eligibility dial, and it is CLOSED BY DEFAULT — which inverts
+    what the PlanAudience table it replaces did. That table's rule was "a plan
+    with no audience rows is public"; this one's is "a plan nobody is offered
+    is a plan nobody can buy". The table was renamed rather than re-used
+    precisely so the old sentence cannot be read onto the new behaviour.
 
-    THE ABSENT-ROWS RULE IS THE WHOLE DESIGN. A plan with no audience rows is
-    public — every seeded plan, every plan that existed before this table, and
-    every plan an operator creates without thinking about audiences behaves
-    exactly as before. Restriction is a thing somebody switched on, never a
-    default that arrived with a migration.
+    The consequence is deliberate and has to be operated: a new plan reaches
+    nobody until somebody offers it, and the Communities tab paints a plan with
+    no ticks as *offered to nobody* rather than leaving an empty column to be
+    misread as "public". The seeder offers the default plan to every community
+    so a fresh platform is never dark.
 
-    What an audience does NOT do: it never touches a subscription that already
-    exists. Visibility gates the plans page and the subscribe endpoint — the
-    OFFER — and a member who leaves the community keeps the plan they are on,
-    exactly as a lapsed discount keeps the plan and changes the price. A rule
-    that cancelled subscriptions on membership changes would let a community
-    head unsubscribe people by expelling them, which is a power nobody asked
-    to create.
+    **"Active" means the row exists, and nothing else.** There is no `active`
+    flag here — a disabled row and a deleted row would be two ways to say one
+    thing — and "an active membership in the community" likewise means only
+    that a row exists in `socialhub_person_communities`. There is no status,
+    no is_active and no joined/left date on membership anywhere in the suite,
+    so the whole weight of the eligibility rule rests on row existence, and
+    that is worth writing down rather than implying.
+
+    `plan_key` is a STRING, not a foreign key: plans are not rows to point at.
+    A key naming a plan the file no longer defines is simply an offer of
+    nothing — it can never make somebody eligible, because eligibility is
+    computed by intersecting these keys with the registry.
+
+    What an offer does NOT do: it never touches a subscription that already
+    exists. It gates the OFFER — the plans page and the subscribe endpoint —
+    and a member who leaves the community keeps the plan they are on, exactly
+    as a lapsed discount keeps the plan and changes the price. A rule that
+    cancelled subscriptions on membership changes would let a community head
+    unsubscribe people by expelling them, which is a power nobody asked to
+    create.
     """
 
-    plan = models.ForeignKey(SubscriptionPlan, on_delete=models.CASCADE,
-                             related_name="audiences")
     community = models.ForeignKey("socialhub.Community",
                                   on_delete=models.CASCADE,
-                                  related_name="plan_audiences")
+                                  related_name="plan_offers")
+    plan_key = models.SlugField(max_length=64, help_text=_(
+        "A plan_key from plans.yaml. Not a foreign key: plans are not rows."))
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["plan", "community"],
-                name="subscriptions_one_audience_per_plan_community"),
+                fields=["community", "plan_key"],
+                name="subscriptions_one_offer_per_community_plan"),
         ]
-        ordering = ["plan__order", "community__name"]
-        verbose_name = _("plan audience")
-        verbose_name_plural = _("plan audiences")
+        indexes = [models.Index(fields=["plan_key"])]
+        ordering = ["plan_key", "community__name"]
+        verbose_name = _("community plan offer")
+        verbose_name_plural = _("community plan offers")
 
     def __str__(self):
-        return f"{self.plan.code} → {self.community}"
+        return f"{self.plan_key} → {self.community}"
 
 
 class Subscription(models.Model):
@@ -221,8 +172,13 @@ class Subscription(models.Model):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
         related_name="subscription")
-    plan = models.ForeignKey(
-        SubscriptionPlan, on_delete=models.PROTECT, related_name="subscriptions")
+    #: The plan_key from plans.yaml. A STRING, because the plan it names is a
+    #: read-only object rather than a row — which is what lets the ladder be
+    #: re-priced without a migration, and what makes a dangling key possible.
+    #: `plan` below answers None for one, and `plan_for` falls back to the
+    #: default, so a person whose tier left the file loses access rather than
+    #: crashing; their charge rows keep the name they paid under.
+    plan_key = models.SlugField(max_length=64, db_index=True)
     state = models.CharField(
         max_length=12, choices=SubscriptionState.choices,
         default=SubscriptionState.ACTIVE)
@@ -234,6 +190,13 @@ class Subscription(models.Model):
     #: When the first unpaid month failed. Cleared the moment one goes through.
     arrears_since = models.DateTimeField(null=True, blank=True)
     changed_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def plan(self):
+        """The registry object, or None if the key left the file."""
+        from . import plans
+
+        return plans.get(self.plan_key)
 
     class Meta:
         ordering = ["-changed_at"]
@@ -267,7 +230,11 @@ class SubscriptionCharge(models.Model):
     #: "YYYY-MM". The period this covers, not the day it was billed.
     period_label = models.CharField(max_length=10)
     #: Snapshotted: a plan's size or a community's discount may change later,
-    #: and this row is what was actually charged.
+    #: and this row is what was actually charged. The snapshot matters MORE
+    #: now that the ladder is a file somebody can edit between two months —
+    #: and the receipt carries the identity as well as the label, so a tier
+    #: that was renamed or removed is still identifiable on an old invoice.
+    plan_key = models.SlugField(max_length=64, blank=True)
     plan_name = models.CharField(max_length=120, blank=True)
     units = models.DecimalField(max_digits=12, decimal_places=2,
                                 default=Decimal("0"))
@@ -323,25 +290,34 @@ class SubscriptionQuotaPolicy(AbstractQuotaPolicy):
         verbose_name_plural = "Subscription quota policies"
 
 
-def default_plan() -> SubscriptionPlan | None:
-    """The plan somebody has when they have none. None on an unseeded host."""
-    return (SubscriptionPlan.objects.filter(is_default=True, active=True)
-            .order_by("order").first())
+def default_plan():
+    """The plan somebody has when they have none.
+
+    NEVER None now. It used to be, on a host whose plan table was unseeded,
+    and that state was load-bearing in the wrong direction: `is_entitled`
+    read a missing plan as "open everything", so seeding was what turned
+    gating on. A validated file always has exactly one default, so the
+    fully-open host is no longer reachable — enforcement is decided by
+    BUILD_SUBSCRIPTIONS_ENFORCE alone, which is what it always claimed.
+    """
+    from . import plans
+
+    return plans.default_plan()
 
 
-def plan_for(user) -> SubscriptionPlan | None:
-    """The plan actually in force for this user, or None if nothing is seeded.
+def plan_for(user):
+    """The plan actually in force for this user.
 
     A lapsed or cancelled subscription resolves to the default plan, not to its
     own: the row records what they chose, this answers what they currently get.
+    A key the file no longer defines resolves the same way.
     """
     if user is None or not getattr(user, "is_authenticated", False):
         return default_plan()
-    subscription = (Subscription.objects
-                    .filter(user=user).select_related("plan").first())
+    subscription = Subscription.objects.filter(user=user).first()
     if subscription is None or not subscription.is_paying:
         return default_plan()
-    return subscription.plan
+    return subscription.plan or default_plan()
 
 
 def period_label(day=None) -> str:

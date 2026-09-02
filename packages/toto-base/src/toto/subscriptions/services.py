@@ -44,10 +44,9 @@ from .models import (
     METRIC,
     ChargeStatus,
     CommunityDiscount,
-    PlanAudience,
+    CommunityPlanOffer,
     Subscription,
     SubscriptionCharge,
-    SubscriptionPlan,
     SubscriptionState,
     SubscriptionUsageEvent,
     add_months,
@@ -141,62 +140,123 @@ def set_discounts(posted) -> tuple[int, int]:
     return saved, cleared
 
 
-def visible_plans(user):
-    """The plans this user may SEE — and therefore may subscribe to.
+def _offered_keys(user) -> frozenset:
+    """Plan keys offered to at least one community this person belongs to.
 
-    ONE definition, read by the plans page and by the subscribe endpoint,
-    which is what makes hiding real: a plan absent from this queryset cannot
-    be reached by POSTing its code either, so `subscribe` answers 404 exactly
-    as the page implied. Two hand-written filters would drift, and the drift
-    would be a paywall bypass or a phantom offer.
-
-    The rule is `PlanAudience`'s: no audience rows = public, offered to
-    everyone including anonymous readers; any audience rows = offered only to
-    members of those communities. Staff see everything — they administer the
-    audiences, and a dial you cannot see is a dial you cannot check.
-
-    `.distinct()` is load-bearing: a member of two audience communities of the
-    same plan would otherwise see the plan's card twice.
+    "An active membership" means a row exists in the person's communities M2M,
+    because that is all membership IS in this suite — there is no status field
+    on it anywhere. Admission is the grant and expulsion is the revocation.
     """
-    from django.db.models import Q
-
-    qs = SubscriptionPlan.objects.filter(active=True)
-    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
-        return qs
-    public = Q(audiences__isnull=True)
     person = getattr(user, "community_profile", None) \
         if getattr(user, "is_authenticated", False) else None
     if person is None:
-        return qs.filter(public)
-    return qs.filter(
-        public | Q(audiences__community__in=person.communities.all())
-    ).distinct()
+        return frozenset()
+    return frozenset(
+        CommunityPlanOffer.objects
+        .filter(community__in=person.communities.all())
+        .values_list("plan_key", flat=True))
 
 
-def set_audiences(posted) -> tuple[int, int]:
+def is_eligible(user, plan_key: str) -> bool:
+    """May this person buy this plan? CLOSED BY DEFAULT.
+
+    The single predicate, read by the plans page AND by the subscribe
+    endpoint AND by `subscribe()` itself — one rule read three times, so an
+    early refusal and a late one can never disagree.
+
+    The rule inverts what PlanAudience did: a plan offered to no community is
+    offered to NOBODY, rather than to everyone. Two carve-outs, both
+    deliberate:
+
+    * **Staff and superusers see everything.** They administer the offers, and
+      a dial you cannot see is a dial you cannot check.
+    * **The default plan is always eligible for a signed-in person.** Without
+      it, somebody whose communities offer nothing would be shown an empty
+      plans page while `plan_for()` still puts them on the free tier — a page
+      denying the existence of the plan they are on. Requiring operators to
+      offer the free plan to every community is a chore that WILL be forgotten
+      on the first new community.
+    """
+    from . import plans
+
+    plan = plans.get(plan_key)
+    if plan is None:
+        return False
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return True
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if plan.is_default:
+        return True
+    return plan_key in _offered_keys(user)
+
+
+def eligible_plans(user) -> tuple:
+    """Every plan this person may see, and therefore may subscribe to.
+
+    An immutable tuple of registry objects, not a queryset. No `.distinct()`
+    is needed any more — membership of two offering communities is one key in
+    a set, so the duplicate the old filter had to defend against cannot arise.
+    """
+    from . import plans
+
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return plans.all_plans()
+    if not getattr(user, "is_authenticated", False):
+        return ()
+    offered = _offered_keys(user)
+    return tuple(plan for plan in plans.all_plans()
+                 if plan.is_default or plan.key in offered)
+
+
+def offering_communities(user, plan) -> list:
+    """Community names that put this plan within reach of this person.
+
+    What the card's "offered through …" line says. Empty for the default plan
+    and for staff seeing a plan nobody offers — the template says so rather
+    than implying the plan is public.
+    """
+    person = getattr(user, "community_profile", None) \
+        if getattr(user, "is_authenticated", False) else None
+    if person is None:
+        return []
+    return sorted(
+        CommunityPlanOffer.objects
+        .filter(plan_key=plan.key, community__in=person.communities.all())
+        .values_list("community__name", flat=True))
+
+
+def set_offers(posted) -> tuple[int, int]:
     """Apply a Communities-tab submission. Returns (added, removed).
 
-    Reads ``aud-<community_pk>-<plan_pk>`` checkbox fields against the posted
-    ``aud-seen`` list of ``<community_pk>-<plan_pk>`` pairs the form rendered.
+    Reads ``aud-<community_pk>-<plan_key>`` checkbox fields against the posted
+    ``aud-seen`` list of ``<community_pk>-<plan_key>`` pairs the form rendered.
     Diffing against what was RENDERED rather than against the whole table is
     what makes the form safe to submit from a stale page: a pair the form
-    never showed (a plan created since, a community created since) is left
+    never showed (a plan added since, a community created since) is left
     exactly as it is, never silently cleared because a checkbox for it did
     not arrive.
+
+    The key is split on the FIRST hyphen only. A plan_key may contain one —
+    `KEY_RE` allows it — and `split("-")` would have quietly dropped every
+    such plan from both sets, which reads as "the operator unticked it".
     """
     from toto.socialhub.models import Community
 
+    from . import plans
+
     valid_communities = set(Community.objects.values_list("pk", flat=True))
-    valid_plans = set(SubscriptionPlan.objects.values_list("pk", flat=True))
+    valid_plans = plans.keys()
 
     def _pair(text):
+        community_text, _sep, plan_key = text.partition("-")
         try:
-            community_pk, plan_pk = (int(part) for part in text.split("-"))
+            community_pk = int(community_text)
         except (TypeError, ValueError):
             return None
-        if community_pk not in valid_communities or plan_pk not in valid_plans:
+        if community_pk not in valid_communities or plan_key not in valid_plans:
             return None
-        return community_pk, plan_pk
+        return community_pk, plan_key
 
     seen = {pair for raw in posted.getlist("aud-seen")
             if (pair := _pair(raw)) is not None}
@@ -205,13 +265,13 @@ def set_audiences(posted) -> tuple[int, int]:
               and (pair := _pair(key.removeprefix("aud-"))) is not None}
 
     added = removed = 0
-    for community_pk, plan_pk in (ticked & seen):
-        _row, created = PlanAudience.objects.get_or_create(
-            plan_id=plan_pk, community_id=community_pk)
+    for community_pk, plan_key in (ticked & seen):
+        _row, created = CommunityPlanOffer.objects.get_or_create(
+            plan_key=plan_key, community_id=community_pk)
         added += int(created)
-    for community_pk, plan_pk in (seen - ticked):
-        deleted, _ignored = PlanAudience.objects.filter(
-            plan_id=plan_pk, community_id=community_pk).delete()
+    for community_pk, plan_key in (seen - ticked):
+        deleted, _ignored = CommunityPlanOffer.objects.filter(
+            plan_key=plan_key, community_id=community_pk).delete()
         removed += int(bool(deleted))
     return added, removed
 
@@ -277,7 +337,15 @@ class UnapprovedStipend(Exception):
     """A negative plan was assigned with nobody accountable for it."""
 
 
-def subscribe(user, plan, *, approved_by=None) -> Subscription:
+class IneligiblePlan(Exception):
+    """Somebody tried to take a plan no community of theirs is offered.
+
+    Raised by the service rather than only refused by the view, so the rule
+    holds for an API call, an admin action or a management command too.
+    """
+
+
+def subscribe(user, plan, *, approved_by=None, force=False) -> Subscription:
     """Put this user on this plan, from the start of the current month.
 
     Changing plan does NOT re-bill the month already charged: the
@@ -303,12 +371,21 @@ def subscribe(user, plan, *, approved_by=None) -> Subscription:
     approver on the accepted Offer; until that app exists, an operator seeding a
     position passes one explicitly, and the argument being mandatory is what
     makes the omission visible rather than convenient.
+
+    **Eligibility is re-checked here, for the same reason.** The view refuses
+    an ineligible plan with a 404 before it ever gets this far, and this is
+    the belt to that braces: an API, an admin action or a management command
+    cannot route around the community rule by calling the service directly.
+    ``force`` is the operator path — the same door the stipend uses.
     """
     if getattr(plan, "units", 0) < 0 and approved_by is None:
         raise UnapprovedStipend(
-            f"Plan {plan.code!r} pays its holder ({plan.units} units per period). "
+            f"Plan {plan.key!r} pays its holder ({plan.units} units per period). "
             "Assigning it needs an accountable approver: pass approved_by, or "
             "create it through an accepted Offer in toto.jobs.")
+    if not force and approved_by is None and not is_eligible(user, plan.key):
+        raise IneligiblePlan(
+            f"{plan.key!r} is not offered to any community this person is in.")
 
     today = timezone.now().date()
     subscription = Subscription.objects.filter(user=user).first()
@@ -317,13 +394,13 @@ def subscribe(user, plan, *, approved_by=None) -> Subscription:
         # NOT NULL) and must NOT be touched on update. Django 4.2 has no
         # create_defaults, so the two cases are written out.
         return Subscription.objects.create(
-            user=user, plan=plan, state=SubscriptionState.ACTIVE,
+            user=user, plan_key=plan.key, state=SubscriptionState.ACTIVE,
             anchor_date=today.replace(day=1))
 
-    subscription.plan = plan
+    subscription.plan_key = plan.key
     subscription.state = SubscriptionState.ACTIVE
     subscription.arrears_since = None
-    fields = ["plan", "state", "arrears_since", "changed_at"]
+    fields = ["plan_key", "state", "arrears_since", "changed_at"]
     if subscription.anchor_date is None:
         subscription.anchor_date = today.replace(day=1)
         fields.append("anchor_date")
@@ -368,7 +445,8 @@ def materialize(subscription, *, now=None) -> list[SubscriptionCharge]:
                 charge, created = SubscriptionCharge.objects.get_or_create(
                     subscription=subscription,
                     period_label=label,
-                    defaults={"plan_name": subscription.plan.name},
+                    defaults={"plan_key": subscription.plan_key,
+                              "plan_name": getattr(subscription.plan, "name", "")},
                 )
         except IntegrityError:
             # Another worker won the race; its row is the one that counts.
@@ -411,6 +489,7 @@ def settle(charge, *, user=None) -> SubscriptionCharge:
     percent, source = best_discount(user, plan)
     units = billed_units(plan, percent)
 
+    charge.plan_key = plan.key
     charge.plan_name = plan.name
     charge.units = units
     charge.discount_percent = percent
