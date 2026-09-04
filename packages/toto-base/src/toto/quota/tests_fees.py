@@ -440,11 +440,19 @@ class IncomeBoardLiveTests(TestCase):
         from toto.tariffs.models import TariffItem
 
         banana = make_asset(unit_name="BANANA", decimals=2)
-        # Asserted, not just called: this said "cyprian.pdf" until 1.50, and
-        # that metric was deleted in 8/2026 — so set_price quietly returned
-        # False, no item was priced, and the drift check below had nothing to
-        # be a check OF. memo.pdf is the live PDF metric.
-        self.assertTrue(rates.set_price("memo.pdf", "0.001"))
+        # Asserted, not just called, and this is the THIRD metric it has named.
+        # It said "cyprian.pdf" until 1.50 (deleted in 8/2026 when the PDF
+        # export left that app), then "memo.pdf" until 2026-09-03, when
+        # toto.memo left zenobia with toto.cyprian. Each time the symptom was
+        # identical and silent: `set_price` returns False for a code no metric
+        # registers, nothing gets priced, and the drift check below has nothing
+        # to be a check OF.
+        #
+        # `sketch.save` is registered by an app this host installs
+        # unconditionally, which is what makes it a safer subject than any PDF
+        # metric has been — the assertTrue is what turns the next repeat into a
+        # failure instead of a green tick.
+        self.assertTrue(rates.set_price("sketch.save", "0.001"))
         TariffItem.objects.update(charged_asset=banana)
 
         self.assertEqual(

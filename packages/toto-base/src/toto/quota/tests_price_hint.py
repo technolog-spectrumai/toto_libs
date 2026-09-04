@@ -196,13 +196,17 @@ class PriceHintLiveTests(TestCase):
         # rates.set_price, not tariffs.upsert_price: the quota-side API takes a
         # metric CODE, which is the only thing a caller on this side of the
         # boundary has. upsert_price wants the registry object.
-        # memo.pdf, not cyprian.pdf: the cyprian metric was deleted in 8/2026
-        # when the PDF export left that app (cyprian migration 0003), and a
-        # code no metric registers cannot be priced — set_price returns False
-        # and this test failed for a reason that had nothing to do with prices.
-        self.assertTrue(rates.set_price("memo.pdf", "0.001"))
+        #
+        # sketch.save, and it is the third code this test has named. cyprian.pdf
+        # went in 8/2026 when the PDF export left that app (cyprian migration
+        # 0003); memo.pdf went on 2026-09-03 when toto.memo left zenobia with
+        # toto.cyprian. A code no metric registers cannot be priced — set_price
+        # returns False and the test fails for a reason that has nothing to do
+        # with prices, which is exactly how it read both times. sketch.save is
+        # registered by an app that is installed unconditionally here.
+        self.assertTrue(rates.set_price("sketch.save", "0.001"))
 
-        out = render('{% price_hint "memo.pdf" %}')
+        out = render('{% price_hint "sketch.save" %}')
         self.assertIn("0.001", out)
 
     def test_an_unpriced_metric_stays_silent_against_a_real_card(self):
