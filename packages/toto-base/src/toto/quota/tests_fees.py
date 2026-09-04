@@ -440,19 +440,23 @@ class IncomeBoardLiveTests(TestCase):
         from toto.tariffs.models import TariffItem
 
         banana = make_asset(unit_name="BANANA", decimals=2)
-        # Asserted, not just called, and this is the THIRD metric it has named.
-        # It said "cyprian.pdf" until 1.50 (deleted in 8/2026 when the PDF
-        # export left that app), then "memo.pdf" until 2026-09-03, when
-        # toto.memo left zenobia with toto.cyprian. Each time the symptom was
-        # identical and silent: `set_price` returns False for a code no metric
-        # registers, nothing gets priced, and the drift check below has nothing
-        # to be a check OF.
+        # Asserted, not just called, and this is the FOURTH metric it has
+        # named. "cyprian.pdf" until 1.50 (deleted in 8/2026 when the PDF
+        # export left that app), "memo.pdf" until 2026-09-03 (toto.memo left
+        # zenobia with toto.cyprian), "sketch.save" for a single day until
+        # 2026-09-04 (the drawing board went to limbo). Each time the symptom
+        # was identical and silent: `set_price` returns False for a code no
+        # metric registers, nothing gets priced, and the drift check below has
+        # nothing to be a check OF.
         #
-        # `sketch.save` is registered by an app this host installs
-        # unconditionally, which is what makes it a safer subject than any PDF
-        # metric has been — the assertTrue is what turns the next repeat into a
-        # failure instead of a green tick.
-        self.assertTrue(rates.set_price("sketch.save", "0.001"))
+        # `antivirus.scan` should end the sequence, and the reasoning is worth
+        # stating because the last three subjects all looked safe too. Every
+        # one of them belonged to an EDITOR — an app that can be retired as a
+        # product decision. toto.antivirus cannot: it is a write-door on SVG,
+        # HTML, XML and JSON, and a platform that accepts uploads and screens
+        # none of them is not a product. It leaves only if the host stops being
+        # itself.
+        self.assertTrue(rates.set_price("antivirus.scan", "0.001"))
         TariffItem.objects.update(charged_asset=banana)
 
         self.assertEqual(

@@ -197,16 +197,16 @@ class PriceHintLiveTests(TestCase):
         # metric CODE, which is the only thing a caller on this side of the
         # boundary has. upsert_price wants the registry object.
         #
-        # sketch.save, and it is the third code this test has named. cyprian.pdf
-        # went in 8/2026 when the PDF export left that app (cyprian migration
-        # 0003); memo.pdf went on 2026-09-03 when toto.memo left zenobia with
-        # toto.cyprian. A code no metric registers cannot be priced — set_price
-        # returns False and the test fails for a reason that has nothing to do
-        # with prices, which is exactly how it read both times. sketch.save is
-        # registered by an app that is installed unconditionally here.
-        self.assertTrue(rates.set_price("sketch.save", "0.001"))
+        # antivirus.scan, and it is the fourth code this test has named:
+        # cyprian.pdf went in 8/2026 (cyprian migration 0003), memo.pdf on
+        # 2026-09-03, sketch.save on 2026-09-04. A code no metric registers
+        # cannot be priced — set_price returns False and the test fails for a
+        # reason that has nothing to do with prices, which is how it read every
+        # time. The first three all belonged to editors, which are retirable;
+        # toto.antivirus is a write-door the platform cannot drop.
+        self.assertTrue(rates.set_price("antivirus.scan", "0.001"))
 
-        out = render('{% price_hint "sketch.save" %}')
+        out = render('{% price_hint "antivirus.scan" %}')
         self.assertIn("0.001", out)
 
     def test_an_unpriced_metric_stays_silent_against_a_real_card(self):
