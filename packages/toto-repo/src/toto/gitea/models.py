@@ -3,7 +3,6 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import models
 
-from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
 
 
 class GiteaAccount(models.Model):
@@ -73,20 +72,19 @@ class GiteaForgeSample(models.Model):
         return f"forge sample {self.sampled_at:%Y-%m-%d %H:%M}"
 
 
-# toto.quota owns no tables, so each metered app declares its own concrete
-# pair and the rows live in that app's migrations — the same shape as
-# toto.repo. Without them toto.tax refuses the levy outright ("has no
-# usage-event table"). Metric: gitea.gb_day.
-
-class GiteaUsageEvent(AbstractUsageEvent):
-    class Meta(AbstractUsageEvent.Meta):
-        verbose_name = "Gitea usage event"
-        verbose_name_plural = "Gitea usage events"
-
-
-class GiteaQuotaPolicy(AbstractQuotaPolicy):
-    events = GiteaUsageEvent
-
-    class Meta(AbstractQuotaPolicy.Meta):
-        verbose_name = "Gitea quota policy"
-        verbose_name_plural = "Gitea quota policies"
+# NO USAGE-EVENT / QUOTA-POLICY PAIR. They existed for the `gitea.gb_day`
+# levy — gigabytes of forge storage billed per day, the same shape as the
+# vault's — and that levy was removed on 2026-09-05.
+#
+# WHY IT WENT. Access to the forge is already sold per SEAT: `gitea` and
+# `repo` are entitlements on the Professional plan (subscriptions/plans.yaml).
+# Billing the same feature a second time by the gigabyte was an overlapping
+# charge, and it had never actually charged anybody — `ingress_tax` seeded the
+# rule `active=False` and no seeder ever gave it a price, so it was dormant
+# machinery rather than revenue.
+#
+# WHAT STAYED, and the distinction matters: the nightly task in `tasks.py`
+# samples storage AND reconciles a cap. The cap is disk safety — over it, the
+# forge stops accepting NEW repositories — and a 75 GB box still wants that.
+# So `storage_bytes`, `storage_cap_gb`, `repo_creation_blocked` and
+# `GiteaForgeSample` all remain; only the billing left.

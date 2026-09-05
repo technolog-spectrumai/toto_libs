@@ -8,7 +8,6 @@ the provider itself is pure toto-repo, the sweep is not.
 
 from unittest import mock, skipUnless
 
-from django.apps import apps as django_apps
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -17,17 +16,14 @@ from toto.gitea import client
 from toto.gitea.errors import GiteaError
 from toto.gitea.models import GiteaAccount, GiteaForgeSample
 from toto.gitea.tasks import gitea_sample_storage
-from toto.gitea.taxes import GiteaStorageLevy
 
 GB = 2 ** 30
 FORGE = {"GITEA_ENABLED": True, "GITEA_SVC_PASSWORD": "svc-pw",
          "GITEA_INTERNAL_URL": "http://gitea:3000"}
 
-ECONOMY = django_apps.is_installed("toto.tax")
-if ECONOMY:
-    from toto.assets.testing import LedgerTestCase as _LedgerBase
-else:                                  # the class body still needs A base
-    _LedgerBase = TestCase
+# No ECONOMY switch and no ledger base class. They existed for the levy tests,
+# which needed a funded account to charge; nothing left in this file spends
+# anything, so the whole file runs on a host with no economy installed.
 
 
 def _resp(status, payload=None, text=""):
@@ -213,88 +209,31 @@ class ReconcilerTests(TestCase):
         self.assertEqual(self.account.storage_bytes, 2 * GB)  # sample landed
 
 
-class ProviderTests(TestCase):
-    def setUp(self):
-        self.provider = GiteaStorageLevy()
-        self.alice = User.objects.create_user("alice", password="pw")
+# NO ProviderTests / LevyEndToEndTests. Both tested the `gitea.gb_day` levy —
+# the provider contract and a priced sweep end to end — and the levy was
+# removed on 2026-09-05: the forge is sold per SEAT (`gitea` and `repo` are
+# Professional-plan entitlements), so billing it again by the gigabyte charged
+# twice for one feature. It had never charged at all, being seeded inactive and
+# never priced.
+#
+# What remains above is the half that was never about money: SamplerTests
+# (bytes attributed and scaled, a dead forge keeping the last sample) and
+# ReconcilerTests (over the cap blocks new repositories, dropping back restores
+# them). That is disk safety, and a 75 GB box still wants it.
 
-    def test_sample_and_measure_agree(self):
-        GiteaAccount.objects.create(user=self.alice, username="alice",
-                                    storage_bytes=3 * GB)
-        sampled = dict(self.provider.sample())
-        self.assertEqual(sampled, {self.alice.pk: 3 * GB})
-        self.assertEqual(self.provider.measure(self.alice), 3 * GB)
-
-    def test_empty_holdings_are_not_in_the_sample(self):
-        GiteaAccount.objects.create(user=self.alice, username="alice",
-                                    storage_bytes=0)
-        self.assertEqual(list(self.provider.sample()), [])
-        self.assertEqual(self.provider.measure(self.alice), 0)
-
-    def test_no_account_measures_zero(self):
-        self.assertEqual(self.provider.measure(self.alice), 0)
-
-    def test_the_contract_constants(self):
-        self.assertEqual(self.provider.metric_code, "gitea.gb_day")
-        self.assertEqual(self.provider.raw_per_unit, GB)
-        self.assertIn("nothing you have pushed is deleted",
-                      self.provider.consequence_text)
-
-
-@skipUnless(ECONOMY, "toto.tax is not installed on this host")
-@override_settings(
-    # The host under test is not the monetary master; the ledger fixture
-    # needs an issuer key to mint the test asset. Same throwaway key as
-    # toto.tax.testing.settings — a test constant, not a secret.
-    MONETARY_ISSUER_KEY="0Zk8Yl1ZQ0mQ0m0YlZk8Yl1ZQ0mQ0m0YlZk8Yl1ZQ0k=")
-class LevyEndToEndTests(_LedgerBase):
-    """The real sweep over the snapshot: priced bills, unpriced is free."""
-
-    def setUp(self):
-        from toto.tax.models import TaxRule
-        from toto.tax.tests.factories import make_gas_asset
-
-        self.asset = make_gas_asset(decimals=9)
-        self.rule = TaxRule.objects.create(metric_code="gitea.gb_day",
-                                           unit_label="GB", active=True)
-        self.alice = User.objects.create_user("alice", password="pw")
-        GiteaAccount.objects.create(user=self.alice, username="alice",
-                                    storage_bytes=3 * GB)
-
-    def test_a_priced_day_charges_three_units(self):
-        from decimal import Decimal
-
-        from toto.quota.metrics import registry
-        from toto.tariffs.models import UsageRecord
-        from toto.tariffs.rate_card import upsert_price
-        from toto.tax import services
-        from toto.tax.tests.factories import fund_prepaid
-
-        from toto.gitea.models import GiteaUsageEvent
-
-        upsert_price(registry.get("gitea.gb_day"), Decimal("0.5"),
-                     asset=self.asset)
-        fund_prepaid(self.alice, self.asset, 10 ** 12)
-
-        summary = services.levy_rule(self.rule)
-
-        self.assertEqual(summary.counts, {services.Outcome.LEVIED: 1})
-        self.assertEqual(GiteaUsageEvent.objects.get().quantity, 3)
-        self.assertEqual(UsageRecord.objects.count(), 1)
-
-    def test_an_unpriced_day_charges_nothing(self):
-        from toto.tariffs.models import UsageRecord
-        from toto.tax import services
-
-        services.levy_rule(self.rule)
-
-        self.assertEqual(UsageRecord.objects.count(), 0)
-
-
-# ``authenticated``: the storage line is for every forge user, and the
-# members-vs-staff split under test is the unattributed number, not the door.
-@override_settings(**FORGE, GITEA_ACCESS="authenticated")
+@override_settings(**FORGE)
 class IndexStorageTests(TestCase):
+    """The holdings line on the Gitea page.
+
+    `@override_settings(**FORGE)` is new, and it is a REPAIR rather than a
+    tightening. This class used to sit directly beneath
+    `@skipUnless(ECONOMY, ...)` on the levy tests above; when those were
+    deleted on 2026-09-05 the decorator went with them, and these five tests
+    ran for the first time — two of them failing, because the page only renders
+    a storage block when `GITEA_ENABLED` is on and nothing here was setting it.
+    They had been passing by being skipped.
+    """
+
     def setUp(self):
         from toto.core.models import Platform
 
@@ -339,6 +278,14 @@ class IndexStorageTests(TestCase):
         self.assertContains(self._page(), "unattributed")
 
     def test_members_do_not(self):
+        """A non-staff member never sees the forge-wide figure.
+
+        Asserted as a REFUSAL rather than as an absent string. `GITEA_ACCESS`
+        defaults to "staff", so this page is `PermissionDenied` for a member —
+        `assertNotContains` would need a 200 it never gets. The original claim
+        holds a fortiori: they cannot see the number because they cannot see
+        the page.
+        """
         from django.utils import timezone
 
         GiteaForgeSample.objects.create(sampled_at=timezone.now(),
@@ -346,4 +293,4 @@ class IndexStorageTests(TestCase):
                                         unattributed_bytes=4 * GB)
         self.user.is_staff = False
         self.user.save(update_fields=["is_staff"])
-        self.assertNotContains(self._page(), "unattributed")
+        self.assertEqual(self._page().status_code, 403)

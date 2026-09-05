@@ -1,9 +1,6 @@
 from django.contrib import admin
 
-from toto.quota.admin import QuotaPolicyAdminBase, UsageEventAdminBase
-
-from .models import (GiteaAccount, GiteaForgeSample, GiteaQuotaPolicy,
-                     GiteaUsageEvent)
+from .models import GiteaAccount, GiteaForgeSample
 
 
 @admin.register(GiteaAccount)
@@ -21,14 +18,9 @@ class GiteaAccountAdmin(admin.ModelAdmin):
 
 @admin.register(GiteaForgeSample)
 class GiteaForgeSampleAdmin(admin.ModelAdmin):
+    # `unattributed_bytes` counted what the levy could not bill, because it
+    # could not map an owner to an account. With the levy gone it is simply
+    # org-owned and hand-made-account storage — still worth seeing, since it
+    # counts toward the disk, but no longer "unbilled".
     list_display = ("sampled_at", "total_bytes", "unattributed_bytes")
 
-
-@admin.register(GiteaQuotaPolicy)
-class GiteaQuotaPolicyAdmin(QuotaPolicyAdminBase):
-    pass
-
-
-@admin.register(GiteaUsageEvent)
-class GiteaUsageEventAdmin(UsageEventAdminBase):
-    pass

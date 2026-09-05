@@ -65,24 +65,15 @@ class Command(IngressCommand):
             f"({'armed' if hold_rule.active else 'UNARMED'}, per {hold_rule.unit_label})"
         )
 
-        git_rule, git_created = TaxRule.objects.get_or_create(
-            metric_code="gitea.gb_day",
-            defaults={
-                "unit_label": "GB",
-                "active": False,   # unarmed on creation — see storage.gb_day above
-                "description": (
-                    "Daily fee on hosted git storage, charged per GB per day "
-                    "from the first byte — the same shape as the vault levy, "
-                    "measured on the forge instead. Over the cap the forge "
-                    "refuses NEW repositories; nothing already pushed is "
-                    "deleted, and a metric with no price is free."
-                ),
-            },
-        )
-        self.stdout.write(
-            f"tax: rule gitea.gb_day {'created' if git_created else 'kept'} "
-            f"({'armed' if git_rule.active else 'UNARMED'}, per {git_rule.unit_label})"
-        )
+        # NO gitea.gb_day RULE. Hosted-git storage was billed per GB per day
+        # here until 2026-09-05. It was removed because the forge is already
+        # sold per SEAT — `gitea` and `repo` are Professional-plan entitlements
+        # — so the levy was a second charge on one feature. It had also never
+        # charged anybody: seeded `active=False` and never given a price.
+        #
+        # The forge still has a storage CAP (toto.gitea's nightly task): over
+        # it, no new repositories. That is disk safety, not billing, and it is
+        # unaffected by this removal.
 
         # Repair the billing-unit mirrors the tariffs seeder creates with an
         # empty dimension — these are the platform's capacity×time units and
@@ -106,7 +97,7 @@ class Command(IngressCommand):
             from toto.quota import rates
 
             card = rates.rate_card()
-            for code in ("storage.gb_day", "time.hold", "gitea.gb_day"):
+            for code in ("storage.gb_day", "time.hold"):
                 if code not in card:
                     self.stdout.write(
                         f"tax: {code} has a rule and no price, so it is UNARMED. "
