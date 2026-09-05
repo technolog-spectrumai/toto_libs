@@ -11,6 +11,17 @@ class TextEditorPlugin(VaultEditorPlugin):
         return reverse("editor:text_display", args=[vault_file.pk])
 
 
+@VaultEditorPlugin.plugin(key="markdown", title="Markdown Editor", order=31)
+class MarkdownEditorPlugin(VaultEditorPlugin):
+    """Markdown edits in ACE, next to Text in the menu (order 31 vs 30)."""
+
+    file_type = "markdown"
+    new_file_extension = ".md"
+
+    def get_editor_url(self, vault_file) -> str:
+        return reverse("editor:markdown_display", args=[vault_file.pk])
+
+
 @VaultEditorPlugin.plugin(key="json", title="JSON Editor", order=40)
 class JsonEditorPlugin(VaultEditorPlugin):
     file_type = "json"

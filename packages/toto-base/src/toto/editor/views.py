@@ -254,6 +254,21 @@ class TextFileDisplayView(BaseFileDisplayView):
     delete_url_name = "editor:text_delete"
 
 
+class MarkdownFileDisplayView(BaseFileDisplayView):
+    """Markdown in ACE, wrapped like prose rather than like code.
+
+    `wrap_lines` matches TextFileDisplayView and not the code editors: a
+    markdown paragraph is one long line by design, and horizontal scrolling
+    through it is what makes people write hard-wrapped markdown instead.
+    """
+
+    ace_mode = "markdown"
+    ws_path = "editor"
+    wrap_lines = True
+    save_url_name = "editor:markdown_save"
+    delete_url_name = "editor:markdown_delete"
+
+
 class JsonFileDisplayView(BaseFileDisplayView):
     ace_mode = "json"
     ws_path = "editor"

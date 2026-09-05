@@ -301,6 +301,7 @@ class VaultFile(models.Model):
         ('image', 'Image'),
         ('html', 'HTML'),
         ('text', 'Text File'),
+        ('markdown', 'Markdown'),
         ('json', 'JSON'),
         ('yaml', 'YAML'),
         ('xml', 'XML'),
@@ -378,7 +379,8 @@ class VaultFile(models.Model):
         # type, one editor door.
         ".xml": "xml",
         ".html": "html", ".htm": "html",
-        ".md": "text", ".txt": "text", ".rst": "text",
+        ".md": "markdown", ".markdown": "markdown",
+        ".txt": "text", ".rst": "text",
         ".py": "python",
         ".mp3": "audio", ".ogg": "audio", ".wav": "audio", ".flac": "audio", ".aac": "audio",
         ".mp4": "video", ".mov": "video", ".avi": "video", ".mkv": "video", ".webm": "video",

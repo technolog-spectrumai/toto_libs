@@ -37,7 +37,8 @@ from .storage_backends import get_bucket_storage
 # editor plugin is registered for it — so deployments missing an editor app (e.g. faros
 # has no latex/notebook/neojson editor) neither show nor accept those types.
 CREATABLE_TYPES = [
-    ("text", ".txt"), ("json", ".json"), ("yaml", ".yaml"), ("xml", ".xml"),
+    ("text", ".txt"), ("markdown", ".md"),
+    ("json", ".json"), ("yaml", ".yaml"), ("xml", ".xml"),
     ("csv", ".csv"), ("html", ".html"), ("latex", ".tex"), ("bib", ".bib"),
     ("svg", ".svg"), ("neojson", ".neojson"),
     # Presentations (toto.memo), contracts (toto.notarius) and notebooks
@@ -1979,9 +1980,13 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
     #: also carries the types an editor plugin declares for itself. Kept because
     #: `api_views` imports it, and because it is the record of what the vault
     #: can seed WITHOUT asking anybody.
-    _ALLOWED = {"text", "json", "yaml", "xml", "csv", "html", "latex", "bib", "svg", "neojson"}
+    _ALLOWED = {"text", "markdown", "json", "yaml", "xml", "csv", "html", "latex",
+                "bib", "svg", "neojson"}
     _INITIAL = {
         "text":  "",
+        # Empty, like "text". A starter heading would be a guess about what the
+        # file is for, and every editor here opens an empty file happily.
+        "markdown": "",
         "json":  "{}\n",
         "yaml":  "",
         "csv":   "",

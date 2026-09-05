@@ -15,7 +15,8 @@ from toto.vault.models import VaultFile, Bucket, VaultDirectory, file_edits_allo
 # Text-ish file types editable in the Enigma Ace editor. Mirrors the file types
 # the toto editor app handles, kept deliberately narrow (no binary/media).
 EDITABLE_FILE_TYPES = {
-    "text", "json", "yaml", "xml", "csv", "latex", "bib", "python", "svg", "html",
+    "text", "markdown", "json", "yaml", "xml", "csv", "latex", "bib", "python",
+    "svg", "html",
     # Decks are text (XML) and zinnia reads and writes them through this API —
     # it is the authoring client now, so leaving pxml out 415s every cloud deck.
     # "presentation" is the legacy spelling of the same class.

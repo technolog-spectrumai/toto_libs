@@ -31,6 +31,8 @@
 <script src="{% static 'vendor/ace/ace.js' %}"></script>
 {% if ace_mode == "python" %}
 <script src="{% static 'vendor/ace/mode-python.min.js' %}"></script>
+{% elif ace_mode == "markdown" %}
+<script src="{% static 'vendor/ace/mode-markdown.min.js' %}"></script>
 {% elif ace_mode == "json" %}
 <script src="{% static 'vendor/ace/mode-json.min.js' %}"></script>
 {% elif ace_mode == "yaml" %}
