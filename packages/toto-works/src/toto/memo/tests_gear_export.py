@@ -11,7 +11,9 @@ from __future__ import annotations
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
-from unittest import mock
+from unittest import mock, skipUnless
+
+from django.apps import apps as django_apps
 
 from toto.memo import render_pdf
 
@@ -26,6 +28,8 @@ class GearSelectionTests(TestCase):
         with mock.patch("django.apps.apps.is_installed", return_value=False):
             self.assertIsNone(render_pdf.gear_for(self.user))
 
+    @skipUnless(django_apps.is_installed("toto.anastasia"),
+                "this host runs no Compute Gears")
     @override_settings(ANASTASIA_POOL={"cpu_millicores": 4000, "ram_mb": 8192,
                                        "scratch_mb": 8192, "pids": 2048})
     def test_a_mounted_gear_is_used_when_there_is_one(self):
@@ -39,6 +43,8 @@ class GearSelectionTests(TestCase):
             services.mount(lease=lease, actor=self.user)
             self.assertEqual(render_pdf.gear_for(self.user).pk, lease.pk)
 
+    @skipUnless(django_apps.is_installed("toto.anastasia"),
+                "this host runs no Compute Gears")
     @override_settings(ANASTASIA_POOL={"cpu_millicores": 4000, "ram_mb": 8192,
                                        "scratch_mb": 8192, "pids": 2048})
     def test_no_gear_falls_back_only_if_this_host_can_render(self):

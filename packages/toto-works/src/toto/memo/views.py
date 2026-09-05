@@ -26,7 +26,7 @@ from django.core.files.base import ContentFile
 from django.contrib import messages
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse, reverse_lazy
+from django.urls import NoReverseMatch, reverse, reverse_lazy
 from django.utils.text import slugify
 from django.utils.translation import gettext as _
 from django.views import View
@@ -43,12 +43,6 @@ from toto.vault.views import create_empty_vault_file, resolve_new_file_target
 from toto.quota import QuotaExceeded, check_quota, record_usage
 from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
 from toto.memo.models import MemoQuotaPolicy, MemoUsageEvent
-# The vendored TipTap bundle lives in cyprian and is named through its
-# import map. Same wheel, so the import always resolves; what it needs at
-# RUNTIME is cyprian's static dir, which means a host that mounts this
-# editor must install toto.cyprian too. It does — cyprian is installed
-# unconditionally because kanban's project wikis write through it.
-from toto.cyprian import tiptap
 from toto.vault.models import VaultFile
 from toto.vault.views import (
     _unique_file_key,
@@ -62,6 +56,34 @@ from .media import image_bytes_to_data_uri
 
 # Vault file types that can be embedded into a slide body.
 _MEDIA_TYPES = ["image", "svg"]
+
+
+
+
+def _maybe_reverse(name, *args):
+    """A URL if the route is registered, else "".
+
+    A host may mount only the reading half of this app, in which case the
+    authoring routes are absent and `reverse` raises. Templates already treat
+    "" as "do not offer the link", so the empty string is the right answer
+    rather than an exception.
+    """
+    try:
+        return reverse(name, args=args)
+    except NoReverseMatch:
+        return ""
+
+
+def _tiptap_import_map():
+    """cyprian's TipTap import map, imported at call time.
+
+    Same wheel, so the import resolves wherever toto-works is installed; what
+    it needs at RUNTIME is cyprian's static dir. Keeping the import inside the
+    editor view is what lets a host mount the reader alone.
+    """
+    from toto.cyprian import tiptap
+
+    return tiptap.import_map_json()
 
 
 # ---------------------------------------------------------------------------
@@ -273,10 +295,19 @@ class PresentationIndexView(View):
                 # Asked once for the page: the form posts to a route the gate
                 # would 402 anyway, and a button that answers "not in your plan"
                 # is worse than no button.
-                "can_create": editing.door_for(
-                    request.user, entitlement=ENTITLEMENT,
-                    metric_code=SAVE_METRIC,
-                    policy_model=MemoQuotaPolicy).open,
+                #
+                # The route check comes FIRST and is not merely belt-and-braces:
+                # on a host that mounts the reader alone, `memo:create` does not
+                # exist, and the template reverses it inside this guard — so a
+                # door that opened would 500 the gallery. `door_for` is not even
+                # asked there, which is right: there is nothing to be entitled
+                # to.
+                "can_create": bool(
+                    _maybe_reverse("memo:create")
+                    and editing.door_for(
+                        request.user, entitlement=ENTITLEMENT,
+                        metric_code=SAVE_METRIC,
+                        policy_model=MemoQuotaPolicy).open),
             },
             request,
         )
@@ -342,7 +373,12 @@ class PresentationReadView(LoginRequiredMixin, View):
             # owner, so the link is never a 404 — whether they may SAVE is the
             # further question the door answers on that page, which is where a
             # subscriber without the plan is told what it costs.
-            "edit_url": reverse("memo:edit", args=[vault_file.pk]),
+            #
+            # EMPTY where the route is not registered. A host can mount the
+            # reader half of this app alone (zenobia does), and then
+            # `memo:edit` does not exist — an unguarded reverse here would
+            # 500 the READ page, which is the half such a host actually wants.
+            "edit_url": _maybe_reverse("memo:edit", vault_file.pk),
         }, request))
 
 
@@ -448,7 +484,16 @@ class PresentationEditView(LoginRequiredMixin, View):
                 # {% trans %} in the template cannot reach.
                 "text": {"linkPrompt": _("Link address")},
             },
-            "tiptap_import_map": tiptap.import_map_json(),
+            # Imported HERE, not at module scope, and that placement is the
+            # whole of what makes a read-only deployment possible.
+            #
+            # The vendored TipTap bundle lives in cyprian, and this is the only
+            # line in the module that needs it — the EDIT view. A module-scope
+            # import made every memo page, including the gallery and the
+            # player, unimportable on a host without toto.cyprian; a host that
+            # mounts only the reader now needs neither cyprian nor its static
+            # dir. A host that mounts the editor still needs both, unchanged.
+            "tiptap_import_map": _tiptap_import_map(),
             "read_url": reverse("memo:read", args=[file_pk]),
             "present_url": reverse("memo:present", args=[file_pk]),
             "export_pdf_url": reverse("memo:export_pdf", args=[file_pk]),

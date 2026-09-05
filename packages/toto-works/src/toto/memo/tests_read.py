@@ -13,7 +13,7 @@ import tempfile
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.test import TestCase, override_settings
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 
 from toto.core.models import ColorMix, Font, Platform, Theme
 from toto.vault.models import Bucket, VaultFile
@@ -167,25 +167,37 @@ class PresentationReadTests(TestCase):
 
     # ── what is left on the page ─────────────────────────────────────────────
 
-    def test_it_offers_the_way_in_to_the_editor(self):
-        """The inverse of what this asserted until 8/2026.
+    def test_the_edit_link_follows_the_urlconf_the_host_mounted(self):
+        """Asserted BOTH ways, because both are real deployments.
 
-        It used to demand that no edit affordance existed at all, because decks
-        were authored in the desktop app and this host only showed them. The
-        browser editor is back, and "open the deck, then click Edit" is the
-        entry point it is reached by — so the absence that was the guarantee is
-        now the regression.
+        This demanded an unconditional edit link until 2026-09-05, when
+        `reader_urls` arrived: a host may mount only the reading half of this
+        app, and then `memo:edit` is not registered. `views._maybe_reverse`
+        answers "" there, and the template treats "" as "do not offer the
+        link" — so the reading page still renders, which is the whole point of
+        such a mount.
 
-        The link is unconditional here because `PresentationReadView` already
-        filters on `owner=request.user`: everyone who can load this page owns
-        the deck. Whether they may SAVE is a separate question the door answers
-        on the editor page.
+        Deciding which case to assert by asking the urlconf, rather than
+        picking one, is what makes this test true on both hosts without going
+        vacuous on either: exactly one branch runs, and each one asserts
+        something.
         """
         self.client.force_login(self.user)
         response = self.read()
-        self.assertEqual(response.context["edit_url"],
-                         reverse("memo:edit", args=[self.deck.pk]))
-        self.assertContains(response, reverse("memo:edit", args=[self.deck.pk]))
+        try:
+            edit_url = reverse("memo:edit", args=[self.deck.pk])
+        except NoReverseMatch:
+            # Reading-only host. The link is absent and the page is fine —
+            # `PresentationReadView` filters on `owner=request.user`, so this
+            # is not a permission question, it is a mount question.
+            self.assertEqual(response.context["edit_url"], "")
+            self.assertNotContains(response, "/memo/edit/")
+            return
+        # Full host. Unconditional, because everyone who can load this page
+        # owns the deck; whether they may SAVE is the door's question on the
+        # editor page.
+        self.assertEqual(response.context["edit_url"], edit_url)
+        self.assertContains(response, edit_url)
 
     def test_it_links_to_the_player_and_the_pdf(self):
         self.client.force_login(self.user)
