@@ -35,7 +35,8 @@ IIFE runs at parse time in the body, so `defer` here would break it.
                class="rounded-lg border p-5">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <h2 class="text-lg font-bold">{% trans "Shareholder register" %}</h2>
-          {% if shareholder_structure %}
+          {# can_export_register: without toto.documents the route is unregistered, so reversing it here would break the page, not just the button. #}
+          {% if shareholder_structure and can_export_register %}
             <form method="post" action="{% url 'company:register_export' company.slug %}">
               {% csrf_token %}
               <button type="submit"

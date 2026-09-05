@@ -16,6 +16,9 @@ import json
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from unittest import skipUnless
+
+from django.apps import apps
 from django.test import TestCase
 from django.urls import reverse
 
@@ -239,9 +242,18 @@ class PageRendersItsChartLibraries(ChartTestCase):
         self.assertIn("doughnut", body)
 
 
+@skipUnless(apps.is_installed("toto.documents"),
+            "the register PDF is built by toto.documents, which is not installed")
 class RegisterExportTests(ChartTestCase):
     """The one-click register PDF — queued through aralia, never rendered
-    here (the package's own no-renderer test is the law)."""
+    here (the package's own no-renderer test is the law).
+
+    Skipped where `toto.documents` is absent: the route is then not registered
+    at all (see company/urls.py), so `reverse` here would fail on a host that
+    installs the descriptive half of the Business Center alone. The skip is
+    the honest report — these tests are not passing on such a host, they are
+    testing something it does not have.
+    """
 
     def setUp(self):
         super().setUp()

@@ -14,11 +14,12 @@ from __future__ import annotations
 import json
 from decimal import Decimal
 
+from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
@@ -33,7 +34,6 @@ from toto.company.forms import (
     ShareClassForm,
     ShareholderStructureForm,
 )
-from toto.company.integration import ledger as bc_ledger
 from toto.company.models import (
     ActionStatus,
     Company,
@@ -65,8 +65,17 @@ def _company(slug):
 
 
 def _tabs(company, active):
-    """The three views the brief names, as one strip."""
-    return [
+    """The strip, minus whatever this host did not install.
+
+    Two of these tabs are governance, not description: Actions is the share
+    register's chain (`toto.ledger`) and Votes is the meeting machinery
+    (`toto.voting`). A host can install `toto.company` alone — the descriptive
+    half — and then those pages do not exist. Guarded HERE rather than in the
+    template because the template is not the only caller and a tab pointing at
+    a route that no urlconf carries raises NoReverseMatch on every page in the
+    strip, not just the one it names.
+    """
+    tabs = [
         {"key": "structure", "label": "Company Structure", "icon": "fa-building",
          "url": reverse("company:structure", args=[company.slug]),
          "active": active == "structure"},
@@ -76,16 +85,21 @@ def _tabs(company, active):
         {"key": "chart", "label": "Organization Chart", "icon": "fa-sitemap",
          "url": reverse("company:org_chart", args=[company.slug]),
          "active": active == "chart"},
-        {"key": "actions", "label": "Actions", "icon": "fa-link",
-         "url": reverse("company:actions", args=[company.slug]),
-         "active": active == "actions"},
-        {"key": "votes", "label": "Votes", "icon": "fa-check-to-slot",
-         "url": reverse("company:votes", args=[company.slug]),
-         "active": active == "votes"},
         {"key": "locations", "label": "Locations", "icon": "fa-map-location-dot",
          "url": reverse("company:locations", args=[company.slug]),
          "active": active == "locations"},
     ]
+    if apps.is_installed("toto.ledger"):
+        tabs.insert(3, {
+            "key": "actions", "label": "Actions", "icon": "fa-link",
+            "url": reverse("company:actions", args=[company.slug]),
+            "active": active == "actions"})
+    if apps.is_installed("toto.voting"):
+        tabs.append({
+            "key": "votes", "label": "Votes", "icon": "fa-check-to-slot",
+            "url": reverse("company:votes", args=[company.slug]),
+            "active": active == "votes"})
+    return tabs
 
 
 def _department(company_slug, slug):
@@ -249,6 +263,9 @@ def shareholders(request, slug):
         "shareholder_form": shareholder_form,
         "open_modal": open_modal,
         "share_classes": company.share_classes.order_by("slug"),
+        # The register PDF is built by toto.documents; without it the route is
+        # not registered and the template must not reverse it.
+        "can_export_register": apps.is_installed("toto.documents"),
         **register,
         "ownership_events": company.ownership_events.select_related(
             "source_party", "target_party", "source_share_class",
@@ -593,7 +610,15 @@ def actions(request, slug):
             messages.success(request, "Draft saved. Record it when it is final.")
             return redirect("company:actions", slug=company.slug)
 
-    ledger = bc_ledger.existing_ledger(company)
+    # Imported here, not at module scope, and the app may be absent entirely.
+    # `toto.ledger` is a separate install: a host can run the descriptive half
+    # of the Business Center — who the company is, who its parties are —
+    # without the share-register chain. A module-scope import would make this
+    # whole module unimportable there, taking every company page with it.
+    ledger = None
+    if apps.is_installed("toto.ledger"):
+        from toto.company.integration import ledger as bc_ledger
+        ledger = bc_ledger.existing_ledger(company)
     return company_render(request, "company/actions.html", {
         "company": company,
         "tabs": _tabs(company, "actions"),
@@ -603,7 +628,8 @@ def actions(request, slug):
         "recorded": company.actions.filter(status=ActionStatus.RECORDED)
                                    .select_related("created_by")[:50],
         "ledger": ledger,
-        "verification": bc_ledger.verify_company_ledger(company),
+        "verification": (
+            bc_ledger.verify_company_ledger(company) if ledger is not None else None),
     })
 
 
@@ -619,6 +645,12 @@ def action_record(request, slug, uid):
     company = _company(slug)
     _staff_only(request.user)
     action = get_object_or_404(CompanyAction, company=company, uid=uid)
+    if not apps.is_installed("toto.ledger"):
+        # Recording is what writes the chain; without the app there is nothing
+        # to write to. A 404 rather than a crash, and the template does not
+        # offer the button in the first place.
+        raise Http404("The share register is not installed on this host.")
+    from toto.company.integration import ledger as bc_ledger
     try:
         entry = bc_ledger.record_action(action, actor=request.user)
     except (ValueError, ValidationError) as exc:

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
@@ -285,7 +286,14 @@ class Command(IngressCommand):
         A ledger with nothing but a genesis block demonstrates nothing: the
         interesting property is that entry two hashes entry one, so the seed
         records an actual founding resolution and lets the chain prove itself.
+
+        Skipped entirely where `toto.ledger` is not installed. A host can run
+        the descriptive half of the Business Center alone, and seeding must not
+        be the one thing that insists on the other half being there.
         """
+        if not apps.is_installed("toto.ledger"):
+            self.stdout.write("  ledger: toto.ledger not installed — skipped")
+            return
         from toto.company.integration import ledger as bc_ledger
         from toto.company.models import ActionKind, CompanyAction
 
