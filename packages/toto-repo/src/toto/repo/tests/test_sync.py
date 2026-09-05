@@ -182,7 +182,10 @@ class ImportTests(RepoTestCase):
         inner = VaultDirectory.objects.get(name="inner", parent=docs)
         vf = VaultFile.objects.get(title="readme.md")
         self.assertEqual(vf.directory, inner)
-        self.assertEqual(vf.file_type, "text")
+        # `.md` types as 'markdown', not 'text', since vault migration 0025 —
+        # the import door reads `_EXT_MAP` like every other ingest door, which
+        # is the property this line is really asserting.
+        self.assertEqual(vf.file_type, "markdown")
         self.assertEqual(vf.file.read(), b"# hi\n")
         self.assertTrue(vf.content_hash)
 

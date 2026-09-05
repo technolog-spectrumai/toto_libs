@@ -21,6 +21,9 @@ STARTER = {
     "python": '"""A new workspace."""\n\n\nprint("hello from ambrosia")\n',
     "latex": "\\documentclass{article}\n\\begin{document}\nHello.\n\\end{document}\n",
     "text": "",
+    # Empty on purpose, and stated rather than left to `STARTER.get(..., "")`:
+    # a starter heading would be a guess about what the document is for.
+    "markdown": "",
     "json": "{}\n",
     "yaml": "---\n",
     "csv": "",
@@ -34,7 +37,11 @@ STARTER = {
 EXTENSION_TYPES = {
     ".py": "python",
     ".txt": "text",
-    ".md": "text",
+    # 'markdown', not 'text', since vault migration 0025. This map is a
+    # SECOND copy of the extension→type decision (vault's `_EXT_MAP` is the
+    # other), and the two disagreeing is what would make the same .md file
+    # open in a different editor depending on where it was created.
+    ".md": "markdown",
     ".json": "json",
     ".yaml": "yaml",
     ".yml": "yaml",
