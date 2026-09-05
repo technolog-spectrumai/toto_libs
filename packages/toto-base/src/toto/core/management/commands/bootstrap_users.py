@@ -44,6 +44,39 @@ User = get_user_model()
 MAX_USERS = 5
 
 
+
+def _default_email(username: str) -> str:
+    """An address for an account that was given none.
+
+    EVERY ACCOUNT NEEDS ONE, and that is not tidiness. Gitea refuses to
+    auto-register an OIDC identity whose `email` claim is empty — it logs
+    "provider doesn't return required fields: email" and drops the user on
+    /user/link_account, a form with no local password to link with, because
+    password sign-in is deliberately off. This command created superusers with
+    `email=""` hardcoded, so the one account every deployment has could never
+    sign in to the forge.
+
+    `ADMIN_EMAIL` is honoured first; otherwise the address is derived from the
+    username and PLATFORM_DOMAIN. A derived address is not a real mailbox and
+    is not meant to be — it is a stable, unique identifier that satisfies the
+    services which require the claim. An operator who wants real mail sets
+    `email:` on the row.
+
+    `.invalid` is reserved by RFC 2606 precisely so a made-up address cannot
+    collide with somebody's real one, and is used when no domain is set.
+    """
+    import os
+
+    explicit = (os.environ.get("ADMIN_EMAIL", "") or "").strip()
+    if explicit and username == (os.environ.get("ADMIN_USERNAME", "admin") or "admin"):
+        return explicit
+    domain = (os.environ.get("PLATFORM_DOMAIN", "") or "").strip()
+    domain = domain.split("//")[-1].split("/")[0].strip()
+    if not domain or domain in ("localhost", "127.0.0.1"):
+        domain = "localhost.invalid"
+    return f"{username}@{domain}"
+
+
 class Command(BaseCommand):
     help = ("Create up to five start accounts from a JSON document on stdin. "
             "Existing usernames are skipped. Passwords are never echoed.")
@@ -102,17 +135,19 @@ class Command(BaseCommand):
             superuser = bool(row.get("superuser"))
             # `board` is placidia's word for the same flag.
             staff = bool(row.get("staff") or row.get("board"))
+            email = (row.get("email") or "").strip() or _default_email(username)
             if superuser:
-                User.objects.create_superuser(username=username, email="",
+                User.objects.create_superuser(username=username, email=email,
                                               password=password)
                 self.stdout.write(f"{username}: created (superuser)")
             elif staff:
                 User.objects.create_user(username=username, password=password,
+                                         email=email,
                                          is_active=True, is_staff=True)
                 self.stdout.write(f"{username}: created (staff)")
             else:
                 User.objects.create_user(username=username, password=password,
-                                         is_active=True)
+                                         email=email, is_active=True)
                 self.stdout.write(f"{username}: created (viewer)")
 
         if failed:

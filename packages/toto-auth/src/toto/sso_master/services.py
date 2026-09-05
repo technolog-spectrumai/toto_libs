@@ -24,9 +24,30 @@ def get_active_platform():
 
 
 def get_issuer(request=None) -> str:
+    """The OIDC issuer — always a URL, never a bare hostname.
+
+    `Platform.domain` is stored however an operator typed it, and on a local
+    stack that is usually `localhost`. Returning it verbatim advertised
+    `"issuer": "localhost"` in the discovery document while every endpoint
+    beside it was `https://localhost/...`, and put the same bare string in
+    every ID token's `iss` claim.
+
+    That is not a cosmetic mismatch. OIDC requires the issuer to be a URL, and
+    a relying party validates the `iss` it receives against the issuer it
+    discovered; a strict client refuses the token and the sign-in dies at the
+    callback with nothing useful on screen. Gitea lands such a failure on
+    /user/link_account, which is indistinguishable from a missing username.
+
+    `get_public_base_url` below has always normalised the scheme this way.
+    The two read the same field and must agree, so this now does what that
+    one does.
+    """
     platform = get_active_platform()
     if platform.domain:
-        return platform.domain.rstrip("/")
+        domain = platform.domain.rstrip("/")
+        if domain.startswith("http://") or domain.startswith("https://"):
+            return domain
+        return f"https://{domain}"
     if request:
         return request.build_absolute_uri("/").rstrip("/")
     raise RuntimeError("Cannot resolve SSO issuer without Platform.domain or request.")

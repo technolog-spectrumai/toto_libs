@@ -23,6 +23,57 @@ def _platform():
     )
 
 
+
+class IssuerIsAUrlTests(TestCase):
+    """The issuer must be a URL, whatever an operator typed into Platform.domain.
+
+    It was returned verbatim until 2026-09-06, so a local stack advertised
+    `"issuer": "localhost"` next to endpoints reading `https://localhost/...`,
+    and put the same bare string in every ID token's `iss`. OIDC requires a
+    URL there, and a relying party validates the `iss` it receives against the
+    issuer it discovered — so a strict client refuses the token and the
+    sign-in dies at the callback.
+    """
+
+    def _platform(self, domain):
+        Platform.objects.all().delete()
+        return Platform.objects.create(
+            site_name="T", author="A", publication_year=2026,
+            active=True, domain=domain)
+
+    def test_a_bare_hostname_gains_a_scheme(self):
+        from toto.sso_master.services import get_issuer
+
+        self._platform("localhost")
+        self.assertEqual(get_issuer(), "https://localhost")
+
+    def test_an_explicit_scheme_is_kept(self):
+        """http:// included — a host that means it must not be rewritten."""
+        from toto.sso_master.services import get_issuer
+
+        self._platform("http://dev.example")
+        self.assertEqual(get_issuer(), "http://dev.example")
+        self._platform("https://www.example.pl")
+        self.assertEqual(get_issuer(), "https://www.example.pl")
+
+    def test_it_normalises_the_same_way_as_the_public_base_url(self):
+        """The two SHAPES must match, even though the sources differ.
+
+        `get_issuer` reads `Platform.domain` (a database row) and
+        `get_public_base_url` reads `settings.PLATFORM_DOMAIN` (deploy-time
+        env). They are configured to agree and a client compares what they
+        produce, so a scheme rule in one and not the other is the bug this
+        pair had — asserted by feeding both the same input rather than by
+        pretending they read the same place.
+        """
+        from toto.sso_master.services import get_issuer, get_public_base_url
+
+        for domain in ("localhost", "https://www.example.pl"):
+            with self.subTest(domain=domain):
+                self._platform(domain)
+                with override_settings(PLATFORM_DOMAIN=domain):
+                    self.assertEqual(get_issuer(), get_public_base_url())
+
 class RolesClaimTests(TestCase):
     """The `roles` claim drives access for two relying parties: Grafana admits
     only `admin` (strict mapping) and Gitea requires `staff` to log in at all,
