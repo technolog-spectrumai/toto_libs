@@ -169,6 +169,22 @@ def _resolve_dashboard_item(item, user):
         authenticated and (user.is_staff or user.is_superuser)
     ):
         return None
+    # "group:<name>" cards show for members of that Django group, plus
+    # superusers — who administer the thing on the other side and would
+    # otherwise have to add themselves to a group to see it.
+    #
+    # This is the access model for tools the platform hosts but does not
+    # implement: a person reaches the boards because somebody put them in the
+    # group, not because of what they ARE. Cosmetic here like every arm above
+    # — the target enforces the real gate from the same claim, which is what
+    # makes the two agree rather than merely look alike.
+    if visibility.startswith("group:"):
+        wanted = visibility.split(":", 1)[1].strip()
+        if not authenticated:
+            return None
+        if not (user.is_superuser
+                or user.groups.filter(name=wanted).exists()):
+            return None
     if not _plan_allows(user, item.get("link")):
         return None
     link = item.get("link")
