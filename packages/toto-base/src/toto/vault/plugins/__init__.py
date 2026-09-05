@@ -27,6 +27,23 @@ class VaultPlayPlugin(BasePlugin):
         raise NotImplementedError
 
 
+class _UnsavedProbe:
+    """Stands in for a VaultFile when asking a plugin to build a URL.
+
+    `pk` is None, so `reverse(..., args=[None])` raises NoReverseMatch for the
+    same reason a missing route does — which is why `is_available` treats only
+    that exception as decisive and everything else as "available".
+    """
+
+    pk = 0
+    id = 0
+    file_type = ""
+    title = ""
+
+
+_UNSAVED_PROBE = _UnsavedProbe()
+
+
 class VaultEditorPlugin(BasePlugin):
     """
     Plugin base for vault file editor actions, keyed by VaultFile.file_type.
@@ -56,7 +73,37 @@ class VaultEditorPlugin(BasePlugin):
 
     @classmethod
     def for_file_type(cls, file_type: str) -> "VaultEditorPlugin | None":
-        return cls.registry.get(file_type)
+        plugin = cls.registry.get(file_type)
+        if plugin is not None and not plugin.is_available():
+            return None
+        return plugin
+
+    def is_available(self) -> bool:
+        """Whether this editor can actually be reached on THIS host.
+
+        Installed is not the same as mounted. A host may install an app for
+        half of what it does and register only some of its urlconf — zenobia
+        mounts `toto.memo.reader_urls`, so decks are shown and never authored
+        — and then the app's plugins still register from `ready()` while
+        `get_editor_url` reverses a route that does not exist. That is a 500
+        on an Edit link and a "New file" menu offering a type nobody can save.
+
+        The default asks the urlconf, which is the honest question: a plugin
+        whose editor URL cannot be reversed is not available. Overriding this
+        is for a plugin whose availability turns on something else.
+        """
+        from django.urls import NoReverseMatch
+
+        try:
+            self.get_editor_url(_UNSAVED_PROBE)
+        except NoReverseMatch:
+            return False
+        except Exception:  # noqa: BLE001 - a probe must never break a listing
+            # Anything else means the URL does not depend on a route that is
+            # missing — most plugins interpolate the file's pk and would raise
+            # on the probe object. Available.
+            return True
+        return True
 
     def get_editor_url(self, vault_file) -> str:
         raise NotImplementedError

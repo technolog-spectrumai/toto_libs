@@ -66,6 +66,13 @@ def available_create_types():
     seen = {t for t, _ in types}
     for plugin in VaultEditorPlugin.all():
         extension = getattr(plugin, "new_file_extension", "")
+        # `is_available` as well as the extension: a plugin whose editor route
+        # is not mounted on this host would put a type in the New-file menu
+        # that lands the user on a 500 the moment the file is created, since
+        # creation redirects straight into the editor. `for_file_type` above
+        # already applies this; this loop reaches the registry directly.
+        if not plugin.is_available():
+            continue
         if extension and plugin.file_type and plugin.file_type not in seen:
             types.append((plugin.file_type, extension))
             seen.add(plugin.file_type)
