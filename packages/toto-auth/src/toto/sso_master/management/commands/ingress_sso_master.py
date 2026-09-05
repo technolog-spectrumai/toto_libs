@@ -36,13 +36,59 @@ class Command(IngressCommand):
         # A relying party that pairing owns makes create_relying_party raise by
         # design, so this is reachable rather than theoretical.
         for provision in (self._provision_grafana, self._provision_gitea,
-                          self._provision_wekan):
+                          self._provision_wekan, self._ensure_wekan_group):
             try:
                 provision()
             except Exception as exc:            # noqa: BLE001
                 self.stdout.write(self.style.WARNING(
                     f"{provision.__name__} failed: {exc}"
                 ))
+
+    def _ensure_wekan_group(self):
+        """Create the Django group that governs access to the boards.
+
+        NOTHING ELSE CREATES IT, and that was a day-one bug: the Boards tile
+        carries `visibility: "group:<WEKAN_GROUP>"`, which `_resolve_dashboard_item`
+        shows to members of that group plus superusers. With no group, the tile
+        is invisible to every ordinary account — including the people the
+        boards are for — while Wekan itself is perfectly reachable by URL. That
+        reads as "the SSO is broken" and is not.
+
+        It lives beside `_provision_wekan` because the two halves of the same
+        access model belong together: that one tells Wekan who we are, this one
+        decides who may see it. Both run from the container entrypoint on every
+        start, and both are idempotent.
+
+        The group is read from `settings.WEKAN_GROUP` rather than hardcoded. A
+        data migration naming "boards" would leave a host that overrides the
+        setting with an unused group and still no working one.
+
+        NOBODY IS ADDED HERE. Membership is the administrative act — the brief
+        is explicit that there are no external accounts and that access is
+        per-group — so who belongs is a decision for an admin, not a default a
+        seeder invents.
+        """
+        if not getattr(settings, "WEKAN_ENABLED", False):
+            return
+        name = (getattr(settings, "WEKAN_GROUP", "") or "").strip()
+        if not name:
+            self.stdout.write(self.style.WARNING(
+                "WEKAN_ENABLED but WEKAN_GROUP is empty — no group to create."
+            ))
+            return
+
+        from django.contrib.auth.models import Group
+
+        group, created = Group.objects.get_or_create(name=name)
+        if created:
+            self.stdout.write(self.style.SUCCESS(
+                f"Created the '{name}' group — add people to it to grant the "
+                f"boards."
+            ))
+        else:
+            self.stdout.write(
+                f"The '{name}' group exists ({group.user_set.count()} member(s))."
+            )
 
     def _ensure_signing_key(self):
         """ID tokens are RS256-signed with the active SSOSigningKey (private half

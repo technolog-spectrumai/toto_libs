@@ -56,6 +56,12 @@ def _openid_configuration_payload(request, authorization_endpoint: str) -> dict:
             "email", "email_verified", "name", "preferred_username",
             "given_name", "family_name", "display_name", "person_slug",
             "roles", "is_superuser",
+            # `groups` was added to scopes_supported above and NOT here, which
+            # is the same half-update in the other list: a strict client that
+            # reads discovery would conclude the claim is unavailable and stop
+            # asking for it. Wekan's admin mapping and the boards' access model
+            # both ride on this claim.
+            "groups",
         ],
         # S256 only: plain gives a public client no protection, because the
         # challenge travels in the /authorize URL. See services.verify_pkce.

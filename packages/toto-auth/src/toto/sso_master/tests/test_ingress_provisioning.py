@@ -68,6 +68,58 @@ class IngressProvisioningTests(TestCase):
         call_command("ingress_sso_master")
         self.assertFalse(SSORelyingParty.objects.filter(client_id="gitea").exists())
 
+    @override_settings(WEKAN_ENABLED=True, WEKAN_OIDC_CLIENT_SECRET="s3cret-wekan",
+                       WEKAN_GROUP="boards")
+    def test_the_boards_group_is_created(self):
+        """A day-one bug until 2026-09-06: nothing created it.
+
+        The Boards tile is `visibility: "group:<WEKAN_GROUP>"`, so with no
+        group it is invisible to every non-superuser — including the people the
+        boards are for — while Wekan itself answers fine by URL. That reads as
+        a broken SSO and is not.
+        """
+        self.assertFalse(Group.objects.filter(name="boards").exists())
+        call_command("ingress_sso_master")
+        self.assertTrue(Group.objects.filter(name="boards").exists())
+
+    @override_settings(WEKAN_ENABLED=True, WEKAN_OIDC_CLIENT_SECRET="s3cret-wekan",
+                       WEKAN_GROUP="boards")
+    def test_creating_the_group_is_idempotent(self):
+        """It runs from the container entrypoint on every start."""
+        call_command("ingress_sso_master")
+        call_command("ingress_sso_master")
+        self.assertEqual(Group.objects.filter(name="boards").count(), 1)
+
+    @override_settings(WEKAN_ENABLED=True, WEKAN_OIDC_CLIENT_SECRET="s3cret-wekan",
+                       WEKAN_GROUP="tablice")
+    def test_it_honours_a_host_that_renamed_the_group(self):
+        """Read from the setting, never hardcoded.
+
+        A data migration naming "boards" would leave a host that overrides
+        WEKAN_GROUP with an unused group and still no working one.
+        """
+        call_command("ingress_sso_master")
+        self.assertTrue(Group.objects.filter(name="tablice").exists())
+        self.assertFalse(Group.objects.filter(name="boards").exists())
+
+    @override_settings(WEKAN_ENABLED=False, WEKAN_GROUP="boards")
+    def test_no_group_where_the_boards_are_not_enabled(self):
+        call_command("ingress_sso_master")
+        self.assertFalse(Group.objects.filter(name="boards").exists())
+
+    @override_settings(WEKAN_ENABLED=True, WEKAN_OIDC_CLIENT_SECRET="s3cret-wekan",
+                       WEKAN_GROUP="boards")
+    def test_nobody_is_added_to_it(self):
+        """Membership is the administrative act, not a seeder's guess.
+
+        The brief is explicit: no external accounts, access per group. Who
+        belongs is a decision an admin makes.
+        """
+        get_user_model().objects.create_user(
+            username="someone", email="s@e.com", password="x")
+        call_command("ingress_sso_master")
+        self.assertEqual(Group.objects.get(name="boards").user_set.count(), 0)
+
     @override_settings(WEKAN_ENABLED=True, WEKAN_OIDC_CLIENT_SECRET="s3cret-wekan")
     def test_wekan_relying_party_provisioned(self):
         call_command("ingress_sso_master")
@@ -127,7 +179,10 @@ class IngressProvisioningTests(TestCase):
         call_command("ingress_sso_master")
         user = get_user_model().objects.create_user(
             username="boarder", email="boarder@example.com", password="x")
-        user.groups.add(Group.objects.create(name="boards"))
+        # get_or_create, not create: `ingress_sso_master` creates this group
+        # itself now, so the call above may already have made it.
+        group, _ = Group.objects.get_or_create(name="boards")
+        user.groups.add(group)
         claims = get_user_claims(user, scopes=["openid", "groups"])
         self.assertIn("boards", claims["groups"])
 
