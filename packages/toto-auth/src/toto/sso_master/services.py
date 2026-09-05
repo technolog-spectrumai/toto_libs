@@ -172,6 +172,35 @@ def get_user_claims(user, scopes) -> dict:
         # can legitimately be asked about a user disabled since.
         claims["is_active"] = bool(user.is_active)
 
+    # `groups` — Django group membership, verbatim.
+    #
+    # A SEPARATE SCOPE from `roles`, because they answer different questions.
+    # `roles` is derived from is_staff/is_superuser and says what somebody is
+    # on THIS platform; `groups` says which rooms they have been let into, and
+    # is edited by an administrator without touching anybody's staff flag.
+    # A relying party that wants one rarely wants the other.
+    #
+    # This is the access model for Wekan and lakeFS, and it exists because
+    # there are NO external accounts: every account belongs to somebody here,
+    # so "who may reach the boards" is a membership question rather than an
+    # account-type question. Remove a person from a group and their next token
+    # carries the change.
+    #
+    # Local by design. `datalink_policies` refuses to federate auth.Group at
+    # all — "group membership is a local authorization decision" — so a
+    # federated host never inherits who may see this company's boards, which
+    # is exactly right.
+    if "groups" in scopes:
+        claims["groups"] = sorted(
+            user.groups.values_list("name", flat=True))
+        # Superusers administer every relying party that maps a group to an
+        # admin role (Wekan's OAUTH2_ADMIN_GROUPS, Grafana's admin-group).
+        # Stated here rather than by seeding a real group, so the mapping
+        # cannot drift from the `roles` claim above, which already says
+        # "admin" for the same people.
+        if user.is_superuser and "admin" not in claims["groups"]:
+            claims["groups"].append("admin")
+
     return claims
 
 

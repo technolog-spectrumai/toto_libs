@@ -35,7 +35,8 @@ class Command(IngressCommand):
         # every start, and a raise in one used to stop every later one silently.
         # A relying party that pairing owns makes create_relying_party raise by
         # design, so this is reachable rather than theoretical.
-        for provision in (self._provision_grafana, self._provision_gitea):
+        for provision in (self._provision_grafana, self._provision_gitea,
+                          self._provision_wekan):
             try:
                 provision()
             except Exception as exc:            # noqa: BLE001
@@ -111,6 +112,54 @@ class Command(IngressCommand):
         )
         self.stdout.write(self.style.SUCCESS(
             f"Provisioned Grafana OIDC relying party (redirect {base}/grafana/login/generic_oauth)"
+        ))
+
+    def _provision_wekan(self):
+        """Register Wekan as a trusted OIDC relying party. Idempotent.
+
+        DELIBERATELY UNLIKE GITEA, and the difference is the whole access
+        model: Gitea's OAuth source carries `--required-claim roles=staff`, so
+        only staff can log in at all. Wekan is the company's main task board —
+        gating it on staff would lock the company out of its own work.
+
+        Everyone signs in; `groups` decides what they see. Wekan reads the
+        claim for `OAUTH2_ADMIN_GROUPS=admin` (who administers the instance),
+        and membership of the boards group is what the portal checks before
+        showing the tile. There are NO external accounts: every account belongs
+        to somebody here, and revoking a group revokes the access.
+        """
+        if not getattr(settings, "WEKAN_ENABLED", False):
+            return
+        secret = getattr(settings, "WEKAN_OIDC_CLIENT_SECRET", "") or ""
+        if not secret:
+            self.stdout.write(self.style.WARNING(
+                "WEKAN_ENABLED but WEKAN_OIDC_CLIENT_SECRET is empty — "
+                "skipping Wekan relying-party provisioning."
+            ))
+            return
+
+        base = get_public_base_url()
+        if not base:
+            self.stdout.write(self.style.WARNING(
+                "PLATFORM_DOMAIN is empty — cannot build Wekan redirect URI; skipping."
+            ))
+            return
+
+        redirect_uri = f"{base}/boards/_oauth/oidc"
+        create_relying_party(
+            name="Wekan",
+            client_id="wekan",
+            trusted=True,  # skip the consent screen for seamless SSO
+            redirect_uris=[redirect_uri],
+            # `groups` beside the usual three: Wekan maps it to instance admin,
+            # and it is how access is governed now that there are no external
+            # accounts to scope instead.
+            scopes="openid email profile roles groups",
+            raw_secret=secret,
+            force_recreate=True,
+        )
+        self.stdout.write(self.style.SUCCESS(
+            f"Provisioned Wekan OIDC relying party (redirect {redirect_uri})"
         ))
 
     def _provision_gitea(self):

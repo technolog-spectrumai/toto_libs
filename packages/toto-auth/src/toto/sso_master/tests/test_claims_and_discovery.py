@@ -55,6 +55,75 @@ class RolesClaimTests(TestCase):
         self.assertNotIn("roles", claims)
 
 
+class GroupsClaimTests(TestCase):
+    """The `groups` claim is how access to Wekan and lakeFS is governed.
+
+    There are no external accounts on this platform: every account belongs to
+    somebody at the company, so "who may reach the boards" is a membership
+    question rather than an account-type one. An administrator adds or removes
+    a group; the next token carries the change.
+
+    Separate from `roles` on purpose. `roles` is derived from
+    is_staff/is_superuser and says what somebody IS; `groups` says which rooms
+    they have been let into, and moves without touching anybody's staff flag.
+    """
+
+    def setUp(self):
+        _platform()
+
+    def test_membership_is_reported_verbatim(self):
+        from django.contrib.auth.models import Group
+
+        user = User.objects.create_user("member", "m@example.com", "x")
+        for name in ("boards", "datasets"):
+            user.groups.add(Group.objects.create(name=name))
+
+        claims = get_user_claims(user, ["openid", "groups"])
+
+        self.assertEqual(claims["groups"], ["boards", "datasets"])
+
+    def test_no_membership_is_an_empty_list_not_a_missing_key(self):
+        """A relying party reading `claims["groups"]` must not KeyError on
+        somebody who is in no group — that is the common case for a new
+        account, and it means "no access", not "unknown"."""
+        user = User.objects.create_user("loner", "l@example.com", "x")
+
+        claims = get_user_claims(user, ["openid", "groups"])
+
+        self.assertEqual(claims["groups"], [])
+
+    def test_a_superuser_always_carries_admin(self):
+        """Wekan maps `admin` to instance administrator via
+        OAUTH2_ADMIN_GROUPS. Stated in code rather than seeded as a real group,
+        so it cannot drift from the `roles` claim, which already says admin for
+        exactly these people."""
+        user = User.objects.create_superuser("root3", "r3@example.com", "x")
+
+        claims = get_user_claims(user, ["openid", "groups"])
+
+        self.assertIn("admin", claims["groups"])
+
+    def test_staff_alone_does_not_grant_a_group(self):
+        """The whole point of a second claim: being staff is not being let into
+        a room. A staff member with no group memberships reaches no boards."""
+        user = User.objects.create_user("staffer2", "s2@example.com", "x",
+                                        is_staff=True)
+
+        claims = get_user_claims(user, ["openid", "groups"])
+
+        self.assertEqual(claims["groups"], [])
+
+    def test_no_groups_without_the_scope(self):
+        from django.contrib.auth.models import Group
+
+        user = User.objects.create_user("scoped", "sc@example.com", "x")
+        user.groups.add(Group.objects.create(name="boards"))
+
+        claims = get_user_claims(user, ["openid", "email", "roles"])
+
+        self.assertNotIn("groups", claims)
+
+
 class DiscoveryDocumentTests(TestCase):
     def setUp(self):
         _platform()

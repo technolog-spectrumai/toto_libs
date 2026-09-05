@@ -45,7 +45,11 @@ def _openid_configuration_payload(request, authorization_endpoint: str) -> dict:
         "grant_types_supported": ["authorization_code"],
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["RS256"],
-        "scopes_supported": ["openid", "email", "profile", "roles"],
+        # `groups` joined on 2026-09-05 with the Wekan relying party. A scope the
+        # document does not advertise is one a strict client will not ask for,
+        # so adding the claim without adding it here would leave `groups` never
+        # requested and the boards ungated.
+        "scopes_supported": ["openid", "email", "profile", "roles", "groups"],
         "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post", "none"],
         "claims_supported": [
             "iss", "sub", "aud", "exp", "iat", "auth_time", "nonce",
