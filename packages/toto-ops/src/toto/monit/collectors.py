@@ -155,6 +155,69 @@ def _redis_client():
     return None
 
 
+def collect_boards():
+    """Are the boards and their store reachable? Reported, never diagnosed.
+
+    NO MONGO DRIVER IS IMPORTED HERE, and that is a hard constraint rather
+    than a preference: `zenobia.tests.test_no_graph` boots a probe interpreter
+    and fails if `pymongo` or `motor` appears in `sys.modules`. The whole point
+    of the boards decision is that Wekan owns its store and Django has no
+    opinions about it — importing a driver to take its pulse would quietly
+    reverse that.
+
+    So this asks two questions the way an operator would from a shell: does
+    something accept a TCP connection on the Mongo port, and does Wekan answer
+    HTTP. Both are one socket, both time out fast, and both degrade to
+    `False` rather than raising — a Status page that 500s because a sidecar is
+    starting is worse than one that says "not right now".
+
+    `None` means "not configured on this host", exactly as `collect_redis`
+    uses it, so a build without boards reports nothing rather than reporting
+    a failure.
+    """
+    out = {"mongo_ok": None, "mongo_latency_ms": None,
+           "wekan_ok": None, "wekan_latency_ms": None}
+
+    host = getattr(settings, "MONIT_MONGO_HOST", "") or ""
+    if host:
+        out["mongo_ok"], out["mongo_latency_ms"] = _tcp_probe(
+            host, int(getattr(settings, "MONIT_MONGO_PORT", 27017) or 27017))
+
+    url = getattr(settings, "MONIT_WEKAN_URL", "") or ""
+    if url:
+        out["wekan_ok"], out["wekan_latency_ms"] = _http_probe(url)
+    return out
+
+
+def _tcp_probe(host, port, timeout=1.0):
+    """(reachable, ms). A refused connection is a real answer, not an error."""
+    import socket
+
+    start = time.perf_counter()
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True, round((time.perf_counter() - start) * 1000, 2)
+    except Exception:              # noqa: BLE001 - refused, unresolved, timed out
+        return False, None
+
+
+def _http_probe(url, timeout=2.0):
+    """(answered, ms). ANY status counts as answered.
+
+    Wekan's root redirects when signed out and 200s when signed in; both mean
+    the container is up, which is the only question this collector asks. A
+    check that demanded 200 would report a healthy Wekan as down.
+    """
+    start = time.perf_counter()
+    try:
+        import requests
+
+        requests.get(url, timeout=timeout, allow_redirects=False)
+        return True, round((time.perf_counter() - start) * 1000, 2)
+    except Exception:              # noqa: BLE001
+        return False, None
+
+
 def collect_redis():
     out = {"redis_ok": None, "redis_latency_ms": None,
            "redis_used_memory_bytes": None, "redis_connected_clients": None}
@@ -338,6 +401,7 @@ def collect_all_for_snapshot():
     """Merge all snapshot-bound collectors (each isolated)."""
     data = {}
     for collector in (collect_system, collect_db, collect_redis,
+                      collect_boards,
                       collect_celery, collect_tor, collect_aster, collect_web):
         try:
             data.update(collector())
