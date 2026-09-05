@@ -56,6 +56,15 @@ class Company(DomainEntity):
         help_text="Optional logo for this company.",
     )
 
+    #: How the company describes itself, for the workspace's own Company page.
+    #: A plain textarea, deliberately: rich text on this host lives where the
+    #: tools that own it provide editors (Wekan cards, the Gitea wiki), and
+    #: toto.cyprian is neither installed nor mounted here.
+    description = models.TextField(blank=True)
+    website = models.URLField(blank=True)
+    email = models.EmailField(blank=True)
+    phone = models.CharField(max_length=80, blank=True)
+
     #: The statute, either as plain text or as a protected file in the vault.
     #: SET_NULL and never CASCADE — deleting a file must not delete the company
     #: that adopted it. This is socialhub's `Community.statute` precedent
