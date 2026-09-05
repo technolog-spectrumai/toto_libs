@@ -400,8 +400,12 @@ def collect_request_metrics(max_views=10):
 def collect_all_for_snapshot():
     """Merge all snapshot-bound collectors (each isolated)."""
     data = {}
+    # collect_boards is deliberately NOT here. Every key this merge produces
+    # becomes a `Snapshot(**data)` kwarg, so a collector in this tuple must
+    # correspond to model columns — adding four for a reachability check that
+    # is only ever interesting *now* would be storing the wrong thing. The
+    # Status view calls it live, beside redis and celery.
     for collector in (collect_system, collect_db, collect_redis,
-                      collect_boards,
                       collect_celery, collect_tor, collect_aster, collect_web):
         try:
             data.update(collector())

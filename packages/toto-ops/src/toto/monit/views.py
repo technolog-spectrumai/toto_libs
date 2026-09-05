@@ -139,10 +139,14 @@ class OverviewView(MonitAccessMixin, TemplateView):
             "django_redis" in settings.CACHES.get("default", {}).get("BACKEND", "")
             or bool(getattr(settings, "MONIT_REDIS_URL", "")))
         web_scrape_enabled = bool(getattr(settings, "MONIT_WEB_METRICS_URL", ""))
+        # "" on a host with no boards, so nothing is probed and nothing shown.
+        boards_configured = bool(getattr(settings, "MONIT_MONGO_HOST", "")
+                                 or getattr(settings, "MONIT_WEKAN_URL", ""))
         context.update({
             "has_nomad": has_nomad,
             "has_aster": has_aster,
             "has_prometheus": has_prometheus,
+            "boards_configured": boards_configured,
             "celery_configured": celery_configured,
             "redis_configured": redis_configured,
             "web_scrape_enabled": web_scrape_enabled,
@@ -153,6 +157,12 @@ class OverviewView(MonitAccessMixin, TemplateView):
         context["live_db"] = collectors.collect_db()
         context["live_redis"] = collectors.collect_redis() if redis_configured else None
         context["live_celery"] = collectors.collect_celery() if celery_configured else None
+        # The boards, live only — see collectors.collect_boards for why this
+        # is a socket and an HTTP call rather than a Mongo driver. Guarded the
+        # same way as redis and celery above: a host without boards asks
+        # nothing and renders nothing.
+        context["live_boards"] = (
+            collectors.collect_boards() if boards_configured else None)
         context["live_tor"] = collectors.collect_tor() if has_nomad else None
         context["live_aster"] = collectors.collect_aster() if has_aster else None
         context["live_requests"] = (
