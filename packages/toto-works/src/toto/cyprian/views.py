@@ -37,7 +37,7 @@ from toto.core import assistant
 from toto.ui import PageProcessor
 from toto.vault import access, editing
 from toto.vault.filetree import accessible_files
-from toto.vault.models import VaultFile
+from toto.vault.models import VaultFile, file_edits_allowed
 from toto.vault.views import new_file_picker_json, resolve_new_file_target
 
 from toto.cyprian import tiptap
@@ -324,6 +324,16 @@ def _read_json_body(request, limit: int):
 def document_save(request, file_pk):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Not authenticated."}, status=401)
+
+    # The host-wide read-only switch, checked HERE and not only at the door.
+    # `VAULT_FILE_EDITS = False` (faros sets it) means "refuse every
+    # server-side rewrite of stored file content" — the vault's own API, the
+    # vault views and the Core ACE editor all honour it at their save doors,
+    # and this one did not, so a direct POST still rewrote the file. Same
+    # 403 and the same wording as `toto.editor.views.save_file`.
+    if not file_edits_allowed():
+        return JsonResponse({"error": "File editing is disabled on this host."},
+                            status=403)
 
     vault_file, _opened = _open_document(request, file_pk)
     if vault_file.is_encrypted:
