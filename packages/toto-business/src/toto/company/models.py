@@ -647,3 +647,46 @@ class DepartmentDecision(DomainEntity):
 
     def __str__(self):
         return self.title
+
+
+# ── the calendar seam ────────────────────────────────────────────────────────
+
+class CompanyEvent(DomainEntity):
+    """One `events.ScheduledEvent`, shown on one company's calendar.
+
+    The mirror of `toto.lacedo`'s `LodgeEvent`, and a JOIN ROW for the same
+    reason. A nullable `company` FK on `ScheduledEvent` would be one column
+    instead of one model — and it would point CORE at an optional app.
+    `toto.events` is installed on every host; the Business Center is not, and
+    this host installs `toto.company` from a wheel it may stop pinning. A
+    column on the Core model would outlive the app that gave it meaning.
+
+    Pointing this way keeps the direction this app's own docstring states and
+    `tests/test_boundary.py` enforces: Company may reach into events, people
+    and the vault, and nothing in Zenobia imports Company back. Uninstall the
+    Business Center and this table goes with it, leaving the events alone.
+
+    CASCADE both ways: a link outliving either end can only draw an empty row.
+    The event is not OWNED here — a company meeting may also be a community's
+    — so this says "show it on that company's calendar" and nothing more.
+    """
+
+    event = models.ForeignKey(
+        "events.ScheduledEvent", on_delete=models.CASCADE,
+        related_name="company_links",
+        help_text="The event shown on this company's calendar.")
+    company = models.ForeignKey(
+        Company, on_delete=models.CASCADE, related_name="calendar",
+        help_text="The company whose calendar shows it.")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("event", "company"),
+                name="bc_one_calendar_link_per_event"),
+        ]
+        ordering = ("-created_at", "-pk")
+
+    def __str__(self):
+        return f"{self.company_id} ← {self.event_id}"
