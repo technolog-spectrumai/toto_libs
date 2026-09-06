@@ -37,8 +37,8 @@ calendars would re-execute all of it and, worse, race the two initialisers.
     <h3 class="mb-3 text-xl font-semibold">{{ title }}</h3>
   {% endif %}
 
-  {# The grid does not shrink below ~320px, so it scrolls inside its own box
-     rather than pushing the page sideways on a phone. #}
+  {% comment %}The grid does not shrink below ~320px, so it scrolls inside its
+  own box rather than pushing the page sideways on a phone.{% endcomment %}
   <div class="w-full overflow-x-auto">
     <div id="{{ id }}_calendar" class="min-w-[320px]"></div>
   </div>
