@@ -16,7 +16,26 @@
       {% endif %}
     </div>
   </div>
-  <a href="{% url 'company:index' %}"
-     class="inline-flex items-center gap-2 text-sm font-semibold hover:underline">
-    <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>{% trans "All companies" %}</a>
+  <div class="flex flex-wrap items-center gap-4">
+    {% comment %}The company's room, when it has one and this host has a forum.
+
+    `company.forum.channel` returns None rather than raising when toto.forum is
+    not installed or the room is gone, and `{% url ... as %}` never raises — so
+    on a host without chat this whole block is simply absent. Both guards are
+    needed: the first covers "no room", the second "no urlconf".{% endcomment %}
+    {% with room=company.forum.channel %}
+      {% if room %}
+        {% url 'forum:channel_detail' room.slug as room_url %}
+        {% if room_url %}
+          <a href="{{ room_url }}"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold hover:underline">
+            <i class="fa-solid fa-comments" aria-hidden="true"></i>{% trans "Company forum" %}</a>
+        {% endif %}
+      {% endif %}
+    {% endwith %}
+    <a href="{% url 'company:index' %}"
+       class="inline-flex items-center gap-2 text-sm font-semibold hover:underline">
+      <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>{% trans "All companies" %}</a>
+  </div>
 </header>

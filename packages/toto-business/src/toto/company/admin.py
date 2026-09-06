@@ -2,6 +2,8 @@ from django.contrib import admin
 
 from toto.company.models import (
     Company,
+    CompanyEvent,
+    CompanyForum,
     CompanyMembership,
     Department,
     DepartmentMembership,
@@ -81,3 +83,28 @@ class CompanyMembershipAdmin(admin.ModelAdmin):
     list_display = ("person", "company", "job_title", "primary_department", "active")
     list_filter = ("company", "active")
     search_fields = ("person__display_name", "job_title")
+
+
+# The two join rows. Registered because the admin is the ONLY way to make one:
+# neither has a form, a service or a page of its own, so without these a
+# company's calendar and its forum link can only be created from a shell —
+# which means they render empty forever on a live host.
+
+@admin.register(CompanyEvent)
+class CompanyEventAdmin(admin.ModelAdmin):
+    list_display = ("company", "event", "created_at")
+    list_filter = ("company",)
+    search_fields = ("company__name", "event__title")
+    autocomplete_fields = ("event",)
+
+
+@admin.register(CompanyForum)
+class CompanyForumAdmin(admin.ModelAdmin):
+    """One room per company. `channel_slug` is a SLUG, not a foreign key —
+    see the model docstring for why — so it is typed rather than picked, and
+    nothing here checks that the room exists. A slug naming no room renders
+    no link on the company page, which is the designed behaviour and not a
+    validation gap to close here."""
+
+    list_display = ("company", "channel_slug", "created_at")
+    search_fields = ("company__name", "channel_slug")

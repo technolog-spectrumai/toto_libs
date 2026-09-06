@@ -690,3 +690,72 @@ class CompanyEvent(DomainEntity):
 
     def __str__(self):
         return f"{self.company_id} ← {self.event_id}"
+
+
+# ── the forum seam ───────────────────────────────────────────────────────────
+
+class CompanyForum(DomainEntity):
+    """The ONE room a company talks in.
+
+    A SLUG, NOT A FOREIGN KEY, and that is the whole design of this model.
+
+    The obvious shape is `channel = OneToOneField("forum.ForumChannel")`, the
+    way `CompanyEvent` points at `events.ScheduledEvent`. It is wrong here for
+    a reason the package graph states out loud: an FK **string** counts as a
+    hard edge (`scripts/check_package_graph.py`), `toto.forum` ships in
+    toto-chat, and toto-business declares exactly one dependency —
+    `toto-base==1.50`. Writing that FK fails the graph check with
+    "UNDECLARED DEPENDENCY toto-business -> toto-chat", and the honest fixes
+    are to add the dependency (making the company register unusable on a host
+    without chat) or to not point that way. `Company.community_ref` above
+    already chose the second for the same problem, and this follows it.
+
+    So: the slug of a `forum.ForumChannel`, resolved at RENDER TIME and
+    dropped when it does not resolve. Nothing here fetches, validates or
+    branches on it beyond "is there a room by that name" — the same promise
+    `toto.lacedo`'s `ResourceLink` makes about a URL.
+
+    WHAT THAT COSTS, said plainly rather than hidden: deleting the room leaves
+    this row pointing at nothing, where a CASCADE would have cleaned it up.
+    The company page renders no button in that case, so the failure is a
+    missing link rather than a broken one — and a stale row is recoverable by
+    making a room with that slug again, which a cascade-deleted row is not.
+
+    ONE FORUM PER COMPANY: a OneToOne on the company side, so `company.forum`
+    is a room or nothing and there is no queryset to iterate by accident. The
+    slug is unique too, so one room cannot quietly serve two companies and be
+    moderated by both.
+
+    The room is NOT OWNED here. It is an ordinary forum channel with ordinary
+    membership and moderation; this only says which room is the company's.
+    """
+
+    company = models.OneToOneField(
+        Company, on_delete=models.CASCADE, related_name="forum",
+        help_text="The company whose room this is.")
+    channel_slug = models.SlugField(
+        max_length=50, unique=True,
+        help_text="The forum room's slug. Resolved when the page renders.")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-pk")
+
+    def __str__(self):
+        return f"{self.company} → {self.channel_slug}"
+
+    def channel(self):
+        """The room, or None when chat is not installed or it is gone.
+
+        Never raises: a company page must render for somebody whose host has
+        no forum at all, which is exactly the case an FK could not express.
+        """
+        from django.apps import apps as django_apps
+
+        if not django_apps.is_installed("toto.forum"):
+            return None
+        try:
+            model = django_apps.get_model("forum", "ForumChannel")
+            return model.objects.filter(slug=self.channel_slug).first()
+        except Exception:  # noqa: BLE001 — a missing room is not an error here
+            return None
