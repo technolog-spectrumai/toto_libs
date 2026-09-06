@@ -63,10 +63,16 @@ class DispatcherTests(MonitoringTestCase):
 
 
 class StripTests(MonitoringTestCase):
-    def test_a_superuser_sees_all_four_tabs_in_order(self):
+    def test_a_superuser_sees_every_tab_in_order(self):
+        """"Jobs" joined on 2026-09-06, between Audit and History.
+
+        The exact list rather than a count, and it earned that: adding a tab
+        failed this test loudly, which is what an ORDERED strip wants — a
+        count would have passed while the new tab sat in the wrong place.
+        """
         tabs = monitoring.monitoring_tabs(self.superuser)
         self.assertEqual([t["slug"] for t in tabs],
-                         ["monitoring", "database", "audit", "history"])
+                         ["monitoring", "database", "audit", "jobs", "history"])
 
     def test_staff_sees_only_the_audit_tab(self):
         tabs = monitoring.monitoring_tabs(self.staff)

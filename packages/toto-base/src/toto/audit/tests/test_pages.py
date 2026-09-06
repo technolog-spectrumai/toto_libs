@@ -82,14 +82,19 @@ class MonitoringStripTests(AuditPageTestCase):
         self.assertEqual([t["slug"] for t in response.context["monitoring_tabs"]],
                          ["audit"])
 
-    def test_a_superuser_sees_all_four(self):
+    def test_a_superuser_sees_every_tab(self):
+        """"Jobs" joined the strip on 2026-09-06. Asserted from the AUDIT page
+        as well as from the builder's own test, because this is the one that
+        proves the strip a reader actually receives — a tab present in
+        `monitoring_tabs()` but missing from the rendered context would pass
+        `core.tests_monitoring` and fail here."""
         from django.contrib.auth import get_user_model
 
         root = get_user_model().objects.create_superuser("root2", password="x")
         self.client.force_login(root)
         response = self.client.get(reverse("audit:index"))
         self.assertEqual([t["slug"] for t in response.context["monitoring_tabs"]],
-                         ["monitoring", "database", "audit", "history"])
+                         ["monitoring", "database", "audit", "jobs", "history"])
 
 
 class DetailPageTests(AuditPageTestCase):
