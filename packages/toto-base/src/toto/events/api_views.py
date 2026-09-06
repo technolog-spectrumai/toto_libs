@@ -7,6 +7,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
 from toto.api.cors import CorsApiView, MeshGatedApiView
+from .access import visible_events
 from .models import EventCategory, ScheduledEvent, EventInvite
 
 
@@ -55,11 +56,15 @@ class EventListApiView(MeshGatedApiView):
             return err
 
         current_time = now()
-        qs = (
+        # SCOPED SINCE 2026-09-06. This was a bare `.all()`: the JSON twin of
+        # the calendar handed every private event on the platform to any
+        # authenticated caller. Unlike the HTML page it had no filter to drift
+        # from — it had never had one. See events/access.py.
+        qs = visible_events(
+            request.user,
             ScheduledEvent.objects
             .select_related("category", "owner", "address")
-            .order_by("start_time")
-        )
+            .order_by("start_time"))
         events = list(qs)
         upcoming_qs = [e for e in events if e.start_time >= current_time]
         past_qs = [e for e in events if e.start_time < current_time]
@@ -146,8 +151,10 @@ class EventDetailApiView(MeshGatedApiView):
         if err:
             return err
         try:
+            # Scoped, and 404 rather than 403 for an event the caller may not
+            # read: distinguishing the two tells a stranger the row exists.
             event = (
-                ScheduledEvent.objects
+                visible_events(request.user)
                 .select_related("category", "owner", "address")
                 .prefetch_related("organizers")
                 .get(pk=pk)

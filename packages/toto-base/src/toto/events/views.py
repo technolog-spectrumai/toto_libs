@@ -63,26 +63,16 @@ class EventCalendarView(ListView):
         Note the default is still ``public=True``, so nothing that was meant to
         be seen disappears; only an event somebody explicitly marked private
         starts behaving like one.
+
+        THE RULE MOVED to ``events/access.py`` on 2026-09-06. It lived only
+        here, and two other doors — the detail view and the list API — had
+        never been taught it. Sharing it is what stops them drifting again.
         """
-        from django.db.models import Q
+        from .access import visible_events
 
-        qs = ScheduledEvent.objects.order_by('start_time')
-        user = self.request.user
-        if not user.is_authenticated:
-            return qs.filter(public=True)
-
-        person = getattr(user, "community_profile", None)
-        if person is None:
-            # A login with no Person cannot own, organise or be invited to
-            # anything, so there is nothing private for them to see.
-            return qs.filter(public=True)
-
-        return qs.filter(
-            Q(public=True)
-            | Q(owner=person)
-            | Q(organizers=person)
-            | Q(invites__person=person)
-        ).distinct()
+        return visible_events(
+            self.request.user,
+            ScheduledEvent.objects.order_by('start_time'))
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -121,6 +111,25 @@ class EventDetailView(LoginRequiredMixin, DetailView):
     template_name = 'events/event_detail.html'
     context_object_name = 'event'
     login_url = reverse_lazy('core:login')
+
+    def get_queryset(self):
+        """The same rule the list uses — it had NONE until 2026-09-06.
+
+        With only `model =` set, Django falls back to
+        `ScheduledEvent._default_manager.all()`, and `LoginRequiredMixin`
+        gates on authentication alone. So any signed-in user who held a pk
+        read any event: title, description, times, address, organisers,
+        `public=False` included. The pk is a UUID and so not enumerable, but
+        it is not a secret either — it is embedded in the calendar payload
+        and in every profile widget, and a former invitee keeps a working
+        link forever.
+
+        404, not 403: a refusal that distinguishes "not allowed" from "does
+        not exist" tells a stranger the row is there.
+        """
+        from .access import visible_events
+
+        return visible_events(self.request.user)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
