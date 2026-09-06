@@ -17,6 +17,7 @@ from toto.company.models import (
     ActionKind,
     Company,
     CompanyAction,
+    CompanyForum,
     CompanyForm as CompanyFormChoices,
     CompanyMembership,
     Department,
@@ -64,6 +65,40 @@ class CompanyDetailsForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        _style(self)
+
+
+class CompanyForumForm(forms.ModelForm):
+    """Which forum room is this company's.
+
+    A SLUG typed by hand rather than a room picked from a dropdown, and that
+    follows from the model: `CompanyForum.channel_slug` is a slug precisely
+    because toto-business may not depend on toto-chat (an FK string is a hard
+    package edge — `check_package_graph.py` refuses it). A ModelChoiceField
+    over ForumChannel would reintroduce exactly the import the slug avoids.
+
+    Nothing here checks that the room exists. A slug naming no room renders no
+    link on the company page — the designed behaviour, so that the register
+    still works on a host with no forum at all — and validating it here would
+    make the form unusable on those hosts rather than merely quiet.
+    """
+
+    class Meta:
+        model = CompanyForum
+        fields = ["channel_slug"]
+        widgets = {
+            "channel_slug": forms.TextInput(
+                attrs={"placeholder": "acme-room"}),
+        }
+        labels = {"channel_slug": "Forum room slug"}
+        help_texts = {
+            "channel_slug": "The room's slug in the forum, e.g. `acme-room`. "
+                            "Leave empty to remove the link.",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["channel_slug"].required = False
         _style(self)
 
 

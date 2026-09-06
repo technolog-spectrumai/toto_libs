@@ -148,12 +148,51 @@
         <p class="mt-4 text-sm opacity-70">{% trans "No departments yet." %}</p>
       {% endif %}
     </section>
+
+    {% comment %}The company's room. Shown to everyone (the header carries the
+    link on every tab), editable by staff — the same split the rest of this
+    page uses: facts are public, changing them is _staff_only.{% endcomment %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="min-w-0">
+          <h2 class="text-lg font-bold">{% trans "Forum" %}</h2>
+          {% with room=company.forum.channel %}
+            {% if room %}
+              {% url 'forum:channel_detail' room.slug as room_url %}
+              <p class="mt-1 text-sm opacity-70">
+                {% if room_url %}
+                  <a href="{{ room_url }}" class="font-semibold hover:underline">{{ room.name }}</a>
+                {% else %}
+                  {{ room.name }}
+                {% endif %}
+              </p>
+            {% elif forum_link %}
+              {% comment %}A row pointing at a room that is not there: the cost
+              of a slug instead of a foreign key, shown rather than hidden so
+              somebody can fix it.{% endcomment %}
+              <p class="mt-1 text-sm opacity-70">
+                {% blocktrans with slug=forum_link.channel_slug %}No room named <code>{{ slug }}</code>.{% endblocktrans %}</p>
+            {% else %}
+              <p class="mt-1 text-sm opacity-70">{% trans "No room linked." %}</p>
+            {% endif %}
+          {% endwith %}
+        </div>
+        {% if request.user.is_staff %}
+          <button type="button" @click="modal = 'forum'"
+                  :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                  class="rounded-lg border px-3 py-1.5 text-sm font-semibold">
+            <i class="fa-solid fa-pen" aria-hidden="true"></i> {% trans "Edit" %}</button>
+        {% endif %}
+      </div>
+    </section>
   </div>
 
   {% if request.user.is_staff %}
     {% include "company/_modal.html" with name="company" title=_("Company facts") form=company_form action="company" %}
     {% include "company/_modal.html" with name="department" title=_("New department") form=department_form action="department" %}
     {% include "company/_modal.html" with name="membership" title=_("Add member") form=membership_form action="membership" %}
+    {% include "company/_modal.html" with name="forum" title=_("Forum room") form=forum_form action="forum" %}
   {% endif %}
 </main>
 {% endblock %}

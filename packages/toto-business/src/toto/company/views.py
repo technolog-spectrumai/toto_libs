@@ -28,6 +28,7 @@ from django.views.decorators.http import require_POST
 from toto.company.forms import (
     CompanyActionForm,
     CompanyDetailsForm,
+    CompanyForumForm,
     CompanyMembershipForm,
     DepartmentForm,
     DepartmentMembershipForm,
@@ -38,6 +39,7 @@ from toto.company.models import (
     ActionStatus,
     Company,
     CompanyAction,
+    CompanyForum,
     CompanyMembership,
     Department,
     Party,
@@ -144,6 +146,8 @@ def structure(request, slug):
     company_form = CompanyDetailsForm(instance=company)
     department_form = DepartmentForm(company=company)
     membership_form = CompanyMembershipForm(company=company)
+    forum_link = CompanyForum.objects.filter(company=company).first()
+    forum_form = CompanyForumForm(instance=forum_link)
     open_modal = ""
 
     if request.method == "POST":
@@ -176,6 +180,23 @@ def structure(request, slug):
                 messages.success(request, "Member added.")
                 return redirect("company:structure", slug=company.slug)
             open_modal = "membership"
+        elif action == "forum":
+            # An EMPTY slug removes the link rather than saving a row that
+            # points nowhere: `CompanyForum` is a OneToOne, so "no room" is
+            # the absence of the row, not a row holding "".
+            forum_form = CompanyForumForm(request.POST, instance=forum_link)
+            if forum_form.is_valid():
+                slug_value = (forum_form.cleaned_data.get("channel_slug") or "").strip()
+                if not slug_value:
+                    CompanyForum.objects.filter(company=company).delete()
+                    messages.success(request, "Forum link removed.")
+                else:
+                    link = forum_form.save(commit=False)
+                    link.company = company
+                    link.save()
+                    messages.success(request, "Forum room saved.")
+                return redirect("company:structure", slug=company.slug)
+            open_modal = "forum"
         else:
             messages.error(request, "Unknown form action.")
 
@@ -191,6 +212,8 @@ def structure(request, slug):
         "company_form": company_form,
         "department_form": department_form,
         "membership_form": membership_form,
+        "forum_form": forum_form,
+        "forum_link": forum_link,
         "open_modal": open_modal,
         "departments": _flatten_departments(departments),
         "memberships": company.memberships.filter(active=True).select_related(

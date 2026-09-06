@@ -119,3 +119,74 @@ class NoForumInstalledTests(TestCase):
         r = self.client.get(reverse("company:structure", args=["nochat"]))
         self.assertEqual(r.status_code, 200)
         self.assertNotContains(r, "Company forum")
+
+
+class ForumLinkEditingTests(TestCase):
+    """Staff set the room from the company page; members may not."""
+
+    @classmethod
+    def setUpClass(cls):
+        from django.apps import apps as django_apps
+
+        if not django_apps.is_installed("toto.forum"):
+            raise unittest.SkipTest("toto.forum is not installed on this host")
+        super().setUpClass()
+
+    @classmethod
+    def setUpTestData(cls):
+        from toto.company.models import Company
+        from toto.core.models import Platform
+        from toto.forum.models import ForumChannel
+
+        Platform.objects.create(site_name="T", author="A",
+                                publication_year=2026, active=True)
+        U = get_user_model()
+        cls.staff = U.objects.create_user(username="st", password="pw", is_staff=True)
+        cls.member = U.objects.create_user(username="me", password="pw")
+        cls.company = Company.objects.create(name="Edit Co", slug="editco")
+        ForumChannel.objects.create(name="Edit room", slug="edit-room")
+
+    def url(self):
+        return reverse("company:structure", args=["editco"])
+
+    def test_staff_can_set_the_room(self):
+        from toto.company.models import CompanyForum
+
+        self.client.force_login(self.staff)
+        r = self.client.post(self.url(),
+                             {"action": "forum", "channel_slug": "edit-room"})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(
+            CompanyForum.objects.get(company=self.company).channel_slug,
+            "edit-room")
+
+    def test_an_empty_slug_removes_the_link_rather_than_storing_nothing(self):
+        """`CompanyForum` is a OneToOne: "no room" is the absence of the row,
+        not a row holding an empty string that would render a dead card."""
+        from toto.company.models import CompanyForum
+
+        CompanyForum.objects.create(company=self.company, channel_slug="edit-room")
+        self.client.force_login(self.staff)
+        self.client.post(self.url(), {"action": "forum", "channel_slug": ""})
+        self.assertFalse(CompanyForum.objects.filter(company=self.company).exists())
+
+    def test_a_member_may_not_edit_it(self):
+        self.client.force_login(self.member)
+        r = self.client.post(self.url(),
+                             {"action": "forum", "channel_slug": "edit-room"})
+        self.assertEqual(r.status_code, 403)
+
+    def test_the_edit_button_is_staff_only(self):
+        self.client.force_login(self.member)
+        body = self.client.get(self.url()).content.decode()
+        self.assertIn("Forum", body)
+        self.assertNotIn("modal = 'forum'", body)
+
+    def test_a_slug_naming_no_room_is_shown_rather_than_hidden(self):
+        """The cost of a slug instead of an FK, surfaced so somebody can fix
+        it — a silently missing card would look like 'no room linked'."""
+        from toto.company.models import CompanyForum
+
+        CompanyForum.objects.create(company=self.company, channel_slug="gone")
+        self.client.force_login(self.staff)
+        self.assertContains(self.client.get(self.url()), "gone")
