@@ -1,0 +1,45 @@
+{% extends "oya/base.html" %}
+{% load i18n static %}
+
+{% block title %}{{ company.name }} - {% trans "Events" %} - {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<main :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+      class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-6xl space-y-6">
+    {% include "company/_company_header.html" %}
+    {% include "company/_tabs.html" %}
+
+    {% comment %}The list renders FIRST and unconditionally — the same call
+    locations.html makes: it is the record, and it is what a screen reader or a
+    browser without JavaScript gets. The grid below is a view over the same
+    rows.{% endcomment %}
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5 space-y-4">
+      <h2 class="text-lg font-bold">{% trans "Events" %}</h2>
+
+      {% if events %}
+        <ul class="space-y-2 text-sm">
+          {% for event in events %}
+            <li class="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+              <span class="min-w-0">
+                <i class="fa-solid fa-calendar-day mr-1 opacity-60" aria-hidden="true"></i>
+                <a href="{% url 'events:event_detail' event.pk %}"
+                   class="font-semibold hover:underline">{{ event.title }}</a>
+              </span>
+              <span class="opacity-70">{{ event.start_time|date:"j M Y, H:i" }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+
+        {% include "oya/partials/calendar.html" with id="company_calendar" data=calendar_data colors=calendar_colors %}
+      {% else %}
+        <p class="text-sm opacity-70">
+          {% trans "Nothing is scheduled for this company yet." %}</p>
+      {% endif %}
+    </section>
+  </div>
+</main>
+{% endblock %}

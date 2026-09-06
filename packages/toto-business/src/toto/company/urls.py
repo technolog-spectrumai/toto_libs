@@ -22,6 +22,8 @@ urlpatterns = [
     path("<slug:slug>/shareholders/", views.shareholders, name="shareholders"),
     path("<slug:slug>/chart/", views.org_chart, name="org_chart"),
     path("<slug:slug>/locations/", views.locations, name="locations"),
+    # The company's calendar. GET only — events are made in toto.events.
+    path("<slug:slug>/events/", views.events, name="events"),
     path("<slug:slug>/graph.json", views.company_graph, name="company_graph"),
     path(
         "<slug:company_slug>/departments/<slug:slug>/",

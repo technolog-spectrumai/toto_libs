@@ -89,6 +89,11 @@ def _tabs(company, active):
          "url": reverse("company:locations", args=[company.slug]),
          "active": active == "locations"},
     ]
+    if apps.is_installed("toto.events"):
+        tabs.append({
+            "key": "events", "label": "Events", "icon": "fa-calendar-days",
+            "url": reverse("company:events", args=[company.slug]),
+            "active": active == "events"})
     if apps.is_installed("toto.ledger"):
         tabs.insert(3, {
             "key": "actions", "label": "Actions", "icon": "fa-link",
@@ -888,6 +893,36 @@ def _audit(action, **kwargs):
 
 
 @login_required
+def events(request, slug):
+    """The company's calendar: events somebody chose to show here.
+
+    A LISTING, not an owner. `CompanyEvent` is a join row and the direction is
+    deliberate — `toto.events` is Core and knows nothing about companies, so
+    uninstalling the Business Center takes the links and leaves the events.
+    The same event may appear on a community's calendar too.
+
+    SCOPED TWICE, and both are needed: the join says which events belong to
+    this company, and `visible_events` says which of those this viewer may see
+    at all. Dropping the second would show a private meeting to anybody who
+    can open the company page.
+    """
+    from toto.events.access import visible_events
+    from toto.events.calendar import calendar_colors, calendar_payload
+
+    company = _company(slug)
+    linked = (visible_events(request.user)
+              .filter(company_links__company=company)
+              .order_by("start_time").distinct())
+    context = {
+        "company": company,
+        "tabs": _tabs(company, "events"),
+        "events": linked,
+        "calendar_data": calendar_payload(linked),
+    }
+    context["calendar_colors"] = calendar_colors(context)
+    return company_render(request, "company/events.html", context)
+
+
 def locations(request, slug):
     """The company on a map: the seat, and every shareholder who gave one.
 
