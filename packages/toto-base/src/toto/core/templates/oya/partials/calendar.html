@@ -1,34 +1,80 @@
 {% load static %}
 {% load i18n %}
+{% comment %}
+THE calendar grid. One of these, rendered by everything that shows a calendar.
 
-<!-- FullCalendar v6 injects its own CSS via the JS bundle — no separate stylesheet. -->
+It existed from the start and had ZERO callers until 2026-09-06 — the events
+page had grown its own copy, so the two drifted and nothing shared the fix
+either of them got. It lives in `oya/` (toto.core, always installed) for the
+reason `_tools_tabs.html` states about the tools strip: Django only loads the
+template directories of INSTALLED apps, so a partial shared between a wheel
+and a host portion vanishes the moment its home app is switched off. The
+Bounty Lodge and the company register are both optional; this is not.
 
-<div class="p-4">
+Parameters
+  id      required, unique per page — a page may hold more than one calendar
+          (a community's and a company's are different scopes), and two grids
+          sharing a DOM id renders one of them into nothing.
+  data    the JSON from `toto.events.calendar_payload()`. `escapejs`, not
+          `safe`: the titles are user-written, and the events page's own copy
+          interpolated them raw into a <script> for as long as it existed.
+  title   optional heading. Omit it where the surrounding page already says
+          what the calendar is — a tab labelled "Timeline" does not need a
+          second heading under it saying "Timeline".
+  colors  optional {background, text} — `chart_colors` from PageProcessor.
 
-  <h3 class="text-xl font-semibold mb-3">{{ title }}</h3>
+FullCalendar is loaded ONCE per page, guarded on the global. The bundle is
+~300 KB and defines `FullCalendar`; loading it twice on a page with two
+calendars would re-execute all of it and, worse, race the two initialisers.
+{% endcomment %}
 
-  <div id="{{ id }}_calendar"></div>
+{% if not fullcalendar_loaded %}
+  <script src="{% static 'vendor/fullcalendar/fullcalendar.js' %}"></script>
+{% endif %}
+
+<div class="w-full">
+  {% if title %}
+    <h3 class="mb-3 text-xl font-semibold">{{ title }}</h3>
+  {% endif %}
+
+  {# The grid does not shrink below ~320px, so it scrolls inside its own box
+     rather than pushing the page sideways on a phone. #}
+  <div class="w-full overflow-x-auto">
+    <div id="{{ id }}_calendar" class="min-w-[320px]"></div>
+  </div>
 </div>
 
-<!-- FullCalendar Script -->
-<script src="{% static 'vendor/fullcalendar/fullcalendar.js' %}"></script>
-
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    const calendarEl = document.getElementById('{{ id }}_calendar');
-    const data = JSON.parse('{{ data|escapejs }}');
-    const calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'dayGridMonth',
-        themeSystem: 'standard',
-        headerToolbar: {
-            left: 'prev,next today',
-            center: 'title',
-            right: 'dayGridMonth,timeGridWeek,listWeek'
-        },
-        events: data["events"],
-        height: 'auto'
-    });
-
-    calendar.render();
-});
+(function () {
+  function draw() {
+    var el = document.getElementById('{{ id }}_calendar');
+    // The element is gone if the surrounding tab was never rendered, and
+    // FullCalendar throws on a null mount rather than ignoring it.
+    if (!el || typeof FullCalendar === 'undefined') { return; }
+    var payload = JSON.parse('{{ data|escapejs }}');
+    new FullCalendar.Calendar(el, {
+      initialView: 'dayGridMonth',
+      themeSystem: 'standard',
+      headerToolbar: {
+        left: 'prev,next today',
+        center: 'title',
+        right: 'dayGridMonth,timeGridWeek,listWeek'
+      },
+      events: payload.events || [],
+      {% if colors %}
+      eventColor: '{{ colors.background }}',
+      eventTextColor: '{{ colors.text }}',
+      {% endif %}
+      height: 'auto',
+      handleWindowResize: true,
+      expandRows: true
+    }).render();
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', draw);
+  } else {
+    // Included into a page that has already loaded — an Alpine tab panel, say.
+    draw();
+  }
+})();
 </script>

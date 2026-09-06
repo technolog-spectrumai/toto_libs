@@ -232,3 +232,58 @@ class OneRuleTests(TestCase):
             [True] * visible_events(None).count() or [True])
         self.assertFalse(
             visible_events(None).filter(pk=self.private_event.pk).exists())
+
+
+class TheGridActuallyRendersTests(TestCase):
+    """The partial is included, and the page still draws a calendar.
+
+    Worth its own test because the swap to the shared partial is exactly the
+    kind of change that passes every queryset assertion while rendering an
+    empty box — the events all reach the context and none reach the page.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        Platform.objects.get_or_create(
+            active=True, defaults={"site_name": "Test", "author": "t",
+                                   "publication_year": 2026})
+        cls.user, cls.person = _person("g_viewer")
+        _event("Open day", public=True)
+
+    def test_the_page_carries_the_grid_and_its_payload(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("events:event_list"))
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        # The mount the partial makes from `id="events"`.
+        self.assertIn('id="events_calendar"', body)
+        # The library, exactly once — the partial guards against a second
+        # <script src>, which would re-execute the bundle and race the init.
+        self.assertEqual(body.count("fullcalendar.js"), 1)
+        # And the event reached the page, not merely the context.
+        self.assertIn("Open day", body)
+
+    def test_the_payload_is_escaped_not_raw(self):
+        """A title is user-written and lands inside a <script>. The page this
+        replaced interpolated it with `|safe`."""
+        from .calendar import calendar_payload
+
+        event = _event("</script><b>x", public=True)
+        payload = calendar_payload([event])
+        self.assertIn("</script>", payload)      # the helper stores it verbatim
+        self.client.force_login(self.user)
+        body = self.client.get(reverse("events:event_list")).content.decode()
+        # ...and the template must not let it close the script element.
+        self.assertNotIn("</script><b>x", body)
+
+    def test_the_payload_carries_what_the_grid_needs(self):
+        from .calendar import calendar_payload
+        import json
+
+        event = _event("Open day 2", public=True)
+        data = json.loads(calendar_payload([event]))
+        self.assertEqual(len(data["events"]), 1)
+        row = data["events"][0]
+        self.assertEqual(row["title"], "Open day 2")
+        for key in ("start", "end", "url"):
+            self.assertTrue(row[key], f"{key} is empty")

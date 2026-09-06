@@ -78,16 +78,11 @@ class EventCalendarView(ListView):
         context = super().get_context_data(**kwargs)
         current_time = now()
 
-        calendar_events = [
-            {
-                "title": event.title,
-                "start": localtime(event.start_time).isoformat(),
-                "end": localtime(event.end_time).isoformat(),
-                "url": reverse("events:event_detail", args=[event.pk])
-            }
-            for event in context["events"]
-        ]
-        context["calendar_events"] = json.dumps(calendar_events, cls=DjangoJSONEncoder)
+        # Built by the shared helper since 2026-09-06, so the four pages that
+        # show a calendar cannot disagree about the shape. See events/calendar.py.
+        from .calendar import calendar_colors, calendar_payload
+
+        context["calendar_events"] = calendar_payload(context["events"])
 
         qs = context["events"]
         context["total_events"] = qs.count()
@@ -96,10 +91,13 @@ class EventCalendarView(ListView):
         context["past_count"] = qs.filter(start_time__lt=current_time).count()
 
         decorated_context = PageProcessor().decorate(context, self.request)
-        theme_colors = decorated_context.get("theme", {}).get("colors", {})
+        decorated_context["calendar_colors"] = calendar_colors(decorated_context)
+        # `chart_colors` kept beside it: this template is not the only reader,
+        # and removing a context key to rename it is how a page loses its
+        # colours silently.
         decorated_context["chart_colors"] = {
-            "background_light": theme_colors.get("accent-light", "#36A2EB"),
-            "text_light": theme_colors.get("text-main-light", "#000000"),
+            "background_light": decorated_context["calendar_colors"]["background"],
+            "text_light": decorated_context["calendar_colors"]["text"],
         }
         return decorated_context
 

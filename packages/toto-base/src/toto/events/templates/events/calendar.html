@@ -4,32 +4,13 @@
 
 {% block events_title %}{% trans "Event Calendar" %}{% endblock %}
 
-{% block events_head %}
-{# FullCalendar v6 injects its own CSS via the JS bundle — no separate stylesheet. #}
-<script src="{% static 'vendor/fullcalendar/fullcalendar.js' %}"></script>
-
-<script>
-  document.addEventListener('DOMContentLoaded', function () {
-    const calendarEl = document.getElementById('eventCalendar');
-    const calendar = new FullCalendar.Calendar(calendarEl, {
-      initialView: 'dayGridMonth',
-      themeSystem: 'standard',
-      headerToolbar: {
-        left: 'prev,next today',
-        center: 'title',
-        right: 'dayGridMonth,timeGridWeek,listWeek'
-      },
-      events: {{ calendar_events|safe }},
-      eventColor: '{{ chart_colors.background_light }}',
-      eventTextColor: '{{ chart_colors.text_light }}',
-      height: 'auto',
-      handleWindowResize: true,
-      expandRows: true
-    });
-    calendar.render();
-  });
-</script>
-{% endblock %}
+{% comment %}
+The grid moved to `oya/partials/calendar.html` on 2026-09-06. This page had
+its own FullCalendar init, and an identical-but-drifting copy sat unused in
+toto.core the whole time — so a fix to either reached only half the platform,
+and there are four pages showing a calendar now. The partial is included in
+the content block below; nothing is needed here.
+{% endcomment %}
 
 {% block events_content %}
 <div class="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
@@ -79,9 +60,7 @@
   <div
     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
     class="rounded-lg border p-5 shadow-sm w-full overflow-hidden">
-    <div class="w-full overflow-x-auto">
-      <div id="eventCalendar" class="min-w-[320px]"></div>
-    </div>
+    {% include "oya/partials/calendar.html" with id="events" data=calendar_events colors=calendar_colors %}
   </div>
 
 </div>
