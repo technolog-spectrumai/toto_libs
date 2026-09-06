@@ -13,5 +13,6 @@ urlpatterns = [
     # tidier address, which is a bad trade for a page whose whole subject is
     # whether the record is sound.
     path("status/", views.StatusView.as_view(), name="status"),
+    path("jobs/", views.JobsView.as_view(), name="jobs"),
     path("history/", views.HistoryView.as_view(), name="history"),
 ]

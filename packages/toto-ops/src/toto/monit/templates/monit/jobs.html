@@ -1,0 +1,131 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Jobs" %} - {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<main :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+      class="min-h-screen px-4 py-8"
+      x-data="{ auto: true }"
+      x-init="setInterval(() => { if (auto && !document.hidden) window.location.reload(); }, 15000)">
+  <div class="mx-auto max-w-6xl space-y-6">
+    <div>
+      <h1 class="text-2xl font-bold">{% trans "Jobs" %}</h1>
+      <p class="mt-1 text-sm opacity-70">
+        {% trans "What the background workers have been doing." %}</p>
+    </div>
+
+    {% include "oya/_monitoring_tabs.html" %}
+
+    {% comment %}The live half first. The table below is HISTORY — rows the
+    apps wrote — so a page full of old rows with no worker running looks
+    exactly like a quiet one. This is the line that tells them apart.{% endcomment %}
+    {% if celery_ok %}
+      <div role="status"
+           :class="darkMode ? 'border-success-dark' : 'border-success-light'"
+           class="rounded-lg border-2 p-4">
+        <p class="font-bold"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+          {% trans "A worker is answering." %}</p>
+      </div>
+    {% else %}
+      <div role="alert"
+           :class="darkMode ? 'border-warn-dark' : 'border-warn-light'"
+           class="rounded-lg border-2 p-4">
+        <p class="font-bold"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+          {% trans "No worker answered within a second." %}
+          <span class="font-normal opacity-80">
+            {% trans "Anything queued below will sit there until one comes back. The rows are still the record of what already ran." %}</span></p>
+      </div>
+    {% endif %}
+
+    <div class="flex flex-wrap items-center gap-2">
+      {% for name, count in summary.items %}
+        <a href="?{% if active_source %}source={{ active_source }}&amp;{% endif %}{% if active_status != name %}status={{ name }}{% endif %}"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="rounded-lg border px-3 py-1.5 text-sm {% if active_status == name %}font-bold{% else %}opacity-80{% endif %}">
+          {{ name|capfirst }} <span class="opacity-70">{{ count }}</span></a>
+      {% endfor %}
+
+      <form method="get" class="ml-auto flex items-center gap-2">
+        {% if active_status %}<input type="hidden" name="status" value="{{ active_status }}">{% endif %}
+        <select name="source" onchange="this.form.submit()"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                class="rounded-lg border bg-transparent px-2 py-1.5 text-sm">
+          <option value="">{% trans "Every source" %}</option>
+          {% for s in sources %}
+            <option value="{{ s.key }}" {% if active_source == s.key %}selected{% endif %}>{{ s.label }}</option>
+          {% endfor %}
+        </select>
+        <label class="flex items-center gap-1 text-xs opacity-70">
+          <input type="checkbox" x-model="auto"> {% trans "Auto-refresh" %}</label>
+      </form>
+    </div>
+
+    {% if jobs %}
+      <div class="overflow-x-auto rounded-lg border"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <table class="w-full text-left text-sm">
+          <thead class="text-xs uppercase opacity-70">
+            <tr>
+              <th class="px-3 py-2">{% trans "Status" %}</th>
+              <th class="px-3 py-2">{% trans "Source" %}</th>
+              <th class="px-3 py-2">{% trans "Subject" %}</th>
+              <th class="px-3 py-2">{% trans "Started" %}</th>
+              <th class="px-3 py-2">{% trans "Took" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for job in jobs %}
+              <tr class="border-t" :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">
+                <td class="px-3 py-2 whitespace-nowrap">
+                  {% if job.status == 'failed' %}
+                    <span class="font-bold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+                      <i class="fa-solid fa-circle-xmark" aria-hidden="true"></i> {{ job.raw_status }}</span>
+                  {% elif job.status == 'running' %}
+                    <span class="font-semibold"><i class="fa-solid fa-spinner" aria-hidden="true"></i> {{ job.raw_status }}</span>
+                  {% elif job.status == 'pending' %}
+                    <span class="opacity-70"><i class="fa-regular fa-clock" aria-hidden="true"></i> {{ job.raw_status }}</span>
+                  {% else %}
+                    <span class="opacity-80">{{ job.raw_status }}</span>
+                  {% endif %}
+                </td>
+                <td class="px-3 py-2 whitespace-nowrap opacity-80">{{ job.source_label }}</td>
+                <td class="px-3 py-2">
+                  {{ job.subject }}
+                  {% if job.error %}
+                    <p class="mt-1 text-xs" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ job.error }}</p>
+                  {% endif %}
+                  {% if job.task_id %}
+                    <p class="mt-1 font-mono text-xs opacity-50">{{ job.task_id }}</p>
+                  {% endif %}
+                </td>
+                <td class="px-3 py-2 whitespace-nowrap opacity-70">
+                  {% if job.started_at %}{{ job.started_at|date:"j M H:i:s" }}{% else %}—{% endif %}</td>
+                <td class="px-3 py-2 whitespace-nowrap opacity-70">
+                  {% if job.duration_s is not None %}{{ job.duration_s }}s{% else %}—{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if truncated %}
+        <p class="text-xs opacity-60">
+          {% trans "Showing the newest 400. Narrow by status or source to see further back." %}</p>
+      {% endif %}
+    {% else %}
+      <p class="rounded-lg border border-dashed p-8 text-center text-sm opacity-70"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        {% if active_status or active_source %}
+          {% trans "No jobs match that filter." %}
+        {% else %}
+          {% trans "No background jobs have been recorded on this host yet." %}
+        {% endif %}</p>
+    {% endif %}
+
+    <p class="text-xs opacity-60">
+      {% comment %}Said on the page, not only in the module docstring: a
+      monitor that hides its own blind spot is worse than none.{% endcomment %}
+      {% trans "Read from the apps' own run records, not from Celery — a Redis result backend cannot list tasks. A job that writes no row of its own, or that died before writing one, does not appear here." %}</p>
+  </div>
+</main>
+{% endblock %}

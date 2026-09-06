@@ -55,6 +55,12 @@ TABS: tuple = (
                   url_name="audit:index", app_label="toto.audit",
                   gate="staff",
                   blurb="The hash-chained record of what happened here."),
+    MonitoringTab(slug="jobs", label="Jobs",
+                  icon="fa-solid fa-list-check",
+                  url_name="monit:jobs", app_label="toto.monit",
+                  gate="superuser",
+                  blurb="What the background workers have been doing: queued, "
+                        "running, finished and failed."),
     MonitoringTab(slug="history", label="History",
                   icon="fa-solid fa-chart-line",
                   url_name="monit:history", app_label="toto.monit",

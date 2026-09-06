@@ -278,6 +278,55 @@ class HealthView(View):
         return response
 
 
+class JobsView(MonitAccessMixin, TemplateView):
+    """What the background workers have been doing.
+
+    READ-ONLY, and superuser-only like the rest of monit. It answers from the
+    run tables the apps already write — see `toto.monit.jobs` for why it does
+    not ask Celery, and for what that choice cannot see.
+
+    The page refreshes itself; `?status=` and `?source=` narrow it. Both are
+    validated against the known vocabularies rather than passed through, so a
+    hand-typed value is an empty filter and never a queryset built from a
+    request string.
+    """
+
+    template_name = "monit/jobs.html"
+
+    def get_context_data(self, **kwargs):
+        from toto.celery_utils import celery_available
+        from toto.monit import jobs as jobs_mod
+
+        context = super().get_context_data(**kwargs)
+        request = self.request
+
+        status = (request.GET.get("status") or "").strip().lower()
+        if status not in jobs_mod.CANONICAL:
+            status = ""
+        sources = jobs_mod.available_sources()
+        source_key = (request.GET.get("source") or "").strip().lower()
+        if source_key not in {s.key for s in sources}:
+            source_key = ""
+
+        rows = jobs_mod.recent_jobs(status=status, source_key=source_key)
+
+        context.update({
+            "page_title": "Jobs",
+            "jobs": rows[:400],
+            "summary": jobs_mod.summary(rows),
+            "sources": sources,
+            "active_status": status,
+            "active_source": source_key,
+            "truncated": len(rows) > 400,
+            # Whether anything is listening AT ALL. The run tables are history;
+            # this is the live half, and without it a page of old rows and no
+            # worker looks identical to a quiet one.
+            "celery_ok": celery_available(),
+            "monitoring_tabs": monitoring_tabs(request.user, active="jobs"),
+        })
+        return PageProcessor().decorate(context, request)
+
+
 class StatusView(MonitAccessMixin, TemplateView):
     """The record's own health: intact, migrated, backed up.
 

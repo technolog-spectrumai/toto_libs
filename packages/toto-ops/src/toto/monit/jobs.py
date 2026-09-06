@@ -1,0 +1,230 @@
+"""What the background workers have been doing: one list over many tables.
+
+WHY AN AGGREGATOR AND NOT A CELERY MONITOR. The obvious way to answer "show me
+queued, running, completed and failed tasks" is to ask Celery. It does not
+work here, and the reason is structural rather than a missing setting:
+`CELERY_RESULT_BACKEND` is the Redis broker, and a Redis result backend stores
+results BY TASK ID. It can answer "how did task abc-123 end" and cannot answer
+"which tasks are there" — there is no index to enumerate. `celery inspect`
+does enumerate, but only what workers hold RIGHT NOW: a task that finished or
+crashed a second ago is gone from it, which is most of what an operator wants
+to look at.
+
+The two honest alternatives were `django-celery-results` (a new dependency and
+a table written on every task, growing without a sweep) and this: the platform
+ALREADY records its jobs. Fifteen models across the suite carry a status,
+timestamps and usually an error; nine of them are installed here. They are the
+record, and they outlive the broker.
+
+WHAT THIS IS BLIND TO, stated because a monitor that hides its own gaps is
+worse than none: a fire-and-forget task that writes no row of its own is
+invisible here. So is a task that died before it could write one — which is
+exactly the case where the row would have been most useful. `celery_available()`
+on the page covers the other half of that question: whether anything is
+listening at all.
+
+WHY EACH SOURCE IS AN ADAPTER. There is no shared base run model and no shared
+status vocabulary. Four apps define their own `RunStatus`, and the members do
+not agree: OCR has `partial`, workflows have `skipped`, the Lodge has `refused`
+and calls the field `state` rather than `status`. Mapping them onto one
+canonical set is the whole job of this module, and it is done HERE rather than
+by changing fifteen models — those vocabularies are meaningful to their own
+apps, and flattening them at the source would lose the distinctions.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+
+log = logging.getLogger(__name__)
+
+#: The canonical vocabulary this page sorts and filters by. Deliberately the
+#: smallest set every source can be mapped onto without inventing a state.
+PENDING, RUNNING, DONE, FAILED, OTHER = (
+    "pending", "running", "done", "failed", "other")
+
+CANONICAL = (PENDING, RUNNING, DONE, FAILED, OTHER)
+
+#: How each app's own words map onto those five. A member missing from here
+#: lands in OTHER rather than being dropped: an unknown state is a thing an
+#: operator should see, not a row that vanishes.
+_STATUS_MAP = {
+    "pending": PENDING, "waiting": PENDING, "queued": PENDING,
+    "running": RUNNING,
+    "success": DONE, "done": DONE, "completed": DONE, "ingested": DONE,
+    "failed": FAILED,
+    # Deliberately NOT "failed": a partial OCR read produced text, a refused
+    # archive is the gate working as designed, and a cancelled run is somebody
+    # changing their mind. Calling any of them a failure would make the page
+    # cry wolf.
+    "partial": OTHER, "refused": OTHER, "cancelled": OTHER, "skipped": OTHER,
+}
+
+
+@dataclass(frozen=True)
+class JobSource:
+    """One run table, described well enough to read generically."""
+
+    key: str
+    label: str
+    app_label: str          # for apps.is_installed — a STRING, never an import
+    model: str              # "app_label.ModelName" for apps.get_model
+    status_field: str = "status"
+    started_field: str = "started_at"
+    finished_field: str = "finished_at"
+    created_field: str = "created_at"
+    error_fields: tuple = ("error",)
+    task_id_field: str = ""
+    select_related: tuple = ()
+
+
+SOURCES: tuple = (
+    JobSource(key="workflow", label="Workflow runs",
+              app_label="toto.workflows", model="workflows.WorkflowRun",
+              finished_field="completed_at", error_fields=(),
+              select_related=("workflow",)),
+    JobSource(key="workflow_node", label="Workflow steps",
+              app_label="toto.workflows", model="workflows.WorkflowNodeRun",
+              finished_field="completed_at", created_field="",
+              task_id_field="celery_task_id", select_related=("node",)),
+    JobSource(key="ocr", label="Text recognition",
+              app_label="toto.ocr", model="ocr.OcrRun",
+              error_fields=("error",)),
+    JobSource(key="scan", label="Antivirus scans",
+              app_label="toto.antivirus", model="antivirus.ScanRun"),
+    JobSource(key="transfer", label="Vault transfers",
+              app_label="toto.vault", model="vault.TransferRun",
+              task_id_field="task_id"),
+    JobSource(key="mirror", label="Bucket refreshes",
+              app_label="toto.vault", model="vault.BucketRefreshRun"),
+    JobSource(key="aralia", label="PDF renders",
+              app_label="toto.aralia", model="aralia.AraliaRun",
+              task_id_field="task_id"),
+    JobSource(key="ingestion", label="Lodge submissions",
+              app_label="toto.lacedo", model="lacedo.IngestionRun",
+              status_field="state", error_fields=("detail",)),
+    JobSource(key="git", label="Git operations",
+              app_label="toto.repo", model="repo.GitRun"),
+    JobSource(key="forum_cleanup", label="Forum cleanups",
+              app_label="toto.forum", model="forum.ForumCleanupRun"),
+)
+
+
+@dataclass
+class JobRow:
+    """One job, in this page's vocabulary rather than its app's."""
+
+    source: str
+    source_label: str
+    pk: object
+    subject: str
+    status: str
+    raw_status: str
+    created_at: object = None
+    started_at: object = None
+    finished_at: object = None
+    error: str = ""
+    task_id: str = ""
+    duration_s: float = None
+
+
+def _first_error(obj, fields) -> str:
+    for name in fields:
+        value = getattr(obj, name, "") or ""
+        if value:
+            return str(value)[:500]
+    return ""
+
+
+def _rows_for(source: JobSource, limit: int) -> list:
+    """The newest `limit` rows of one table, or [] if it cannot be read.
+
+    NEVER RAISES. A monitoring page that 500s because one app it watches is
+    mid-migration has failed at the one job it has; a source that cannot be
+    read is reported as absent instead.
+    """
+    from django.apps import apps as django_apps
+
+    if not django_apps.is_installed(source.app_label):
+        return []
+    try:
+        model = django_apps.get_model(source.model)
+        order = source.created_field or source.started_field or "pk"
+        qs = model.objects.all()
+        if source.select_related:
+            qs = qs.select_related(*source.select_related)
+        rows = list(qs.order_by(f"-{order}")[:limit])
+    except Exception:  # noqa: BLE001 — see the docstring
+        log.debug("monit.jobs: could not read %s", source.model, exc_info=True)
+        return []
+
+    out = []
+    for obj in rows:
+        raw = str(getattr(obj, source.status_field, "") or "")
+        created = getattr(obj, source.created_field, None) if source.created_field else None
+        started = getattr(obj, source.started_field, None)
+        finished = getattr(obj, source.finished_field, None)
+        duration = None
+        if started and finished:
+            duration = round((finished - started).total_seconds(), 1)
+        out.append(JobRow(
+            source=source.key,
+            source_label=source.label,
+            pk=obj.pk,
+            subject=str(obj)[:200],
+            status=_STATUS_MAP.get(raw.lower(), OTHER),
+            raw_status=raw,
+            created_at=created or started,
+            started_at=started,
+            finished_at=finished,
+            error=_first_error(obj, source.error_fields),
+            task_id=str(getattr(obj, source.task_id_field, "") or "")
+            if source.task_id_field else "",
+            duration_s=duration,
+        ))
+    return out
+
+
+def recent_jobs(*, limit_per_source: int = 25, status: str = "",
+                source_key: str = "") -> list:
+    """Every source's newest rows, merged and sorted newest-first.
+
+    PER-SOURCE limit rather than a global one, and deliberately: a global limit
+    filled by whichever app happens to be busiest would hide a failing app
+    entirely behind a chatty one.
+    """
+    rows = []
+    for src in SOURCES:
+        if source_key and src.key != source_key:
+            continue
+        # BELT AND BRACES. `_rows_for` already swallows its own errors, and
+        # this catches anything that escapes it anyway — a model whose __str__
+        # raises, a migration mid-flight, a driver error on one table. One
+        # source failing must cost that source's rows and nothing else: the
+        # page exists to be readable when something is wrong, so it cannot be
+        # the thing that breaks when something is wrong.
+        try:
+            rows.extend(_rows_for(src, limit_per_source))
+        except Exception:  # noqa: BLE001 — see above
+            log.warning("monit.jobs: source %s could not be listed",
+                        src.key, exc_info=True)
+    if status:
+        rows = [r for r in rows if r.status == status]
+    rows.sort(key=lambda r: (r.created_at is None, r.created_at), reverse=True)
+    return rows
+
+
+def summary(rows) -> dict:
+    """Counts per canonical status, for the strip at the top of the page."""
+    counts = {name: 0 for name in CANONICAL}
+    for row in rows:
+        counts[row.status] = counts.get(row.status, 0) + 1
+    return counts
+
+
+def available_sources() -> list:
+    """The sources this host actually installs, for the filter dropdown."""
+    from django.apps import apps as django_apps
+
+    return [s for s in SOURCES if django_apps.is_installed(s.app_label)]
