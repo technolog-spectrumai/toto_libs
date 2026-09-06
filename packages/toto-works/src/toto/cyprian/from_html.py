@@ -20,6 +20,7 @@ told.
 from __future__ import annotations
 
 import re
+from html import unescape
 
 #: Everything between the body tags. A page with no `<body>` is treated as a
 #: fragment and used whole, which is what a hand-written snippet usually is.
@@ -38,10 +39,30 @@ def body_of(html: str) -> str:
 
 
 def title_of(html: str, *, fallback: str = "") -> str:
-    """What the page calls itself, else the filename without its extension."""
+    """What the page calls itself, else the filename without its extension.
+
+    UNESCAPED, and that is a fix rather than a nicety. `htmldoc.page` writes
+    the title through `_text`, which turns `&` into `&amp;`; this read it back
+    raw, so the escaping survived into `Document.title` and was escaped AGAIN
+    on the next save. A document called "Tom & Jerry" became "Tom &amp; Jerry",
+    then "Tom &amp;amp; Jerry", growing one `amp;` per save forever.
+
+    That is the accumulation defect this app was known to have. It was
+    catalogued as bare `<span>`s piling up in the BODY, and the body is
+    provably fine — the sanitiser is idempotent and the client drops unmatched
+    spans. It was the title all along, and it is unbounded rather than
+    cosmetic.
+
+    `html.unescape` rather than three `str.replace` calls: it is the exact
+    inverse of nothing in particular, which is the point — a title may also
+    arrive with entities a human typed (`caf&eacute;`), and the reader should
+    resolve those the way a browser would. Escaping on write is narrower than
+    unescaping on read, deliberately: over-escaping is safe, under-unescaping
+    is what compounds.
+    """
     match = _TITLE.search(html or "")
     if match:
-        title = re.sub(r"\s+", " ", match.group(1)).strip()
+        title = re.sub(r"\s+", " ", unescape(match.group(1))).strip()
         if title:
             return title
     return fallback.rsplit(".", 1)[0] if "." in fallback else fallback

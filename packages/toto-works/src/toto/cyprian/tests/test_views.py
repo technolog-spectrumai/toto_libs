@@ -335,46 +335,18 @@ class WriterChromeTests(CyprianTestCase):
         self.assertIn(":data-theme", self.body)
 
 
-@skipUnless(apps.is_installed("toto.notarius"),
-            "toto.notarius is a zenobia host app — delta has no contracts")
-class ContractIntegrationTests(CyprianTestCase):
-    """toto.notarius owns the contract; cyprian owns its prose.
-
-    The link is one meta field in the document, so it round-trips through the
-    format for free — it survives a download, a hand edit and a restore.
-    The skip is the same fact the views express with `apps.is_installed`
-    guards: cyprian must run on a host with no contracts at all.
-    """
-
-    def _contract(self, body="Hello **world**."):
-
-        contract = cf.Contract(title="Supply agreement")
-        contract.content = cf.Content(id="content-1", media_type="text/markdown",
-                                      encoding="text", data=body)
-        return VaultFile.objects.create(
-            owner=self.owner, title="deal.contract", file_type="contract",
-            bucket=self.bucket,
-            file=SimpleUploadedFile("deal.contract",
-                                    cf.dumps(contract).encode("utf-8")))
-
-
-    def test_a_stale_link_does_not_stop_the_document_saving(self):
-        # A document that outlived its contract is still a document; refusing
-        # to save it would be losing work over a broken pointer.
-        vault_file = VaultFile.objects.create(
-            owner=self.owner, title="orphan.html", file_type="html",
-            bucket=self.bucket,
-            file=SimpleUploadedFile("orphan.xml", df.dumps(
-                df.Document(title="Orphan", content="<p>x</p>")).encode()))
-        self.client.force_login(self.owner)
-        response = self.client.post(
-            reverse("cyprian:save", args=[vault_file.pk]),
-            data=json.dumps({"document": {
-                "title": "Orphan", "content": "<p>still saves</p>",
-                "meta": {"contract": "999999"}}}),
-            content_type="application/json")
-        self.assertEqual(response.status_code, 200)
-
+# REMOVED 2026-09-06: ContractIntegrationTests.
+#
+# It was dead code hidden behind a skip. The class referenced an undefined
+# name `cf` — never imported in this module — so it would have raised
+# NameError on the first line of its helper, and
+# `@skipUnless(apps.is_installed("toto.notarius"))` guaranteed nobody ever
+# found out: `toto.notarius` does not exist anywhere in this repository.
+#
+# A test that cannot run and could not pass if it did is worse than no test:
+# it reads as coverage. What it claimed to cover — a contract's prose living
+# in a cyprian document, linked by one meta field — belongs with toto.notarius
+# on the host that has it.
 
 class DeletionTests(CyprianTestCase):
     """Deleting a document is the VAULT's delete, surfaced — not a second one."""

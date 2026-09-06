@@ -33,12 +33,19 @@ endpoints are never gated — the apps that own documents drive them. See
 
 | Screen | What it is |
 |---|---|
-| **Library** (`/cyprian/`) | Documents you can open, each card a real rendered first page. Paginated. |
 | **Writer** (`/cyprian/edit/<pk>/`) | Paginated canvas, drag-and-drop, and a **Source** tab holding the file itself. |
-| **Reader** (`/cyprian/read/<pk>/`) | The document, sized for reading. |
 
-The vault's **Play** and **Edit** buttons on a document go to the reader and the
-writer.
+**There is no Library and no Reader**, and this table said otherwise until
+2026-09-06. `urls.py` defines six routes — `edit`, `save`, `source`,
+`rendition` and the two media endpoints — and none of them is an index or a
+read-only view. A reader arriving here from the old text went looking for
+`/cyprian/` and `/cyprian/read/<pk>/`, both of which 404.
+
+The way in is the vault: a document is an ordinary `html` file, and this app
+is reached by opening one. It registers a `VaultAccessPlugin` — who may WRITE
+a file the vault would otherwise refuse them — and **no Play or Edit plugin**,
+so the vault's own buttons are drawn by `toto.editor`, not by this app. The
+sentence claiming otherwise went with the table above.
 
 ## The pagination contract
 
