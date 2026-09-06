@@ -26,8 +26,18 @@
                 :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
               <span class="min-w-0">
                 <i class="fa-solid fa-calendar-day mr-1 opacity-60" aria-hidden="true"></i>
-                <a href="{% url 'events:event_detail' event.pk %}"
-                   class="font-semibold hover:underline">{{ event.title }}</a>
+                {% comment %}`as` rather than a bare reverse: this template ships
+                in a wheel, and a host that installs the app without mounting the
+                events urlconf would otherwise get NoReverseMatch — a 500 on the
+                whole page for the sake of one link. The same guard oya/login.html
+                uses for sso:my_profile.{% endcomment %}
+                {% url 'events:event_detail' event.pk as event_url %}
+                {% if event_url %}
+                  <a href="{{ event_url }}"
+                     class="font-semibold hover:underline">{{ event.title }}</a>
+                {% else %}
+                  <span class="font-semibold">{{ event.title }}</span>
+                {% endif %}
               </span>
               <span class="opacity-70">{{ event.start_time|date:"j M Y, H:i" }}</span>
             </li>
