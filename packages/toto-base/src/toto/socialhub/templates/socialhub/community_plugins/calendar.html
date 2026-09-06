@@ -1,0 +1,47 @@
+{% load i18n %}
+<section
+  :class="darkMode
+    ? 'border-accent-1 bg-bubble-bg-dark'
+    : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+  <div class="mb-4">
+    <h2 class="flex items-center gap-2 text-lg font-bold">
+      <i class="{{ community_plugin_icon }}"></i>{% trans "Calendar" %}</h2>
+    <p class="mt-1 text-sm opacity-70">
+      {% blocktrans with name=community.name %}What people in {{ name }} have scheduled.{% endblocktrans %}
+    </p>
+  </div>
+
+  {% if community_events %}
+    {% comment %}The list first, unconditionally — it is the record, and it is
+    what a reader without JavaScript gets. The grid is a view over it.{% endcomment %}
+    <ul class="mb-4 space-y-2 text-sm">
+      {% for event in community_events %}
+        <li class="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <span class="min-w-0">
+            <i class="fa-solid fa-calendar-day mr-1 opacity-60" aria-hidden="true"></i>
+            {% comment %}`as` rather than a bare reverse: this template ships
+            in a wheel, and a host that installs the app without mounting the
+            events urlconf would otherwise get NoReverseMatch — a 500 on the
+            whole page for the sake of one link. The same guard oya/login.html
+            uses for sso:my_profile.{% endcomment %}
+            {% url 'events:event_detail' event.pk as event_url %}
+            {% if event_url %}
+              <a href="{{ event_url }}"
+                 class="font-semibold hover:underline">{{ event.title }}</a>
+            {% else %}
+              <span class="font-semibold">{{ event.title }}</span>
+            {% endif %}
+          </span>
+          <span class="opacity-70">{{ event.start_time|date:"j M Y, H:i" }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+
+    {% include "oya/partials/calendar.html" with id="community_calendar" data=calendar_data colors=calendar_colors %}
+  {% else %}
+    <p class="text-sm opacity-70">{% trans "Nothing is scheduled yet." %}</p>
+  {% endif %}
+</section>
