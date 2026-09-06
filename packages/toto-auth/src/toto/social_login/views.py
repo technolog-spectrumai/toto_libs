@@ -154,6 +154,34 @@ def social_callback(request, provider):
     return response
 
 
+def _is_federated(user) -> bool:
+    """Does this account belong to an upstream identity provider?
+
+    True when `toto.sso_client` is installed AND it holds a FederatedIdentity
+    for the user. Both halves matter: on a host with no consumer app there are
+    no federated accounts at all, and asking would be an import error rather
+    than an answer.
+
+    Fails CLOSED. If the question cannot be answered — the app half-installed,
+    the table missing mid-migration — the account is treated as federated and
+    the email match is refused. The cost of a false positive is one person
+    signing in with their password instead of Google; the cost of a false
+    negative is somebody else's staff account.
+    """
+    from django.apps import apps as django_apps
+
+    if not django_apps.is_installed("toto.sso_client"):
+        return False
+    try:
+        from toto.sso_client.models import FederatedIdentity
+
+        return FederatedIdentity.objects.filter(user=user).exists()
+    except Exception:  # noqa: BLE001 — an unanswerable question is a refusal
+        logger.exception("social_login: could not determine whether %r is "
+                      "federated; refusing the email match", user)
+        return True
+
+
 def _resolve_user(spec, claims):
     """The four-step account resolution; returns (user, "") or (None, error)."""
     rejection = (f"We couldn't match your {spec.label} account to an account "
@@ -172,6 +200,37 @@ def _resolve_user(spec, claims):
     user = None
     if claims["email"] and claims["email_verified"]:
         user = User.objects.filter(email__iexact=claims["email"]).first()
+        if user is not None and _is_federated(user):
+            # THE TAKEOVER, CLOSED 2026-09-06.
+            #
+            # Matching a verified email onto a local account is the useful
+            # half of this step: somebody the platform already knows signs in
+            # with Google instead of their password, and nothing about them
+            # changes. Matching it onto a FEDERATED account is something else.
+            #
+            # A federated account's email, names and — when the provider
+            # grants the `roles` scope — its `is_staff`, `is_superuser` and
+            # `is_active` are rewritten from the provider's claims on every
+            # sign-in. It is the provider's account, held here. So whoever
+            # controls a Google account bearing a staff member's address
+            # would sign in AS that staff member, with their privileges,
+            # without the provider ever being asked.
+            #
+            # `sso_client` closed the mirror image of this by refusing to
+            # match on anything but a recorded `(provider, sub)` — see
+            # FederatedIdentity's docstring, which names the same attack. This
+            # is the same refusal from the other side, and it must hold
+            # regardless of TOTO_SOCIAL_SIGNUP: the step above runs before any
+            # signup flag is consulted.
+            #
+            # The federated user is not locked out — they sign in the way they
+            # always did, through the provider. What they cannot do is arrive
+            # by a route that never proves the provider agrees.
+            logger.warning(
+                "social_login: refusing to match %s subject %s onto federated "
+                "account %r by email; the provider owns that account",
+                spec.key, claims["sub"], user.get_username())
+            return None, rejection
 
     if user is None:
         if not social_signup_enabled():

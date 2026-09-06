@@ -173,3 +173,112 @@ class FacebookMissingEmailTests(TestCase):
         user = User.objects.get(username="facebook_fb-9")
         self.assertEqual(user.email, "")
         self.assertTrue(SocialIdentity.objects.filter(user=user, email="").exists())
+
+
+@override_settings(**GOOGLE_CREDS)
+class FederatedAccountIsNotTakeableTests(TestCase):
+    """The verified-email match must never adopt a FEDERATED account.
+
+    `sso_client` closed the mirror image of this and its `FederatedIdentity`
+    docstring names the attack: an account whose `email`, names and — under the
+    `roles` scope — `is_staff`/`is_superuser`/`is_active` are rewritten from an
+    upstream provider's claims on every sign-in. Reaching it by proving control
+    of a Google address is reaching it without the provider's agreement.
+
+    Step 2 of `_resolve_user` runs BEFORE any signup flag, so this holds with
+    TOTO_SOCIAL_SIGNUP off and on alike — both are asserted below.
+    """
+
+    def _start(self, provider="google"):
+        response = self.client.get(reverse("sso:social_login", args=[provider]))
+        return parse_qs(urlparse(response["Location"]).query)["state"][0]
+
+    def _callback(self, state, provider="google", claims=None):
+        with mock.patch("toto.social_login.views.http_requests.post",
+                        return_value=_token_response()), \
+             mock.patch("toto.social_login.views.http_requests.get",
+                        return_value=_userinfo_response(claims or dict(GOOGLE_CLAIMS))):
+            return self.client.get(reverse("sso:social_callback", args=[provider]),
+                                   {"code": "auth-code", "state": state})
+
+    def _federate(self, user):
+        """Mark `user` as belonging to an upstream provider.
+
+        Patched rather than built from real rows: `FederatedIdentity` needs an
+        `OIDCProviderConfig`, which only the pairing flow may write (there is
+        no management command and no environment path, by design). What is
+        under test is the refusal, not the consumer app's schema.
+        """
+        return mock.patch("toto.social_login.views._is_federated",
+                          side_effect=lambda u: u.pk == user.pk)
+
+    def test_a_federated_account_is_not_adopted_by_email(self):
+        staff = User.objects.create_user("oidc_zsub", "ada@example.org", "pw",
+                                         is_staff=True)
+        state = self._start()
+        with self._federate(staff):
+            response = self._callback(state)
+        # Refused the way every other unmatched sign-in is: back to the login
+        # page with a message, no session, no identity written.
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], reverse("sso:login"))
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertFalse(SocialIdentity.objects.filter(user=staff).exists())
+
+    @override_settings(TOTO_SOCIAL_SIGNUP=True)
+    def test_signup_being_on_does_not_open_the_door_either(self):
+        """Nor does it quietly mint a SECOND account on that email — the
+        refusal is a refusal, not a fallthrough to step 3."""
+        staff = User.objects.create_user("oidc_zsub", "ada@example.org", "pw",
+                                         is_staff=True)
+        state = self._start()
+        with self._federate(staff):
+            response = self._callback(state)
+        self.assertEqual(response["Location"], reverse("sso:login"))
+        self.assertEqual(User.objects.count(), 1)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_a_local_account_on_the_same_email_still_matches(self):
+        """The half that must NOT break: matching a verified email onto a
+        LOCAL account is the useful behaviour this flow exists for."""
+        local = User.objects.create_user("ada", "ada@example.org", "pw")
+        state = self._start()
+        with self._federate(User(pk=-1)):   # nobody is federated
+            response = self._callback(state)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(int(self.client.session["_auth_user_id"]), local.pk)
+        self.assertTrue(SocialIdentity.objects.filter(user=local).exists())
+
+    def test_a_federated_user_who_linked_deliberately_still_signs_in(self):
+        """Refusing the MATCH does not refuse the identity. A federated user
+        who deliberately linked Google keeps that route — step 1 finds the
+        recorded (provider, subject) before step 2 is ever reached."""
+        staff = User.objects.create_user("oidc_zsub", "ada@example.org", "pw",
+                                         is_staff=True)
+        SocialIdentity.objects.create(provider="google", subject="g-sub-1",
+                                      user=staff, email="ada@example.org")
+        state = self._start()
+        with self._federate(staff):
+            response = self._callback(state)
+        self.assertEqual(int(self.client.session["_auth_user_id"]), staff.pk)
+
+
+class FederationProbeTests(TestCase):
+    """`_is_federated` itself: the two answers, and the failure mode."""
+
+    def test_a_host_without_the_consumer_app_has_no_federated_accounts(self):
+        from toto.social_login.views import _is_federated
+
+        user = User.objects.create_user("ada", "ada@example.org", "pw")
+        # toto.sso_client is not installed in this harness.
+        self.assertFalse(_is_federated(user))
+
+    def test_an_unanswerable_question_refuses(self):
+        """Fails CLOSED. One person signing in with a password instead of
+        Google is a smaller cost than somebody else's staff account."""
+        from toto.social_login import views
+
+        user = User.objects.create_user("ada", "ada@example.org", "pw")
+        with mock.patch("django.apps.apps.is_installed", return_value=True), \
+             mock.patch.dict("sys.modules", {"toto.sso_client.models": None}):
+            self.assertTrue(views._is_federated(user))
