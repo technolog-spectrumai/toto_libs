@@ -1,5 +1,5 @@
 from django.urls import path
-from . import lakefs_auth, views
+from . import views
 from .api_views import RegisterApiView
 
 app_name = "sso"  # keep namespace "sso" for portal backwards compat
@@ -34,12 +34,6 @@ urlpatterns = [
     path("sso/my-profile/", views.my_profile, name="my_profile"),
     path("sso/admin-test/<uuid:pk>/", views.admin_test_login, name="admin_test_login"),
     path("sso/admin-test-callback/", views.admin_test_callback, name="admin_test_callback"),
-    # lakeFS's remote authenticator: the store's login form, answered by the
-    # portal for a superuser. Reached over the compose network only — nginx
-    # denies the path from the public side, and the view refuses the public
-    # Host besides. See lakefs_auth.py.
-    path("sso/lakefs-auth/", lakefs_auth.lakefs_authenticator, name="lakefs_auth"),
-
 ]
 
 # Password reset flow — defined in sso_core so the consumer urlconf mounts the
