@@ -37,6 +37,21 @@
            {% if active_tab == 'platforms' %}aria-current="page"{% endif %}>
           <i class="fa-solid fa-network-wired"></i>{% trans "Platforms" %}</a>
       {% endif %}
+      {% comment %}Sepulka — the whole installation in one sealed archive.
+      Reached through `{% url ... as %}` like its neighbours, so a host that
+      does not install `toto.sepulka` simply has no tab rather than a
+      NoReverseMatch on every Federation page. It sits here because Federation
+      is already the "this platform as an entity" surface; the page itself is
+      superuser-only, narrower than the staff gate on the other two.{% endcomment %}
+      {% url 'sepulka:desk' as sepulka_url %}
+      {% if sepulka_url %}
+        <a href="{{ sepulka_url }}"
+           :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+           class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                  {% if active_tab == 'sepulka' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+           {% if active_tab == 'sepulka' %}aria-current="page"{% endif %}>
+          <i class="fa-solid fa-box-archive"></i>{% trans "Sepulka" %}</a>
+      {% endif %}
       {% url 'sso:federation_branding' as branding_url %}
       {% if branding_url %}
         <a href="{{ branding_url }}"
