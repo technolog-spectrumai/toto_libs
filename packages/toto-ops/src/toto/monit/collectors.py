@@ -189,6 +189,21 @@ def collect_boards():
     return out
 
 
+def collect_store():
+    """Is the data store answering? One HTTP call to its own health path.
+
+    Same contract as `collect_boards`: `None` means "no store on this host",
+    `False` means "configured and not answering", and nothing here raises.
+    lakeFS's `/_health` returns 200 with a body of `alive!` when it is up, and
+    nothing at all when it is not — so answered-at-all is the question.
+    """
+    out = {"lakefs_ok": None, "lakefs_latency_ms": None}
+    url = getattr(settings, "MONIT_LAKEFS_URL", "") or ""
+    if url:
+        out["lakefs_ok"], out["lakefs_latency_ms"] = _http_probe(url)
+    return out
+
+
 def _tcp_probe(host, port, timeout=1.0):
     """(reachable, ms). A refused connection is a real answer, not an error."""
     import socket

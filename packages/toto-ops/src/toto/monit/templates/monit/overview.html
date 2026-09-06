@@ -51,6 +51,22 @@ back on the tab you were reading rather than bouncing you to a default one.
         {% include "monit/partials/_service_pill.html" with label=_("Database") state=live_db.db_ok detail=live_db.db_latency_ms|default_if_none:""|floatformat:1 %}
         {% if redis_configured %}
         {% include "monit/partials/_service_pill.html" with label=_("Redis") state=live_redis.redis_ok detail=live_redis.redis_latency_ms|default_if_none:""|floatformat:1 %}
+        {% comment %}
+        The boards and the data store. Collected since stage 15 (boards) and
+        never DRAWN until 2026-09-06 — the context carried live_boards and
+        this template did not read it, so "the Status page sees the boards"
+        was true of the data and false of the page. Each block is guarded on
+        its context being present, which the view sets only where the service
+        is configured; a host without them shows nothing rather than a
+        failing pill.
+        {% endcomment %}
+        {% if live_boards %}
+          {% include "monit/partials/_service_pill.html" with label=_("MongoDB") state=live_boards.mongo_ok detail=live_boards.mongo_latency_ms|default_if_none:""|floatformat:1 %}
+          {% include "monit/partials/_service_pill.html" with label=_("Wekan") state=live_boards.wekan_ok detail=live_boards.wekan_latency_ms|default_if_none:""|floatformat:1 %}
+        {% endif %}
+        {% if live_store %}
+          {% include "monit/partials/_service_pill.html" with label=_("lakeFS") state=live_store.lakefs_ok detail=live_store.lakefs_latency_ms|default_if_none:""|floatformat:1 %}
+        {% endif %}
         {% endif %}
         {% if celery_configured %}
         {% include "monit/partials/_service_pill.html" with label=_("Celery workers") state=live_celery.celery_ok detail=live_celery.celery_workers|default_if_none:"" %}

@@ -142,11 +142,13 @@ class OverviewView(MonitAccessMixin, TemplateView):
         # "" on a host with no boards, so nothing is probed and nothing shown.
         boards_configured = bool(getattr(settings, "MONIT_MONGO_HOST", "")
                                  or getattr(settings, "MONIT_WEKAN_URL", ""))
+        store_configured = bool(getattr(settings, "MONIT_LAKEFS_URL", ""))
         context.update({
             "has_nomad": has_nomad,
             "has_aster": has_aster,
             "has_prometheus": has_prometheus,
             "boards_configured": boards_configured,
+            "store_configured": store_configured,
             "celery_configured": celery_configured,
             "redis_configured": redis_configured,
             "web_scrape_enabled": web_scrape_enabled,
@@ -163,6 +165,8 @@ class OverviewView(MonitAccessMixin, TemplateView):
         # nothing and renders nothing.
         context["live_boards"] = (
             collectors.collect_boards() if boards_configured else None)
+        context["live_store"] = (
+            collectors.collect_store() if store_configured else None)
         context["live_tor"] = collectors.collect_tor() if has_nomad else None
         context["live_aster"] = collectors.collect_aster() if has_aster else None
         context["live_requests"] = (
