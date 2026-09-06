@@ -122,6 +122,12 @@ FEATURE_APPS = {
 # tasks_direct, so without that module the worker never registers it.
 TASK_MODULES = [
     "toto.workflows",
+    # The Bounty Lodge's ingestion: a participant's archive is streamed into
+    # the data store by a worker, never in the request. A host portion on
+    # zenobia (not a wheel), listed here because this list is the ONLY thing
+    # the worker discovers tasks from — autodiscover imports defensively, so
+    # a host without the app is unaffected.
+    "toto.lacedo",
     # toto.gitea's gitea_sample_storage. Added when toto.forum's cleanup task
     # made tests_schedules run against a tree that had both: the storage
     # sampler had been scheduled since 8/2026 with no entry here, which is the
