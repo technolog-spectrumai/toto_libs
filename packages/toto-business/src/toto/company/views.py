@@ -428,6 +428,18 @@ def org_chart(request, slug):
     })
 
 
+def _person_url(person):
+    """A link to a Person's profile, where socialhub is mounted to hold one."""
+    from django.apps import apps  # noqa: PLC0415
+
+    if not apps.is_installed("toto.socialhub") or person is None:
+        return ""
+    try:
+        return reverse("socialhub:profile_details", args=[person.slug])
+    except NoReverseMatch:
+        return ""
+
+
 def _party_url(party):
     """A link to the person behind a party, where there is one to link to.
 
@@ -457,7 +469,8 @@ def organization_graph(company, *, root=None, include_members=False):
     departments = list(
         company.departments.filter(active=True).select_related(
             "parent", "head__person",
-        ).prefetch_related("memberships__party__person")
+        ).prefetch_related("memberships__party__person",
+                           "primary_members__person")
     )
     if root is not None:
         included = {root.pk}
@@ -481,6 +494,13 @@ def organization_graph(company, *, root=None, include_members=False):
             "url": reverse("company:structure", args=[company.slug]),
         })
     person_nodes = set()
+    #: Person pks already drawn, so somebody recorded as BOTH a Party and a
+    #: CompanyMembership appears once rather than twice.
+    seen_people = {
+        department.head.person_id
+        for department in departments
+        if department.head_id and department.head.person_id
+    }
     for department in departments:
         department_id = f"department-{department.pk}"
         nodes.append({
@@ -535,6 +555,39 @@ def organization_graph(company, *, root=None, include_members=False):
                     "target": person_id,
                     "type": "member",
                     "label": membership.title,
+                })
+
+            # The OTHER membership. DepartmentMembership above puts a Party in
+            # a department; CompanyMembership puts a PERSON in a company and
+            # names their primary department — and it is the one the Members
+            # card on the structure page writes. Drawing only the first left
+            # "Show people" ticked on an empty chart for every company whose
+            # members were added there, which is all of them.
+            #
+            # Keyed "person-<pk>", so a Party that wraps the same Person does
+            # not collide with it; `seen_people` is what stops someone recorded
+            # BOTH ways appearing twice.
+            for membership in department.primary_members.all():
+                if not membership.active or membership.person_id is None:
+                    continue
+                if membership.person_id in seen_people:
+                    continue
+                seen_people.add(membership.person_id)
+                person_id = f"person-{membership.person_id}"
+                if person_id in person_nodes:
+                    continue
+                person_nodes.add(person_id)
+                nodes.append({
+                    "id": person_id,
+                    "label": membership.person.display_name,
+                    "type": "person",
+                    "url": _person_url(membership.person),
+                })
+                edges.append({
+                    "source": department_id,
+                    "target": person_id,
+                    "type": "member",
+                    "label": membership.job_title,
                 })
     return {"nodes": nodes, "edges": edges}
 

@@ -319,6 +319,20 @@ class CompanyMembershipForm(forms.ModelForm):
         self.fields["primary_department"].required = False
         _style(self)
 
+    def _post_clean(self):
+        # The company BEFORE model validation, not in save().
+        #
+        # `CompanyMembership.clean` compares `primary_department.company_id`
+        # to `self.company_id`, and Django runs `instance.full_clean()` here in
+        # `_post_clean` — which happens before `save()` ever runs. Assigning
+        # the company in `save()` therefore left company_id None at the moment
+        # the check ran, so every department the dropdown offered was rejected
+        # as belonging to a different company, and no member could be added at
+        # all. The queryset above is what actually restricts the choice; this
+        # just lets the model's own guard see the same instance the save will.
+        self.instance.company = self.company
+        super()._post_clean()
+
     def clean(self):
         cleaned = super().clean()
         person = cleaned.get("person")
