@@ -22,7 +22,9 @@ plans:
     order: 10
     description: >
       Everything you need to be here: your profile, your files, your
-      communities and your wallet. Costs nothing, and never expires.
+      communities, your calendar and your wallet — and this page, so you can
+      always see what you owe and pay it. Costs nothing, and never expires.
+      Chat and the exchange are Professional.
     features: []
 
   - key: standard
@@ -73,6 +75,16 @@ plans:
     # has happened twice — to the compute tier, and to ocr/fileservices — and
     # the check that now fails the build on it (subscriptions.W001) exists
     # because both times it was found by audit rather than by a test.
+    # forum, bourse, monit and sepulka joined on 2026-09-06 — the first two
+    # moved out of the free tier, the last two are newly declared. Every key
+    # here must also be in catalogue.py, and the two lists must move TOGETHER:
+    # a feature declared paid and granted by no plan hides its dashboard tile
+    # from everybody, superusers included, and 402s its writes. That has
+    # happened twice, which is why subscriptions.W001 now fails the build on
+    # it.
+    #
+    # `ocr` left on 2026-09-06 with text recognition itself — a plan may not
+    # sell what the host does not install.
     features:
       - cyprian
       - memo
@@ -81,6 +93,8 @@ plans:
       - editor
       - kanban
       - locations
+      - forum
+      - bourse
       - aralia
       - mandragora
       - notarius
@@ -89,9 +103,10 @@ plans:
       - vod
       - steven
       - travels
+      - monit
+      - sepulka
       - anastasia
       - dracena
       - texlab
       - manta
-      - ocr
       - fileservices

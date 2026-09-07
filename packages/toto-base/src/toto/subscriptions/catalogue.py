@@ -204,9 +204,6 @@ _DEFAULTS = (
     Entitlement("events", "Events", free=True, order=4,
                 icon="fa-solid fa-calendar-days",
                 description="The calendar and what is on it."),
-    Entitlement("forum", "Forum", free=True, order=5,
-                icon="fa-solid fa-comments",
-                description="Channels and direct messages."),
     # -- free: the economy, so you can always pay ---------------------------
     Entitlement("assets", "Wallet", free=True, order=6,
                 icon="fa-solid fa-wallet",
@@ -214,9 +211,6 @@ _DEFAULTS = (
     Entitlement("quota", "Usage and fees", free=True, order=7,
                 icon="fa-solid fa-gauge-high",
                 description="What you have used, what it cost and what your limits are."),
-    Entitlement("bourse", "Exchange", free=True, order=8,
-                icon="fa-solid fa-chart-line",
-                description="Trade one asset for another."),
     Entitlement("subscriptions", "Plans", free=True, order=9,
                 icon="fa-solid fa-id-card",
                 description="This page. Never behind the thing it sells."),
@@ -273,6 +267,39 @@ _DEFAULTS = (
     Entitlement("notarius", "Signatures", order=43,
                 icon="fa-solid fa-signature",
                 description="Sign delivered PDFs, and verify a signature later."),
+    # -- moved out of free on 2026-09-06 ------------------------------------
+    # The free tier's rule was "you keep your identity and your files, and you
+    # can always reach the money". Chat and the exchange were read as part of
+    # that commons; they are collaboration and trading, which is what a
+    # subscription is for. Identity, files, communities, events, the wallet
+    # and this page stay free — lapsing is still safe, and a lapsed member can
+    # still see what they owe and pay it.
+    Entitlement("forum", "Forum", order=28,
+                icon="fa-solid fa-comments",
+                description="Channels and direct messages."),
+    Entitlement("bourse", "Exchange", order=29,
+                icon="fa-solid fa-chart-line",
+                description="Trade one asset for another."),
+
+    # -- operator tooling (2026-09-06) ---------------------------------------
+    # Not member features: these are how somebody RUNS the platform. They are
+    # declared rather than left undeclared because an app the catalogue does
+    # not know is free by default (`is_entitled`), and "free by omission" is
+    # not the same statement as "sold at this tier".
+    #
+    # Federation branding is deliberately NOT here, and could not be: it lives
+    # under the `sso` namespace, which is hard-coded ALWAYS_FREE because the
+    # same namespace serves LOGIN. Gating it would paywall signing in. It
+    # stays staff-only, which is the same answer the note above gives for
+    # federation itself — operator infrastructure between HOSTS.
+    Entitlement("monit", "Monitoring", order=50,
+                icon="fa-solid fa-heart-pulse",
+                description="This host's health, its trends and its record."),
+    Entitlement("sepulka", "Sepulka", order=51,
+                icon="fa-solid fa-box-archive",
+                description="Capture this whole installation into one sealed "
+                            "archive, and restore it."),
+
     Entitlement("repo", "Version control", order=44,
                 icon="fa-solid fa-code-branch",
                 description="Git over your vault directories."),
@@ -320,9 +347,14 @@ _DEFAULTS = (
     Entitlement("fileservices", "File services", order=54,
                 icon="fa-solid fa-wand-magic-sparkles",
                 description="Run a conversion over a file straight from the vault."),
-    Entitlement("ocr", "Text recognition", order=55,
-                icon="fa-solid fa-file-invoice",
-                description="Read the text out of a screenshot, a photo or a scan."),
+    # NO "ocr" (Text recognition): retired on 2026-09-06 with toto-media,
+    # which zenobia no longer pins. Removed from BOTH here and from the
+    # professional plan in the same edit — `subscriptions.W001` catches the
+    # half that forgets, and it caught this one.
+    #
+    # A catalogue entry is not host-specific, so this is a judgement about the
+    # SUITE: no host ships text recognition today. If one does again, the
+    # entry and its plan grant come back together.
 )
 
 for _entitlement in _DEFAULTS:

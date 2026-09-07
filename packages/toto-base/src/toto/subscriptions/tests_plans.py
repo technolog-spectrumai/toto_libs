@@ -285,3 +285,65 @@ class RegistryTests(SimpleTestCase):
         self.assertTrue(plans.plan("standard").grants("editor"))
         self.assertFalse(plans.plan("standard").grants("cyprian"))
         self.assertFalse(plans.plan("free").grants("editor"))
+
+
+class TheFreeTierIsWhatItClaimsTests(SimpleTestCase):
+    """What a member with no subscription actually gets, asserted by name.
+
+    The free tier is a PROMISE — "you keep your identity and your files, and
+    you can always reach the money" — and a promise that lives only in a
+    docstring drifts. On 2026-09-06 chat and the exchange left it, which is
+    exactly the kind of change that should be visible in a diff rather than
+    discovered by a member.
+    """
+
+    def test_the_free_tier_is_identity_files_and_the_money(self):
+        from toto.subscriptions.catalogue import registry
+
+        free = {e.feature_key for e in registry.all() if e.free}
+        self.assertEqual(
+            free,
+            {"core", "socialhub", "people", "vault", "events",
+             "assets", "quota", "subscriptions", "workflows", "jess"},
+            "the free tier changed — if that is deliberate, say so here")
+
+    def test_chat_and_the_exchange_are_not_free(self):
+        """Moved out on 2026-09-06. Asserted separately from the set above so
+        the failure names the feature rather than a diff of ten keys."""
+        from toto.subscriptions.catalogue import registry
+
+        for key in ("forum", "bourse"):
+            with self.subTest(feature=key):
+                entitlement = registry.get(key)
+                self.assertIsNotNone(entitlement)
+                self.assertFalse(entitlement.free)
+
+    def test_the_operator_tools_are_declared_and_sold(self):
+        """`monit` and `sepulka` were undeclared before 2026-09-06, which made
+        them free BY OMISSION — `is_entitled` answers True for an app the
+        catalogue does not know. Declaring them is what makes the tier a
+        decision rather than an accident."""
+        from toto.subscriptions import plans
+        from toto.subscriptions.catalogue import registry
+
+        professional = next(p for p in plans.all_plans()
+                            if p.key == "professional")
+        for key in ("monit", "sepulka"):
+            with self.subTest(feature=key):
+                self.assertIsNotNone(registry.get(key))
+                self.assertFalse(registry.get(key).free)
+                self.assertTrue(professional.grants(key))
+
+    def test_every_paid_feature_is_granted_by_some_plan(self):
+        """The W001 rule, as a test rather than only a system check: a feature
+        declared paid and granted by nobody hides its tile from everybody and
+        402s its writes. It has happened three times — the compute tier,
+        ocr/fileservices, and ocr again on 2026-09-06."""
+        from toto.subscriptions import plans
+        from toto.subscriptions.catalogue import registry
+
+        granted = {key for plan in plans.all_plans() for key in plan.features}
+        orphans = sorted(e.feature_key for e in registry.all()
+                         if not e.free and e.feature_key not in granted)
+        self.assertEqual(orphans, [],
+                         f"{orphans} are sold by no plan and so reach nobody")
