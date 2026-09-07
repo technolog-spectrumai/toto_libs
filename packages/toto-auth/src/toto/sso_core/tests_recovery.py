@@ -575,3 +575,164 @@ class InlineEmailFlowTests(RecoveryBase):
         credentials.lock_all()
         response = self.client.get(reverse("sso:password_reset"))
         self.assertContains(response, "Request Recovery")
+
+
+class RankRuleTests(RecoveryBase):
+    """An approver may never recover somebody who outranks them.
+
+    THE HOLE THIS CLOSES, in the three clicks it took: until 2026-09-07 any
+    staff member could file a recovery for a SUPERUSER on the public reset
+    page, see it land in their own staff queue (`approver` NULL), approve it,
+    and be handed the one-time link by `approve()`. `file_request` refused
+    nobody and `may_respond` asked only `is_staff or is_superuser`. Staff to
+    superuser, with the audit chain recording a routine recovery.
+    """
+
+    def _approve_url(self, ticket):
+        return reverse("sso:password_reset_ticket_approve", args=[ticket.pk])
+
+    def _reject_url(self, ticket):
+        return reverse("sso:password_reset_ticket_reject", args=[ticket.pk])
+
+    def test_a_staff_member_cannot_approve_a_superuser_recovery(self):
+        root = User.objects.create_user(
+            "root", email="root@x.test", password="pw",
+            is_staff=True, is_superuser=True,
+        )
+        ticket = recovery.file_request("root")
+        self.assertIsNone(ticket.approver, "should be a queue ticket")
+
+        staff = User.objects.create_user(
+            "hired", email="hired@x.test", password="pw", is_staff=True,
+        )
+        self.client.force_login(staff)
+        self.assertEqual(
+            self.client.post(self._approve_url(ticket)).status_code, 403)
+
+        # And the ticket is untouched — no link minted, still claimable by
+        # somebody who may.
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, RecoveryTicket.PENDING)
+        self.assertEqual(ticket.link_sha256, "")
+        self.assertIsNone(ticket.approver)
+
+    def test_a_staff_member_cannot_reject_one_either(self):
+        """Rejecting is not minting, but it IS denial of service against the
+        one account that can undo everything: a staff member who could close
+        the manager's ticket at will could keep them locked out."""
+        User.objects.create_user(
+            "root", email="root@x.test", password="pw",
+            is_staff=True, is_superuser=True,
+        )
+        ticket = recovery.file_request("root")
+        staff = User.objects.create_user(
+            "hired", email="hired@x.test", password="pw", is_staff=True,
+        )
+        self.client.force_login(staff)
+        self.assertEqual(
+            self.client.post(self._reject_url(ticket)).status_code, 403)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, RecoveryTicket.PENDING)
+
+    def test_a_superuser_may_approve_another_superuser(self):
+        """The rule is 'at least', not 'above' — otherwise the top rank could
+        never be recovered by anybody."""
+        User.objects.create_user(
+            "root", email="root@x.test", password="pw",
+            is_staff=True, is_superuser=True,
+        )
+        ticket = recovery.file_request("root")
+        other_root = User.objects.create_user(
+            "root2", email="root2@x.test", password="pw",
+            is_staff=True, is_superuser=True,
+        )
+        self.client.force_login(other_root)
+        self.assertEqual(
+            self.client.post(self._approve_url(ticket)).status_code, 200)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.approver, other_root)
+
+    def test_the_superuser_ticket_is_not_even_on_a_staff_queue(self):
+        """A card the viewer would be refused at invites a click that 403s."""
+        User.objects.create_user(
+            "root", email="root@x.test", password="pw",
+            is_staff=True, is_superuser=True,
+        )
+        ticket = recovery.file_request("root")
+        staff = User.objects.create_user(
+            "hired", email="hired@x.test", password="pw", is_staff=True,
+        )
+        self.assertNotIn(ticket, recovery.tickets_for_approver(staff))
+
+        root2 = User.objects.create_user(
+            "root2", email="root2@x.test", password="pw",
+            is_staff=True, is_superuser=True,
+        )
+        self.assertIn(ticket, recovery.tickets_for_approver(root2))
+
+    def test_an_ordinary_patron_does_not_become_a_staff_members_route(self):
+        """A personal approver who may not approve is SKIPPED, and the ticket
+        falls through to the queue — it does not silently name them."""
+        staff_user = User.objects.create_user(
+            "manager", email="manager@x.test", password="pw", is_staff=True,
+        )
+        _person(staff_user, "Manager", patron=self.patron)
+
+        ticket = recovery.file_request("manager")
+        self.assertIsNone(ticket.approver)
+        self.assertEqual(ticket.approver_rule, RecoveryTicket.RULE_STAFF)
+
+        self.client.force_login(self.patron_user)
+        self.assertEqual(
+            self.client.post(self._approve_url(ticket)).status_code, 403)
+
+    def test_an_ordinary_member_is_still_recovered_by_their_patron(self):
+        """The floor: the ordinary flow this module exists for is untouched."""
+        ticket = self._file()
+        self.assertEqual(ticket.approver, self.patron_user)
+        self.client.force_login(self.patron_user)
+        self.assertEqual(
+            self.client.post(self._approve_url(ticket)).status_code, 200)
+
+    @override_settings(RECOVERY_PROTECTED_GROUPS=["operations"])
+    def test_a_protected_group_member_needs_a_badge(self):
+        """The host-nameable rank: zenobia grades its operators by group, so a
+        group member may not be recovered by an ordinary patron even though
+        neither carries a Django flag."""
+        from django.contrib.auth.models import Group
+
+        operations = Group.objects.create(name="operations")
+        operator = User.objects.create_user(
+            "operator", email="op@x.test", password="pw",
+        )
+        operator.groups.add(operations)
+        _person(operator, "Operator", patron=self.patron)
+
+        ticket = recovery.file_request("operator")
+        self.assertIsNone(ticket.approver, "the patron may not approve them")
+
+        self.client.force_login(self.patron_user)
+        self.assertEqual(
+            self.client.post(self._approve_url(ticket)).status_code, 403)
+        self.assertNotIn(ticket, recovery.tickets_for_approver(self.patron_user))
+
+        staff = User.objects.create_user(
+            "manager", email="manager@x.test", password="pw", is_staff=True,
+        )
+        self.client.force_login(staff)
+        self.assertEqual(
+            self.client.post(self._approve_url(ticket)).status_code, 200)
+
+    def test_a_named_approver_is_rechecked_at_approval_time(self):
+        """The ticket may have been filed when the subject was an ordinary
+        member. Promotion must not leave a live ticket naming somebody who may
+        no longer act on it."""
+        ticket = self._file()
+        self.assertEqual(ticket.approver, self.patron_user)
+
+        self.user.is_staff = True
+        self.user.save(update_fields=["is_staff"])
+
+        self.client.force_login(self.patron_user)
+        self.assertEqual(
+            self.client.post(self._approve_url(ticket)).status_code, 403)

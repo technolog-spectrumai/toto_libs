@@ -61,8 +61,63 @@ def _audit(action, system=False, **kwargs):
     record(action, app_label="sso_core", **kwargs)
 
 
+#: Rank, and the whole of the escalation rule. An approver must be at least
+#: the subject's rank, and anybody above ordinary rank needs a real badge.
+#:
+#: WHY THIS EXISTS. Until 2026-09-07 ``may_respond`` admitted ANY staff member
+#: to a queue ticket, and ``file_request`` refused nobody, so a superuser could
+#: be recovered by a member of staff: file a ticket for the manager's username
+#: on the public reset page, approve it from your own staff queue, and
+#: ``approve`` hands you the one-time link. Three clicks from staff to
+#: superuser, and the audit chain recorded it as a routine recovery.
+#:
+#: Ranks are read off Django's own flags plus one host-nameable list, so a host
+#: that grades its people some other way says so in settings rather than
+#: patching this module.
+RANK_MEMBER = 0
+RANK_PROTECTED = 1
+RANK_STAFF = 2
+RANK_SUPERUSER = 3
+
+
+def rank(user) -> int:
+    """How far up ``user`` stands. Never raises; anonymous is the floor."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return RANK_MEMBER
+    if user.is_superuser:
+        return RANK_SUPERUSER
+    if user.is_staff:
+        return RANK_STAFF
+    from django.conf import settings
+
+    protected = getattr(settings, "RECOVERY_PROTECTED_GROUPS", ()) or ()
+    if protected and user.groups.filter(name__in=protected).exists():
+        return RANK_PROTECTED
+    return RANK_MEMBER
+
+
+def may_approve_rank(approver_rank: int, subject_rank: int) -> bool:
+    """The rule, in one place so all three callers cannot drift apart.
+
+    An approver never recovers somebody who outranks them, and recovering
+    anybody above ordinary rank takes a badge — a patron who is an ordinary
+    member may vouch for an ordinary member, and for nobody else.
+    """
+    if approver_rank < subject_rank:
+        return False
+    if subject_rank > RANK_MEMBER and approver_rank < RANK_STAFF:
+        return False
+    return True
+
+
 def resolve_approver(user):
-    """(approver_user_or_None, rule) for ``user``. Never raises."""
+    """(approver_user_or_None, rule) for ``user``. Never raises.
+
+    A personal approver who may not approve this subject is SKIPPED rather
+    than returned — the ticket falls through to the staff queue, where the
+    rank rule is applied again. That is why a manager's own patron does not
+    silently become their recovery route.
+    """
     if django_apps.is_installed("toto.people"):
         from toto.people.models import Person
 
@@ -72,7 +127,8 @@ def resolve_approver(user):
         )
         if person is not None and person.patron is not None:
             patron_user = person.patron.user
-            if patron_user is not None and patron_user.is_active:
+            if (patron_user is not None and patron_user.is_active
+                    and may_approve_rank(rank(patron_user), rank(user))):
                 return patron_user, RecoveryTicket.RULE_PATRON
 
     if user.email and django_apps.is_installed("toto.socialhub"):
@@ -94,7 +150,8 @@ def resolve_approver(user):
             .order_by(F("responded_at").desc(nulls_last=True), "-created_at")
             .first()
         )
-        if ref is not None and ref.referrer.user.is_active:
+        if (ref is not None and ref.referrer.user.is_active
+                and may_approve_rank(rank(ref.referrer.user), rank(user))):
             return ref.referrer.user, RecoveryTicket.RULE_REFERRER
 
     return None, RecoveryTicket.RULE_STAFF
@@ -205,15 +262,22 @@ def reject(ticket: RecoveryTicket, actor) -> bool:
 def may_respond(user, ticket: RecoveryTicket) -> bool:
     """May ``user`` approve or reject this ticket?
 
-    The named approver, or any staff member for a queue ticket (approver NULL).
+    The named approver, or a staff member for a queue ticket (approver NULL) —
+    and in BOTH cases only if they outrank the subject (see ``rank``). A named
+    approver is re-checked rather than trusted: the ticket may have been filed
+    when the subject was an ordinary member and the subject may have been
+    promoted since.
+
     Never the subject: approving your own recovery would let a hijacked session
     mint itself a password-change link without knowing the current password.
     """
     if not user.is_authenticated or user.pk == ticket.user_id:
         return False
+    if not may_approve_rank(rank(user), rank(ticket.user)):
+        return False
     if ticket.approver_id is not None:
         return ticket.approver_id == user.pk
-    return bool(user.is_staff or user.is_superuser)
+    return rank(user) >= RANK_STAFF
 
 
 def redeem_ticket(token) -> RecoveryTicket | None:
@@ -318,11 +382,31 @@ def tickets_for_approver(user):
     from django.db.models import Q
 
     q = Q(approver=user)
-    if user.is_staff or user.is_superuser:
+    if rank(user) >= RANK_STAFF:
         q |= Q(approver__isnull=True)
+    # The rank rule again, as SQL rather than a comprehension: the caller is a
+    # profile plugin that asks `.exists()` before rendering
+    # (`sso_core/plugins/profile_plugins.py:40`), so this must stay a
+    # QuerySet. A card the viewer would be refused at is worse than a missing
+    # one — it invites a click that 403s. `may_respond` remains the authority;
+    # this only keeps the profile honest about it.
+    viewer_rank = rank(user)
+    if viewer_rank < RANK_SUPERUSER:
+        # Never a subject who outranks the viewer.
+        q &= ~Q(user__is_superuser=True)
+    if viewer_rank < RANK_STAFF:
+        # Below a badge, only ordinary members may be recovered at all —
+        # which includes anybody in a protected group.
+        q &= ~Q(user__is_staff=True)
+        from django.conf import settings
+
+        protected = getattr(settings, "RECOVERY_PROTECTED_GROUPS", ()) or ()
+        if protected:
+            q &= ~Q(user__groups__name__in=protected)
     return (
         RecoveryTicket.objects.filter(q, status=RecoveryTicket.PENDING)
         .exclude(user=user)
         .select_related("user")
+        .distinct()
         .order_by("requested_at")
     )
