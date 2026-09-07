@@ -6,6 +6,7 @@ from toto.verbena.admin import make_section_form
 
 from .models import (
     Community,
+    CommunityForum,
     CommunityNewsPost,
     CommunityNewsTopic,
     CommunityPrivilege,
@@ -124,3 +125,15 @@ class CommunityNewsTopicAdmin(TotoModelAdmin):
     search_fields = ("name",)
     prepopulated_fields = {"slug": ("name",)}
 
+
+
+@admin.register(CommunityForum)
+class CommunityForumAdmin(admin.ModelAdmin):
+    """One room per community. `channel_slug` is a SLUG, not a foreign key —
+    see the model docstring for why — so it is typed rather than picked, and
+    nothing here checks that the room exists. A slug naming no room renders
+    the panel's "no room yet" state on the community page, which is the
+    designed behaviour and not a validation gap to close here."""
+
+    list_display = ("community", "channel_slug", "created_at")
+    search_fields = ("community__name", "channel_slug")

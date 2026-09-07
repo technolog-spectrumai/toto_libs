@@ -3,8 +3,7 @@ from typing import Any, ClassVar
 from django.db.models import Q
 
 from toto.core.plugin import BasePlugin
-from toto.socialhub.models import CommunityNewsPost
-from toto.socialhub.permissions import can_manage_community_news
+from toto.socialhub.models import CommunityForum
 
 
 class CommunityPlugin(BasePlugin):
@@ -36,24 +35,36 @@ class CommunityPlugin(BasePlugin):
         return context
 
 
-@CommunityPlugin.plugin(key="community_news", title="Community News", order=20)
-class CommunityNewsPlugin(CommunityPlugin):
-    section_icon = "fa-solid fa-bullhorn"
-    template_name = "socialhub/community_plugins/news.html"
+@CommunityPlugin.plugin(key="community_forum", title="Forum room", order=20)
+class CommunityForumPlugin(CommunityPlugin):
+    """A link to the community's room — what the news panel used to be.
+
+    News was a second, thinner publishing surface beside a forum this platform
+    already runs: somewhere to post that had no replies, no moderation and no
+    notifications, so a community ended up with two feeds and had to decide
+    which one people should read. This points at the one that works.
+
+    `CommunityNewsPost` and its views are DELIBERATELY LEFT IN PLACE. Removing
+    the panel hides a feed; removing the model would delete what communities
+    already wrote. Old posts stay readable through the admin and their own
+    URLs, and this plugin is the surface everyone is sent to now.
+
+    Resolution is at render time and never raises — see `CommunityForum`.
+    """
+
+    section_icon = "fa-solid fa-comments"
+    template_name = "socialhub/community_plugins/forum.html"
 
     def get_context(self, **kwargs) -> dict[str, Any]:
         context = super().get_context(**kwargs)
         community = kwargs["community"]
-        request = kwargs.get("request")
-        posts = (
-            CommunityNewsPost.objects
-            .filter(community=community)
-            .select_related("author", "community")
-            .prefetch_related("topics")[:8]
-        )
+        link = CommunityForum.objects.filter(community=community).first()
         context.update({
-            "community_news": posts,
-            "can_manage_news": can_manage_community_news(request, community) if request else False,
+            "community_forum": link,
+            # The room itself, not just the row: the template needs its name,
+            # and "the row exists but the room is gone" has to render as "no
+            # room" rather than as a link to nothing.
+            "community_forum_room": link.channel() if link else None,
         })
         return context
 
