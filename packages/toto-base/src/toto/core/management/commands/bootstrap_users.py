@@ -9,11 +9,19 @@ to be shredded. A pipe is read once and is gone. The caller is a deployment
 tool — a builder's Users tab, or a human with a heredoc — that has just
 brought a stack up and needs somebody able to log into it.
 
-**Existing usernames are skipped and reported, never modified.** That is the
-whole difference from `create_user` next door, which does `update_or_create`
-and is the right tool for "make this account be this way". Taking over an
-account because a start-up list happened to repeat its name is exactly what a
-bootstrap must not do, so this one refuses to.
+**Existing usernames are skipped and reported, never modified — unless
+`--reset-existing` says otherwise.** Skipping is the default because taking
+over an account merely because a start-up list repeated its name is exactly
+what a bootstrap must not do to a caller who did not ask.
+
+`--reset-existing` is for the caller who IS authoritative over the
+installation: a builder driving deploy.py on the same machine already holds
+the database, so refusing to reset a password there guards nothing — it only
+means an operator who locked themselves out has to go around the tool. With
+the flag, an existing account is made to MATCH THE ROW exactly: password,
+staff, superuser and email. That symmetry is the point — a row is a statement
+about what the account should be, and an update that applied half of it would
+leave the operator guessing which half.
 
 Three power levels, and superuser implies staff because Django's own
 `create_superuser` does:
@@ -79,13 +87,19 @@ def _default_email(username: str) -> str:
 
 class Command(BaseCommand):
     help = ("Create up to five start accounts from a JSON document on stdin. "
-            "Existing usernames are skipped. Passwords are never echoed.")
+            "Existing usernames are skipped unless --reset-existing. "
+            "Passwords are never echoed.")
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--stdin", default=None,
             help="Read the JSON from this file instead of stdin. Tests only — "
                  "a real deployment must use the pipe.")
+        parser.add_argument(
+            "--reset-existing", action="store_true",
+            help="Make an existing account match its row — password, staff, "
+                 "superuser and email. For a caller that is authoritative "
+                 "over this installation; without it such rows are skipped.")
 
     def handle(self, *args, **options):
         source = options.get("stdin")
@@ -101,6 +115,7 @@ class Command(BaseCommand):
             self.stderr.write(f"stdin is not valid JSON: {exc}")
             sys.exit(1)
 
+        reset_existing = bool(options.get("reset_existing"))
         users = (payload or {}).get("users") or []
         if not users:
             self.stdout.write("nothing to do — no users in the payload")
@@ -128,27 +143,47 @@ class Command(BaseCommand):
                 failed = True
                 continue
 
-            if User.objects.filter(username=username).exists():
-                self.stdout.write(f"{username}: already present — untouched")
-                continue
-
             superuser = bool(row.get("superuser"))
             # `board` is placidia's word for the same flag.
             staff = bool(row.get("staff") or row.get("board"))
+            level = "superuser" if superuser else "staff" if staff else "viewer"
+
+            existing = User.objects.filter(username=username).first()
+            if existing is not None and not reset_existing:
+                self.stdout.write(f"{username}: already present — untouched")
+                continue
+
+            if existing is not None:
+                # Match the row exactly. A row is a statement about what the
+                # account should be, so applying half of it — the password but
+                # not the flags — would leave the operator guessing which half
+                # landed. An email is only replaced when the row names one:
+                # a blank field is "say nothing", not "erase it".
+                existing.set_password(password)
+                existing.is_superuser = superuser
+                existing.is_staff = superuser or staff
+                existing.is_active = True
+                typed_email = (row.get("email") or "").strip()
+                if typed_email:
+                    existing.email = typed_email
+                elif not existing.email:
+                    existing.email = _default_email(username)
+                existing.save()
+                self.stdout.write(f"{username}: reset ({level})")
+                continue
+
             email = (row.get("email") or "").strip() or _default_email(username)
             if superuser:
                 User.objects.create_superuser(username=username, email=email,
                                               password=password)
-                self.stdout.write(f"{username}: created (superuser)")
             elif staff:
                 User.objects.create_user(username=username, password=password,
                                          email=email,
                                          is_active=True, is_staff=True)
-                self.stdout.write(f"{username}: created (staff)")
             else:
                 User.objects.create_user(username=username, password=password,
                                          email=email, is_active=True)
-                self.stdout.write(f"{username}: created (viewer)")
+            self.stdout.write(f"{username}: created ({level})")
 
         if failed:
             # Good rows are still created; the exit code still reports that

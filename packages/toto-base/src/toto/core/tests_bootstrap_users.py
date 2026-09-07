@@ -108,3 +108,92 @@ class BootstrapUsersTests(TestCase):
         out, err = run({"users": []})
         self.assertIn("nothing to do", out)
         self.assertEqual(User.objects.count(), 0)
+
+
+class ResetExistingTests(TestCase):
+    """`--reset-existing`: for a caller authoritative over the installation.
+
+    The builder drives deploy.py against a stack on the same machine and
+    already holds the database, so refusing to reset a password there guards
+    nothing. The DEFAULT stays skip-and-report — the test above pins that — and
+    these pin what the flag adds.
+    """
+
+    def test_the_password_is_reset(self):
+        User.objects.create_user("anna", password="original")
+        out, _ = run(rows({"username": "anna", "password": "new-one"}),
+                     reset_existing=True)
+        anna = User.objects.get(username="anna")
+        self.assertTrue(anna.check_password("new-one"))
+        self.assertIn("reset", out)
+
+    def test_the_account_is_made_to_match_the_row(self):
+        """Exactly, not partly — including flags coming DOWN.
+
+        A row is a statement about what the account should be. Applying the
+        password but not the flags would leave the operator guessing which
+        half landed.
+        """
+        existing = User.objects.create_user("anna", password="original")
+        existing.is_superuser = True
+        existing.is_staff = True
+        existing.save()
+
+        run(rows({"username": "anna", "password": "pw"}), reset_existing=True)
+        anna = User.objects.get(username="anna")
+        self.assertFalse(anna.is_superuser)
+        self.assertFalse(anna.is_staff)
+
+    def test_a_viewer_can_be_promoted(self):
+        User.objects.create_user("anna", password="original")
+        run(rows({"username": "anna", "password": "pw", "superuser": True}),
+            reset_existing=True)
+        anna = User.objects.get(username="anna")
+        self.assertTrue(anna.is_superuser)
+        self.assertTrue(anna.is_staff)   # superuser implies staff
+
+    def test_a_blank_email_says_nothing_rather_than_erasing(self):
+        """An operator retyping a password must not silently lose the address
+        every OIDC consumer needs — see _default_email."""
+        User.objects.create_user("anna", password="original",
+                                 email="anna@real.example")
+        run(rows({"username": "anna", "password": "pw"}), reset_existing=True)
+        self.assertEqual(User.objects.get(username="anna").email,
+                         "anna@real.example")
+
+    def test_a_typed_email_replaces_it(self):
+        User.objects.create_user("anna", password="original",
+                                 email="anna@old.example")
+        run(rows({"username": "anna", "password": "pw",
+                  "email": "anna@new.example"}), reset_existing=True)
+        self.assertEqual(User.objects.get(username="anna").email,
+                         "anna@new.example")
+
+    def test_an_account_with_no_email_gets_one(self):
+        existing = User.objects.create_user("anna", password="original")
+        existing.email = ""
+        existing.save()
+        run(rows({"username": "anna", "password": "pw"}), reset_existing=True)
+        self.assertTrue(User.objects.get(username="anna").email)
+
+    def test_a_reset_account_is_reactivated(self):
+        existing = User.objects.create_user("anna", password="original")
+        existing.is_active = False
+        existing.save()
+        run(rows({"username": "anna", "password": "pw"}), reset_existing=True)
+        self.assertTrue(User.objects.get(username="anna").is_active)
+
+    def test_no_password_reaches_the_output_on_a_reset_either(self):
+        User.objects.create_user("anna", password="original")
+        out, err = run(rows({"username": "anna", "password": "hunter2"}),
+                       reset_existing=True)
+        self.assertNotIn("hunter2", out + err)
+
+    def test_new_accounts_are_still_created_alongside(self):
+        User.objects.create_user("anna", password="original")
+        out, _ = run(rows({"username": "anna", "password": "pw"},
+                          {"username": "bo", "password": "pw"}),
+                     reset_existing=True)
+        self.assertIn("reset", out)
+        self.assertIn("created", out)
+        self.assertTrue(User.objects.filter(username="bo").exists())
