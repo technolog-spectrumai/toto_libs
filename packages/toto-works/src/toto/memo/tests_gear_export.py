@@ -87,3 +87,76 @@ class KatexTravelTests(TestCase):
         """A machine where download_vendor.py has not run simply has none, and
         formulas fall back to their LaTeX source."""
         self.assertEqual(render_pdf.katex_inputs(None), {})
+
+
+class SeededDecksAreLightTests(TestCase):
+    """The samples ship LIGHT, though the format default is "black".
+
+    A sample deck is the first thing anybody opens and the thing they copy to
+    start their own — and a dark deck exported to PDF prints a full-bleed black
+    page. See `ingress_memo.SAMPLE_THEME`.
+    """
+
+    def test_every_sample_is_light(self):
+        from toto.memo import presentation_format as fmt
+        from toto.memo.management.commands.ingress_memo import build
+
+        for name, deck in build(fmt):
+            with self.subTest(deck=name):
+                self.assertEqual(deck.theme, "white")
+
+    def test_every_sample_actually_exports(self):
+        """The samples are the one deck set we can pin. If these stop
+        exporting, the exporter broke — not somebody's deck."""
+        from toto.memo import presentation_format as fmt, render_pdf
+        from toto.memo.management.commands.ingress_memo import build
+
+        if not render_pdf.is_available():
+            self.skipTest("WeasyPrint is not installed")
+        for name, deck in build(fmt):
+            with self.subTest(deck=name):
+                self.assertTrue(render_pdf.render(deck).startswith(b"%PDF"))
+
+
+class CulpritSlideTests(TestCase):
+    """A failed export should name the slide, not point at the server log."""
+
+    def _deck(self):
+        from toto.memo import presentation_format as fmt
+
+        def slide(title):
+            return fmt.Slide(
+                id=fmt._new_id("s"), title=title, layout="title-content",
+                blocks=[fmt.Block(id=fmt._new_id("b"), type="text",
+                                  payload=title, slot="")])
+
+        return fmt.Presentation(title="D", slides=[slide("a"), slide("b")])
+
+    def test_a_deck_that_renders_has_no_culprit(self):
+        from toto.memo import render_pdf
+        from toto.memo.views import _first_unrenderable_slide
+
+        if not render_pdf.is_available():
+            self.skipTest("WeasyPrint is not installed")
+        self.assertIsNone(_first_unrenderable_slide(self._deck()))
+
+    def test_it_returns_the_first_failing_slide_number(self):
+        from unittest import mock
+
+        from toto.memo import render_pdf
+        from toto.memo.views import _first_unrenderable_slide
+
+        if not render_pdf.is_available():
+            self.skipTest("WeasyPrint is not installed")
+        deck = self._deck()
+        real = render_pdf.render
+
+        def fake(presentation):
+            if presentation.slides and presentation.slides[0].title == "b":
+                # The exact shape reported from the field.
+                raise TypeError(
+                    "unsupported operand type(s) for *: 'NoneType' and 'int'")
+            return real(presentation)
+
+        with mock.patch.object(render_pdf, "render", fake):
+            self.assertEqual(_first_unrenderable_slide(deck), 2)

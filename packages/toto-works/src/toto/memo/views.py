@@ -190,6 +190,30 @@ class PresentationView(View):
 # ---------------------------------------------------------------------------
 
 
+def _first_unrenderable_slide(presentation):
+    """The 1-based number of the first slide that will not lay out, or None.
+
+    Only ever called AFTER a failure, so the cost is paid on a request that
+    already lost. Renders each slide alone: the deck is the sum of its slides,
+    so whatever breaks the whole breaks one of them — and if none of them fails
+    alone the answer is None and the message simply omits it rather than
+    guessing.
+    """
+    import copy
+
+    from . import render_pdf
+
+    slides = list(getattr(presentation, "slides", []) or [])
+    for index, slide in enumerate(slides, start=1):
+        one = copy.copy(presentation)
+        one.slides = [slide]
+        try:
+            render_pdf.render(one)
+        except Exception:       # noqa: BLE001 — this IS the diagnosis
+            return index
+    return None
+
+
 @login_required
 def presentation_export_pdf(request, file_pk):
     """One page per slide, rendered from the same slide.css as everything else."""
@@ -237,13 +261,26 @@ def presentation_export_pdf(request, file_pk):
         # reconstructible from the message, and the message is what has to
         # improve — with the exception logged, which is what would have
         # identified the deck the first time.
-        log.exception("memo: PDF export failed for vault file %s", vault_file.pk)
+        log.exception("memo: PDF export failed for vault file %s (%s slides, "
+                      "theme=%s, block types=%s)", vault_file.pk,
+                      len(getattr(presentation, "slides", []) or []),
+                      getattr(presentation, "theme", "?"),
+                      sorted({b.type for sl in getattr(presentation, "slides", [])
+                              for b in getattr(sl, "blocks", [])}))
         if isinstance(exc, TypeError):
+            # WHICH SLIDE. The old message said "the details are in the server
+            # log", which meant somebody had to go and read it — and the log
+            # did not name the slide either, so a deck of forty was still a
+            # search. Rendering slide-by-slide costs one extra pass on a path
+            # that has ALREADY failed, and turns "somewhere in your deck" into
+            # a number the author can go and look at.
+            culprit = _first_unrenderable_slide(presentation)
+            where = (f" Slide {culprit} is the first one that fails."
+                     if culprit else "")
             return HttpResponse(
                 "This deck could not be laid out for printing. That is a bug "
-                "in the exporter rather than something wrong with your deck — "
-                "the details are in the server log. Present and print from "
-                "the browser meanwhile.",
+                "in the exporter rather than something wrong with your deck." +
+                where + " Present and print from the browser meanwhile.",
                 status=503, content_type="text/plain")
         return HttpResponse(str(exc), status=503, content_type="text/plain")
 

@@ -21,8 +21,18 @@ from toto.ingress import IngressCommand
 FOLDER = "Presentations"
 
 
+#: The samples are LIGHT, though `presentation_format.DEFAULT_THEME` is
+#: "black". A sample deck is the first thing anybody opens and the thing they
+#: copy to start their own, so it should look like the paper most decks end up
+#: being — and a dark deck exported to PDF prints a full-bleed black page,
+#: which is a poor first impression and a lot of toner. Somebody who wants the
+#: dark theme changes one dropdown; the default was the wrong way round for a
+#: sample.
+SAMPLE_THEME = "white"
+
+
 def _deck(fmt, title, slides):
-    return fmt.Presentation(title=title, slides=slides)
+    return fmt.Presentation(title=title, slides=slides, theme=SAMPLE_THEME)
 
 
 def _slide(fmt, title, layout, blocks):
