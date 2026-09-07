@@ -186,6 +186,16 @@ class ChannelCreateView(LoginRequiredMixin, View):
             messages.error(request, _("That name cannot be turned into a URL slug."))
             return redirect("forum:channel_list")
 
+        # The cap, as a MESSAGE. The model raises ValidationError either way —
+        # that is what makes it a real cap — but a 500 is not how a person
+        # should learn the forum is full.
+        if ForumChannel.at_capacity():
+            messages.error(request, _(
+                "This platform holds at most %(n)s rooms, and it has that "
+                "many. Close one before opening another.")
+                % {"n": ForumChannel.max_channels()})
+            return redirect("forum:channel_list")
+
         if slug in ForumChannel.RESERVED_SLUGS:
             # The model refuses this too; here it gets a sentence rather than
             # a validation error, because this is the door people use.

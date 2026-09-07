@@ -69,37 +69,72 @@ class CompanyDetailsForm(forms.ModelForm):
 
 
 class CompanyForumForm(forms.ModelForm):
-    """Which forum room is this company's.
+    """Which forum room is this company's — picked from a list.
 
-    A SLUG typed by hand rather than a room picked from a dropdown, and that
-    follows from the model: `CompanyForum.channel_slug` is a slug precisely
-    because toto-business may not depend on toto-chat (an FK string is a hard
-    package edge — `check_package_graph.py` refuses it). A ModelChoiceField
-    over ForumChannel would reintroduce exactly the import the slug avoids.
+    A DROPDOWN OVER A SLUG, which is the awkward-looking part and the correct
+    one. `CompanyForum.channel_slug` is a slug rather than a ForeignKey
+    because toto-business may not depend on toto-chat: an FK *string* counts
+    as a hard package edge and `check_package_graph.py` refuses it. So a
+    `ModelChoiceField` over ForumChannel is out — it would reintroduce
+    precisely the import the slug design avoids.
 
-    Nothing here checks that the room exists. A slug naming no room renders no
-    link on the company page — the designed behaviour, so that the register
-    still works on a host with no forum at all — and validating it here would
-    make the form unusable on those hosts rather than merely quiet.
+    What is possible, and what this does, is to POPULATE the choices at render
+    time from whatever rooms exist, while still storing a slug. The app is
+    asked for through the registry, never imported, so a host without chat
+    gets a form with no rooms to choose rather than an ImportError.
+
+    The empty choice is how a link is REMOVED — the view deletes the row when
+    the slug comes back blank, because "no room" is the absence of the row
+    rather than a row holding "".
     """
 
     class Meta:
         model = CompanyForum
         fields = ["channel_slug"]
-        widgets = {
-            "channel_slug": forms.TextInput(
-                attrs={"placeholder": "acme-room"}),
-        }
-        labels = {"channel_slug": "Forum room slug"}
-        help_texts = {
-            "channel_slug": "The room's slug in the forum, e.g. `acme-room`. "
-                            "Leave empty to remove the link.",
-        }
+        labels = {"channel_slug": "Forum room"}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["channel_slug"].required = False
+        field = self.fields["channel_slug"]
+        field.required = False
+
+        rooms = self._rooms()
+        if rooms is None:
+            # No forum on this host. Left as a text input rather than an empty
+            # dropdown: an empty <select> looks like a bug, and a host that
+            # installs chat later should not need this row retyped.
+            field.help_text = ("This host has no forum installed, so there "
+                               "are no rooms to choose from.")
+        else:
+            choices = [("", "— no room —")] + [(r.slug, r.name) for r in rooms]
+            # A stored slug whose room has since been deleted would otherwise
+            # vanish from the dropdown and be silently cleared on the next
+            # save. Keep it visible, and say what it is.
+            current = (self.instance.channel_slug
+                       if self.instance and self.instance.pk else "")
+            if current and current not in {slug for slug, _label in choices}:
+                choices.append((current, f"{current} (no such room)"))
+            field.widget = forms.Select(choices=choices)
+            field.help_text = "Leave empty to remove the link."
         _style(self)
+
+    @staticmethod
+    def _rooms():
+        """Every room, or None when this host has no forum.
+
+        Through the app registry rather than a module-level import — see the
+        class docstring. `get_model` raises on a host without chat, which is
+        the case this returns None for.
+        """
+        from django.apps import apps as django_apps
+
+        if not django_apps.is_installed("toto.forum"):
+            return None
+        try:
+            model = django_apps.get_model("forum", "ForumChannel")
+            return list(model.objects.order_by("name"))
+        except Exception:  # noqa: BLE001 — a missing app is not an error here
+            return None
 
 
 class ShareClassForm(forms.ModelForm):

@@ -89,3 +89,63 @@ class ParticipantTypeRemovedTests(TestCase):
         member = ForumMember(channel=None, person=None)
         with self.assertRaises(ValidationError):
             member.clean()
+
+
+class ChannelCapTests(TestCase):
+    """At most eight rooms, enforced where it actually runs.
+
+    Rooms are cheap to make and expensive to keep — each carries a vault
+    directory, a retention policy, a nightly cleanup pass and a websocket
+    group — so the platform holds a small fixed number rather than a quota.
+    """
+
+    def test_the_cap_is_eight_by_default(self):
+        from toto.forum.models import ForumChannel
+
+        self.assertEqual(ForumChannel.max_channels(), 8)
+
+    def test_the_ninth_room_is_refused(self):
+        from django.core.exceptions import ValidationError
+
+        from toto.forum.models import ForumChannel
+
+        for i in range(8):
+            ForumChannel.objects.create(name=f"Room {i}", slug=f"room-{i}")
+        with self.assertRaises(ValidationError):
+            ForumChannel.objects.create(name="Ninth", slug="ninth")
+        self.assertEqual(ForumChannel.objects.count(), 8)
+
+    def test_it_is_enforced_on_save_not_only_in_clean(self):
+        """`clean()` runs for ModelForms and the admin; `objects.create()`
+        never calls it. The admin and `ingress_forum.py` both make channels
+        without a form — a cap only the create view honoured would be a cap
+        in name. This is the same reasoning RESERVED_SLUGS records."""
+        from django.core.exceptions import ValidationError
+
+        from toto.forum.models import ForumChannel
+
+        for i in range(8):
+            ForumChannel.objects.create(name=f"R{i}", slug=f"r-{i}")
+        # Straight to save(), bypassing full_clean() entirely.
+        with self.assertRaises(ValidationError):
+            ForumChannel(name="Bypass", slug="bypass").save()
+
+    def test_an_existing_room_can_still_be_edited_at_capacity(self):
+        """The cap is on CREATION. Renaming the eighth room must not be
+        refused because the eighth room exists."""
+        from toto.forum.models import ForumChannel
+
+        rooms = [ForumChannel.objects.create(name=f"E{i}", slug=f"e-{i}")
+                 for i in range(8)]
+        rooms[-1].name = "Renamed"
+        rooms[-1].save()          # must not raise
+        self.assertEqual(ForumChannel.objects.get(pk=rooms[-1].pk).name,
+                         "Renamed")
+
+    def test_a_host_may_raise_the_cap(self):
+        from django.test import override_settings
+
+        from toto.forum.models import ForumChannel
+
+        with override_settings(FORUM_MAX_CHANNELS=2):
+            self.assertEqual(ForumChannel.max_channels(), 2)

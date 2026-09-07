@@ -108,11 +108,33 @@ class ForumChannel(models.Model):
     #: `ingress_forum.py` both make channels without going near that view.
     RESERVED_SLUGS = frozenset({"create", "search", "cleanup", "export", "api"})
 
+    #: How many rooms this platform will hold. A host raises it by setting
+    #: `FORUM_MAX_CHANNELS`; there is no way to have none, because zero would
+    #: make the app unusable rather than configurable.
+    #:
+    #: A CAP RATHER THAN A QUOTA, and the number is small on purpose: rooms
+    #: are cheap to make and expensive to keep — each one carries a vault
+    #: directory, a retention policy, a nightly cleanup pass and a websocket
+    #: group, and a forum with fifty half-dead rooms is worse than one with
+    #: eight live ones.
+    DEFAULT_MAX_CHANNELS = 8
+
     class Meta:
         ordering = ["name"]
 
     def __str__(self):
         return self.name
+
+    @classmethod
+    def max_channels(cls) -> int:
+        from django.conf import settings
+
+        return int(getattr(settings, "FORUM_MAX_CHANNELS",
+                           cls.DEFAULT_MAX_CHANNELS))
+
+    @classmethod
+    def at_capacity(cls) -> bool:
+        return cls.objects.count() >= cls.max_channels()
 
     def clean(self):
         super().clean()
@@ -122,6 +144,28 @@ class ForumChannel(models.Model):
                           "A room with that name could never be opened.")
                 % {"slug": self.slug},
             })
+        if self._state.adding and self.at_capacity():
+            raise ValidationError(
+                _("This platform holds at most %(n)s rooms, and it has that "
+                  "many. Close one before opening another.")
+                % {"n": self.max_channels()})
+
+    def save(self, *args, **kwargs):
+        """Enforced HERE as well as in `clean()`, and that is not belt and
+        braces — it is the only place that actually runs.
+
+        `clean()` is called by ModelForms and the admin; `objects.create()`
+        never calls it. The admin, `ingress_forum.py` and any shell make
+        channels without going near a form, which is exactly the reasoning
+        `RESERVED_SLUGS` records for its own check being on the model. A cap
+        that only the create view honoured would be a cap in name.
+        """
+        if self._state.adding and self.at_capacity():
+            raise ValidationError(
+                _("This platform holds at most %(n)s rooms, and it has that "
+                  "many. Close one before opening another.")
+                % {"n": self.max_channels()})
+        super().save(*args, **kwargs)
 
 
 class ForumMember(models.Model):

@@ -190,3 +190,58 @@ class ForumLinkEditingTests(TestCase):
         CompanyForum.objects.create(company=self.company, channel_slug="gone")
         self.client.force_login(self.staff)
         self.assertContains(self.client.get(self.url()), "gone")
+
+
+class ForumDropdownTests(TestCase):
+    """Picking a room from a list instead of typing its slug."""
+
+    @classmethod
+    def setUpClass(cls):
+        from django.apps import apps as django_apps
+
+        if not django_apps.is_installed("toto.forum"):
+            raise unittest.SkipTest("toto.forum is not installed on this host")
+        super().setUpClass()
+
+    @classmethod
+    def setUpTestData(cls):
+        from toto.company.models import Company
+        from toto.core.models import Platform
+        from toto.forum.models import ForumChannel
+
+        Platform.objects.create(site_name="T", author="A",
+                                publication_year=2026, active=True)
+        cls.company = Company.objects.create(name="Drop Co", slug="dropco")
+        ForumChannel.objects.create(name="Beta room", slug="beta")
+        ForumChannel.objects.create(name="Alpha room", slug="alpha")
+
+    def test_the_field_offers_every_room_alphabetically(self):
+        from toto.company.forms import CompanyForumForm
+
+        labels = [label for _v, label in CompanyForumForm().fields["channel_slug"].widget.choices]
+        self.assertEqual(labels, ["— no room —", "Alpha room", "Beta room"])
+
+    def test_it_still_stores_a_slug_not_a_foreign_key(self):
+        """The package graph refuses a toto-business -> toto-chat edge, so the
+        dropdown populates choices but the stored value stays a slug."""
+        from toto.company.models import CompanyForum
+
+        field = CompanyForum._meta.get_field("channel_slug")
+        self.assertEqual(field.get_internal_type(), "SlugField")
+
+    def test_a_dangling_slug_stays_in_the_list_rather_than_being_cleared(self):
+        """A room deleted after linking would otherwise drop out of the
+        choices and be silently unlinked by the next save."""
+        from toto.company.forms import CompanyForumForm
+        from toto.company.models import CompanyForum
+
+        link = CompanyForum.objects.create(company=self.company,
+                                           channel_slug="gone-room")
+        values = [v for v, _l in CompanyForumForm(instance=link).fields["channel_slug"].widget.choices]
+        self.assertIn("gone-room", values)
+
+    def test_an_empty_choice_is_offered_so_a_link_can_be_removed(self):
+        from toto.company.forms import CompanyForumForm
+
+        values = [v for v, _l in CompanyForumForm().fields["channel_slug"].widget.choices]
+        self.assertIn("", values)
