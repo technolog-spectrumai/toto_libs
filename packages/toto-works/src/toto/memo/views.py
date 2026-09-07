@@ -16,6 +16,8 @@ spelling ``presentation`` is still read, for the rows 0021 could not reach
 
 from __future__ import annotations
 
+import logging
+
 import hashlib
 import json
 import mimetypes
@@ -53,6 +55,8 @@ from toto.vault.views import (
 from . import presentation_format, render_pdf
 from toto.antivirus.sanitize import sanitize_svg as clean_svg_markup
 from .media import image_bytes_to_data_uri
+
+log = logging.getLogger(__name__)
 
 # Vault file types that can be embedded into a slide body.
 _MEDIA_TYPES = ["image", "svg"]
@@ -222,6 +226,25 @@ def presentation_export_pdf(request, file_pk):
         # NoGear and JobFailed both land here. Neither is a 500: the first is
         # something the user fixes on the Compute Gears page, the second is a
         # render that genuinely failed.
+        #
+        # A LAYOUT ERROR FROM WEASYPRINT reaches this too, and used to arrive
+        # as its own words — "unsupported operand type(s) for *: 'NoneType'
+        # and 'int'" — which tells the reader nothing about the deck and
+        # nothing about what to do. Reported 2026-09-06 and never reproduced
+        # here: a fresh deck exports, and so does every block type (image,
+        # video, formula, list, text) including a broken data URI, a missing
+        # file and an SVG with no intrinsic size. So the deck is not
+        # reconstructible from the message, and the message is what has to
+        # improve — with the exception logged, which is what would have
+        # identified the deck the first time.
+        log.exception("memo: PDF export failed for vault file %s", vault_file.pk)
+        if isinstance(exc, TypeError):
+            return HttpResponse(
+                "This deck could not be laid out for printing. That is a bug "
+                "in the exporter rather than something wrong with your deck — "
+                "the details are in the server log. Present and print from "
+                "the browser meanwhile.",
+                status=503, content_type="text/plain")
         return HttpResponse(str(exc), status=503, content_type="text/plain")
 
     # Charged after the render succeeds. A synchronous call that returns bytes
