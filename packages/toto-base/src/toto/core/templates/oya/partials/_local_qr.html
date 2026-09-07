@@ -2,7 +2,16 @@
 {% comment %}
 "Scan this screen to open the site on your phone."
 
-Drawn in the BROWSER from window.location.origin, on purpose: the server
+Two sources, in order.
+
+`tailnet_public_url` wins when the stack is on a tailnet. deploy.py knows the
+MagicDNS name and exports it (TAILNET_PUBLIC_URL), and that is the address to
+hand round — `tailscale cert` issues for the NAME, so it opens without a
+certificate warning, which the tailnet IP does not. It has to come from the
+server because the browser cannot know it: whoever ran the deploy is looking at
+localhost.
+
+Otherwise the BROWSER's own window.location.origin, because the server
 routinely cannot name an address that works. Behind nginx it sees a container
 hostname; on a LAN it knows an interface IP but not which one is routable;
 through a tunnel or a port-forward it knows nothing at all. The URL in the
@@ -16,7 +25,8 @@ for.
 
 Include once, anywhere in the page body; it carries its own script.
 {% endcomment %}
-<div id="local-qr-wrap" class="hidden flex-col items-center gap-3 pt-1">
+<div id="local-qr-wrap" class="hidden flex-col items-center gap-3 pt-1"
+     data-tailnet-url="{{ tailnet_public_url|default:'' }}">
   <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
      class="text-xs font-semibold uppercase tracking-widest">{% trans "Scan to open on your phone" %}</p>
   <div :class="darkMode ? 'border-accent-1 bg-white' : 'border-accent-2 bg-white'"
@@ -29,14 +39,15 @@ Include once, anywhere in the page body; it carries its own script.
 <script src="{% static 'vendor/qrcodejs/qrcode.min.js' %}"></script>
 <script>
   (function () {
-    // location.origin, not a server-supplied host: see the comment above.
-    // A file:// or sandboxed page has an opaque origin worth nothing here.
-    var url = window.location.origin;
-    if (!url || url === "null" || !window.QRCode) return;
-
     var wrap = document.getElementById("local-qr-wrap");
     var box = document.getElementById("local-qr");
-    if (!wrap || !box) return;
+    if (!wrap || !box || !window.QRCode) return;
+
+    // The tailnet name if the server knows one, else this browser's own
+    // address — see the comment above for why that order. A file:// or
+    // sandboxed page has an opaque origin worth nothing here.
+    var url = (wrap.dataset.tailnetUrl || "").trim() || window.location.origin;
+    if (!url || url === "null") return;
 
     try {
       new QRCode(box, {

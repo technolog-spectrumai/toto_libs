@@ -114,6 +114,12 @@ def welcome_view(request):
         # own dict (whose `logo` is already a URL), so putting the model here
         # only ever looked like it worked. Setting it twice is what let three
         # templates dereference `federation.logo.url` and render nothing.
+        # The tailnet address, when this stack has one. It REPLACES the
+        # browser-derived QR below: on a tailscale deploy the MagicDNS name is
+        # the address to hand round, and location.origin is whatever the person
+        # who ran the deploy happened to type — often localhost, which is
+        # exactly the URL that will not work on anybody's phone.
+        "tailnet_public_url": getattr(settings, "TAILNET_PUBLIC_URL", ""),
         "connect_url": _connect_url(platform),
         "connect_qr_url": _connect_qr_url(),
         "tailscale_url": _tailscale_url(),
