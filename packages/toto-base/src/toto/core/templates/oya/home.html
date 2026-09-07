@@ -105,6 +105,8 @@
             {% endif %}
           </div>
 
+          {% include "oya/partials/_local_qr.html" %}
+
           <!-- QR code — rendered server-side so it works in Tor Browser (which
                blocks JS). Superuser-only: it encodes the hidden .onion address. -->
           {% if user.is_superuser and connect_qr_url %}
