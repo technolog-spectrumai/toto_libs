@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import itertools
 
-from toto.anastasia.manager import containers
+from toto.anastasia.executor import containers
 
 
 class FakeDocker:

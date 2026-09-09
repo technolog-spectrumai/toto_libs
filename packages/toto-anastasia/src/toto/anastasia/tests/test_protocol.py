@@ -9,7 +9,7 @@ import time
 
 from django.test import SimpleTestCase
 
-from toto.anastasia.manager import protocol
+from toto.anastasia.executor import protocol
 
 SECRET = "shared-secret-for-tests"
 OTHER = "a-different-secret"

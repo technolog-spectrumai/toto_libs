@@ -13,7 +13,7 @@ import uuid
 from django.test import SimpleTestCase
 
 from toto.anastasia.limits import Limits
-from toto.anastasia.manager import containers, gears, reconcile, staging
+from toto.anastasia.executor import containers, gears, reconcile, staging
 
 from .fakes import CountingSliceDriver, FakeDocker
 

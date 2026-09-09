@@ -22,7 +22,7 @@ from django.test import SimpleTestCase
 
 from toto.anastasia.families import Family
 from toto.anastasia.limits import Limits
-from toto.anastasia.manager import containers, slices
+from toto.anastasia.executor import containers, slices
 
 #: A tiny image that is almost certainly already present. Nothing about these
 #: tests depends on what it contains beyond a shell.

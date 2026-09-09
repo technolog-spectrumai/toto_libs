@@ -43,11 +43,16 @@ unmounts it or the lease expires.
   supply *declared parameters*. There is no way to express an image, a mount, a
   flag, a capability, a command or privileged mode, because the vocabulary in
   `families.py` has no word for them.
-- **Warm runtimes, inside a Gear only.** Nothing idles outside a reservation.
-  Inside one, a user may keep runners warm (`warm_policy`) — the capacity is
-  already reserved and already deducted, so warmth there costs the pool nothing
-  it was not costing anyway. Only the `python` family is warmable, because only
-  it has state worth keeping.
+- **Nothing idles, anywhere.** A runner is created for one job and destroyed
+  when it ends. Warm pools existed until 2026-09-10 (`warm_policy`, kept
+  runners inside a mounted Gear) and were deleted: they had become vestigial —
+  nothing ever served a job from a warm runner — and a fresh sandbox per job is
+  what the isolation rework needs anyway.
+- **No network, with one exception.** Batch families get none at all. The
+  `python` family gets the Gear's internal network so the session owner can
+  reach the kernel's ports, and that network reaches no database and no broker.
+  A third posture, `needs_egress`, let package installs fetch from an index and
+  was deleted with them: nothing in a Gear can reach the internet now.
 - **An append-only history**, refusals included: a history that only records
   what worked cannot answer "why can I not mount this".
 
@@ -58,16 +63,17 @@ Two halves, deliberately separable:
 - **The Django app** (`models`, `services`, `execute`, `checks`) owns the
   booking arithmetic and the durable record. These rows survive destroying
   every container — that is the campaign's central invariant.
-- **The manager** (`toto.anastasia.manager`) is a small trusted process, the
-  only thing in the platform allowed to talk to Docker. It must import with
-  **no Django at all**, which is what makes it safe to hand it the socket;
-  `tests/test_django_free.py` enforces that, and verifies its own guard bites
-  before trusting what it lets through.
+- **The executor** (`toto.anastasia.executor`) is a small trusted process,
+  the only thing in the platform allowed to run a job. It must import with
+  **no Django at all**, which is what keeps SECRET_KEY, the database
+  credentials and the vault key out of the one process that runs other
+  people's code; `tests/test_django_free.py` enforces that, and verifies its
+  own guard bites before trusting what it lets through.
 
 Between them sits `runtime.RuntimeBackend` — a stateless ABC with a safe
 default (`NullRuntimeBackend`, which refuses to pretend a Gear is mounted when
 nothing was mounted) and a lazily-resolved dotted path, so every service in
-this package is testable with no Docker, no manager and no network.
+this package is testable with no Docker, no executor and no network.
 
 ### Enforcement
 
@@ -92,22 +98,36 @@ price on compute. Reserved capacity is held over time, which is a levy rather
 than a per-request count; metering resources here as well would charge twice
 for one thing. The reservation levy is a documented TODO.
 
-## The manager
+## The executor
 
-`toto.anastasia.manager` is the trusted half — a small `http.server` process
-that runs in its own container with the Docker socket and, deliberately,
-nothing else. Start it with `python -m toto.anastasia.manager`; it refuses to
-start without `ANASTASIA_SHARED_SECRET`, because an unauthenticated Docker
-manager is a remote shell.
+`toto.anastasia.executor` is the trusted half — a small `http.server` process
+listening on a **unix socket** at `/run/anastasia/executord.sock`, run as a
+root systemd unit (`anastasia-executord`) out of its own venv. It refuses to
+start without `ANASTASIA_SHARED_SECRET`, because an unauthenticated executor is
+a remote shell.
 
-**It keeps no database.** Everything it needs is derivable from Docker labels
-(`anastasia.gear`, `anastasia.exec`, `anastasia.warm`, `anastasia.deadline`),
-the cgroup tree, and the staging directory layout. That is what makes "destroy
-every runner, every scratch area and the manager itself" survivable rather than
-a data loss — and it means a restarted manager rebuilds its view by looking, so
+**It was a container holding `/var/run/docker.sock` until 2026-09-10**, and the
+socket was the problem the rename records: anything that reached that container
+could ask the daemon for a container mounting the host's root filesystem, so
+"compromising it yields compute, not data" rested on the container's emptiness
+rather than on the boundary. Now no container holds a socket Django can see,
+and what the app tier is given is a filesystem object with an owner and a mode.
+
+Two checks, and only one of them is authentication. **HMAC** over the body is
+the real one. **SO_PEERCRED** is a coarse gate in front of it: the app
+containers run as root, so the kernel reports uid 0 for every legitimate caller
+— which is also every root process on the host — and what it buys is refusing
+unprivileged local users before parsing anything they sent, plus an honest
+audit line naming the calling pid and its cgroup.
+
+**It keeps no database.** Everything it needs is derivable from container
+labels (`anastasia.gear`, `anastasia.exec`, `anastasia.deadline`), the cgroup
+tree, and the staging directory layout. That is what makes "destroy every
+runner, every scratch area and the executor itself" survivable rather than a
+data loss — and it means a restarted executor rebuilds its view by looking, so
 it cannot drift from reality. Timeouts are enforced from the `deadline` label
 by the reconcile loop rather than by a thread per execution, for the same
-reason: a thread dies with the manager and leaves its runner running forever.
+reason: a thread dies with the executor and leaves its runner running forever.
 
 | Concern | Where |
 |---|---|
@@ -131,9 +151,10 @@ Two details worth knowing before changing any of it:
   obvious shallow path finds nothing and reports a healthy Gear as
   unmeasurable.
 
-`ManagerRuntimeBackend` (in `manager_backend.py`) is the Django side of the
-wire and the only module in the app that knows the manager exists. Point
-`ANASTASIA_RUNTIME_BACKEND` at it once a manager is deployed.
+`ExecutorRuntimeBackend` (in `executor_backend.py`) is the Django side of the
+wire and the only module in the app that knows the executor exists. Point
+`ANASTASIA_RUNTIME_BACKEND` at it once an executor is deployed, and
+`ANASTASIA_EXECUTOR_SOCKET` at its socket.
 
 ## Tests
 
@@ -162,4 +183,4 @@ the app still loads and warns (`anastasia.W001`); every reservation is refused
 with a sentence naming the setting, because an unconfigured pool must not
 silently become an unbounded one.
 
-Booking works with no manager deployed. Mounting does not — and says so.
+Booking works with no executor deployed. Mounting does not — and says so.

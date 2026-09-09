@@ -25,23 +25,26 @@ from django.test import SimpleTestCase
 #: The modules the manager needs, and therefore the ones that may not touch
 #: Django. Everything else in the package is free to.
 DJANGO_FREE = (
-    # The shared core the manager reads its vocabulary from.
+    # The shared core the executor reads its vocabulary from.
     "toto.anastasia.limits",
     "toto.anastasia.families",
     "toto.anastasia.choices",
-    # The manager itself. This is the half that runs in the container holding
-    # the Docker socket, with no settings module and no database.
-    "toto.anastasia.manager",
-    "toto.anastasia.manager.protocol",
-    "toto.anastasia.manager.staging",
-    "toto.anastasia.manager.slices",
-    "toto.anastasia.manager.containers",
-    "toto.anastasia.manager.runners",
-    "toto.anastasia.manager.gears",
-    "toto.anastasia.manager.reconcile",
-    "toto.anastasia.manager.pressure",
-    "toto.anastasia.manager.service",
-    "toto.anastasia.manager.__main__",
+    # The executor itself. This is the half that runs as a root systemd unit
+    # on the host, with no settings module and no database — and the boundary
+    # is load-bearing rather than tidy: it is what keeps SECRET_KEY, the
+    # database credentials and the vault key out of the one process that can
+    # run other people's code.
+    "toto.anastasia.executor",
+    "toto.anastasia.executor.protocol",
+    "toto.anastasia.executor.staging",
+    "toto.anastasia.executor.slices",
+    "toto.anastasia.executor.containers",
+    "toto.anastasia.executor.runners",
+    "toto.anastasia.executor.gears",
+    "toto.anastasia.executor.reconcile",
+    "toto.anastasia.executor.pressure",
+    "toto.anastasia.executor.service",
+    "toto.anastasia.executor.__main__",
 )
 
 PACKAGE_SRC = Path(__file__).resolve().parents[3]
@@ -95,7 +98,7 @@ class DjangoFreeCoreTests(SimpleTestCase):
 
         for dotted in DJANGO_FREE:
             base = PACKAGE_SRC / dotted.replace(".", "/")
-            # A package (toto.anastasia.manager) is its __init__.py; a module
+            # A package (toto.anastasia.executor) is its __init__.py; a module
             # is <name>.py. Both are in the list, so resolve both.
             path = base.with_suffix(".py")
             if not path.exists():

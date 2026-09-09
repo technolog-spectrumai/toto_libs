@@ -38,7 +38,7 @@ from django.test import TransactionTestCase, override_settings
 
 from toto.anastasia import choices, execute, jobs, services
 from toto.anastasia.limits import Limits
-from toto.anastasia.manager import containers, gears, protocol, service
+from toto.anastasia.executor import containers, gears, protocol, service
 from toto.anastasia.models import ComputeLease, Execution, GearEvent
 
 PROBE_IMAGE = os.environ.get("ANASTASIA_TEST_IMAGE", "anastasia-pdf:latest")
@@ -73,8 +73,15 @@ class DestructiveIsolationTests(TransactionTestCase):
     def setUp(self):
         self.media = tempfile.mkdtemp(prefix="anastasia-destroy-media-")
         self.staging = tempfile.mkdtemp(prefix="anastasia-destroy-staging-")
+        # The socket lives OUTSIDE staging, and that is not a test convenience:
+        # `_destroy_every_runner` wipes the staging tree exactly as the real
+        # teardown does, and in production /run/anastasia is a separate
+        # RuntimeDirectory for the same reason — destroying every runner and
+        # all scratch must not take the socket the executor listens on.
+        self.rundir = tempfile.mkdtemp(prefix="anastasia-destroy-run-")
         self.addCleanup(shutil.rmtree, self.media, ignore_errors=True)
         self.addCleanup(shutil.rmtree, self.staging, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, self.rundir, ignore_errors=True)
         self.addCleanup(self._destroy_every_runner)
 
         self._media_override = override_settings(MEDIA_ROOT=self.media)
@@ -85,17 +92,22 @@ class DestructiveIsolationTests(TransactionTestCase):
                                                          password="x")
         self.manager = gears.GearManager(staging_root=self.staging,
                                          generation="destruction-1")
-        self.httpd = service.serve(host="127.0.0.1", port=0, secret=SECRET,
-                                   manager=self.manager)
-        self.port = self.httpd.server_address[1]
+        # A REAL unix socket, as production uses. The suite runs as an
+        # ordinary user while every production caller is container-root, so the
+        # peer allowlist is this process's own uid — the gate is exercised, not
+        # disabled (test_service asserts a uid outside it is refused).
+        self.socket_path = os.path.join(self.rundir, "executord.sock")
+        self.httpd = service.serve(socket_path=self.socket_path, secret=SECRET,
+                                   manager=self.manager,
+                                   allowed_uids={os.getuid()})
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
         self.addCleanup(self.httpd.shutdown)
 
         self._settings = override_settings(
             ANASTASIA_POOL=POOL,
             ANASTASIA_RUNTIME_BACKEND=
-            "toto.anastasia.manager_backend.ManagerRuntimeBackend",
-            ANASTASIA_MANAGER_URL=f"http://127.0.0.1:{self.port}",
+            "toto.anastasia.executor_backend.ExecutorRuntimeBackend",
+            ANASTASIA_EXECUTOR_SOCKET=self.socket_path,
             ANASTASIA_SHARED_SECRET=SECRET,
         )
         self._settings.enable()
@@ -237,12 +249,16 @@ class DestructiveIsolationTests(TransactionTestCase):
         self._destroy_every_runner()
         shutil.rmtree(self.staging, ignore_errors=True)
 
-        # A new manager generation, exactly as a restarted container would be.
+        # A new executor generation, exactly as a restarted UNIT would be —
+        # and it rebinds the SAME socket path, which is what a restart does.
+        # That exercises the stale-socket unlink in server_bind: without it the
+        # second bind fails EADDRINUSE and the executor never comes back.
         os.makedirs(self.staging, exist_ok=True)
         self.manager = gears.GearManager(staging_root=self.staging,
                                          generation="destruction-2")
-        self.httpd = service.serve(host="127.0.0.1", port=self.port,
-                                   secret=SECRET, manager=self.manager)
+        self.httpd = service.serve(socket_path=self.socket_path,
+                                   secret=SECRET, manager=self.manager,
+                                   allowed_uids={os.getuid()})
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
         self.addCleanup(self.httpd.shutdown)
 
@@ -268,7 +284,7 @@ class DestructiveIsolationTests(TransactionTestCase):
     def test_a_restarted_manager_adopts_what_it_finds(self):
         """The reason the manager keeps no database: a successor rebuilds its
         whole view from labels, and can drive a runner it never started."""
-        from toto.anastasia.manager import reconcile
+        from toto.anastasia.executor import reconcile
 
         durable = self._durable_data()
         lease = durable["lease"]
@@ -285,7 +301,7 @@ class DestructiveIsolationTests(TransactionTestCase):
     def test_an_orphan_runner_is_reaped_by_the_caller_s_list(self):
         """The manager does not know what a lease is. The caller says which
         Gears should exist, and everything else is destroyed."""
-        from toto.anastasia.manager import reconcile
+        from toto.anastasia.executor import reconcile
 
         durable = self._durable_data()
         execute.submit(lease=durable["lease"], operation="render_pdf",
