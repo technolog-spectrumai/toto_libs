@@ -6,7 +6,7 @@ dotted path from settings LAZILY so ``override_settings`` can move it in tests.
 
 Stage 1 ships only the null backend, so every service in this package is
 testable with no Docker, no manager and no network. The manager-backed
-implementation arrives in ``toto.anastasia.manager_backend`` and is selected by
+implementation arrives in ``toto.anastasia.executor_backend`` and is selected by
 setting ``ANASTASIA_RUNTIME_BACKEND``.
 
 Backends must be stateless — do not store per-request state on ``self``.
@@ -72,9 +72,10 @@ class NullRuntimeBackend(RuntimeBackend):
 
     def mount(self, lease):
         raise RuntimeUnavailable(
-            "This deployment has no Anastasia manager, so a Gear cannot be "
-            "mounted. Set ANASTASIA_MANAGER_URL and ANASTASIA_RUNTIME_BACKEND, "
-            "and start the anastasia_manager service.")
+            "This deployment has no Anastasia executor, so a Gear cannot be "
+            "mounted. Set ANASTASIA_EXECUTOR_SOCKET and "
+            "ANASTASIA_RUNTIME_BACKEND, and start the anastasia-executord "
+            "service on the host.")
 
     def unmount(self, lease):
         return {"unmounted": True, "runners_destroyed": 0}

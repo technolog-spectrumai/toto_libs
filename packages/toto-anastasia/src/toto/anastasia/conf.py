@@ -56,18 +56,25 @@ def sample_stale_seconds() -> int:
                                DEFAULT_SAMPLE_STALE_SECONDS)))
 
 
-def manager_url() -> str:
-    """Where the trusted manager listens. Empty means "not deployed here".
+def executor_socket() -> str:
+    """The unix socket the trusted executor listens on.
 
-    A config value rather than a constant because the manager may run beside
-    this host or on its own compute node; moving it is a deploy edit, not a
-    code change.
+    Empty means "not deployed here", and every reservation says so rather than
+    pretending. A config value rather than a constant because a second compute
+    node later means pointing this at a different transport — the seam the
+    subsystem was designed around.
+
+    It replaced ANASTASIA_MANAGER_URL on 2026-09-10, when the executor stopped
+    being a container on an internal network and became a root-owned host
+    daemon. A path rather than a URL is the whole security difference: a
+    filesystem object with an owner and a mode, instead of a port anything on
+    that network could reach.
     """
-    return (getattr(settings, "ANASTASIA_MANAGER_URL", "") or "").rstrip("/")
+    return (getattr(settings, "ANASTASIA_EXECUTOR_SOCKET", "") or "").strip()
 
 
 def shared_secret() -> str:
-    """The HMAC secret this host signs manager requests with.
+    """The HMAC secret this host signs executor requests with.
 
     Never rendered, never sent to a browser, never logged. The Gear page proxies
     through the server precisely so this stays here.

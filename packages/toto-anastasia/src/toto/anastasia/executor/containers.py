@@ -25,7 +25,7 @@ import subprocess
 from ..families import Family
 from ..limits import Limits
 
-log = logging.getLogger("toto.anastasia.manager.containers")
+log = logging.getLogger("toto.anastasia.executor.containers")
 
 LABEL_GEAR = "anastasia.gear"
 LABEL_EXEC = "anastasia.exec"

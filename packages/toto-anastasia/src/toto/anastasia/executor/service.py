@@ -1,13 +1,27 @@
-"""The manager's HTTP surface: a handful of verbs, all signed.
+"""The executor's HTTP surface: a handful of verbs, all signed, over AF_UNIX.
 
-``http.server`` rather than a framework. The API is nine routes with no
+``http.server`` rather than a framework. The API is eleven routes with no
 templates, no sessions, no ORM and no static files; a framework would be more
-code to audit than the thing it serves, and this process is the one that holds
-the Docker socket.
+code to audit than the thing it serves, and this process is the one that can
+run other people's code.
 
-Every route is authenticated by HMAC over the body (see ``protocol``). A
-failure answers a fixed 401 sentence and logs the real reason: a verification
-error that explains WHICH half was wrong turns the endpoint into an oracle.
+A UNIX SOCKET, not a TCP port, since 2026-09-10. The socket is a filesystem
+object under /run/anastasia that only root and the ``anastasia`` group can
+open, so the executor is unreachable from the network however the host is
+configured. That replaces a port that was bound on an internal docker network,
+which was secrecy by deployment convention rather than by permission.
+
+TWO CHECKS, and only one of them is authentication:
+
+* **HMAC over the body** (see ``protocol``) is the real one, and it is
+  unchanged. A failure answers a fixed 401 sentence and logs the real reason —
+  a verification error that explains WHICH half was wrong turns the endpoint
+  into an oracle.
+* **SO_PEERCRED** is NOT authentication here and must not be mistaken for it.
+  The app containers run as root (no ``USER`` in the image), so the kernel
+  reports uid 0 for every caller — which is also every root process on the
+  host. What it buys is a cheap refusal of unprivileged local users and an
+  honest audit line naming the calling pid and its cgroup.
 
 Django-free.
 """
@@ -16,7 +30,10 @@ from __future__ import annotations
 
 import base64
 import logging
+import os
 import re
+import socket
+import struct
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -28,7 +45,7 @@ from . import pressure, protocol, reconcile
 from .containers import DockerError
 from .staging import StagingError
 
-log = logging.getLogger("toto.anastasia.manager.service")
+log = logging.getLogger("toto.anastasia.executor.service")
 
 MAX_BODY_BYTES = 512 * 1024 * 1024
 
@@ -37,11 +54,11 @@ ROUTES = [
     ("POST", re.compile(rf"^/gears/({_UUID})/mount$"), "mount"),
     ("POST", re.compile(rf"^/gears/({_UUID})/unmount$"), "unmount"),
     ("GET", re.compile(rf"^/gears/({_UUID})/status$"), "gear_status"),
-    ("POST", re.compile(r"^/executions$"), "start_execution"),
-    ("GET", re.compile(rf"^/executions/({_UUID})$"), "execution_status"),
-    ("GET", re.compile(rf"^/executions/({_UUID})/out$"), "execution_output"),
-    ("POST", re.compile(rf"^/executions/({_UUID})/kill$"), "kill_execution"),
-    ("POST", re.compile(rf"^/executions/({_UUID})/finish$"), "finish_execution"),
+    ("POST", re.compile(r"^/jobs$"), "start_execution"),
+    ("GET", re.compile(rf"^/jobs/({_UUID})$"), "execution_status"),
+    ("GET", re.compile(rf"^/jobs/({_UUID})/out$"), "execution_output"),
+    ("POST", re.compile(rf"^/jobs/({_UUID})/kill$"), "kill_execution"),
+    ("POST", re.compile(rf"^/jobs/({_UUID})/finish$"), "finish_execution"),
     ("GET", re.compile(r"^/pool$"), "pool"),
     ("POST", re.compile(r"^/reconcile$"), "reconcile"),
     ("GET", re.compile(r"^/health$"), "health"),
@@ -146,7 +163,7 @@ def make_handler(api: Api, secret: str):
         sys_version = ""
 
         def log_message(self, fmt, *args):
-            log.info("anastasia-manager: " + fmt, *args)
+            log.info("anastasia-executor: " + fmt, *args)
 
         def _reply(self, status: int, payload: dict):
             body = protocol.encode(payload)
@@ -171,7 +188,7 @@ def make_handler(api: Api, secret: str):
                                 body=body, headers=self.headers, nonces=nonces)
             except protocol.SignatureError as exc:
                 # The reason goes to the log; the caller gets one sentence.
-                log.warning("anastasia-manager: refused %s %s — %s",
+                log.warning("anastasia-executor: refused %s %s — %s",
                             method, path, exc)
                 return self._reply(401, {"error": "request is not authenticated"})
 
@@ -193,10 +210,10 @@ def make_handler(api: Api, secret: str):
                 except gears_mod.GearError as exc:
                     return self._reply(409, {"error": str(exc)})
                 except DockerError as exc:
-                    log.exception("anastasia-manager: docker refused")
+                    log.exception("anastasia-executor: docker refused")
                     return self._reply(502, {"error": str(exc)})
                 except Exception as exc:  # noqa: BLE001
-                    log.exception("anastasia-manager: %s failed", name)
+                    log.exception("anastasia-executor: %s failed", name)
                     return self._reply(500, {"error": f"{type(exc).__name__}"})
                 return self._reply(status, result)
 
@@ -211,11 +228,120 @@ def make_handler(api: Api, secret: str):
     return Handler
 
 
-def serve(*, host: str, port: int, secret: str,
-          manager: gears_mod.GearManager) -> ThreadingHTTPServer:
+#: uids allowed to open the socket at all. Root only by default: the app
+#: containers run as root, so this is what their calls arrive as. Widened by
+#: the operator when the image grows a USER, never by a caller.
+DEFAULT_PEER_UIDS = frozenset({0})
+
+
+def _peer_credentials(sock) -> tuple[int, int, int]:
+    """(pid, uid, gid) of whoever opened this connection, from the KERNEL.
+
+    ``SO_PEERCRED`` is filled in by the kernel at connect time and cannot be
+    forged by the peer, which is what separates it from anything in a header.
+    Three native ints — ``struct ucred`` — and the size is fixed on Linux.
+    """
+    raw = sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED,
+                          struct.calcsize("3i"))
+    return struct.unpack("3i", raw)
+
+
+def _peer_cgroup(pid: int) -> str:
+    """Which container the caller is in, for the audit line only.
+
+    Best-effort and never a gate: a pid can be recycled between the connection
+    and this read, so what it says is "probably this container" — useful in a
+    log, worthless as a permission.
+    """
+    try:
+        with open(f"/proc/{pid}/cgroup", "r", encoding="utf-8") as handle:
+            return handle.read().strip().splitlines()[-1][:200]
+    except OSError:
+        return ""
+
+
+class UnixHTTPServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer over AF_UNIX, with a peer check at accept time.
+
+    ``allow_reuse_address`` is meaningless for a unix socket and actively
+    misleading — the reuse problem is a stale FILE, not a TIME_WAIT port — so
+    it is off and ``server_bind`` unlinks the path instead.
+    """
+
+    address_family = socket.AF_UNIX
+    allow_reuse_address = False
+
+    #: Set by ``serve``. A frozenset, so a handler cannot mutate it.
+    allowed_uids = DEFAULT_PEER_UIDS
+
+    def server_bind(self):
+        """Bind at 0660, atomically, and never inherit a stale socket.
+
+        The mode is set with ``umask`` around the bind rather than a chmod
+        afterwards: between bind and chmod the socket would be world-writable,
+        and that window is exactly when a deploy is running as root with
+        everything else already up.
+        """
+        path = self.server_address
+        # A leftover from a killed process: connect() would fail with
+        # ECONNREFUSED forever, and bind() with EADDRINUSE. Unlink only a
+        # SOCKET — never a regular file somebody put there by mistake.
+        try:
+            if os.path.exists(path) and __import__("stat").S_ISSOCK(
+                    os.stat(path).st_mode):
+                os.unlink(path)
+        except OSError:
+            pass
+        old_umask = os.umask(0o117)          # 0660 on the socket
+        try:
+            super().server_bind()
+        finally:
+            os.umask(old_umask)
+
+    def verify_request(self, request, client_address):
+        """Refuse a peer whose uid is not allowed, before any bytes are read.
+
+        NOT the authentication — HMAC is, and it runs per request regardless.
+        This is the cheap first gate: an unprivileged local user who somehow
+        reached the socket is turned away without the server parsing anything
+        they sent.
+        """
+        try:
+            pid, uid, _gid = _peer_credentials(request)
+        except OSError:
+            log.warning("anastasia-executor: refused a peer with no credentials")
+            return False
+        if uid not in self.allowed_uids:
+            log.warning(
+                "anastasia-executor: refused uid %s (pid %s, %s) — allowed: %s",
+                uid, pid, _peer_cgroup(pid) or "no cgroup",
+                ",".join(str(u) for u in sorted(self.allowed_uids)))
+            return False
+        return True
+
+
+def serve(*, socket_path: str, secret: str, manager: gears_mod.GearManager,
+          allowed_uids=DEFAULT_PEER_UIDS) -> UnixHTTPServer:
+    """Bind the executor's socket and return the server, unstarted.
+
+    The secret guard is unchanged and stays first: an unauthenticated executor
+    is a remote shell, and that is true of a unix socket exactly as it was of a
+    port — filesystem permissions decide WHO may knock, never WHAT they may
+    ask for.
+    """
     if not secret:
         raise RuntimeError(
-            "the manager refuses to start without ANASTASIA_SHARED_SECRET — an "
-            "unauthenticated Docker manager is a remote shell")
-    httpd = ThreadingHTTPServer((host, port), make_handler(Api(manager), secret))
-    return httpd
+            "the executor refuses to start without ANASTASIA_SHARED_SECRET — "
+            "an unauthenticated executor is a remote shell")
+    if not socket_path:
+        raise RuntimeError(
+            "the executor refuses to start without a socket path "
+            "(ANASTASIA_EXECUTOR_SOCKET)")
+    parent = os.path.dirname(socket_path)
+    if parent and not os.path.isdir(parent):
+        raise RuntimeError(
+            f"the executor's socket directory does not exist: {parent}. It is "
+            "created by the systemd unit (RuntimeDirectory=anastasia); a "
+            "missing one means the unit was bypassed.")
+    UnixHTTPServer.allowed_uids = frozenset(allowed_uids)
+    return UnixHTTPServer(socket_path, make_handler(Api(manager), secret))

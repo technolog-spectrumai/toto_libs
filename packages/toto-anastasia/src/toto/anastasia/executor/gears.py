@@ -32,7 +32,7 @@ from ..families import operation as operation_for
 from ..limits import Limits
 from . import containers, runners, slices, staging
 
-log = logging.getLogger("toto.anastasia.manager.gears")
+log = logging.getLogger("toto.anastasia.executor.gears")
 
 #: Where staged input and collected output live. A volume in the compose
 #: stack, and — per anastasia.md — an area that may be destroyed wholesale.

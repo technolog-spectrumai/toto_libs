@@ -23,7 +23,7 @@ import logging
 import os
 import shutil
 
-log = logging.getLogger("toto.anastasia.manager.pressure")
+log = logging.getLogger("toto.anastasia.executor.pressure")
 
 #: Refuse new mounts below this much free RAM. Not a fraction: a percentage of
 #: a big machine is a lot of absolute memory, and what actually matters is

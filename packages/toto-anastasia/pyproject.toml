@@ -15,12 +15,22 @@ requires-python = ">=3.10"
 # Versions are lockstep across the whole toto suite and are rewritten only by
 # scripts/release.py — never edit them by hand.
 #
-# toto-base only: the Django half needs quota/vault conventions. The MANAGER
-# half (toto.anastasia.manager) must import with no Django at all, so it may
+# toto-base only: the Django half needs quota/vault conventions. The EXECUTOR
+# half (toto.anastasia.executor) must import with no Django at all, so it may
 # never grow a dependency that pulls Django in. A test asserts that.
 dependencies = [
     "toto-base==1.50",
 ]
+
+[project.scripts]
+# The executor runs as a systemd unit on the HOST, out of its own venv at
+# /opt/anastasia/venv, installed with `pip install --no-deps` so Django never
+# lands beside it. `ExecStart=` names this script; without it the unit fails
+# with status=203/EXEC and nothing says why.
+#
+# `python -m toto.anastasia.executor` remains equivalent and is what the tests
+# use, so a broken entry point cannot hide behind a passing suite.
+anastasia-executord = "toto.anastasia.executor.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

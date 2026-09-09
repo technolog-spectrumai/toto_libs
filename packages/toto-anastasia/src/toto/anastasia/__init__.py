@@ -5,7 +5,7 @@ Two halves, deliberately separable:
 * the **Django app** (this package's models, services, checks) — installed on a
   host that wants to hand its users compute. It owns the booking arithmetic and
   the durable record of what a user reserved.
-* the **manager** (:mod:`toto.anastasia.manager`) — a small trusted process that
+* the **manager** (:mod:`toto.anastasia.executor`) — a small trusted process that
   is the ONLY thing in the platform allowed to talk to Docker. It must import
   with no Django configured at all; a test asserts that.
 

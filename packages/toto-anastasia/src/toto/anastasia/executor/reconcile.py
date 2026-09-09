@@ -32,7 +32,7 @@ import time
 from . import containers
 from .gears import LABEL_DEADLINE, GearManager
 
-log = logging.getLogger("toto.anastasia.manager.reconcile")
+log = logging.getLogger("toto.anastasia.executor.reconcile")
 
 #: How long an execution directory may exist with no container before it is
 #: considered abandoned. Comfortably longer than the create-then-start window.

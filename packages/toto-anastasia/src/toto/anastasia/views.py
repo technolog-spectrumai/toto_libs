@@ -7,7 +7,7 @@ still refused.
 
 **The shared secret never leaves this process.** The browser talks to Zenobia;
 Zenobia signs and talks to the manager. That is the whole reason
-``manager_backend`` exists on this side of the wire rather than the page
+``executor_backend`` exists on this side of the wire rather than the page
 calling the manager directly.
 
 Ownership is simple and strict: a Gear belongs to the user who reserved it.
@@ -96,7 +96,7 @@ def index(request):
         "pool": report,
         "pool_rows": _pool_rows(report),
         "gears": gears,
-        "manager_configured": bool(conf.manager_url()),
+        "runtime_configured": bool(conf.executor_socket()),
         "max_gears": conf.max_gears_per_user(),
         "lease_days": conf.lease_days(),
         "held": len(leases),

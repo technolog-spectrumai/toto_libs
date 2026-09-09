@@ -8,7 +8,7 @@ Two ideas the page has to carry, or it is just a form:
   * capacity is RESERVED, and reserved capacity is spent whether or not it is
     being used. So the pool is shown above the form rather than behind a
     refusal — "reserve" is a choice made against a number.
-  * a reading has an AGE. Alpine polls each mounted Gear, and when the manager
+  * a reading has an AGE. Alpine polls each mounted Gear, and when the runtime
     stops answering the card says how long ago it last did instead of leaving a
     stale number looking current. That is the same rule the lifecycle status
     page follows, for the same reason.
@@ -29,10 +29,10 @@ Two ideas the page has to carry, or it is just a form:
       </p>
     </div>
 
-    {% if not manager_configured %}
+    {% if not runtime_configured %}
       <div class="rounded-lg border border-amber-500/50 bg-amber-500/10 p-4 text-sm">
         <i class="fa-solid fa-triangle-exclamation mr-1"></i>
-        {% trans "This deployment has no compute manager, so Gears cannot be mounted. Reserving still works — the capacity is booked and waiting." %}
+        {% trans "This deployment has no compute runtime, so Gears cannot be mounted. Reserving still works — the capacity is booked and waiting." %}
       </div>
     {% endif %}
 
@@ -179,7 +179,7 @@ function gearDesk() {
   return {
     live: {},
     // Only mounted Gears are polled: an unmounted one has nothing to report and
-    // asking would wake the manager for no reason.
+    // asking would wake the runtime for no reason.
     urls: {{ poll_urls_json|safe }},
     init() { this.tick(); setInterval(() => this.tick(), 5000); },
     async tick() {
@@ -197,7 +197,7 @@ function gearDesk() {
       if (age < 30) return "{% trans 'Updated just now.' %}";
       const minutes = Math.round(age / 60);
       if (this.stale(gear)) {
-        return "{% trans 'No reading for' %} " + minutes + " {% trans 'minutes — the manager is not answering.' %}";
+        return "{% trans 'No reading for' %} " + minutes + " {% trans 'minutes — the runtime is not answering.' %}";
       }
       return "{% trans 'Updated' %} " + minutes + " {% trans 'min ago.' %}";
     },

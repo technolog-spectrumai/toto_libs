@@ -29,7 +29,7 @@ import time
 
 from ..limits import Limits
 
-log = logging.getLogger("toto.anastasia.manager.slices")
+log = logging.getLogger("toto.anastasia.executor.slices")
 
 #: Where the pool ceiling lives. Provisioned once by the deploy, not by us: it
 #: is a property of the machine, and a manager that could raise its own
