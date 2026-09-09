@@ -9,11 +9,22 @@ from __future__ import annotations
 
 import itertools
 
-from toto.anastasia.executor import containers
+from toto.anastasia.executor import drivers
+from toto.anastasia.executor.drivers import docker as containers
 
 
 class FakeDocker:
-    """Enough of :class:`DockerClient` for the manager to be driven."""
+    """Enough of :class:`DockerClient` for the manager to be driven.
+
+    It reports a tier of its own rather than borrowing "docker": a test that
+    asserted the tier and got the real name would pass whether or not the
+    value came from the driver at all, which is the one thing the tier is
+    there to prove.
+    """
+
+    #: Part of the Driver contract. `gears.mount()` reads it, so a fake without
+    #: one makes every mount an AttributeError.
+    name = "fake"
 
     def __init__(self, *, images=("anastasia-pdf", "anastasia-latex",
                                   "anastasia-media", "anastasia-ocr",
@@ -45,7 +56,7 @@ class FakeDocker:
             raise containers.DockerError("fake docker refused to create")
         cid = next(self._ids)
         labels = dict(kwargs.get("labels") or {})
-        labels[containers.LABEL_MANAGED] = "1"
+        labels[drivers.LABEL_MANAGED] = "1"
         self.containers[cid] = {
             "id": cid, "name": kwargs.get("name", ""), "state": "created",
             "labels": labels, "exit_code": 0, "oom_killed": False,
@@ -67,6 +78,12 @@ class FakeDocker:
         return {"State": {"ExitCode": row["exit_code"],
                           "OOMKilled": row["oom_killed"], "Error": ""},
                 "Config": {"Labels": row["labels"]}}
+
+    def labels(self, cid):
+        """Part of the driver contract since 2026-09-10, so the fake owes it
+        too — a fake that is missing a method the real driver has makes the
+        suite pass over a seam nothing implements."""
+        return (self.containers.get(cid) or {}).get("labels") or {}
 
     def exit_state(self, cid):
         row = self.containers.get(cid) or {}
@@ -90,12 +107,12 @@ class FakeDocker:
         out = []
         for row in self.containers.values():
             labels = row["labels"]
-            if gear is not None and labels.get(containers.LABEL_GEAR) != gear:
+            if gear is not None and labels.get(drivers.LABEL_GEAR) != gear:
                 continue
             out.append({
                 "id": row["id"], "name": row["name"], "state": row["state"],
-                "gear": labels.get(containers.LABEL_GEAR, ""),
-                "execution": labels.get(containers.LABEL_EXEC, ""),
+                "gear": labels.get(drivers.LABEL_GEAR, ""),
+                "execution": labels.get(drivers.LABEL_EXEC, ""),
             })
         return out
 

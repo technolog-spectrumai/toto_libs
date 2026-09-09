@@ -38,7 +38,9 @@ from django.test import TransactionTestCase, override_settings
 
 from toto.anastasia import choices, execute, jobs, services
 from toto.anastasia.limits import Limits
-from toto.anastasia.executor import containers, gears, protocol, service
+from toto.anastasia.executor import gears, protocol, service
+from toto.anastasia.executor import drivers
+from toto.anastasia.executor.drivers import docker as containers
 from toto.anastasia.models import ComputeLease, Execution, GearEvent
 
 PROBE_IMAGE = os.environ.get("ANASTASIA_TEST_IMAGE", "anastasia-pdf:latest")
