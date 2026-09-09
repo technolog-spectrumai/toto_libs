@@ -39,6 +39,48 @@ class CannotExecute(ValidationError):
         self.refusal_code = code
 
 
+def _audit(action: str, *, lease=None, execution=None, actor=None,
+           success: bool = True, **metadata) -> None:
+    """One line in the append-only trail, for the four things that matter.
+
+    WHAT IS RECORDED and what deliberately is not. This is the trail an
+    operator reads after an incident, so it carries WHO asked, WHICH Gear,
+    WHICH operation, WHAT isolation it ran under and HOW it ended. It carries
+    no parameters and no output: the job's inputs are the user's data, and an
+    audit trail that copied them would become a second place their documents
+    live.
+
+    NEVER a key containing "token": `toto.audit` redacts those, and a metadata
+    key that silently became [REDACTED] would make the trail lie about itself.
+
+    Failures here are swallowed. An audit backend that is down must not turn a
+    working compute tier into a broken one — the trail is evidence, not a
+    dependency of the thing it observes.
+    """
+    try:
+        from toto.audit import record
+
+        payload = {k: v for k, v in metadata.items() if v not in (None, "")}
+        if lease is not None:
+            payload["gear"] = str(lease.uuid)
+        if execution is not None:
+            payload.setdefault("operation", execution.operation)
+            payload.setdefault("family", execution.family)
+            payload["limits"] = execution.limits.as_dict()
+        record(
+            action,
+            app_label="anastasia",
+            obj=execution if execution is not None else lease,
+            description=(f"{action} {execution.operation}"
+                         if execution is not None else action),
+            actor_user=actor,
+            success=success,
+            metadata=payload,
+        )
+    except Exception:  # noqa: BLE001 — evidence, never a dependency
+        log.exception("anastasia: could not write an audit record for %s", action)
+
+
 def _resolve_limits(operation, requested) -> Limits:
     """What this execution books against its Gear.
 
@@ -72,7 +114,32 @@ def submit(*, lease: ComputeLease, operation: str, params: dict | None = None,
     ``payload`` is the staged input — bytes the caller has already gathered
     from the Vault through its own permissions. Anastasia never reaches into
     a vault; it receives what the caller decided this job may see.
+
+    EVERY REFUSAL IS AUDITED, and this wrapper is why. There are ten places
+    below that raise `CannotExecute` — a closed lease, a Gear that is full, a
+    job too big for its Gear, an exhausted quota, arrears, a runtime that will
+    not answer — and instrumenting each one would mean the eleventh, added
+    later, is the one nobody records. Catching at the boundary makes "a refused
+    job leaves a trail" structural rather than a habit.
     """
+    try:
+        return _submit(
+            lease=lease, operation=operation, params=params, payload=payload,
+            limits=limits, timeout=timeout, subject_label=subject_label,
+            subject_id=subject_id, requested_by=requested_by)
+    except CannotExecute as exc:
+        _audit("anastasia.job.refuse", lease=lease, actor=requested_by,
+               success=False, operation=operation,
+               refusal_code=getattr(exc, "refusal_code", "") or "",
+               # The sentence the user was actually shown. An operator asking
+               # "why could they not run this" wants the words, not a code.
+               error="; ".join(exc.messages)[:400])
+        raise
+
+
+def _submit(*, lease: ComputeLease, operation: str, params: dict | None = None,
+            payload=None, limits=None, timeout: int | None = None,
+            subject_label: str = "", subject_id="", requested_by=None) -> Execution:
     op = families.operation(operation)          # raises ParamError by name
     try:
         clean_params = op.clean(params)
@@ -193,7 +260,24 @@ def submit(*, lease: ComputeLease, operation: str, params: dict | None = None,
     services.record(lease=lease, kind=GearEvent.EXECUTE,
                     actor=requested_by, operation=op.name,
                     execution=str(execution.uuid))
+    # The TIER comes off the Gear's runtime row, which recorded what the
+    # executor reported at mount time — not off a setting. An audit line
+    # saying "kata" because the config asked for it would be the one lie this
+    # trail exists to prevent.
+    _audit("anastasia.job.start", lease=lease, execution=execution,
+           actor=requested_by, tier=_tier_of(lease))
     return execution
+
+
+def _tier_of(lease) -> str:
+    """Which isolation the Gear was mounted under, or "" if it is unknown.
+
+    Read from the runtime row rather than from settings, for the reason the
+    column exists at all: a setting is what somebody asked for and this is
+    what answered.
+    """
+    runtime = getattr(lease, "runtime", None)
+    return getattr(runtime, "tier", "") or ""
 
 
 def _not_accepting_sentence(lease, state) -> str:
@@ -224,6 +308,15 @@ def finish(execution: Execution, *, exit_code: int = 0, usage: dict | None = Non
         execution.error = f"The runner exited with status {exit_code}."
     execution.save(update_fields=["status", "exit_code", "usage",
                                   "finished_at", "error"])
+    # The OUTCOME, on the same trail as the start. A trail that recorded only
+    # what began cannot answer "what happened to it", which is the question
+    # anybody actually reads it to answer.
+    _audit("anastasia.job.finish", lease=execution.lease, execution=execution,
+           actor=execution.requested_by, success=(exit_code == 0),
+           exit_code=exit_code, outcome=execution.status,
+           # `usage` is the runner's own numbers (cpu seconds, peak memory) —
+           # counts, never content.
+           usage=usage or {})
     return execution
 
 
@@ -238,6 +331,12 @@ def fail(execution: Execution, message: str, *, code: str = "",
     execution.save(update_fields=["status", "error", "finished_at"])
     if code:
         log.info("anastasia: execution %s closed (%s)", execution.uuid, code)
+    _audit("anastasia.job.fail", lease=execution.lease, execution=execution,
+           actor=execution.requested_by, success=False,
+           outcome=execution.status, refusal_code=code,
+           # The sentence a user was shown, so an operator reading the trail
+           # sees what the person saw rather than having to reconstruct it.
+           error=execution.error)
     return execution
 
 
@@ -245,10 +344,19 @@ def kill(execution: Execution, *, reason: str = "") -> Execution:
     """Stop a running job on purpose."""
     if execution.is_finished:
         return execution
+    killed_cleanly = True
     try:
         get_backend().kill_execution(execution)
     except Exception:  # noqa: BLE001 — the row closes either way
+        killed_cleanly = False
         log.exception("anastasia: backend kill failed for %s", execution.uuid)
+    # BEFORE `fail` closes the row, so the trail records that somebody stopped
+    # this rather than only that it ended. `killed_cleanly` is the part worth
+    # keeping: a row closed while the runner may still be alive is exactly what
+    # reconciliation has to clean up, and the trail should say so.
+    _audit("anastasia.job.kill", lease=execution.lease, execution=execution,
+           actor=execution.requested_by, success=killed_cleanly,
+           reason=reason, runner_destroyed=killed_cleanly)
     return fail(execution, reason or "This job was stopped.",
                 status=choices.KILLED)
 
