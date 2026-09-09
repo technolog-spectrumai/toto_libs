@@ -17,7 +17,8 @@ import sys
 import threading
 import time
 
-from . import gears, reconcile, service
+from . import drivers, gears, reconcile, service
+from .drivers import docker as drivers_docker
 
 #: Where the socket lives when nothing says otherwise. The DIRECTORY is what a
 #: container binds — never this file — because a bind of the file pins the
@@ -69,16 +70,31 @@ def main() -> int:
         log.error("ANASTASIA_SHARED_SECRET is not set; refusing to start")
         return 2
 
+    # WHICH ISOLATION TIER, named by the deployment and never guessed.
+    # `build_driver` refuses an unknown name rather than falling back: a typo
+    # here must not resolve to a shared kernel on a host whose operator asked
+    # for VMs.
+    tier = os.environ.get("ANASTASIA_RUNTIME", "docker")
+    try:
+        driver = drivers_docker.build_driver(tier)
+    except drivers.DriverError as exc:
+        log.error("%s", exc)
+        return 4
+
     manager = gears.GearManager(
         staging_root=os.environ.get("ANASTASIA_STAGING_ROOT",
                                     gears.DEFAULT_STAGING_ROOT),
         kernel_network=os.environ.get("ANASTASIA_KERNEL_NETWORK", ""),
+        docker=driver,
     )
     os.makedirs(manager.staging_root, exist_ok=True)
 
     if not manager.docker.available():
-        log.error("the Docker daemon is not reachable; refusing to start")
+        log.error("the container runtime is not reachable; refusing to start")
         return 3
+    # Say which tier is live, every start. An operator reading a log should
+    # never have to infer whether this host runs jobs in VMs or in containers.
+    log.info("anastasia: isolation tier %s", manager.docker.name)
 
     inherited = reconcile.adopt(manager)
     log.info("anastasia: generation %s adopted %s runner(s) across %s gear(s)",

@@ -42,7 +42,7 @@ from ..families import operation as operation_for
 from ..limits import Limits, LimitsError
 from . import gears as gears_mod
 from . import pressure, protocol, reconcile
-from .containers import DockerError
+from .drivers import DriverError
 from .staging import StagingError
 
 log = logging.getLogger("toto.anastasia.executor.service")
@@ -150,8 +150,16 @@ class Api:
         return 200, self._locked(reconcile.tick, self.manager, known)
 
     def health(self, payload):
+        """Alive, which generation, and — since 2026-09-10 — WHICH ISOLATION.
+
+        The tier is read off the live driver rather than off a setting, and the
+        difference is the whole point: a setting says what somebody asked for,
+        the driver says what the next job will actually get. Those disagree
+        exactly when it matters most.
+        """
         return 200, {"ok": True, "generation": self.manager.generation,
-                     "docker": self.manager.docker.available()}
+                     "docker": self.manager.docker.available(),
+                     "tier": self.manager.docker.name}
 
 
 def make_handler(api: Api, secret: str):
@@ -209,8 +217,11 @@ def make_handler(api: Api, secret: str):
                     return self._reply(400, {"error": str(exc)})
                 except gears_mod.GearError as exc:
                     return self._reply(409, {"error": str(exc)})
-                except DockerError as exc:
-                    log.exception("anastasia-executor: docker refused")
+                except DriverError as exc:
+                    # The BASE, not DockerError: every tier's failures must
+                    # reach a caller the same way, and naming one runtime here
+                    # is how the next tier's errors become a 500.
+                    log.exception("anastasia-executor: the runtime refused")
                     return self._reply(502, {"error": str(exc)})
                 except Exception as exc:  # noqa: BLE001
                     log.exception("anastasia-executor: %s failed", name)

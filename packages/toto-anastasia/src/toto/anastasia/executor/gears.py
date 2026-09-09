@@ -30,7 +30,8 @@ import uuid as uuid_module
 from ..families import family as family_for
 from ..families import operation as operation_for
 from ..limits import Limits
-from . import containers, runners, slices, staging
+from . import runners, slices, staging
+from .drivers import LABEL_EXEC, LABEL_GEAR, docker as docker_driver
 
 log = logging.getLogger("toto.anastasia.executor.gears")
 
@@ -58,7 +59,7 @@ class GearManager:
                  kernel_network: str = ""):
         self.staging_root = staging_root
         self.slices = slice_driver if slice_driver is not None else slices.detect_driver()
-        self.docker = docker if docker is not None else containers.DockerClient()
+        self.docker = docker if docker is not None else docker_driver.DockerClient()
         #: Minted per process. It tells a caller "the manager you mounted
         #: against is not the one answering now", which is the only way a Gear
         #: row can know it needs re-adopting after a manager restart.
@@ -102,6 +103,10 @@ class GearManager:
             "manager_generation": self.generation,
             "slice_enforced": enforced,
             "slice_driver": self.slices.name,
+            # Which isolation this Gear was actually mounted under. Read off
+            # the live driver, never off a setting: a setting is what somebody
+            # asked for, and this is what the next job will get.
+            "tier": self.docker.name,
             "detail": detail,
         }
 
@@ -139,6 +144,7 @@ class GearManager:
             "manager_generation": self.generation,
             "mounted": os.path.isdir(self.gear_dir(gear)),
             "slice_enforced": self.slices.enforced,
+            "tier": self.docker.name,
             "sample": sample,
         }
 
@@ -187,8 +193,8 @@ class GearManager:
 
         deadline = int(time.time()) + int(timeout)
         labels = {
-            containers.LABEL_GEAR: str(gear),
-            containers.LABEL_EXEC: str(execution),
+            LABEL_GEAR: str(gear),
+            LABEL_EXEC: str(execution),
             LABEL_OPERATION: op.name,
             LABEL_DEADLINE: str(deadline),
         }

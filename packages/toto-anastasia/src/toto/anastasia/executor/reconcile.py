@@ -29,7 +29,6 @@ import os
 import shutil
 import time
 
-from . import containers
 from .gears import LABEL_DEADLINE, GearManager
 
 log = logging.getLogger("toto.anastasia.executor.reconcile")
@@ -40,8 +39,14 @@ STAGING_GRACE_SECONDS = 600
 
 
 def _label_of(manager: GearManager, container_id: str, label: str) -> str:
-    info = manager.docker.inspect(container_id) or {}
-    return ((info.get("Config") or {}).get("Labels") or {}).get(label, "")
+    """One label, asked of the driver rather than dug out of its JSON.
+
+    This read `inspect(...)["Config"]["Labels"]` until 2026-09-10 — Docker's
+    document shape, in the module that is meant to know about no runtime in
+    particular. A second driver would have had to fake that document to be
+    reconcilable.
+    """
+    return (manager.docker.labels(container_id) or {}).get(label, "")
 
 
 def enforce_deadlines(manager: GearManager, now: float | None = None) -> int:

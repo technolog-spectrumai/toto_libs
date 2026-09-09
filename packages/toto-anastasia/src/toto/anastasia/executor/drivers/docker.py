@@ -1,9 +1,9 @@
-"""The only module in the platform that talks to Docker.
+"""The module that talks to a container runtime through the Docker CLI.
 
 Through the CLI rather than a Python SDK, for the reasons the rest of this
 repository already settled: no host, no wheel and no requirements file pins a
-Docker library, ``deploy.py`` shells ``docker compose``, and the manager image
-stays small enough to reason about. Everything here goes through
+Docker library, ``deploy.py`` shells ``docker compose``, and the executor's
+venv stays small enough to reason about. Everything here goes through
 :meth:`DockerClient._run`, so a test can substitute one method.
 
 **What a runner is allowed to be is decided HERE, not by a caller.** The
@@ -11,6 +11,13 @@ argument list below is assembled from a Family and an execution's limits; there
 is no parameter anywhere in the API that reaches it. That is what makes
 "callers cannot choose Docker parameters" a structural fact rather than a
 filter someone has to maintain.
+
+IT SERVES MORE THAN ONE ISOLATION TIER. ``--runtime`` selects the OCI runtime
+the daemon hands the container to, so a VM-backed tier (Kata) is this same
+argv with one more flag rather than a second stack with its own client, its own
+parsing and its own hardening table to keep in step. ``KataDriver`` below is
+that subclass, and the arrangement is deliberate: every flag in
+``build_run_args`` is written once, so a tier cannot quietly lose one.
 
 Django-free.
 """
@@ -22,39 +29,38 @@ import logging
 import shlex
 import subprocess
 
-from ..families import Family
-from ..limits import Limits
+from ...families import Family
+from ...limits import Limits
+from . import (FORBIDDEN_ENV_PREFIXES, LABEL_EXEC, LABEL_GEAR,  # noqa: F401
+               LABEL_MANAGED, RUNNER_UID, Driver, DriverError)
 
-log = logging.getLogger("toto.anastasia.executor.containers")
-
-LABEL_GEAR = "anastasia.gear"
-LABEL_EXEC = "anastasia.exec"
-LABEL_MANAGED = "anastasia.managed"
-
-#: The user every runner runs as. 65534 is nobody/nogroup on Debian bases —
-#: chosen because it is guaranteed to exist and to own nothing.
-RUNNER_UID = "65534:65534"
-
-#: Environment variables a runner is NEVER given, asserted by a test rather
-#: than merely avoided. The list is what a compromised runner would most like
-#: to find, and it exists so the assertion has something to name.
-FORBIDDEN_ENV_PREFIXES = (
-    "DB_", "POSTGRES_", "DATABASE_", "SECRET", "DJANGO_", "VAULT_",
-    "SSO_", "FIELD_ENCRYPTION", "ADMIN_", "AWS_", "S3_", "REDIS_",
-    "CELERY_", "ANASTASIA_SHARED_SECRET", "TS_",
-)
+log = logging.getLogger("toto.anastasia.executor.drivers.docker")
 
 
-class DockerError(Exception):
-    """Docker said no. The message is for a log, not for a user."""
+class DockerError(DriverError):
+    """Docker said no. The message is for a log, not for a user.
+
+    A ``DriverError`` since 2026-09-10 so ``service.py`` can catch the base and
+    answer 502 without naming a runtime. Kept as its own name because the
+    message it carries is Docker's.
+    """
 
 
-class DockerClient:
+class DockerClient(Driver):
     """A narrow, opinionated wrapper. Not a general Docker binding."""
 
-    def __init__(self, binary: str = "docker", timeout: int = 60):
+    name = "docker"
+
+    #: The OCI runtime the daemon hands containers to. ``None`` means the
+    #: daemon's default (runc), which is what ``--runtime`` being absent gets.
+    runtime = None
+
+    def __init__(self, binary: str = "docker", timeout: int = 60,
+                 runtime: str | None = None):
         self.binary = binary
         self.timeout = timeout
+        if runtime is not None:
+            self.runtime = runtime
 
     # -- plumbing ---------------------------------------------------------
 
@@ -107,8 +113,21 @@ class DockerClient:
           state has been read. ``--rm`` would delete the evidence (exit code,
           OOMKilled) before anyone could look at it.
         """
-        args = [
-            "create",
+        args = ["create"]
+        # WHICH ISOLATION. Absent, the daemon uses its default (runc) and the
+        # job shares this kernel; named, the daemon refuses outright if the
+        # runtime is not registered — verified against Docker 29.6:
+        #
+        #     docker run --runtime nonexistent-probe ...
+        #     → Error response from daemon: unknown or invalid runtime name
+        #
+        # That refusal is the property this tier rests on. A host that believes
+        # it runs VMs and does not gets an error rather than a silent
+        # downgrade to a shared kernel, which is the one failure mode an
+        # isolation flag must never have.
+        if self.runtime:
+            args += ["--runtime", self.runtime]
+        args += [
             "--name", name,
             "--user", RUNNER_UID,
             "--read-only",
@@ -188,6 +207,20 @@ class DockerClient:
             return (json.loads(result.stdout) or [{}])[0]
         except (ValueError, IndexError):
             return {}
+
+    def labels(self, container: str) -> dict:
+        """The labels a sandbox carries, WITHOUT the caller parsing our JSON.
+
+        `reconcile.py` used to reach through `inspect()` and dig
+        ``Config.Labels`` out of the raw `docker inspect` document — which made
+        the seam leak this runtime's wire format into a module that is supposed
+        to be runtime-neutral. A second driver would have had to fabricate a
+        fake Docker inspect object to satisfy it.
+
+        Labels are how a restarted executor rebuilds its world, so this is
+        contract rather than convenience: every driver must answer it.
+        """
+        return ((self.inspect(container) or {}).get("Config") or {}).get("Labels") or {}
 
     def exit_state(self, container: str) -> dict:
         """Exit code and — the part that matters — whether the kernel OOM-killed it.
@@ -272,3 +305,68 @@ def _parse_labels(raw: str) -> dict:
 def describe_argv(argv) -> str:
     """For a log line. Quoted so a reader can paste it and see what ran."""
     return " ".join(shlex.quote(str(a)) for a in argv)
+
+
+class KataDriver(DockerClient):
+    """Each job in its own VM, with its own kernel.
+
+    A SUBCLASS RATHER THAN A SECOND STACK, and that is the whole design. The
+    alternative considered was a dedicated containerd instance driven by
+    nerdctl or its gRPC API — a second client, a second set of flags to
+    assemble and a second place for the hardening table to drift out of step
+    with this one. What Kata actually needs is for the daemon to hand the
+    container to a different OCI runtime, and ``--runtime`` says exactly that.
+
+    So every flag in ``build_run_args`` is inherited unchanged, and the
+    security model is written once. What differs is what ENFORCES each flag,
+    and that difference is worth being precise about:
+
+    * ``--memory`` / ``--pids-limit`` / ``--cpus`` — still HOST cgroups, on the
+      sandbox as a whole. With Kata the sandbox contains the VMM as well as the
+      workload, so the ceiling has to cover QEMU and virtiofsd too; see the
+      overhead note in ``slices.py``.
+    * ``--cap-drop ALL``, ``no-new-privileges``, ``--user`` — enforced INSIDE
+      the guest, by the guest kernel. They stop meaning "contained relative to
+      this host" and start meaning "contained relative to a kernel that is not
+      this host's", which is strictly stronger.
+    * ``--read-only``, ``--tmpfs``, the bind mounts — carried into the guest
+      over virtio-fs. The scratch size cap remains a real ceiling.
+    * ``--network none`` — no NIC is given to the VM at all.
+
+    WHAT THIS CLASS DOES NOT DO is decide whether the runtime is there. If
+    ``kata`` is not registered with the daemon, every create fails loudly with
+    the daemon's own sentence, which is the correct outcome and needs no code
+    here to produce it.
+    """
+
+    name = "kata"
+    runtime = "kata"
+
+
+#: Every tier this executor can run a job in, by the name a config uses.
+#:
+#: `docker` is not a sandbox in the sense the other two are — it is a container
+#: beside the vault on a shared kernel — and it is kept because it is the only
+#: tier that works on a host with no KVM and no gVisor, which includes this
+#: project's own CI. Naming it here rather than treating it as "no tier" is
+#: what lets `describe()` tell an operator the truth about which one is live.
+DRIVERS = {
+    "docker": DockerClient,
+    "kata": KataDriver,
+}
+
+
+def build_driver(tier: str = "docker", **kwargs) -> DockerClient:
+    """The driver a tier name asks for, or a refusal naming what exists.
+
+    Fails closed rather than falling back. A typo in ANASTASIA_RUNTIME must not
+    resolve to "docker" and quietly run other people's code beside the vault on
+    a host whose operator believed they had asked for VMs.
+    """
+    try:
+        return DRIVERS[(tier or "docker").strip().lower()](**kwargs)
+    except KeyError:
+        raise DriverError(
+            f"{tier!r} is not an isolation tier. The tiers are: "
+            f"{', '.join(sorted(DRIVERS))}."
+        ) from None
