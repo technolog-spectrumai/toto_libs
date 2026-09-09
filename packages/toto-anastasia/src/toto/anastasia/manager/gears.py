@@ -55,7 +55,7 @@ class GearError(Exception):
 class GearManager:
     def __init__(self, *, staging_root: str = DEFAULT_STAGING_ROOT,
                  slice_driver=None, docker=None, generation: str = "",
-                 kernel_network: str = "", egress_network: str = ""):
+                 kernel_network: str = ""):
         self.staging_root = staging_root
         self.slices = slice_driver if slice_driver is not None else slices.detect_driver()
         self.docker = docker if docker is not None else containers.DockerClient()
@@ -63,13 +63,10 @@ class GearManager:
         #: against is not the one answering now", which is the only way a Gear
         #: row can know it needs re-adopting after a manager restart.
         self.generation = generation or uuid_module.uuid4().hex[:16]
+        #: The ONE network any runner may join, and only the kernel family
+        #: does. Empty where the operator configured none, and that must mean
+        #: "no network" rather than a fallback to something else.
         self.kernel_network = kernel_network
-        #: The one network that reaches off this machine, for the install
-        #: family only. Empty where the operator has not configured one, and
-        #: that must mean "no network" rather than "fall back to something
-        #: else": an install that quietly ran without egress would report a
-        #: baffling pip error instead of the real problem.
-        self.egress_network = egress_network
 
     # -- paths -------------------------------------------------------------
 
@@ -138,7 +135,6 @@ class GearManager:
         except Exception:  # noqa: BLE001
             log.exception("anastasia: could not sample gear %s", gear)
         sample["executions_running"] = len(running)
-        sample["warm_runners"] = len([r for r in running if r["warm"]])
         return {
             "manager_generation": self.generation,
             "mounted": os.path.isdir(self.gear_dir(gear)),
@@ -149,8 +145,7 @@ class GearManager:
     # -- executing ---------------------------------------------------------
 
     def start_execution(self, *, gear, execution, operation: str, params: dict,
-                        limits: Limits, timeout: int, payload: bytes | None,
-                        warm: bool = False) -> dict:
+                        limits: Limits, timeout: int, payload: bytes | None) -> dict:
         """Stage the input, create the runner, start it, and return.
 
         Returns as soon as the container is running: an execution is polled,
@@ -197,19 +192,17 @@ class GearManager:
             LABEL_OPERATION: op.name,
             LABEL_DEADLINE: str(deadline),
         }
-        if warm:
-            labels[containers.LABEL_WARM] = "1"
-
-        # Three postures, in the order of how much they permit. Assembled here
-        # from the family's own declaration — never from anything the caller
-        # sent, which is why `build_run_args` takes a network rather than
-        # deciding one.
-        if fam.needs_egress:
-            network = self.egress_network or None
-        elif fam.needs_internal_network:
-            network = self.kernel_network or None
-        else:
-            network = None
+        # TWO postures now, and the ordering trap that used to live here is
+        # gone with the third. Assembled from the family's own declaration —
+        # never from anything the caller sent, which is why `build_run_args`
+        # takes a network rather than deciding one.
+        #
+        # The egress branch stood FIRST and shadowed this one, so the
+        # python-connected family — which declared both — never got the kernel
+        # network at all and reached its ZMQ ports over the egress network
+        # instead. Both egress families are deleted (2026-09-10), so there is
+        # one link left: the Gear's internal network, for the kernel.
+        network = self.kernel_network or None if fam.kernel_link else None
         try:
             parent = self.slices.cgroup_parent(gear)
         except Exception:  # noqa: BLE001
@@ -222,8 +215,7 @@ class GearManager:
             argv=runners.build_argv(op, params), network=network)
         self.docker.start(container)
 
-        return {"container": container, "deadline": deadline,
-                "served_warm": False}
+        return {"container": container, "deadline": deadline}
 
     def execution_status(self, *, gear, execution) -> dict:
         """What an execution is doing, read from Docker rather than remembered."""

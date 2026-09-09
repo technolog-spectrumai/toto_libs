@@ -35,8 +35,8 @@ class GearRuntimeAdmin(admin.ModelAdmin):
 @admin.register(Execution)
 class ExecutionAdmin(admin.ModelAdmin):
     list_display = ("uuid", "operation", "family", "status", "lease",
-                    "served_warm", "created_at", "finished_at")
-    list_filter = ("status", "family", "served_warm")
+                    "created_at", "finished_at")
+    list_filter = ("status", "family")
     search_fields = ("uuid", "subject_label", "subject_id")
     readonly_fields = ("uuid", "created_at")
 

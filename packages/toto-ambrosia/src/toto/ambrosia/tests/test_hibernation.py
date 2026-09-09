@@ -269,23 +269,43 @@ class TamperingTests(HibernationTestCase):
 class MissingBaseTests(HibernationTestCase):
     """What happens when the thing it was hibernated against is gone."""
 
-    def test_a_vanished_environment_refuses_the_wake(self):
-        from toto.dracena.models import WorkspaceEnvironment
+    def test_a_changed_home_refuses_the_wake(self):
+        """The refusal MOVED on 2026-09-10 rather than lapsing.
 
-        env = WorkspaceEnvironment.objects.create(
-            workspace=self.ws, digest="a" * 64, installed=[{"name": "x",
-                                                            "version": "1"}])
-        self.give_a_gear()
+        This asserted that a workspace whose stored PACKAGE TREE had changed
+        digest refused to wake — dracena's `_restore` hook raised, and the
+        error surfaced as a HibernationError. The library installer is deleted,
+        so there is no package tree, no environment manifest and no restore
+        hook; that refusal cannot fire.
+
+        The claim it was really making — a workspace comes back WHOLE or says
+        it cannot — is unchanged, and `hibernation.rehydrate` still enforces it
+        over the one thing still kept: the home directory. A home is executable
+        state (shell profiles, a `pip --user` tree), so restoring bytes that do
+        not match what was stored is the failure worth refusing.
+        """
+        lease = self.give_a_gear(permanent_home=True)
+        self.start_kernel_on(lease)
         hibernation.hibernate(self.ws, user=self.owner)
 
-        env.digest = "b" * 64            # the packages are not the same bytes
-        env.save(update_fields=["digest"])
+        record = hibernation.record_for(self.ws)
+        if not record.home_digest:
+            self.skipTest("nothing was kept, so there is nothing to corrupt")
+        record.home_digest = "b" * 64        # not the bytes that were stored
+        record.save(update_fields=["home_digest"])
 
         with self.assertRaises(hibernation.HibernationError) as caught:
             hibernation.rehydrate(self.ws, user=self.owner)
-        self.assertIn("no longer stored", str(caught.exception))
+        self.assertIn("does not match what was stored", str(caught.exception))
 
-    def test_a_workspace_with_no_environment_wakes_cleanly(self):
+    def test_a_workspace_with_nothing_kept_wakes_cleanly(self):
+        """The other half, and now the ordinary case.
+
+        Named `..._with_no_environment_...` until 2026-09-10, when the
+        environment concept went. What it proves is unchanged and is worth
+        keeping: a workspace that kept nothing round-trips without a hook
+        having to say so.
+        """
         self.give_a_gear()
         hibernation.hibernate(self.ws, user=self.owner)
         hibernation.rehydrate(self.ws, user=self.owner)
@@ -371,15 +391,22 @@ class EndpointTests(HibernationTestCase):
             self.client.post(self._url("workspace_hibernate")).status_code, 404)
 
     def test_a_refused_wake_answers_409_rather_than_500(self):
-        """Nothing is broken and nothing was lost — there is simply a reason."""
-        from toto.dracena.models import WorkspaceEnvironment
+        """Nothing is broken and nothing was lost — there is simply a reason.
 
-        env = WorkspaceEnvironment.objects.create(
-            workspace=self.ws, digest="a" * 64)
-        self.give_a_gear()
+        Repointed on 2026-09-10 from the package-tree digest (deleted with the
+        library installer) to the HOME digest, which is the refusal that
+        survives. The endpoint contract is what this test is for: a refusal is
+        409 and a sentence, never a traceback.
+        """
+        lease = self.give_a_gear(permanent_home=True)
+        self.start_kernel_on(lease)
         self.client.post(self._url("workspace_hibernate"))
-        env.digest = "b" * 64
-        env.save(update_fields=["digest"])
+
+        record = hibernation.record_for(self.ws)
+        if not record.home_digest:
+            self.skipTest("nothing was kept, so there is nothing to corrupt")
+        record.home_digest = "b" * 64
+        record.save(update_fields=["home_digest"])
 
         response = self.client.post(self._url("workspace_rehydrate"))
         self.assertEqual(response.status_code, 409)

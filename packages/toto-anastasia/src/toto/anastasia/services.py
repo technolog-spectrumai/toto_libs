@@ -24,7 +24,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-from . import choices, conf, families
+from . import choices, conf
 from .limits import Limits, LimitsError, validate_reservation
 from .models import ComputeLease, Execution, GearEvent, GearRuntime, PoolGuard
 from .runtime import RuntimeUnavailable, get_backend
@@ -310,47 +310,6 @@ def unmount(*, lease: ComputeLease, actor=None, reason: str = "") -> GearRuntime
     return runtime
 
 
-def set_warm_policy(*, lease: ComputeLease, policy: dict, actor=None) -> ComputeLease:
-    """How many runners of each family to keep alive inside this Gear.
-
-    Warmth is legitimate here and nowhere else: the capacity is already
-    reserved and already deducted from the pool, so a warm runner costs nothing
-    that was not already spent. Outside a Gear, nothing idles at all.
-    """
-    policy = policy or {}
-    if not isinstance(policy, dict):
-        raise CapacityError("A warm policy is a mapping of family to count.")
-
-    cleaned: dict[str, int] = {}
-    for key, count in policy.items():
-        fam = families.family(str(key))
-        if not fam.warmable:
-            raise CapacityError(
-                f"{fam.label} runners cannot be kept warm — they are cheap to "
-                "recreate and would only hold your Gear's capacity idle.")
-        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
-            raise CapacityError(
-                f"The warm count for {fam.key} must be a whole number.")
-        if count == 0:
-            continue
-        # Warm runners book against the Gear like any other runner, so a policy
-        # that could not fit is refused at the point it is SET rather than
-        # discovered later as an execution that will not start.
-        want = Limits(*(v * count for v in (
-            fam.default_limits.cpu_millicores, fam.default_limits.ram_mb,
-            fam.default_limits.scratch_mb, fam.default_limits.pids)))
-        if not want.fits_in(lease.limits):
-            raise CapacityError(
-                f"Keeping {count} {fam.key} runner(s) warm needs more than this "
-                "Gear holds: " + "; ".join(want.shortfalls(lease.limits)) + ".")
-        cleaned[fam.key] = count
-
-    lease.warm_policy = cleaned
-    lease.save(update_fields=["warm_policy"])
-    record(lease=lease, kind=GearEvent.WARM, actor=actor, policy=cleaned)
-    return lease
-
-
 # --------------------------------------------------------------------------- #
 # Deriving what a Gear is doing                                                #
 # --------------------------------------------------------------------------- #
@@ -455,7 +414,6 @@ def gear_report(lease: ComputeLease, now=None) -> dict:
         "usage": runtime.last_sample,
         "sample_age_seconds": runtime.sample_age_seconds(now),
         "expires_at": lease.expires_at,
-        "warm_policy": lease.warm_policy,
         "executions_running": lease.executions.live().count(),
         "accepts_work": state in choices.ACCEPTING,
     }

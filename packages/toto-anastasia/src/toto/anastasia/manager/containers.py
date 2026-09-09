@@ -29,7 +29,6 @@ log = logging.getLogger("toto.anastasia.manager.containers")
 
 LABEL_GEAR = "anastasia.gear"
 LABEL_EXEC = "anastasia.exec"
-LABEL_WARM = "anastasia.warm"
 LABEL_MANAGED = "anastasia.managed"
 
 #: The user every runner runs as. 65534 is nobody/nogroup on Debian bases —
@@ -220,7 +219,7 @@ class DockerClient:
 
     # -- finding what is out there ----------------------------------------
 
-    def list_managed(self, *, gear=None, warm_only: bool = False) -> list[dict]:
+    def list_managed(self, *, gear=None) -> list[dict]:
         """Every container we own, from LABELS rather than from memory.
 
         This is what makes a manager restart survivable: the runtime index is
@@ -233,8 +232,6 @@ class DockerClient:
                 "--format", "{{json .}}"]
         if gear is not None:
             args += ["--filter", f"label={LABEL_GEAR}={gear}"]
-        if warm_only:
-            args += ["--filter", f"label={LABEL_WARM}=1"]
 
         result = self._run(args, check=False)
         out = []
@@ -253,7 +250,6 @@ class DockerClient:
                 "state": (row.get("State") or "").lower(),
                 "gear": labels.get(LABEL_GEAR, ""),
                 "execution": labels.get(LABEL_EXEC, ""),
-                "warm": labels.get(LABEL_WARM) == "1",
             })
         return out
 

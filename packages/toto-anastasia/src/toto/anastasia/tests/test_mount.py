@@ -156,38 +156,14 @@ class DerivedStateTests(AnastasiaTestCase):
         self.assertEqual(services.derive_state(runtime), choices.UNMOUNTED)
 
 
-class WarmPolicyTests(AnastasiaTestCase):
-    def setUp(self):
-        super().setUp()
-        self.lease = services.reserve(owner=self.user, name="lab",
-                                      limits=SMALL)
-
-    def test_a_batch_family_cannot_be_kept_warm(self):
-        """Warmth buys nothing for a family that is cheap to recreate — it
-        would only hold the user's own Gear capacity idle."""
-        with self.assertRaises(ValidationError) as caught:
-            services.set_warm_policy(lease=self.lease, policy={"pdf": 1})
-        self.assertIn("cannot be kept warm", str(caught.exception))
-
-    def test_a_warm_policy_that_does_not_fit_the_gear_is_refused_at_set_time(self):
-        with self.assertRaises(ValidationError) as caught:
-            services.set_warm_policy(lease=self.lease, policy={"python": 4})
-        self.assertIn("more than this Gear holds", str(caught.exception))
-
-    def test_a_python_runtime_may_be_kept_warm(self):
-        big = services.reserve(owner=self.other, name="big",
-                               limits=type(SMALL)(2000, 4096, 4096, 512))
-        services.set_warm_policy(lease=big, policy={"python": 1},
-                                 actor=self.other)
-        big.refresh_from_db()
-        self.assertEqual(big.warm_policy, {"python": 1})
-        self.assertTrue(big.events.filter(kind=GearEvent.WARM).exists())
-
-    def test_zero_counts_are_dropped_rather_than_stored(self):
-        services.set_warm_policy(lease=self.lease, policy={"python": 0})
-        self.lease.refresh_from_db()
-        self.assertEqual(self.lease.warm_policy, {})
-
-    def test_an_unknown_family_is_refused(self):
-        with self.assertRaises(Exception):
-            services.set_warm_policy(lease=self.lease, policy={"bitcoin": 1})
+# NO WarmPolicyTests CLASS since 2026-09-10. It held six tests over
+# `services.set_warm_policy` — a batch family refused warmth, a policy too big
+# for its Gear, a python runtime accepted, zero counts dropped, an unknown
+# family refused. The service is deleted: warm pools were removed because a
+# fresh sandbox per job makes them meaningless, and they were already
+# vestigial (`served_warm` was hardcoded False, no WARM event was ever
+# written, and the caller never sent a warm key over the wire).
+#
+# The claim that REPLACES them is a catalogue-level one and lives where it can
+# still fail: test_limits.test_no_family_can_be_kept_warm asserts no family
+# carries a `warmable` flag at all, so restoring the field fails loudly.

@@ -189,11 +189,10 @@ def submit(*, lease: ComputeLease, operation: str, params: dict | None = None,
 
     execution.status = choices.RUNNING
     execution.started_at = timezone.now()
-    execution.served_warm = bool(result.get("served_warm"))
-    execution.save(update_fields=["status", "started_at", "served_warm"])
+    execution.save(update_fields=["status", "started_at"])
     services.record(lease=lease, kind=GearEvent.EXECUTE,
                     actor=requested_by, operation=op.name,
-                    execution=str(execution.uuid), warm=execution.served_warm)
+                    execution=str(execution.uuid))
     return execution
 
 

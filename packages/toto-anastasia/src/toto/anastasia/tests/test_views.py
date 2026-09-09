@@ -187,19 +187,9 @@ class WarmPolicyTests(DeskTestCase):
         self.lease = services.reserve(owner=self.user, name="lab",
                                       limits=RUNNABLE)
 
-    def test_setting_a_warm_count_sticks(self):
-        self.client.post(reverse("anastasia:set_warm", args=[self.lease.uuid]),
-                         {"warm_python": "1"})
-        self.lease.refresh_from_db()
-        self.assertEqual(self.lease.warm_policy, {"python": 1})
-
-    def test_a_batch_family_is_refused_with_a_reason(self):
-        response = self.client.post(
-            reverse("anastasia:set_warm", args=[self.lease.uuid]),
-            {"warm_pdf": "2"}, follow=True)
-        messages = [str(m) for m in response.context["messages"]]
-        self.assertTrue(any("cannot be kept warm" in m for m in messages),
-                        messages)
+    # NO WARM TESTS since 2026-09-10. `anastasia:set_warm` was the route and
+    # it is deleted with the feature; a test naming it would fail at reverse()
+    # rather than assert anything. The desk no longer offers a warm form.
 
 
 class StatusTests(DeskTestCase):

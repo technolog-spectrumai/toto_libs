@@ -85,7 +85,7 @@ class FakeRuntimeBackend:
         if type(self).fail_start:
             from toto.anastasia.runtime import RuntimeUnavailable
             raise RuntimeUnavailable("no runner could be created")
-        return {"served_warm": False}
+        return {"started": True}
 
     def kill_execution(self, execution):
         type(self).calls.append(("kill", str(execution.uuid)))

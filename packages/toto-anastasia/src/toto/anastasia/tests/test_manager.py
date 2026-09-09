@@ -203,16 +203,12 @@ class ReconcileTests(ManagerTestCase):
         self.start(timeout=600)
         self.assertEqual(reconcile.enforce_deadlines(self.manager), 0)
 
-    def test_a_warm_runner_has_no_deadline_to_outlive(self):
-        self.mount()
-        self.manager.start_execution(
-            gear=self.gear, execution=str(uuid.uuid4()),
-            operation="start_python_runtime", params={},
-            limits=Limits(1000, 512, 256, 64), timeout=60, payload=None,
-            warm=True)
-        self.assertEqual(
-            reconcile.enforce_deadlines(self.manager, now=time.time() + 99999),
-            0)
+    # `test_a_warm_runner_has_no_deadline_to_outlive` stood here and is
+    # deleted rather than adjusted, because the behaviour it asserted is
+    # REVERSED: enforce_deadlines used to skip warm runners, and now checks
+    # every running one. There are no warm runners to exempt (2026-09-10), and
+    # a test asserting the exemption would be asserting a branch that can
+    # never be taken.
 
     def test_a_runner_whose_gear_is_gone_is_destroyed(self):
         self.mount()

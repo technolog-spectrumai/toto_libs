@@ -92,12 +92,6 @@ class ComputeLease(models.Model):
         help_text="Keep each workspace's home directory between sessions "
                   "(shell history, tool configuration, interactive installs).")
 
-    #: How many runners of each family to keep alive inside this Gear
-    #: ({"python": 1}). Warmth is legitimate here and only here: the capacity
-    #: is already reserved and already deducted, so a warm runner costs the
-    #: pool nothing it was not costing anyway. Empty means cold.
-    warm_policy = models.JSONField(default=dict, blank=True)
-
     created_at = models.DateTimeField(default=timezone.now)
     expires_at = models.DateTimeField()
     released_at = models.DateTimeField(null=True, blank=True)
@@ -285,10 +279,6 @@ class Execution(models.Model):
     #: oom_killed. Written once on completion, read by accounting.
     usage = models.JSONField(default=dict, blank=True)
 
-    #: Whether a warm runner served this execution — the number that says
-    #: whether a Gear's warm policy is earning its reservation.
-    served_warm = models.BooleanField(default=False)
-
     created_at = models.DateTimeField(default=timezone.now)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
@@ -338,12 +328,11 @@ class GearEvent(models.Model):
     EXECUTE = "execute"
     RECONCILE = "reconcile"
     DEGRADE = "degrade"
-    WARM = "warm"
 
     KINDS = (
         (RESERVE, "Reserved"), (MOUNT, "Mounted"), (UNMOUNT, "Unmounted"),
         (RELEASE, "Released"), (EXPIRE, "Expired"), (EXECUTE, "Execution"),
-        (RECONCILE, "Reconciled"), (DEGRADE, "Degraded"), (WARM, "Warm policy"),
+        (RECONCILE, "Reconciled"), (DEGRADE, "Degraded"),
     )
 
     lease = models.ForeignKey(ComputeLease, on_delete=models.CASCADE,

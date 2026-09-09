@@ -68,51 +68,72 @@ class CatalogueTests(SimpleTestCase):
         for fam in families.FAMILIES.values():
             self.assertTrue(fam.image.startswith("anastasia-"), fam.image)
 
-    def test_only_a_long_lived_runtime_is_warmable(self):
-        """Warmth must be earned. A batch family is cheap to recreate, so
-        keeping one alive only holds the user's own Gear capacity idle.
+    def test_no_family_can_be_kept_warm(self):
+        """Warm pools are gone, and the FIELD is gone with them.
 
-        Asserted as a rule rather than as the literal set it used to be
-        (``{"python"}``): there are two runtimes now — closed and connected —
-        and a third would be just as entitled. What must stay true is that
-        nothing which merely runs and exits is kept warm.
+        This was `test_only_a_long_lived_runtime_is_warmable`, asserting that
+        batch families are never kept alive between executions. Warm pools were
+        deleted on 2026-09-10 — a fresh sandbox per job makes them meaningless,
+        and they were already vestigial (`served_warm` was hardcoded False and
+        nothing ever wrote a WARM event).
+
+        The assertion INVERTS rather than being deleted: a `warmable` attribute
+        growing back on the dataclass would mean somebody restored the storage
+        for a feature nothing operates, which is exactly how it survived unused
+        for a month the first time.
         """
-        warm = {k for k, f in families.FAMILIES.items() if f.warmable}
-        self.assertTrue(warm, "no family is warmable; the runtime lost its warmth")
-        for key in warm:
-            with self.subTest(family=key):
-                self.assertTrue(
-                    key.startswith("python"),
-                    f"{key} is a batch family and must not be kept alive")
-        for batch in ("pdf", "latex", "media", "ocr", "python-install"):
-            with self.subTest(family=batch):
-                self.assertFalse(families.FAMILIES[batch].warmable)
-
-    def test_only_a_python_runtime_gets_the_internal_network(self):
-        networked = {k for k, f in families.FAMILIES.items()
-                     if f.needs_internal_network}
-        self.assertEqual(networked, {"python"})
-
-    def test_egress_is_confined_to_installing_and_to_connected_runtimes(self):
-        """The one posture that reaches off this machine.
-
-        Every other family is asserted network-free from inside a real runner by
-        test_destruction; this is the catalogue-level statement of the same
-        thing. If a batch family ever appears here, a job that renders somebody
-        else's document has gained an exfiltration path.
-        """
-        egress = {k for k, f in families.FAMILIES.items() if f.needs_egress}
-        self.assertEqual(egress, {"python-install", "python-connected"})
-        for batch in ("pdf", "latex", "media", "ocr"):
-            with self.subTest(family=batch):
-                self.assertFalse(families.FAMILIES[batch].needs_egress)
-
-    def test_no_family_asks_for_both_networks(self):
-        """The postures are alternatives, and gears.py reads them in order —
-        a family setting both would silently get egress and hide the mistake."""
         for key, fam in families.FAMILIES.items():
             with self.subTest(family=key):
-                self.assertFalse(fam.needs_egress and fam.needs_internal_network)
+                self.assertFalse(hasattr(fam, "warmable"),
+                                 f"{key} carries a warmable flag again")
+
+    def test_only_the_python_runtime_gets_a_network(self):
+        """ONE link, one family, and no second posture to order against.
+
+        `kernel_link` (renamed from `needs_internal_network` on 2026-09-10) puts
+        a runner on the Gear's internal network so the session owner can reach
+        the kernel's ports. That network reaches no database and no broker.
+        """
+        networked = {k for k, f in families.FAMILIES.items() if f.kernel_link}
+        self.assertEqual(networked, {"python"})
+
+    def test_nothing_can_reach_the_internet(self):
+        """The one posture that reached off this machine is GONE.
+
+        `needs_egress` existed for a single job — fetching declared packages
+        from an index — and both families that declared it (python-install,
+        python-connected) were deleted on 2026-09-10 along with the operations
+        that named them. Dependencies are baked into the runner images.
+
+        Asserted three ways, because each catches a different way back in: no
+        family declares such a field, the catalogue holds only the five known
+        families, and no operation names a family outside it. If a batch family
+        ever gains egress, a job that renders somebody else's document has an
+        exfiltration path.
+        """
+        for key, fam in families.FAMILIES.items():
+            with self.subTest(family=key):
+                self.assertFalse(hasattr(fam, "needs_egress"),
+                                 f"{key} declares an egress posture again")
+        self.assertEqual(set(families.FAMILIES),
+                         {"pdf", "latex", "media", "ocr", "python"})
+        for name, op in families.OPERATIONS.items():
+            with self.subTest(operation=name):
+                self.assertIn(op.family.key, families.FAMILIES)
+
+    def test_the_install_operation_is_gone(self):
+        """Nothing may ask a Gear to install packages.
+
+        `install_python_packages` and `start_python_runtime_connected` were the
+        two operations with egress. Both are deleted; asking for either must be
+        a refusal naming what exists, not a KeyError.
+        """
+        for name in ("install_python_packages",
+                     "start_python_runtime_connected"):
+            with self.subTest(operation=name):
+                self.assertNotIn(name, families.OPERATIONS)
+                with self.assertRaises(families.ParamError):
+                    families.operation(name)
 
     def test_every_family_default_is_above_the_reservation_floor(self):
         """A family whose default runner could not fit in the smallest legal

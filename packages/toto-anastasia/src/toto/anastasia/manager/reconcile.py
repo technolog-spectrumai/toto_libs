@@ -45,11 +45,20 @@ def _label_of(manager: GearManager, container_id: str, label: str) -> str:
 
 
 def enforce_deadlines(manager: GearManager, now: float | None = None) -> int:
-    """Kill every runner that has outlived the timeout its caller chose."""
+    """Kill every runner that has outlived the timeout its caller chose.
+
+    EVERY running runner is checked. This used to read
+    ``or row["warm"]``, exempting warm runners from their deadline — correct
+    while a warm runner was a long-lived container the Gear deliberately kept,
+    and meaningless once warm pools were deleted (2026-09-10). The exemption is
+    removed rather than left inert: a clause that can never be true is a clause
+    nobody can reason about, and this loop is the only thing standing between a
+    wedged runner and its Gear's ceiling.
+    """
     now = now if now is not None else time.time()
     killed = 0
     for row in manager.docker.list_managed():
-        if row["state"] != "running" or row["warm"]:
+        if row["state"] != "running":
             continue
         raw = _label_of(manager, row["id"], LABEL_DEADLINE)
         try:

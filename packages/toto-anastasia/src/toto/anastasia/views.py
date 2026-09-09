@@ -96,7 +96,6 @@ def index(request):
         "pool": report,
         "pool_rows": _pool_rows(report),
         "gears": gears,
-        "warmable": sorted(f.key for f in families.FAMILIES.values() if f.warmable),
         "manager_configured": bool(conf.manager_url()),
         "max_gears": conf.max_gears_per_user(),
         "lease_days": conf.lease_days(),
@@ -187,28 +186,6 @@ def release(request, uuid):
     django_messages.success(request, _(
         "“%(name)s” is released and its capacity is back in the pool.")
         % {"name": lease.name})
-    return redirect("anastasia:index")
-
-
-@login_required
-@require_POST
-def set_warm(request, uuid):
-    """How many runtimes to keep alive inside this Gear."""
-    lease = _own_lease(request, uuid)
-    policy = {}
-    for key in families.FAMILIES:
-        raw = request.POST.get(f"warm_{key}")
-        if raw:
-            try:
-                policy[key] = int(raw)
-            except ValueError:
-                return _refusal(request, ValidationError(
-                    _("The warm count for %(family)s must be a whole number.")
-                    % {"family": key}))
-    try:
-        services.set_warm_policy(lease=lease, policy=policy, actor=request.user)
-    except ValidationError as exc:
-        return _refusal(request, exc, lease)
     return redirect("anastasia:index")
 
 

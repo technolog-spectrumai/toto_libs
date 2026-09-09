@@ -136,28 +136,25 @@ class Family:
     #: Always bounded by the Gear it runs in, so these are starting points and
     #: not guarantees.
     default_limits: Limits
-    #: Whether a runner of this family may be kept alive between executions
-    #: inside a mounted Gear (the warm_policy). Batch families are cheap to
-    #: recreate and gain little; the python family's warm runtime IS the live
-    #: kernel, which is the whole point of keeping it.
-    warmable: bool = False
-    #: Batch runners get no network at all. The python family needs the Gear's
-    #: internal network so the session owner can reach the kernel's ports —
-    #: that network reaches no database and no broker.
-    needs_internal_network: bool = False
-    #: The third posture, and the only one that can reach the internet.
+    #: TWO postures, and there is deliberately no third.
     #:
-    #: Nothing that runs USER CODE may set this. It exists for one shape of job:
-    #: fetching declared packages from a package index, in a throwaway container
-    #: with a fixed argv and nothing of the user's resident in it. That is what
-    #: makes egress defensible here and not in a kernel — a kernel runs whatever
-    #: somebody types, and giving that egress is an exfiltration path out of a
-    #: sandbox built to have none.
+    #: Batch runners get NO network at all. The python family gets one link and
+    #: one only: the Gear's internal network, so the session owner can reach the
+    #: kernel's ports. That network reaches no database, no broker and no
+    #: internet.
     #:
-    #: Still a property of the FAMILY, declared here, never a parameter: a
-    #: caller names an operation and the operation carries its posture. There is
-    #: deliberately no way to ask for a network.
-    needs_egress: bool = False
+    #: EGRESS IS GONE (2026-09-10). A `needs_egress` posture existed for one
+    #: shape of job — fetching declared packages from an index in a throwaway
+    #: container — and it was the only way anything in a Gear could reach the
+    #: internet. Both families that declared it are deleted, dependencies are
+    #: baked into the runner images instead, and the field is removed rather
+    #: than left False everywhere: a posture nothing can request is one nobody
+    #: has to reason about.
+    #:
+    #: Still a property of the FAMILY, never a parameter: a caller names an
+    #: operation and the operation carries its posture. There is no way to ask
+    #: for a network.
+    kernel_link: bool = False
 
 
 PDF = Family(
@@ -183,32 +180,9 @@ OCR = Family(
 PYTHON = Family(
     key="python", label="Python runtime", image="anastasia-python",
     default_limits=Limits(cpu_millicores=1000, ram_mb=1024, scratch_mb=512, pids=128),
-    warmable=True, needs_internal_network=True,
+    kernel_link=True,
 )
-#: The same image as PYTHON, and deliberately so — packages are installed by the
-#: interpreter that will import them, so a wheel chosen here cannot be one the
-#: kernel then refuses. What differs is the posture: egress, no warm reuse, and
-#: a batch lifetime measured in seconds.
-PYTHON_INSTALL = Family(
-    key="python-install", label="Python package install", image="anastasia-python",
-    # Roomier than the runtime: resolving and unpacking wheels is short but
-    # memory-hungry, and the tree being built has to fit in scratch beside them.
-    default_limits=Limits(cpu_millicores=2000, ram_mb=2048, scratch_mb=2048, pids=256),
-    warmable=False, needs_egress=True,
-)
-#: A kernel for a workspace whose owner asked for a CONNECTED one. Same image
-#: and same limits as PYTHON; the only difference is that user code can reach
-#: the network. A separate family rather than a flag on PYTHON because that is
-#: what keeps the posture declared here instead of chosen by a caller.
-PYTHON_CONNECTED = Family(
-    key="python-connected", label="Python runtime (connected)",
-    image="anastasia-python",
-    default_limits=Limits(cpu_millicores=1000, ram_mb=1024, scratch_mb=512, pids=128),
-    warmable=True, needs_egress=True,
-)
-
-FAMILIES = {f.key: f for f in (PDF, LATEX, MEDIA, OCR, PYTHON,
-                               PYTHON_INSTALL, PYTHON_CONNECTED)}
+FAMILIES = {f.key: f for f in (PDF, LATEX, MEDIA, OCR, PYTHON)}
 
 
 def family(key: str) -> Family:
@@ -359,30 +333,6 @@ RUN_OCR = Operation(
     outputs=("output.json", "output.txt"),
 )
 
-INSTALL_PYTHON_PACKAGES = Operation(
-    name="install_python_packages", family=PYTHON_INSTALL,
-    label="Install Python packages",
-    # NO package names among the parameters, deliberately — the same choice
-    # render_pdf makes for its HTML. The caller stages a `requirements.txt` into
-    # the input area and pip is pointed at it with `-r`, so a package name never
-    # reaches a command line at all. There is consequently nothing here to
-    # escape, quote or validate against shell metacharacters: the class of bug
-    # is absent rather than defended against.
-    #
-    # It also means the thing pip was asked for and the thing we persist as the
-    # workspace manifest are the same bytes, and cannot drift.
-    params=(
-        # Whether to move already-satisfied requirements forward. Off by
-        # default: an install should add what was asked for and change nothing
-        # else, or "add one package" silently becomes "upgrade the world".
-        Param("upgrade", "bool", default=False),
-    ),
-    # Generous, because a cold wheel fetch over a slow link is the normal case
-    # and being killed halfway leaves the user nothing.
-    default_timeout=600, max_timeout=3600,
-    outputs=("site-packages", "install.log", "installed.json"),
-)
-
 START_PYTHON_RUNTIME = Operation(
     name="start_python_runtime", family=PYTHON, label="Start a Python runtime",
     params=(
@@ -407,34 +357,10 @@ START_PYTHON_RUNTIME = Operation(
     outputs=("connection.json",),
 )
 
-#: The same runtime, for a workspace whose owner chose a connected Gear. Two
-#: operations rather than a `connected` parameter, because a parameter would be
-#: a caller asking for a network — the one thing this catalogue has no word for.
-START_PYTHON_RUNTIME_CONNECTED = Operation(
-    name="start_python_runtime_connected", family=PYTHON_CONNECTED,
-    label="Start a Python runtime (connected)",
-    params=(
-        Param("idle_seconds", "int", default=3600, minimum=60, maximum=604800),
-        # Whether HOME lives in the OUTPUT area instead of scratch. Scratch is
-        # a per-execution tmpfs, so anything a tool writes to $HOME — .ipython
-        # history, .jupyter config, a `pip --user` install — dies with the
-        # container. /out is a bind mount the caller collects, so the same
-        # writes survive and can be staged back on the next start.
-        #
-        # An ordinary typed parameter, not a container flag: it changes one
-        # environment variable inside the runner and nothing about how the
-        # container is built.
-        Param("persistent_home", "bool", default=False),
-    ),
-    default_timeout=120, max_timeout=300,
-    outputs=("connection.json",),
-)
-
 OPERATIONS = {
     op.name: op for op in (
         RENDER_PDF, COMPILE_LATEX, RUN_MEDIA_COMMAND, RUN_OCR,
-        START_PYTHON_RUNTIME, START_PYTHON_RUNTIME_CONNECTED,
-        INSTALL_PYTHON_PACKAGES,
+        START_PYTHON_RUNTIME,
     )
 }
 
@@ -457,5 +383,4 @@ __all__ = [
     "Family", "Operation", "Param", "ParamError",
     "FAMILIES", "OPERATIONS", "family", "operation", "operations_for",
     "PDF", "LATEX", "MEDIA", "OCR", "PYTHON",
-    "PYTHON_INSTALL", "PYTHON_CONNECTED",
 ]

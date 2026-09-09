@@ -96,7 +96,7 @@ class Api:
         result = self._locked(
             self.manager.start_execution, gear=gear, execution=execution,
             operation=op.name, params=params, limits=limits, timeout=timeout,
-            payload=body, warm=bool(payload.get("warm")))
+            payload=body)
         return 200, result
 
     def execution_status(self, execution, payload):

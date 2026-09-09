@@ -1,5 +1,5 @@
 {% extends "oya/base.html" %}
-{% load i18n anastasia_tags %}
+{% load i18n %}
 
 {% comment %}The Compute Gears desk.
 
@@ -165,30 +165,6 @@ Two ideas the page has to carry, or it is just a form:
               {% trans "Release" %}</button></form>
         </div>
 
-        {% comment %}Warm runtimes: legitimate INSIDE a reservation, because
-           the capacity is already booked. Only families that carry state are
-           offered.{% endcomment %}
-        {% if warmable %}
-          <form method="post" action="{% url 'anastasia:set_warm' gear.uuid %}"
-                class="mt-4 border-t pt-3">
-            {% csrf_token %}
-            <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Keep warm" %}</p>
-            <p class="mt-1 text-xs opacity-60">
-              {% trans "A warm runtime skips the start-up wait next time. It holds capacity you have already reserved, so it costs the platform nothing extra — and it keeps a Python session alive between runs." %}
-            </p>
-            <div class="mt-2 flex flex-wrap items-end gap-3">
-              {% for key in warmable %}
-                <label class="text-xs">{{ key }}
-                  <input name="warm_{{ key }}" type="number" min="0" max="4"
-                         value="{{ gear.warm_policy|default_if_none:''|dictget:key|default:0 }}"
-                         :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-                         class="mt-1 w-16 rounded border px-2 py-1 text-sm">
-                </label>
-              {% endfor %}
-              <button class="rounded border px-3 py-1 text-sm font-semibold">{% trans "Save" %}</button>
-            </div>
-          </form>
-        {% endif %}
       </div>
     {% empty %}
       {% if pool.configured %}

@@ -86,19 +86,16 @@ class FakeDocker:
         self.removed.append(cid)
         self.containers.pop(cid, None)
 
-    def list_managed(self, *, gear=None, warm_only=False):
+    def list_managed(self, *, gear=None):
         out = []
         for row in self.containers.values():
             labels = row["labels"]
             if gear is not None and labels.get(containers.LABEL_GEAR) != gear:
                 continue
-            if warm_only and labels.get(containers.LABEL_WARM) != "1":
-                continue
             out.append({
                 "id": row["id"], "name": row["name"], "state": row["state"],
                 "gear": labels.get(containers.LABEL_GEAR, ""),
                 "execution": labels.get(containers.LABEL_EXEC, ""),
-                "warm": labels.get(containers.LABEL_WARM) == "1",
             })
         return out
 

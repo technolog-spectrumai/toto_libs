@@ -17,6 +17,5 @@ urlpatterns = [
     path("<uuid:uuid>/mount/", views.mount, name="mount"),
     path("<uuid:uuid>/unmount/", views.unmount, name="unmount"),
     path("<uuid:uuid>/release/", views.release, name="release"),
-    path("<uuid:uuid>/warm/", views.set_warm, name="set_warm"),
     path("<uuid:uuid>/status/", views.status, name="status"),
 ]
