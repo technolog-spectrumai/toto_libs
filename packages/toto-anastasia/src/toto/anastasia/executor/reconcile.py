@@ -104,6 +104,32 @@ def destroy_orphan_runners(manager: GearManager, known_gears=None) -> int:
     return destroyed
 
 
+def kill_everything(manager: GearManager) -> int:
+    """Destroy every runner this executor owns. THE EMERGENCY STOP.
+
+    Deliberately the bluntest function here. It does not ask which Gear owns a
+    runner, whether it is inside its deadline, or whether it is nearly done —
+    an operator reaching for this has decided that what is running is the
+    problem, and a stop that spared the wrong container would not be a stop.
+
+    What it does NOT destroy is worth being explicit about, because it is the
+    whole difference between an emergency stop and a data loss: the leases, the
+    Gear directories, the staging trees and every durable row on the Django
+    side survive. A Gear reads DEAD, its reservation is untouched, and it
+    remounts. That is the same invariant `test_destruction` proves, exercised
+    on purpose rather than by accident.
+
+    Idempotent: called twice, the second is a no-op, because `remove` is.
+    """
+    destroyed = 0
+    for row in manager.docker.list_managed():
+        manager.docker.remove(row["id"])
+        destroyed += 1
+    if destroyed:
+        log.warning("anastasia: emergency stop destroyed %s runner(s)", destroyed)
+    return destroyed
+
+
 def sweep_staging(manager: GearManager, known_gears=None,
                   now: float | None = None) -> dict:
     """Remove staging directories nothing is using any more."""

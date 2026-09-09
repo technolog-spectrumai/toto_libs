@@ -41,7 +41,7 @@ from ..families import ParamError
 from ..families import operation as operation_for
 from ..limits import Limits, LimitsError
 from . import gears as gears_mod
-from . import pressure, protocol, reconcile
+from . import control, pressure, protocol, reconcile
 from .drivers import DriverError
 from .staging import StagingError
 
@@ -62,6 +62,12 @@ ROUTES = [
     ("GET", re.compile(r"^/pool$"), "pool"),
     ("POST", re.compile(r"^/reconcile$"), "reconcile"),
     ("GET", re.compile(r"^/health$"), "health"),
+    # Admission control. POST because each one CHANGES the machine, and a
+    # GET that drained a host would be reachable from a browser prefetch.
+    ("POST", re.compile(r"^/control/drain$"), "drain"),
+    ("POST", re.compile(r"^/control/resume$"), "resume"),
+    ("POST", re.compile(r"^/control/stop$"), "stop"),
+    ("GET", re.compile(r"^/control$"), "control_status"),
 ]
 
 
@@ -81,6 +87,16 @@ class Api:
             return fn(*args, **kwargs)
 
     def mount(self, gear, payload):
+        # The OPERATOR's switch first, then the machine's. Both refuse, and
+        # both refuse with 503, but they are different sentences: pressure is
+        # temporary and self-clearing ("try again shortly"), while a drain or
+        # a stop is a person's decision and stays until a person reverses it.
+        # Telling somebody to retry into a stopped host is how a refusal
+        # becomes a support ticket.
+        admission = control.read(self.manager.staging_root)
+        if admission["state"] != control.OPEN:
+            return 503, {"error": control.refusal(admission),
+                         "admission": admission}
         state = pressure.report(self.manager.staging_root)
         if not state["admitting"]:
             return 503, {"error": pressure.refusal(state), "pressure": state}
@@ -94,6 +110,15 @@ class Api:
         return 200, self.manager.status(gear)
 
     def start_execution(self, payload):
+        # Draining means "no NEW work", and a job is new work even inside a
+        # Gear that is already mounted. Checking only at mount would let a
+        # mounted Gear keep starting jobs through the whole drain, which is
+        # exactly the thing an operator draining for a reboot is trying to
+        # stop.
+        admission = control.read(self.manager.staging_root)
+        if admission["state"] != control.OPEN:
+            return 503, {"error": control.refusal(admission),
+                         "admission": admission}
         gear = str(payload.get("gear") or "")
         execution = str(payload.get("execution") or "")
         if not gear or not execution:
@@ -149,6 +174,38 @@ class Api:
         known = payload.get("known_gears")
         return 200, self._locked(reconcile.tick, self.manager, known)
 
+    def drain(self, payload):
+        """Stop taking new work; let running work finish.
+
+        What an operator sets before a reboot or an upgrade. Nothing running is
+        touched, so the machine empties itself at the speed of its longest job.
+        """
+        state = control.write(self.manager.staging_root, control.DRAINING,
+                              reason=str(payload.get("reason") or "")[:400])
+        return 200, {"admission": state}
+
+    def resume(self, payload):
+        """Take work again. The only way out of drain OR stop."""
+        state = control.write(self.manager.staging_root, control.OPEN,
+                              reason=str(payload.get("reason") or "")[:400])
+        return 200, {"admission": state}
+
+    def stop(self, payload):
+        """THE EMERGENCY. No new work, and every running job killed.
+
+        Throws away work on purpose, which is why it is its own verb rather
+        than a flag on drain: an operator typing this has decided that what is
+        running is the problem. The count of what was destroyed comes back, so
+        the decision has a number attached to it in the log.
+        """
+        state = control.write(self.manager.staging_root, control.STOPPED,
+                              reason=str(payload.get("reason") or "")[:400])
+        killed = self._locked(reconcile.kill_everything, self.manager)
+        return 200, {"admission": state, "runners_destroyed": killed}
+
+    def control_status(self, payload):
+        return 200, {"admission": control.read(self.manager.staging_root)}
+
     def health(self, payload):
         """Alive, which generation, and — since 2026-09-10 — WHICH ISOLATION.
 
@@ -159,7 +216,8 @@ class Api:
         """
         return 200, {"ok": True, "generation": self.manager.generation,
                      "docker": self.manager.docker.available(),
-                     "tier": self.manager.docker.name}
+                     "tier": self.manager.docker.name,
+                     "admission": control.read(self.manager.staging_root)}
 
 
 def make_handler(api: Api, secret: str):

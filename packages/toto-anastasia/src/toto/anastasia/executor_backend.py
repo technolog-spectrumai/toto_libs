@@ -199,6 +199,30 @@ class ExecutorRuntimeBackend(RuntimeBackend):
                           {"known_gears": [str(g) for g in known_gears]},
                           timeout=120)
 
+    # -- admission control, for an operator ---------------------------------
+    #
+    # Beyond the RuntimeBackend contract on purpose. Nothing in the request
+    # path calls these — they are what a staff page and `executorctl` reach
+    # for, and putting them on the ABC would suggest every backend must be
+    # drainable when the null one has nothing to drain.
+
+    def admission(self) -> dict:
+        """Whether this host is taking work, and why not if it is not."""
+        return self._call("GET", "/control", timeout=15)
+
+    def drain(self, reason: str = "") -> dict:
+        """Stop taking new work; let running work finish."""
+        return self._call("POST", "/control/drain", {"reason": reason})
+
+    def resume(self, reason: str = "") -> dict:
+        """Take work again — the only way out of drain or stop."""
+        return self._call("POST", "/control/resume", {"reason": reason})
+
+    def emergency_stop(self, reason: str = "") -> dict:
+        """No new work, and every running job killed. Destroys work."""
+        return self._call("POST", "/control/stop", {"reason": reason},
+                          timeout=120)
+
 
 def _error_sentence_from(raw: str, status: int) -> str:
     """The executor's own sentence where it sent one, a fallback where not.

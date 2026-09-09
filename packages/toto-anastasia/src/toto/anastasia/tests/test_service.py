@@ -22,7 +22,7 @@ import uuid
 from django.test import SimpleTestCase
 
 from toto.anastasia.limits import Limits
-from toto.anastasia.executor import gears, protocol, service
+from toto.anastasia.executor import control, gears, protocol, service
 from toto.anastasia.executor_backend import UnixHTTPConnection
 
 from .fakes import CountingSliceDriver, FakeDocker
@@ -321,3 +321,110 @@ class PeerCredentialTests(ServiceTestCase):
 
     def test_the_allowlist_defaults_to_root_only(self):
         self.assertEqual(service.DEFAULT_PEER_UIDS, frozenset({0}))
+
+
+class AdmissionControlTests(ServiceTestCase):
+    """Drain, stop and resume — the switches an operator reaches for.
+
+    The distinction under test is the one that matters at 3am: DRAIN empties a
+    machine without destroying anything, STOP throws running work away on
+    purpose. A drain that killed jobs would be an outage nobody asked for; a
+    stop that let them run would not be a stop.
+    """
+
+    def test_a_fresh_host_takes_work(self):
+        """No file means open. An executor on a new host must not need
+        somebody to switch it on."""
+        status, body = self.call("GET", "/control")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["admission"]["state"], "open")
+
+    def test_draining_refuses_a_mount_but_kills_nothing(self):
+        self.call("POST", f"/gears/{self.gear}/mount",
+                  {"limits": {"cpu_millicores": 1000, "ram_mb": 512,
+                              "scratch_mb": 256, "pids": 64}})
+        before = len(self.docker.containers)
+
+        status, _ = self.call("POST", "/control/drain", {"reason": "reboot"})
+        self.assertEqual(status, 200)
+
+        status, body = self.call("POST", f"/gears/{uuid.uuid4()}/mount",
+                                 {"limits": {"cpu_millicores": 1000,
+                                             "ram_mb": 512, "scratch_mb": 256,
+                                             "pids": 64}})
+        self.assertEqual(status, 503)
+        self.assertIn("drained", body["error"])
+        self.assertEqual(len(self.docker.containers), before,
+                         "a drain must not destroy anything")
+
+    def test_draining_refuses_new_JOBS_too(self):
+        """Not only mounts. A Gear mounted before the drain would otherwise
+        keep starting jobs through the whole of it — which is exactly what an
+        operator draining for a reboot is trying to stop."""
+        self.call("POST", f"/gears/{self.gear}/mount",
+                  {"limits": {"cpu_millicores": 1000, "ram_mb": 512,
+                              "scratch_mb": 256, "pids": 64}})
+        self.call("POST", "/control/drain")
+        status, body = self.call("POST", "/jobs", {
+            "gear": self.gear, "execution": str(uuid.uuid4()),
+            "operation": "render_pdf", "params": {},
+            "limits": {"cpu_millicores": 1000, "ram_mb": 512,
+                       "scratch_mb": 256, "pids": 64}, "timeout": 60})
+        self.assertEqual(status, 503)
+        self.assertIn("drained", body["error"])
+
+    def test_the_emergency_stop_destroys_every_runner(self):
+        self.call("POST", f"/gears/{self.gear}/mount",
+                  {"limits": {"cpu_millicores": 2000, "ram_mb": 2048,
+                              "scratch_mb": 1024, "pids": 256}})
+        self.call("POST", "/jobs", {
+            "gear": self.gear, "execution": str(uuid.uuid4()),
+            "operation": "render_pdf", "params": {},
+            "limits": {"cpu_millicores": 1000, "ram_mb": 512,
+                       "scratch_mb": 256, "pids": 64}, "timeout": 600})
+        self.assertTrue(self.docker.containers, "nothing to destroy")
+
+        status, body = self.call("POST", "/control/stop", {"reason": "incident"})
+        self.assertEqual(status, 200)
+        self.assertGreaterEqual(body["runners_destroyed"], 1)
+        self.assertEqual(self.docker.containers, {})
+
+    def test_a_stopped_host_is_not_told_to_try_again(self):
+        """Pressure is temporary and self-clearing; a stop is a person's
+        decision. Telling somebody to retry into a stopped machine is how a
+        refusal becomes a support ticket."""
+        self.call("POST", "/control/stop", {"reason": "incident"})
+        _, body = self.call("POST", f"/gears/{uuid.uuid4()}/mount",
+                            {"limits": {"cpu_millicores": 1000, "ram_mb": 512,
+                                        "scratch_mb": 256, "pids": 64}})
+        self.assertIn("stopped by an administrator", body["error"])
+        self.assertNotIn("shortly", body["error"])
+
+    def test_resume_is_the_only_way_back(self):
+        for switch in ("drain", "stop"):
+            with self.subTest(switch=switch):
+                self.call("POST", f"/control/{switch}")
+                _, body = self.call("GET", "/control")
+                self.assertNotEqual(body["admission"]["state"], "open")
+                self.call("POST", "/control/resume")
+                _, body = self.call("GET", "/control")
+                self.assertEqual(body["admission"]["state"], "open")
+
+    def test_the_switch_survives_a_restart(self):
+        """THE POINT OF PERSISTING IT. The unit restarts on failure five
+        seconds later; a switch a crash can undo is not a switch."""
+        self.call("POST", "/control/stop", {"reason": "incident"})
+
+        # A brand-new manager and API over the same staging root, which is
+        # what a restarted unit is.
+        fresh = gears.GearManager(
+            staging_root=self.root, slice_driver=CountingSliceDriver(),
+            docker=FakeDocker(), generation="gen-restarted")
+        state = control.read(fresh.staging_root)
+        self.assertEqual(state["state"], "stopped")
+        self.assertEqual(state["reason"], "incident")
+
+    def test_health_says_whether_the_host_is_taking_work(self):
+        self.call("POST", "/control/drain", {"reason": "maintenance"})
+        _, body = self.call("GET", "/health")
+        self.assertEqual(body["admission"]["state"], "draining")

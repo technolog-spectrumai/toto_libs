@@ -44,6 +44,7 @@ DJANGO_FREE = (
     "toto.anastasia.executor.gears",
     "toto.anastasia.executor.reconcile",
     "toto.anastasia.executor.pressure",
+    "toto.anastasia.executor.control",
     "toto.anastasia.executor.service",
     "toto.anastasia.executor.__main__",
 )
