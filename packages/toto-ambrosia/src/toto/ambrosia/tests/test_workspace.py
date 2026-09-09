@@ -399,14 +399,18 @@ class FileTreeTests(AmbrosiaTestCase):
 
 
 # Every test below asks the vault which editor opens a .py file, and the answer
-# comes from the PYTHON workspace app. That app did not travel back from
-# placidia with ambrosia and texlab — it is being rebuilt as toto.dracena — so
-# there is no plugin registered for "python" and nothing here has a subject.
-# Remove this when dracena lands.
+# comes from the PYTHON workspace app, toto.dracena. It is a host portion on
+# zenobia and behind BUILD_ANASTASIA there, so a build without Compute Gears
+# registers no plugin for "python" and nothing here has a subject.
+#
+# The condition read `is_installed("toto.dracena") or is_installed("toto.dracena")`
+# until 2026-09-09 — the same call twice, a rename that edited both halves of a
+# disjunction meant to name antaresia and dracena. It was harmless only because
+# the duplicate agreed with the original; a second app name would have silently
+# widened the skip.
 @unittest.skipUnless(
-    apps.is_installed("toto.dracena") or apps.is_installed("toto.dracena"),
-    "no Python workspace app is installed yet (toto.dracena replaces "
-    "toto.dracena in the stage that follows this one)")
+    apps.is_installed("toto.dracena"),
+    "no Python workspace app installed (toto.dracena rides with Compute Gears)")
 class EditorPluginTests(AmbrosiaTestCase):
     def test_ambrosia_claims_the_python_file_type(self):
         from toto.vault.plugins import VaultEditorPlugin
