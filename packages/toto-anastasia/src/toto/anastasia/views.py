@@ -22,7 +22,8 @@ import logging
 
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.http import JsonResponse
+from django.contrib import messages
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.translation import gettext as _
@@ -32,7 +33,8 @@ from toto.ui import PageProcessor
 
 from . import choices, conf, families, services
 from .limits import Limits, LimitsError
-from .models import ComputeLease
+from .models import ComputeLease, Execution, GearRuntime
+from .runtime import RuntimeUnavailable, get_backend
 
 log = logging.getLogger("toto.anastasia.views")
 
@@ -207,3 +209,128 @@ def status(request, uuid):
 @login_required
 def pool(request):
     return JsonResponse(services.pool_report())
+
+
+# --------------------------------------------------------------------------- #
+# The operator's page                                                          #
+# --------------------------------------------------------------------------- #
+# Separate from the Gear desk, and staff-only, because the questions differ.
+# A user asks "can I run my job"; an operator asks "what is this machine doing,
+# and how do I stop it". The second needs the whole pool, every live job across
+# every owner, and the two switches — none of which belongs on a page a user
+# sees.
+
+
+def _staff_only(user) -> bool:
+    return bool(user.is_active and (user.is_staff or user.is_superuser))
+
+
+@login_required
+def operator(request):
+    """What this machine is doing, and the switches to stop it.
+
+    Read-only except for two POSTs, and both are deliberate acts with a
+    confirmation: draining is reversible and destroys nothing, stopping throws
+    running work away. They are separate buttons with separate words for the
+    same reason they are separate verbs on the wire.
+    """
+    if not _staff_only(request.user):
+        raise Http404
+
+    backend = get_backend()
+    admission = {"state": "unknown", "reason": "", "since": None}
+    health: dict = {}
+    unreachable = ""
+    try:
+        # `getattr` because the null backend has no admission control — there
+        # is nothing to drain when nothing runs — and a staff page must render
+        # on a host with no executor rather than 500.
+        reader = getattr(backend, "admission", None)
+        if reader is not None:
+            admission = (reader() or {}).get("admission", admission)
+        describe = getattr(backend, "health", None)
+        if describe is not None:
+            health = describe() or {}
+    except RuntimeUnavailable as exc:
+        unreachable = str(exc)
+
+    live = (Execution.objects.live()
+            .select_related("lease", "requested_by")
+            .order_by("-created_at")[:100])
+    return render(request, "anastasia/operator.html", PageProcessor().decorate({
+        "pool": services.pool_report(),
+        "admission": admission,
+        "health": health,
+        "unreachable": unreachable,
+        "live": live,
+        "mounted": (GearRuntime.objects.filter(state=choices.READY)
+                    .select_related("lease", "lease__owner")
+                    .order_by("-mounted_at")[:100]),
+    }, request))
+
+
+@login_required
+@require_POST
+def operator_control(request, action):
+    """Drain, resume or stop. Staff only, POST only, and never silent.
+
+    Every one of these is recorded on the audit trail before it is attempted,
+    with the operator's name on it: an emergency stop destroys other people's
+    work, and the trail is where that decision has to be answerable.
+    """
+    if not _staff_only(request.user):
+        raise Http404
+
+    verbs = {"drain": "drain", "resume": "resume", "stop": "emergency_stop"}
+    if action not in verbs:
+        raise Http404
+
+    reason = (request.POST.get("reason") or "")[:400]
+    backend = get_backend()
+
+    # AUDITED BEFORE ANYTHING ELSE, including before checking whether there is
+    # a runtime to control. An operator reaching for the emergency stop on a
+    # host whose executor is unreachable is exactly the moment worth having a
+    # record of: what they tried, when, and that it did not take. Recording
+    # only successful attempts would leave the interesting half out.
+    _audit_control(action, request.user, reason)
+
+    call = getattr(backend, verbs[action], None)
+    if call is None:
+        messages.error(request, _(
+            "This deployment has no compute runtime to control."))
+        return redirect("anastasia:operator")
+    try:
+        result = call(reason) or {}
+    except RuntimeUnavailable as exc:
+        messages.error(request, str(exc))
+        return redirect("anastasia:operator")
+
+    if action == "stop":
+        messages.warning(request, _(
+            "Compute is stopped. %(n)s running job(s) were destroyed.")
+            % {"n": result.get("runners_destroyed", 0)})
+    elif action == "drain":
+        messages.success(request, _(
+            "This machine is draining: running work will finish, and no new "
+            "work will start."))
+    else:
+        messages.success(request, _("This machine is taking work again."))
+    return redirect("anastasia:operator")
+
+
+def _audit_control(action: str, actor, reason: str) -> None:
+    """BEFORE the call, not after.
+
+    An emergency stop that killed fifty jobs and then failed to write its own
+    record would leave the destruction unexplained. Recording the intent first
+    means the trail is never behind the machine.
+    """
+    try:
+        from toto.audit import record
+
+        record(f"anastasia.control.{action}", app_label="anastasia",
+               description=f"compute {action}", actor_user=actor,
+               success=True, metadata={"reason": reason} if reason else {})
+    except Exception:  # noqa: BLE001 — evidence, never a dependency
+        log.exception("anastasia: could not audit a control action")

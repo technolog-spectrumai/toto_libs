@@ -210,6 +210,10 @@ class ExecutorRuntimeBackend(RuntimeBackend):
         """Whether this host is taking work, and why not if it is not."""
         return self._call("GET", "/control", timeout=15)
 
+    def health(self) -> dict:
+        """Alive, which generation, which isolation tier. For the staff page."""
+        return self._call("GET", "/health", timeout=15)
+
     def drain(self, reason: str = "") -> dict:
         """Stop taking new work; let running work finish."""
         return self._call("POST", "/control/drain", {"reason": reason})

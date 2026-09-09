@@ -1,0 +1,168 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% comment %}
+  THE OPERATOR'S PAGE, and everything on it answers a question a USER's page
+  cannot: what is this machine doing across every owner, and how do I stop it.
+
+  Two switches, two different words, deliberately not styled alike. Draining is
+  reversible and destroys nothing; stopping throws other people's running work
+  away. A page that made them look like the same control would eventually have
+  somebody click the wrong one at 3am.
+{% endcomment %}
+
+{% block content %}
+<div class="mx-auto max-w-5xl space-y-6 p-4">
+
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h1 class="text-2xl font-bold">{% trans "Compute operations" %}</h1>
+    <a href="{% url 'anastasia:index' %}" class="text-sm underline opacity-70">
+      {% trans "The Gear desk" %}
+    </a>
+  </div>
+
+  {% if unreachable %}
+    <div class="rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm">
+      <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+      {{ unreachable }}
+    </div>
+  {% endif %}
+
+  {# ------------------------------------------------------------ admission #}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
+          {% trans "Admission" %}
+        </p>
+        {% comment %}
+          Three states, three sentences. Never one line with the state
+          interpolated: "this machine is {{ state }}" reads as nonsense in
+          every language this is translated into, and hides the difference
+          between "finishing" and "killed" that the whole page is about.
+        {% endcomment %}
+        {% if admission.state == 'open' %}
+          <p class="mt-1 text-lg font-bold text-emerald-500">
+            {% trans "Taking work" %}</p>
+        {% elif admission.state == 'draining' %}
+          <p class="mt-1 text-lg font-bold text-amber-500">
+            {% trans "Draining — running work is finishing, nothing new starts" %}</p>
+        {% elif admission.state == 'stopped' %}
+          <p class="mt-1 text-lg font-bold text-red-500">
+            {% trans "Stopped by an administrator" %}</p>
+        {% else %}
+          <p class="mt-1 text-lg font-bold opacity-60">
+            {% trans "Unknown — the runtime did not answer" %}</p>
+        {% endif %}
+        {% if admission.reason %}
+          <p class="mt-1 text-xs opacity-60">{{ admission.reason }}</p>
+        {% endif %}
+      </div>
+
+      <div class="flex flex-wrap gap-2">
+        {% if admission.state == 'open' %}
+          <form method="post" action="{% url 'anastasia:operator_control' 'drain' %}">
+            {% csrf_token %}
+            <input name="reason" placeholder="{% trans 'why (optional)' %}"
+                   :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                   class="mr-1 rounded border px-2 py-1 text-sm">
+            <button class="rounded border border-amber-500/60 px-3 py-1 text-sm font-semibold text-amber-500">
+              {% trans "Drain" %}
+            </button>
+          </form>
+        {% else %}
+          <form method="post" action="{% url 'anastasia:operator_control' 'resume' %}">
+            {% csrf_token %}
+            <button class="rounded border border-emerald-500/60 px-3 py-1 text-sm font-semibold text-emerald-500">
+              {% trans "Take work again" %}
+            </button>
+          </form>
+        {% endif %}
+
+        {% comment %}
+          The destructive one, last, in red, behind a confirm that says the
+          NUMBER it will destroy. "Are you sure?" is not a warning; "this will
+          destroy 12 running jobs" is.
+        {% endcomment %}
+        <form method="post" action="{% url 'anastasia:operator_control' 'stop' %}"
+              onsubmit="return confirm('{% blocktrans count n=live|length %}This will destroy {{ n }} running job and stop compute. Continue?{% plural %}This will destroy {{ n }} running jobs and stop compute. Continue?{% endblocktrans %}');">
+          {% csrf_token %}
+          <input name="reason" placeholder="{% trans 'why (optional)' %}"
+                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="mr-1 rounded border px-2 py-1 text-sm">
+          <button class="rounded border border-red-500/60 px-3 py-1 text-sm font-semibold text-red-500">
+            {% trans "Emergency stop" %}
+          </button>
+        </form>
+      </div>
+    </div>
+
+    {% if health %}
+      <div class="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+        <div><p class="text-xs opacity-60">{% trans "Isolation" %}</p>
+             <p>{{ health.tier|default:"—" }}</p></div>
+        <div><p class="text-xs opacity-60">{% trans "Generation" %}</p>
+             <p class="font-mono text-xs">{{ health.generation|default:"—" }}</p></div>
+        <div><p class="text-xs opacity-60">{% trans "Runtime" %}</p>
+             <p>{% if health.docker %}{% trans "reachable" %}{% else %}{% trans "not answering" %}{% endif %}</p></div>
+        <div><p class="text-xs opacity-60">{% trans "Mounted Gears" %}</p>
+             <p>{{ mounted|length }}</p></div>
+      </div>
+    {% endif %}
+  </div>
+
+  {# ----------------------------------------------------------------- pool #}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5">
+    <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
+      {% trans "Pool" %}</p>
+    <div class="mt-2 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+      <div><p class="text-xs opacity-60">{% trans "CPU booked" %}</p>
+           <p>{{ pool.booked.cpu_millicores }} / {{ pool.total.cpu_millicores }} mCPU</p></div>
+      <div><p class="text-xs opacity-60">{% trans "RAM booked" %}</p>
+           <p>{{ pool.booked.ram_mb }} / {{ pool.total.ram_mb }} MB</p></div>
+      <div><p class="text-xs opacity-60">{% trans "Scratch booked" %}</p>
+           <p>{{ pool.booked.scratch_mb }} / {{ pool.total.scratch_mb }} MB</p></div>
+      <div><p class="text-xs opacity-60">{% trans "Processes booked" %}</p>
+           <p>{{ pool.booked.pids }} / {{ pool.total.pids }}</p></div>
+    </div>
+  </div>
+
+  {# ------------------------------------------------------------ live jobs #}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5">
+    <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
+      {% trans "Running now" %}</p>
+    {% if live %}
+      <div class="mt-2 overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="text-xs opacity-60">
+            <tr>
+              <th class="py-1 pr-3">{% trans "Job" %}</th>
+              <th class="py-1 pr-3">{% trans "Operation" %}</th>
+              <th class="py-1 pr-3">{% trans "Gear" %}</th>
+              <th class="py-1 pr-3">{% trans "Asked by" %}</th>
+              <th class="py-1">{% trans "Started" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for job in live %}
+              <tr class="border-t border-current/10">
+                <td class="py-1 pr-3 font-mono text-xs">{{ job.short_id }}</td>
+                <td class="py-1 pr-3">{{ job.operation }}</td>
+                <td class="py-1 pr-3">{{ job.lease.name }}</td>
+                <td class="py-1 pr-3">{{ job.requested_by|default:"—" }}</td>
+                <td class="py-1">{{ job.started_at|default:"—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="mt-2 text-sm opacity-70">{% trans "Nothing is running." %}</p>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

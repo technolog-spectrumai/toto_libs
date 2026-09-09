@@ -319,6 +319,16 @@ class Execution(models.Model):
                       self.pids)
 
     @property
+    def short_id(self) -> str:
+        """The first eight characters of the uuid, for a person.
+
+        Operators read job ids off a screen and type them into a grep; a full
+        uuid in a table column is unreadable and gets truncated by the browser
+        at an arbitrary point, which is worse than truncating it deliberately.
+        """
+        return str(self.uuid)[:8]
+
+    @property
     def is_finished(self) -> bool:
         return self.status in choices.FINISHED
 

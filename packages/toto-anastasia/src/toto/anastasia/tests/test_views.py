@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from django.contrib.auth import get_user_model
 from django.test import override_settings
 from django.urls import reverse
 
@@ -251,3 +252,76 @@ class PageTests(DeskTestCase):
             response = self.client.get(reverse("anastasia:index"))
         self.assertFalse(response.context["pool"]["configured"])
         self.assertContains(response, "no compute pool configured")
+
+
+class OperatorPageTests(DeskTestCase):
+    """The staff page: what the machine is doing, and how to stop it.
+
+    Two things under test that the Gear desk cannot express — that an ordinary
+    user cannot reach any of it, and that the two switches are genuinely
+    different acts rather than one control with two labels.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.staff = get_user_model().objects.create_user(
+            "operator", password="x", is_staff=True)
+
+    def test_an_ordinary_user_cannot_find_it(self):
+        """404, not 403. A page whose existence is a 403 tells an unprivileged
+        user that there is something there."""
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.get(reverse("anastasia:operator")).status_code, 404)
+
+    def test_an_ordinary_user_cannot_stop_compute(self):
+        """The page being hidden is not the control being guarded."""
+        self.client.force_login(self.user)
+        for action in ("drain", "resume", "stop"):
+            with self.subTest(action=action):
+                response = self.client.post(
+                    reverse("anastasia:operator_control", args=[action]))
+                self.assertEqual(response.status_code, 404)
+
+    def test_staff_can_open_it(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("anastasia:operator"))
+        self.assertEqual(response.status_code, 200)
+
+    def test_an_unknown_action_is_a_404_not_a_silent_no_op(self):
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse("anastasia:operator_control", args=["obliterate"]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_the_control_verbs_require_post(self):
+        """A GET that drained a host would be reachable from a prefetch."""
+        self.client.force_login(self.staff)
+        for action in ("drain", "resume", "stop"):
+            with self.subTest(action=action):
+                response = self.client.get(
+                    reverse("anastasia:operator_control", args=[action]))
+                self.assertEqual(response.status_code, 405)
+
+    def test_a_control_action_is_audited_with_the_operators_name(self):
+        """An emergency stop destroys other people's work. The trail is where
+        that decision has to be answerable."""
+        from toto.audit.models import AuditRecord
+
+        self.client.force_login(self.staff)
+        self.client.post(reverse("anastasia:operator_control", args=["drain"]),
+                         {"reason": "kernel upgrade"})
+        row = AuditRecord.objects.filter(
+            action__iexact="anastasia.control.drain").first()
+        self.assertIsNotNone(row)
+        self.assertEqual(row.actor_user_id, self.staff.pk)
+        self.assertEqual(row.metadata["reason"], "kernel upgrade")
+
+    def test_the_page_renders_with_no_runtime_at_all(self):
+        """A staff page that 500s on a host with no executor is a page nobody
+        can use to find out why there is no executor."""
+        self.client.force_login(self.staff)
+        with override_settings(
+                ANASTASIA_RUNTIME_BACKEND=
+                "toto.anastasia.runtime.NullRuntimeBackend"):
+            response = self.client.get(reverse("anastasia:operator"))
+        self.assertEqual(response.status_code, 200)

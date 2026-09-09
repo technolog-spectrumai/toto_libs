@@ -18,4 +18,10 @@ urlpatterns = [
     path("<uuid:uuid>/unmount/", views.unmount, name="unmount"),
     path("<uuid:uuid>/release/", views.release, name="release"),
     path("<uuid:uuid>/status/", views.status, name="status"),
+    # The operator's page. Under the same namespace rather than a second app:
+    # it is the same subsystem seen by somebody with different questions, and
+    # a separate app would need its own permissions story for no gain.
+    path("operations/", views.operator, name="operator"),
+    path("operations/<str:action>/", views.operator_control,
+         name="operator_control"),
 ]
