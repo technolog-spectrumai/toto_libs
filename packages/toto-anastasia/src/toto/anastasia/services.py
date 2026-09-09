@@ -265,9 +265,13 @@ def mount(*, lease: ComputeLease, actor=None) -> GearRuntime:
     runtime.unmounted_at = None
     runtime.detail = ""
     runtime.manager_generation = str(result.get("manager_generation", ""))[:64]
+    # From the RESPONSE, not from settings. Recording what this host believes
+    # it configured would record a belief; what mounted the Gear is a fact, and
+    # only the executor can report it.
+    runtime.tier = str(result.get("tier", ""))[:32]
     runtime.save(update_fields=[
         "state", "state_at", "mounted_at", "unmounted_at", "detail",
-        "manager_generation"])
+        "manager_generation", "tier"])
     record(lease=lease, kind=GearEvent.MOUNT, actor=actor,
            from_state=previous, to_state=choices.READY)
     return runtime
@@ -398,6 +402,12 @@ def refresh_runtime(lease: ComputeLease) -> GearRuntime:
     return runtime
 
 
+#: Tiers that give a job a kernel of its own. Named one by one, so a tier this
+#: code has never heard of reads as "not proven" rather than inheriting a
+#: promise from whatever it resembles.
+KERNEL_ISOLATING_TIERS = frozenset({"kata"})
+
+
 def gear_report(lease: ComputeLease, now=None) -> dict:
     """One Gear, as the page draws it."""
     now = now or timezone.now()
@@ -416,4 +426,16 @@ def gear_report(lease: ComputeLease, now=None) -> dict:
         "expires_at": lease.expires_at,
         "executions_running": lease.executions.live().count(),
         "accepts_work": state in choices.ACCEPTING,
+        # WHICH ISOLATION, and a boolean the page can branch on rather than a
+        # string it might interpolate. A `{{ tier }}` in one parameterised
+        # sentence is exactly how "your code runs in a virtual machine" gets
+        # rendered for a container.
+        #
+        # `isolates_kernel` is deliberately a WHITELIST, not "not docker": an
+        # unknown value — a blank column on an old row, a tier some future
+        # executor reports that this code has never heard of — must fall to the
+        # weaker claim. Understating isolation is a smaller wrong than
+        # promising one that is not there.
+        "tier": runtime.tier,
+        "isolates_kernel": runtime.tier in KERNEL_ISOLATING_TIERS,
     }

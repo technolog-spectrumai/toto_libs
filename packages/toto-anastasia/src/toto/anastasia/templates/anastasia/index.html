@@ -122,6 +122,29 @@ Two ideas the page has to carry, or it is just a form:
           <p class="mt-1 text-xs text-amber-500">{{ gear.detail }}</p>
         {% endif %}
 
+        {% comment %}
+          WHICH ISOLATION this Gear gives, in THREE SEPARATE SENTENCES rather
+          than one with the tier interpolated into it. A single
+          "your code runs in {{ tier }}" is how a container comes to be
+          described as a virtual machine the day somebody adds a tier.
+
+          The branch is on a BOOLEAN the service computed from a whitelist, so
+          an unknown or blank tier — an old row, a newer executor — lands on
+          the WEAKEST sentence. Understating what a sandbox does is a much
+          smaller wrong than promising isolation it does not have.
+        {% endcomment %}
+        {% if gear.isolates_kernel %}
+          <p class="mt-1 text-xs opacity-60">
+            <i class="fa-solid fa-shield-halved mr-1"></i>
+            {% trans "Work here runs in a virtual machine with its own kernel." %}
+          </p>
+        {% elif gear.tier %}
+          <p class="mt-1 text-xs opacity-60">
+            <i class="fa-solid fa-box mr-1"></i>
+            {% trans "Work here runs in a throwaway container that shares this machine's kernel." %}
+          </p>
+        {% endif %}
+
         <div class="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <div><p class="text-xs opacity-60">{% trans "CPU" %}</p>
                <p>{{ gear.reserved.cpu_millicores }} <span class="text-xs opacity-60">mCPU</span></p></div>

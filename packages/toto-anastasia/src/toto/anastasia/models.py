@@ -200,6 +200,20 @@ class GearRuntime(models.Model):
     #: could not be adopted and is DEAD.
     manager_generation = models.CharField(max_length=64, blank=True)
 
+    #: WHICH ISOLATION this Gear is mounted under, as the executor reported it
+    #: at mount time — never as a setting claimed.
+    #:
+    #: The distinction is the whole reason the column exists. A setting says
+    #: what an operator asked for; this says what the runtime answered, and
+    #: they disagree exactly when it matters: a host configured for VMs whose
+    #: Kata runtime is not registered, a Gear mounted before a tier change and
+    #: still running under the old one.
+    #:
+    #: Blank means "mounted before this column existed, or by an executor too
+    #: old to say" — which the page must read as UNKNOWN and therefore as the
+    #: weakest claim, never as the strongest.
+    tier = models.CharField(max_length=32, blank=True)
+
     #: The last reading: cpu_millicores_used, ram_mb_used, scratch_mb_used,
     #: pids_used, oom_kills, executions_running. Plain JSON — nothing here is
     #: aggregated or billed, it is what the page draws.
