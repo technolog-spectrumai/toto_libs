@@ -29,8 +29,22 @@ from django.utils.translation import gettext_lazy as _
 
 from .settings_spec import CHOICE, Field
 
-#: The setting's key in every lab's stored settings.
-KEY = "gear"
+#: The setting's key in every lab's stored settings. Written under this name.
+KEY = "capsule"
+
+#: What it was called before 2026-09-10. READ, NEVER WRITTEN.
+#:
+#: The value lives in a JSONField on live workspace rows, so a plain rename
+#: would not error — it would make `preferred()` find nothing and fall back to
+#: AUTOMATIC for every workspace that had chosen a capsule. That is worse than
+#: an error: on an account holding two mounted capsules, "automatic" is exactly
+#: the ambiguity `require_gear` refuses, so every job would start failing with
+#: "say which one to use" and nothing would point at a rename as the cause.
+#:
+#: `0005_capsule_setting_key` rewrites the stored blobs. This fallback covers
+#: the gap between deploying the code and running the migration, and rows the
+#: migration could not reach. Delete both once neither can matter.
+LEGACY_KEY = "gear"
 
 #: The stored value for "no preference" — resolve the way the lab always did.
 AUTOMATIC = ""
@@ -96,7 +110,8 @@ def preferred(workspace, namespace: str) -> str | None:
     """
     if not available():
         return None
-    stored = workspace.settings_for(namespace).get(KEY) or AUTOMATIC
+    section = workspace.settings_for(namespace)
+    stored = section.get(KEY) or section.get(LEGACY_KEY) or AUTOMATIC
     if stored == AUTOMATIC:
         return None
     # A value that is not a uuid at all cannot have come through clean() —

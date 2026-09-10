@@ -192,3 +192,93 @@ class GearSettingTests(AmbrosiaTestCase):
             self._gear(name, mounted=False)
         with self.assertRaises(gear_services.CapacityError):
             self._gear("four", mounted=False)
+
+
+
+class LegacySettingKeyTests(GearSettingTests):
+    """The stored key moved inside a JSON blob, where nothing type-checks it.
+
+    `gears.KEY` was "gear" until 2026-09-10 and is "capsule" now. The value sits
+    in `Workspace.settings`, so a plain rename raises nothing at all — it just
+    makes every workspace that had chosen a capsule read as AUTOMATIC.
+
+    That is the dangerous shape: AUTOMATIC on an account with two mounted
+    capsules is exactly the ambiguity `require_gear` refuses, so the symptom is
+    "this job needs you to say which one to use" appearing on a workspace that
+    already said, with nothing pointing at a rename as the cause.
+
+    Inherits `GearSettingTests` for its pool settings and fake runtime; these
+    are about the key, not about the field.
+    """
+
+    def _pin(self, key, value):
+        self.ws.settings = {"dracena": {key: str(value)}}
+        self.ws.save(update_fields=["settings"])
+
+    def test_a_row_written_before_the_rename_is_still_honoured(self):
+        lease = self._gear("old")
+        self._pin(gears.LEGACY_KEY, lease.uuid)
+        self.assertEqual(gears.preferred(self.ws, "dracena"), str(lease.uuid))
+
+    def test_a_row_written_after_the_rename_is_honoured(self):
+        lease = self._gear("new")
+        self._pin(gears.KEY, lease.uuid)
+        self.assertEqual(gears.preferred(self.ws, "dracena"), str(lease.uuid))
+
+    def test_the_new_key_wins_when_both_are_present(self):
+        """A deployment can write the new key before the migration moves the
+        old one, so both coexist for a while. What the current code wrote is
+        what the user last chose."""
+        old_lease = self._gear("first")
+        new_lease = self._gear("second")
+        self.ws.settings = {"dracena": {gears.LEGACY_KEY: str(old_lease.uuid),
+                                        gears.KEY: str(new_lease.uuid)}}
+        self.ws.save(update_fields=["settings"])
+        self.assertEqual(gears.preferred(self.ws, "dracena"),
+                         str(new_lease.uuid))
+
+    def test_the_migration_moves_the_key_and_keeps_the_value(self):
+        """The migration is a RunPython over free-form JSON, so nothing but a
+        test can tell you it works."""
+        import importlib
+
+        module = importlib.import_module(
+            "toto.ambrosia.migrations.0005_capsule_setting_key")
+        lease = self._gear("pinned")
+        self._pin(gears.LEGACY_KEY, lease.uuid)
+
+        from toto.ambrosia.models import Workspace
+
+        class _Apps:
+            @staticmethod
+            def get_model(app_label, model_name):
+                return Workspace
+
+        module.to_capsule(_Apps, None)
+
+        self.ws.refresh_from_db()
+        section = self.ws.settings["dracena"]
+        self.assertEqual(section.get(gears.KEY), str(lease.uuid))
+        self.assertNotIn(gears.LEGACY_KEY, section,
+                         "the old key must go, or the fallback keeps it alive")
+
+    def test_a_workspace_that_never_chose_is_untouched(self):
+        """Most rows have no such key. The migration must not rewrite them —
+        that is the difference between a quick migration and a timeout."""
+        import importlib
+
+        module = importlib.import_module(
+            "toto.ambrosia.migrations.0005_capsule_setting_key")
+        self.ws.settings = {"dracena": {"exec_timeout": 30}}
+        self.ws.save(update_fields=["settings"])
+
+        from toto.ambrosia.models import Workspace
+
+        class _Apps:
+            @staticmethod
+            def get_model(app_label, model_name):
+                return Workspace
+
+        module.to_capsule(_Apps, None)
+        self.ws.refresh_from_db()
+        self.assertEqual(self.ws.settings, {"dracena": {"exec_timeout": 30}})
