@@ -76,10 +76,24 @@ class LogsSinceTests(SimpleTestCase):
 
     def test_a_multibyte_character_split_by_a_slice_does_not_raise(self):
         """A slice can cut a UTF-8 character in half, and a console that
-        raises on that shows the user nothing at all."""
-        driver = _driver("é" * docker_driver.DockerClient.LOG_SLICE_BYTES)
+        raises on that shows the user nothing at all.
+
+        ONE ASCII BYTE FIRST. `LOG_SLICE_BYTES` is even and `é` is two bytes,
+        so a log of nothing but `é` slices cleanly at every boundary and the
+        earlier form of this test never split a character at all — it passed
+        with `errors="strict"`. The leading byte shifts the boundary into the
+        middle of one, which is the case the driver's `replace` exists for.
+        """
+        slice_bytes = docker_driver.DockerClient.LOG_SLICE_BYTES
+        driver = _driver("x" + "é" * slice_bytes)
         out = driver.logs_since("c", 0)
         self.assertIsInstance(out["text"], str)
+        # The half character is replaced, not raised on, and not silently
+        # dropped: U+FFFD is the honest rendering of a byte that is not a
+        # character yet.
+        self.assertTrue(out["text"].endswith("\ufffd"))
+        self.assertEqual(out["offset"], slice_bytes)
+        self.assertFalse(out["complete"])
 
     def test_stderr_is_included_because_that_is_where_failures_go(self):
         driver = docker_driver.DockerClient()

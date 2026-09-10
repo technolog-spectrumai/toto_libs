@@ -65,6 +65,11 @@ class FakeRuntimeBackend:
     #: Flip to make the log reader unreachable — the shape a real runtime
     #: takes when the executor is down, which must degrade rather than 500.
     fail_logs = False
+    #: What `execution_status` answers. None means "still running"; a dict is
+    #: returned as the settled state — `{"found": True, "running": False,
+    #: "exit_code": 0}` is a clean finish. Set by a test that wants a watched
+    #: job (an install) to end.
+    settled = None
 
     @classmethod
     def reset(cls):
@@ -73,6 +78,7 @@ class FakeRuntimeBackend:
         cls.fail_start = False
         cls.log_text = ""
         cls.fail_logs = False
+        cls.settled = None
 
     def mount(self, lease):
         type(self).calls.append(("mount", str(lease.uuid)))
@@ -120,6 +126,38 @@ class FakeRuntimeBackend:
         offset = min(offset, len(raw))
         return {"text": raw[offset:].decode("utf-8", "replace"),
                 "offset": len(raw), "complete": True, "found": True}
+
+    def execution_status(self, execution):
+        """Running until a test says otherwise. Modelled on the manager's own
+        answer shape (`capsules.execution_status`), because `jobs._finish`
+        reads `found`, `running`, `exit_code` and `oom_killed` off it."""
+        type(self).calls.append(("status", str(execution.uuid)))
+        if type(self).settled is None:
+            return {"found": True, "running": True}
+        return dict(type(self).settled)
+
+    def collect(self, execution):
+        """An empty output tar. The install path collects like any job and a
+        fake that returned junk would make `_collect` log a warning per poll."""
+        from toto.anastasia.jobs import tar_of
+
+        type(self).calls.append(("collect", str(execution.uuid)))
+        return tar_of({})
+
+    def finish_execution(self, execution):
+        """Destroy the runner — AND ITS LOG WITH IT.
+
+        Modelled on the manager, not invented: `capsules.execution_logs`
+        finds the container by label and answers `{"text": "", "found":
+        False}` when there is none, which is exactly the state a swept job is
+        in. A fake that kept answering with the full log after destruction
+        would let a reader that pulls its log too late pass — and the tail of
+        an install's log is the part its count is derived from.
+        """
+        type(self).calls.append(("finish", str(execution.uuid)))
+        type(self).log_text = ""
+        type(self).fail_logs = True
+        return {"finished": True}
 
     def describe(self):
         return {"backend": "fake", "name": "fake"}

@@ -52,6 +52,19 @@ class RuntimeBackend:
     def kill_execution(self, execution) -> dict:
         raise NotImplementedError
 
+    def execution_logs(self, execution, offset: int = 0) -> dict:
+        """A slice of a running job's output from a BYTE offset, and where the
+        next slice starts: ``{text, offset, complete, found}``.
+
+        ON THE CONTRACT since 2026-09-11, with the empty slice as the default
+        rather than NotImplementedError: a backend that cannot stream still
+        answers "nothing yet, same cursor", which is what every reader already
+        tolerates — the install path and the log API both keep polling on it.
+        `found` is False so a caller can tell "cannot stream" from "streamed
+        nothing".
+        """
+        return {"text": "", "offset": offset, "complete": False, "found": False}
+
     def describe(self) -> dict:
         return {"backend": f"{type(self).__module__}.{type(self).__name__}",
                 "name": self.name}
