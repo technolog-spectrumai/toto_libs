@@ -224,9 +224,21 @@ class RunnerConfinementTests(SimpleTestCase):
             self.assertEqual(handle.read().strip(), "staged")
 
     def test_a_runner_past_its_deadline_is_killed(self):
+        """A deadline is enforced by killing, and 137 says it was SIGKILL.
+
+        The timeout is 8s rather than 3s because the budget has to cover
+        `docker create` and `docker start` as well as the wait, and on a loaded
+        machine those alone can eat three seconds — at which point `docker
+        wait` returns the exit status of a container that finished on its own
+        and `timed_out` is False. That failed exactly once, on a box running
+        three test suites and the gate at the same time, and it looked like a
+        driver defect rather than the race it was. The sleep stays at 120s, so
+        a runner that is NOT killed still cannot pass this test by finishing.
+        """
         result = self.run_probe(Limits(1000, 64, 32, 32),
-                                ["sh", "-c", "sleep 120"], timeout=3)
-        self.assertTrue(result["timed_out"])
+                                ["sh", "-c", "sleep 120"], timeout=8)
+        self.assertTrue(result["timed_out"],
+                        "the runner outlived its deadline without being killed")
         self.assertEqual(result["state"]["exit_code"], 137)
 
     def test_label_discovery_finds_and_loses_a_runner(self):
