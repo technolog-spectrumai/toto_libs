@@ -181,7 +181,8 @@ class SeriesTests(AnastasiaTestCase):
         of somebody adding a column to the table."""
         out = samples.series(self.lease, hours=1)
         self.assertEqual([m["key"] for m in out["measures"]],
-                         ["cpu_percent", "ram_mb_used", "storage_bytes"])
+                         ["cpu_percent", "ram_mb_used", "storage_bytes",
+                          "net_rx_bytes", "net_tx_bytes"])
 
     def test_an_empty_history_is_an_empty_series_not_an_error(self):
         out = samples.series(self.lease)

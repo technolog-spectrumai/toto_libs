@@ -73,6 +73,21 @@ class CapsuleSample(models.Model):
     #: whole one is how a capsule appears to shrink.
     storage_complete = models.BooleanField(null=True, blank=True)
 
+    #: Internet bytes on the capsule's own NIC, accumulated across the runners
+    #: that carried them — see `executor/network.py`. These are BYTES TO THE
+    #: PROXY, headers and TLS included, not bytes of payload fetched: a request
+    #: the proxy refuses still costs the bytes of asking. A capsule with no
+    #: egress has no NIC and is NULL here, which is "not measured" and not
+    #: "used none".
+    #:
+    #: MONOTONIC WITHIN A MOUNT and reset by one, so a chart of it is a growth
+    #: curve rather than a rate. An executor restart shows as a step down,
+    #: because the counter lives in the executor's memory and the runners it
+    #: was counting are gone — honest about what happened, and the reason this
+    #: is stored per reading rather than derived at read time.
+    net_rx_bytes = models.BigIntegerField(null=True, blank=True)
+    net_tx_bytes = models.BigIntegerField(null=True, blank=True)
+
     objects = CapsuleSampleQuerySet.as_manager()
 
     class Meta:
@@ -84,6 +99,20 @@ class CapsuleSample(models.Model):
         return f"{self.lease_id} at {self.taken_at:%Y-%m-%d %H:%M}"
 
 
+def due(lease, *, now=None) -> bool:
+    """Whether a reading taken now would be kept.
+
+    The throttle, asked as a question. `record()` applies it anyway; this
+    exists so a caller can SKIP THE STORAGE WALK that precedes a reading — the
+    beat runs every two minutes and a tree walk it was going to throw away is
+    the one cost in the whole sampler worth avoiding.
+    """
+    now = now or timezone.now()
+    cutoff = now - timezone.timedelta(seconds=MIN_INTERVAL_SECONDS)
+    return not CapsuleSample.objects.filter(lease=lease,
+                                            taken_at__gte=cutoff).exists()
+
+
 def record(lease, report: dict, storage: dict | None = None, *, now=None):
     """Write a sample, unless one was written recently. Returns it or None.
 
@@ -92,8 +121,7 @@ def record(lease, report: dict, storage: dict | None = None, *, now=None):
     a throttle each of them has to remember is one that will be forgotten.
     """
     now = now or timezone.now()
-    cutoff = now - timezone.timedelta(seconds=MIN_INTERVAL_SECONDS)
-    if CapsuleSample.objects.filter(lease=lease, taken_at__gte=cutoff).exists():
+    if not due(lease, now=now):
         return None
 
     usage = (report or {}).get("usage") or {}
@@ -110,6 +138,8 @@ def record(lease, report: dict, storage: dict | None = None, *, now=None):
         storage_bytes=storage.get("bytes"),
         storage_files=storage.get("files"),
         storage_complete=storage.get("complete"),
+        net_rx_bytes=usage.get("net_rx_bytes"),
+        net_tx_bytes=usage.get("net_tx_bytes"),
     )
 
 
@@ -141,6 +171,12 @@ MEASURES = (
     ("cpu_percent", "CPU", "%"),
     ("ram_mb_used", "RAM", "MB"),
     ("storage_bytes", "Disk", "bytes"),
+    # DOWNLOADED, not "internet": the name has to say which direction and
+    # whose count it is. Both are drawn, because a capsule that has SENT a
+    # gigabyte is a different situation from one that has fetched one, and a
+    # single "internet" line would hide whichever is the interesting half.
+    ("net_rx_bytes", "Downloaded", "bytes"),
+    ("net_tx_bytes", "Uploaded", "bytes"),
 )
 
 
@@ -160,7 +196,7 @@ def series(lease, *, hours: int = 24) -> dict:
     reversing in the template is how one caller ends up drawing it backwards.
     """
     hours = max(1, min(int(hours or 24), MAX_HOURS))
-    # timezone.timedelta, matching prune() and should_sample() above: Django
+    # timezone.timedelta, matching record() and prune() above: Django
     # re-exports it and this module never imports datetime.
     cutoff = timezone.now() - timezone.timedelta(hours=hours)
     rows = list(CapsuleSample.objects.filter(lease=lease, taken_at__gte=cutoff)
