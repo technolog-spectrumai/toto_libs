@@ -21,7 +21,16 @@ from __future__ import annotations
 #: Labels are how a restarted executor rebuilds its view of the world. They are
 #: runtime-independent by construction: whatever creates the sandbox must stamp
 #: these, or reconciliation cannot find it again.
-LABEL_GEAR = "anastasia.gear"
+#: Renamed from ``anastasia.gear`` on 2026-09-10, with zero managed containers
+#: on the daemon — which is the only moment this is free. A live container
+#: cannot be relabelled, so reconcile reads BOTH keys for one release (see
+#: ``labels()``): a runner started before the rename is adopted rather than
+#: treated as unowned and destroyed.
+LABEL_CAPSULE = "anastasia.capsule"
+
+#: The pre-rename key. Read, never written. Delete once no deployment can still
+#: be running a container older than the rename.
+LABEL_CAPSULE_LEGACY = "anastasia.gear"
 LABEL_EXEC = "anastasia.exec"
 LABEL_MANAGED = "anastasia.managed"
 

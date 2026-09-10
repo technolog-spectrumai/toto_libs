@@ -31,7 +31,7 @@ from ..families import family as family_for
 from ..families import operation as operation_for
 from ..limits import Limits
 from . import images, runners, slices, staging
-from .drivers import LABEL_EXEC, LABEL_GEAR, docker as docker_driver
+from .drivers import LABEL_CAPSULE, LABEL_EXEC, docker as docker_driver
 
 log = logging.getLogger("toto.anastasia.executor.gears")
 
@@ -88,8 +88,19 @@ class GearManager:
 
     # -- paths -------------------------------------------------------------
 
+    #: The one place the on-disk segment is written. `reconcile.py` repeated
+    #: the literal until 2026-09-10, so renaming it here left the sweeper
+    #: looking in a directory nothing writes to — it reported every capsule's
+    #: staging as abandoned. A path spelled in two files is a path that will
+    #: disagree with itself.
+    CAPSULES_DIRNAME = "capsules"
+
+    @property
+    def capsules_root(self) -> str:
+        return os.path.join(self.staging_root, self.CAPSULES_DIRNAME)
+
     def gear_dir(self, gear) -> str:
-        return os.path.join(self.staging_root, "gears", str(gear))
+        return os.path.join(self.capsules_root, str(gear))
 
     def exec_dir(self, gear, execution) -> str:
         return os.path.join(self.gear_dir(gear), "exec", str(execution))
@@ -217,7 +228,7 @@ class GearManager:
 
         deadline = int(time.time()) + int(timeout)
         labels = {
-            LABEL_GEAR: str(gear),
+            LABEL_CAPSULE: str(gear),
             LABEL_EXEC: str(execution),
             LABEL_OPERATION: op.name,
             LABEL_DEADLINE: str(deadline),

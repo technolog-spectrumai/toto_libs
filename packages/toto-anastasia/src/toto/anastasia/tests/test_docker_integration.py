@@ -161,7 +161,7 @@ class RunnerConfinementTests(SimpleTestCase):
         container = self.docker.create(
             family=self.family, limits=limits, name=name, cgroup_parent=None,
             input_dir=input_dir, output_dir=output_dir, env=env,
-            labels={containers.LABEL_GEAR: "it", containers.LABEL_EXEC: name},
+            labels={containers.LABEL_CAPSULE: "it", containers.LABEL_EXEC: name},
             argv=argv, network=network)
         self.addCleanup(self.docker.remove, container)
         self.docker.start(container)

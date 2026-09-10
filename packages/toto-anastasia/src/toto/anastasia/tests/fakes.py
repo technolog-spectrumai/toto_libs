@@ -107,11 +107,15 @@ class FakeDocker:
         out = []
         for row in self.containers.values():
             labels = row["labels"]
-            if gear is not None and labels.get(drivers.LABEL_GEAR) != gear:
+            found = (labels.get(drivers.LABEL_CAPSULE)
+                     or labels.get(drivers.LABEL_CAPSULE_LEGACY, ""))
+            if gear is not None and found != gear:
                 continue
             out.append({
                 "id": row["id"], "name": row["name"], "state": row["state"],
-                "gear": labels.get(drivers.LABEL_GEAR, ""),
+                # Mirrors the real driver: a container labelled before the
+                # rename is still owned, not orphaned.
+                "gear": found,
                 "execution": labels.get(drivers.LABEL_EXEC, ""),
             })
         return out

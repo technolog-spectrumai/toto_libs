@@ -138,7 +138,7 @@ def sweep_staging(manager: GearManager, known_gears=None,
     live = {(r["gear"], r["execution"]) for r in manager.docker.list_managed()}
     removed_gears = removed_execs = 0
 
-    root = os.path.join(manager.staging_root, "gears")
+    root = manager.capsules_root
     if not os.path.isdir(root):
         return {"gears": 0, "executions": 0}
 

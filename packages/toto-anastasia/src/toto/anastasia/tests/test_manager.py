@@ -285,7 +285,7 @@ class ReconcileTests(ManagerTestCase):
         self.mount()
         self.start()
         for row in self.docker.containers.values():
-            row["labels"][containers.LABEL_GEAR] = ""
+            row["labels"][containers.LABEL_CAPSULE] = ""
         self.assertEqual(reconcile.destroy_orphan_runners(self.manager), 1)
 
     def test_a_restarted_manager_adopts_what_it_finds(self):

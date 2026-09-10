@@ -354,7 +354,7 @@ class RunnerIsolationTests(TransactionTestCase):
             family=PDF, limits=Limits(1000, 512, 256, 64), name=name,
             cgroup_parent=None, input_dir=input_dir, output_dir=output_dir,
             env={"ANASTASIA_OPERATION": "probe"},
-            labels={containers.LABEL_GEAR: self.gear,
+            labels={containers.LABEL_CAPSULE: self.gear,
                     containers.LABEL_EXEC: name},
             argv=argv)
         self.addCleanup(client.remove, container)

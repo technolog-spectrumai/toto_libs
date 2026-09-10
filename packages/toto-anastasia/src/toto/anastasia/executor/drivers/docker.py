@@ -32,8 +32,9 @@ import time
 
 from ...families import Family
 from ...limits import Limits
-from . import (FORBIDDEN_ENV_PREFIXES, LABEL_EXEC, LABEL_GEAR,  # noqa: F401
-               LABEL_MANAGED, LABEL_OWNER, RUNNER_UID, Driver, DriverError)
+from . import (FORBIDDEN_ENV_PREFIXES, LABEL_CAPSULE,  # noqa: F401
+               LABEL_CAPSULE_LEGACY, LABEL_EXEC, LABEL_MANAGED, LABEL_OWNER,
+               RUNNER_UID, Driver, DriverError)
 
 log = logging.getLogger("toto.anastasia.executor.drivers.docker")
 
@@ -335,7 +336,10 @@ class DockerClient(Driver):
                   if self.owner else []),
                 "--format", "{{json .}}"]
         if gear is not None:
-            args += ["--filter", f"label={LABEL_GEAR}={gear}"]
+            # Only the new key. A legacy container cannot be selected by it,
+            # which is why `list_managed()` without a capsule filter is what
+            # reconcile uses to find and adopt them.
+            args += ["--filter", f"label={LABEL_CAPSULE}={gear}"]
 
         result = self._run(args, check=False)
         out = []
@@ -352,7 +356,11 @@ class DockerClient(Driver):
                 "id": row.get("ID") or row.get("Id") or "",
                 "name": row.get("Names") or "",
                 "state": (row.get("State") or "").lower(),
-                "gear": labels.get(LABEL_GEAR, ""),
+                # READ BOTH. A runner started before the rename carries only
+                # the old key, and reporting it as capsule-less would make
+                # reconcile destroy it as unowned.
+                "gear": (labels.get(LABEL_CAPSULE)
+                         or labels.get(LABEL_CAPSULE_LEGACY, "")),
                 "execution": labels.get(LABEL_EXEC, ""),
             })
         return out

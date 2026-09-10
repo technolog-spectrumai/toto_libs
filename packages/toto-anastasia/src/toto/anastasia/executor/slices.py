@@ -43,15 +43,16 @@ DBUS_SOCKET = "/run/dbus/system_bus_socket"
 def slice_name(gear_uuid) -> str:
     """systemd nests by DASH, so this name IS its placement under the pool."""
     hexid = getattr(gear_uuid, "hex", None) or str(gear_uuid).replace("-", "")
-    return f"anastasia-gear-{hexid}.slice"
+    return f"anastasia-capsule-{hexid}.slice"
 
 
 def slice_cgroup_path(unit: str) -> str:
     """The cgroup directory systemd will give a slice unit.
 
-    systemd expands EVERY dash into a level, so ``anastasia-gear-abc.slice``
-    does not live at ``anastasia.slice/anastasia-gear-abc.slice`` — it lives at
-    ``anastasia.slice/anastasia-gear.slice/anastasia-gear-abc.slice``, with an
+    systemd expands EVERY dash into a level, so ``anastasia-capsule-abc.slice``
+    does not live at ``anastasia.slice/anastasia-capsule-abc.slice`` — it lives
+    at ``anastasia.slice/anastasia-capsule.slice/anastasia-capsule-abc.slice``,
+    with an
     intermediate slice systemd creates on the way. Guessing the shallow path
     finds nothing, reads no usage, and reports a healthy Gear as unmeasurable.
 
