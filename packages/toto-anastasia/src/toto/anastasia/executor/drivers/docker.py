@@ -85,6 +85,23 @@ class DockerClient(Driver):
     def image_exists(self, image: str) -> bool:
         return self._run(["image", "inspect", image], check=False).returncode == 0
 
+    def image_digest(self, image: str) -> str:
+        """The image's content digest, or "" if it has none.
+
+        `RepoDigests` is empty for an image built locally and never pushed,
+        which is every runner image on a host that builds its own. That is why
+        the digest check below TREATS AN ABSENT DIGEST AS UNPINNED rather than
+        as a mismatch: refusing a locally-built image would break the ordinary
+        deployment to guard against a supply-chain attack the deployment is not
+        exposed to.
+        """
+        info = self.inspect(image) or {}
+        digests = info.get("RepoDigests") or []
+        for entry in digests:
+            if "@" in entry:
+                return entry.split("@", 1)[1]
+        return str(info.get("Id") or "")
+
     # -- creating a runner ------------------------------------------------
 
     def build_run_args(self, *, family: Family, limits: Limits, name: str,

@@ -30,7 +30,7 @@ import uuid as uuid_module
 from ..families import family as family_for
 from ..families import operation as operation_for
 from ..limits import Limits
-from . import runners, slices, staging
+from . import images, runners, slices, staging
 from .drivers import LABEL_EXEC, LABEL_GEAR, docker as docker_driver
 
 log = logging.getLogger("toto.anastasia.executor.gears")
@@ -172,6 +172,13 @@ class GearManager:
             raise GearError(
                 f"the {fam.image} runner image is not present on this host; "
                 "build the anastasia images and try again")
+        # BEFORE staging anything. A mismatch costs a refusal rather than a tar
+        # unpacked into a container that is about to be destroyed — and, more
+        # to the point, than a job run inside an image nobody recognises.
+        try:
+            images.verify(self.docker, fam.key, fam.image)
+        except images.ImageMismatch as exc:
+            raise GearError(str(exc)) from exc
 
         work = self.exec_dir(gear, execution)
         input_dir = os.path.join(work, "in")

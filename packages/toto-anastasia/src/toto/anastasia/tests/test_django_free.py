@@ -46,6 +46,7 @@ DJANGO_FREE = (
     "toto.anastasia.executor.pressure",
     "toto.anastasia.executor.control",
     "toto.anastasia.executor.telemetry",
+    "toto.anastasia.executor.images",
     "toto.anastasia.executor.service",
     "toto.anastasia.executor.__main__",
 )
