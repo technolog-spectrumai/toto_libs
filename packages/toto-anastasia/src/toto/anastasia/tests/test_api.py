@@ -465,6 +465,38 @@ class ApiRefusalShapeTests(ApiTestCase):
 
 
 
+class MeTests(ApiTestCase):
+    """The first call a client makes."""
+
+    def test_it_names_the_person_and_the_token(self):
+        body = self.call("get", "/api/v1/me").json()
+        self.assertEqual(body["username"], self.user.get_username())
+        self.assertEqual(body["token"]["label"], "zinnia on the laptop")
+
+    def test_it_returns_nothing_secret(self):
+        """`hint` is six characters; the SELECTOR is half the credential and is
+        absent even though the server stores it in the clear."""
+        selector = self.raw.split(".")[1]
+        verifier = self.raw.split(".")[2]
+        text = self.call("get", "/api/v1/me").content.decode()
+        self.assertNotIn(selector, text)
+        self.assertNotIn(verifier, text)
+        self.assertNotIn(self.raw, text)
+
+    def test_it_proves_the_token_in_one_round_trip(self):
+        """A dead token must fail HERE, so a connect screen never shows a
+        signed-in state it would lose on the next call."""
+        self.token_row.revoke()
+        self.assertEqual(self.call("get", "/api/v1/me").status_code, 401)
+
+    def test_it_needs_a_token(self):
+        self.assertEqual(self.client.get("/api/v1/me").status_code, 401)
+
+    def test_it_reports_staffness_so_a_client_need_not_infer_it(self):
+        body = self.call("get", "/api/v1/me").json()
+        self.assertIs(body["is_staff"], self.user.is_staff)
+
+
 class TokenDeskTests(AnastasiaTestCase):
     """HOW A PERSON GETS A TOKEN, which nothing answered until 2026-09-10.
 

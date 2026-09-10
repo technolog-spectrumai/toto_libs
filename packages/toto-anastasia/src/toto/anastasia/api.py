@@ -103,6 +103,40 @@ def _body(request) -> dict:
 
 @require_GET
 @token_required
+def me(request, owner):
+    """Who this token is, and which token it is.
+
+    THE FIRST CALL A CLIENT MAKES. It proves the credential works and names it
+    in one round trip, which is what a "connect" screen needs — and `/pool`,
+    the obvious alternative, answers 200 for a valid token without saying
+    whose it is.
+
+    `label` is the string the person typed when they minted it ("Laptop —
+    Python editor"). Showing it back is what makes a client's connection
+    screen legible: two machines signed into the same account are otherwise
+    indistinguishable, and "revoke the one that says laptop" needs the label
+    to have travelled.
+
+    NOTHING SECRET IS RETURNED. `hint` is the last six characters, which is
+    what the desk shows too — enough to match a row to a config file, not
+    enough to reconstruct anything. The selector is deliberately absent even
+    though the server stores it in the clear: it is half the credential.
+    """
+    token = request.capsule_token
+    return JsonResponse({
+        "username": owner.get_username(),
+        "is_staff": bool(owner.is_staff),
+        "token": {
+            "label": token.label,
+            "hint": token.hint,
+            "created_at": token.created_at,
+            "expires_at": token.expires_at,
+        },
+    })
+
+
+@require_GET
+@token_required
 def pool(request, owner):
     return JsonResponse(services.pool_report())
 

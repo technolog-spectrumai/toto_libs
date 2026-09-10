@@ -16,6 +16,9 @@ from . import api
 app_name = "anastasia_api"
 
 urlpatterns = [
+    # FIRST, because it is the first call a client makes: it proves the token
+    # and names it in one round trip.
+    path("me", api.me, name="me"),
     path("pool", api.pool, name="pool"),
     path("capsules", api.capsule_list, name="capsule_list"),
     path("capsules/new", api.capsule_create, name="capsule_create"),
