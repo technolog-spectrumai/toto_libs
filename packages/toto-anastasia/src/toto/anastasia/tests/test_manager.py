@@ -7,6 +7,7 @@ import os
 import shutil
 import tarfile
 import tempfile
+from unittest import mock
 import time
 import uuid
 
@@ -33,6 +34,22 @@ def tar_of(files: dict) -> bytes:
 class ManagerTestCase(SimpleTestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp(prefix="anastasia-mgr-test-")
+        # PIN THE IMAGE LOCK TO A PATH THIS TEST OWNS.
+        #
+        # `images.load()` falls back to /etc/anastasia/images.lock.json, which
+        # is a REAL FILE on any host with a deployment installed. A fake driver
+        # reports fake digests, so they can never match a real lock, and four
+        # tests here failed with a 409 the moment this machine had one — while
+        # passing on any box that had never deployed. A suite whose result
+        # depends on whether the host is a deployment target is not a suite.
+        #
+        # The path deliberately does not exist: an absent lock means UNPINNED,
+        # which is the documented, allowed state and the one these tests want.
+        _lock = mock.patch.dict(
+            os.environ,
+            {"ANASTASIA_IMAGE_LOCK": os.path.join(self.root, "images.lock.json")})
+        _lock.start()
+        self.addCleanup(_lock.stop)
         self.docker = FakeDocker()
         self.slices = CountingSliceDriver()
         self.manager = gears.GearManager(
