@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from toto.anastasia import choices, services
 from toto.anastasia.limits import Limits
-from toto.anastasia.models import ComputeLease, GearEvent, GearRuntime
+from toto.anastasia.models import ComputeLease, CapsuleEvent, CapsuleRuntime
 
 from .base import HALF, POOL, SMALL, AnastasiaTestCase
 
@@ -127,7 +127,7 @@ class ReserveTests(AnastasiaTestCase):
 
     def test_reserving_writes_history(self):
         lease = services.reserve(owner=self.user, name="thesis", limits=SMALL)
-        event = lease.events.get(kind=GearEvent.RESERVE)
+        event = lease.events.get(kind=CapsuleEvent.RESERVE)
         self.assertTrue(event.accepted)
         self.assertEqual(event.detail["ram_mb"], SMALL.ram_mb)
 

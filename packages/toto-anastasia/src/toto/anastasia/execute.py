@@ -25,7 +25,7 @@ from django.utils import timezone
 
 from . import choices, families, services
 from .limits import Limits, LimitsError
-from .models import ComputeLease, Execution, GearEvent
+from .models import ComputeLease, Execution, CapsuleEvent
 from .runtime import RuntimeUnavailable, get_backend
 
 log = logging.getLogger("toto.anastasia.execute")
@@ -257,7 +257,7 @@ def _submit(*, lease: ComputeLease, operation: str, params: dict | None = None,
     execution.status = choices.RUNNING
     execution.started_at = timezone.now()
     execution.save(update_fields=["status", "started_at"])
-    services.record(lease=lease, kind=GearEvent.EXECUTE,
+    services.record(lease=lease, kind=CapsuleEvent.EXECUTE,
                     actor=requested_by, operation=op.name,
                     execution=str(execution.uuid))
     # The TIER comes off the Gear's runtime row, which recorded what the

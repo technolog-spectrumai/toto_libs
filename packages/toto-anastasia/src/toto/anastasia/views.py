@@ -33,7 +33,7 @@ from toto.ui import PageProcessor
 
 from . import choices, conf, families, services
 from .limits import Limits, LimitsError
-from .models import ComputeLease, Execution, GearRuntime
+from .models import ComputeLease, Execution, CapsuleRuntime
 from .runtime import RuntimeUnavailable, get_backend
 
 log = logging.getLogger("toto.anastasia.views")
@@ -263,7 +263,7 @@ def operator(request):
         "health": health,
         "unreachable": unreachable,
         "live": live,
-        "mounted": (GearRuntime.objects.filter(state=choices.READY)
+        "mounted": (CapsuleRuntime.objects.filter(state=choices.READY)
                     .select_related("lease", "lease__owner")
                     .order_by("-mounted_at")[:100]),
     }, request))

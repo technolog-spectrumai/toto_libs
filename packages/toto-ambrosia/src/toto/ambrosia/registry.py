@@ -60,7 +60,7 @@ class WorkspaceApp:
     # container's output area. May return "home_files" ({name: bytes}), which
     # the base packs, hashes and stores.
     #
-    # `restore(workspace, manifest=, home_files=, user=, gear_uuid=)` -> None.
+    # `restore(workspace, manifest=, home_files=, user=, capsule_uuid=)` -> None.
     snapshot: Optional[Callable] = None
     restore: Optional[Callable] = None
 

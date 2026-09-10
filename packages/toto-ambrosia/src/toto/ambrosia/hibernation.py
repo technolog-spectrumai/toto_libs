@@ -281,7 +281,7 @@ def hibernate(workspace, *, user=None, release_lease: bool = True) -> dict:
 # Up                                                                           #
 # --------------------------------------------------------------------------- #
 
-def rehydrate(workspace, *, user=None, gear_uuid=None) -> dict:
+def rehydrate(workspace, *, user=None, capsule_uuid=None) -> dict:
     """Bring a hibernated workspace back, or refuse and say why.
 
     The refusal that matters is capacity: hibernating gave the reservation back
@@ -310,7 +310,7 @@ def rehydrate(workspace, *, user=None, gear_uuid=None) -> dict:
     if app is not None and app.restore is not None:
         try:
             app.restore(workspace, manifest=manifest, home_files=home_files,
-                        user=user, gear_uuid=gear_uuid)
+                        user=user, capsule_uuid=capsule_uuid)
         except Exception as exc:  # noqa: BLE001
             log.exception("ambrosia: restore failed for %s", workspace.slug)
             raise HibernationError(str(exc)) from exc

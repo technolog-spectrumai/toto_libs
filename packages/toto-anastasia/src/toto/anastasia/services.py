@@ -26,7 +26,7 @@ from django.utils import timezone
 
 from . import choices, conf
 from .limits import Limits, LimitsError, validate_reservation
-from .models import ComputeLease, Execution, GearEvent, GearRuntime, PoolGuard
+from .models import ComputeLease, Execution, CapsuleEvent, CapsuleRuntime, PoolGuard
 from .runtime import RuntimeUnavailable, get_backend
 
 log = logging.getLogger("toto.anastasia.services")
@@ -113,8 +113,8 @@ def gear_available(lease, now=None) -> Limits:
 # --------------------------------------------------------------------------- #
 
 def record(*, lease, kind, accepted=True, code="", actor=None,
-           from_state="", to_state="", **detail) -> GearEvent:
-    return GearEvent.objects.create(
+           from_state="", to_state="", **detail) -> CapsuleEvent:
+    return CapsuleEvent.objects.create(
         lease=lease, kind=kind, accepted=accepted, refusal_code=code,
         actor=actor if getattr(actor, "pk", None) else None,
         from_state=from_state, to_state=to_state, detail=detail or {})
@@ -177,8 +177,8 @@ def reserve(*, owner, name: str, limits: Limits, days: int | None = None,
             cpu_millicores=limits.cpu_millicores, ram_mb=limits.ram_mb,
             scratch_mb=limits.scratch_mb, pids=limits.pids,
             permanent_home=bool(permanent_home))
-        GearRuntime.objects.create(lease=lease)
-        record(lease=lease, kind=GearEvent.RESERVE, actor=actor or owner,
+        CapsuleRuntime.objects.create(lease=lease)
+        record(lease=lease, kind=CapsuleEvent.RESERVE, actor=actor or owner,
                to_state=choices.UNMOUNTED, **limits.as_dict())
         return lease
 
@@ -212,7 +212,7 @@ def release(*, lease: ComputeLease, reason: str = "", actor=None) -> ComputeLeas
     if updated:
         lease.released_at = now
         lease.release_reason = (reason or "")[:200]
-        record(lease=lease, kind=GearEvent.RELEASE, actor=actor,
+        record(lease=lease, kind=CapsuleEvent.RELEASE, actor=actor,
                to_state=choices.UNMOUNTED, reason=reason)
     return lease
 
@@ -223,7 +223,7 @@ def expire_due(now=None) -> int:
     count = 0
     for lease in list(ComputeLease.objects.due_to_expire(now)):
         release(lease=lease, reason=f"reservation expired {lease.expires_at:%Y-%m-%d %H:%M}")
-        record(lease=lease, kind=GearEvent.EXPIRE, to_state=choices.UNMOUNTED)
+        record(lease=lease, kind=CapsuleEvent.EXPIRE, to_state=choices.UNMOUNTED)
         count += 1
     return count
 
@@ -232,12 +232,12 @@ def expire_due(now=None) -> int:
 # Mounting                                                                     #
 # --------------------------------------------------------------------------- #
 
-def runtime_for(lease: ComputeLease) -> GearRuntime:
-    runtime, _ = GearRuntime.objects.get_or_create(lease=lease)
+def runtime_for(lease: ComputeLease) -> CapsuleRuntime:
+    runtime, _ = CapsuleRuntime.objects.get_or_create(lease=lease)
     return runtime
 
 
-def mount(*, lease: ComputeLease, actor=None) -> GearRuntime:
+def mount(*, lease: ComputeLease, actor=None) -> CapsuleRuntime:
     """Bring the Gear up. Refuses on a closed lease; idempotent when mounted."""
     if not lease.is_open():
         raise CapacityError(
@@ -252,7 +252,7 @@ def mount(*, lease: ComputeLease, actor=None) -> GearRuntime:
     try:
         result = backend.mount(lease)
     except RuntimeUnavailable as exc:
-        record(lease=lease, kind=GearEvent.MOUNT, accepted=False,
+        record(lease=lease, kind=CapsuleEvent.MOUNT, accepted=False,
                code=RUNTIME_UNAVAILABLE, actor=actor,
                from_state=runtime.state, reason=str(exc))
         raise CapacityError(str(exc), RUNTIME_UNAVAILABLE) from exc
@@ -272,12 +272,12 @@ def mount(*, lease: ComputeLease, actor=None) -> GearRuntime:
     runtime.save(update_fields=[
         "state", "state_at", "mounted_at", "unmounted_at", "detail",
         "manager_generation", "tier"])
-    record(lease=lease, kind=GearEvent.MOUNT, actor=actor,
+    record(lease=lease, kind=CapsuleEvent.MOUNT, actor=actor,
            from_state=previous, to_state=choices.READY)
     return runtime
 
 
-def unmount(*, lease: ComputeLease, actor=None, reason: str = "") -> GearRuntime:
+def unmount(*, lease: ComputeLease, actor=None, reason: str = "") -> CapsuleRuntime:
     """Take the Gear down. Idempotent, and never raises on an absent runtime.
 
     Live executions are marked KILLED here rather than left RUNNING: their
@@ -307,7 +307,7 @@ def unmount(*, lease: ComputeLease, actor=None, reason: str = "") -> GearRuntime
         runtime.save(update_fields=[
             "state", "state_at", "unmounted_at", "detail", "last_sample",
             "sampled_at"])
-        record(lease=lease, kind=GearEvent.UNMOUNT, actor=actor,
+        record(lease=lease, kind=CapsuleEvent.UNMOUNT, actor=actor,
                from_state=previous, to_state=choices.UNMOUNTED,
                reason=reason, executions_killed=killed,
                runners_destroyed=result.get("runners_destroyed"))
@@ -318,7 +318,7 @@ def unmount(*, lease: ComputeLease, actor=None, reason: str = "") -> GearRuntime
 # Deriving what a Gear is doing                                                #
 # --------------------------------------------------------------------------- #
 
-def derive_state(runtime: GearRuntime, now=None) -> str:
+def derive_state(runtime: CapsuleRuntime, now=None) -> str:
     """What the Gear is, from what we know. A pure function of the row.
 
     Called by the status page as well as by the reconciler, so a stack whose
@@ -345,7 +345,7 @@ def derive_state(runtime: GearRuntime, now=None) -> str:
     return choices.READY
 
 
-def refresh_runtime(lease: ComputeLease) -> GearRuntime:
+def refresh_runtime(lease: ComputeLease) -> CapsuleRuntime:
     """Ask the manager what this Gear is doing, and record the answer.
 
     Never raises. A manager that does not answer leaves the PREVIOUS sample in
@@ -385,7 +385,7 @@ def refresh_runtime(lease: ComputeLease) -> GearRuntime:
             "The compute manager restarted, so this Gear's runtime is gone. "
             "Your reservation is intact — mount it again.")
         fields += ["state", "state_at", "detail"]
-        record(lease=lease, kind=GearEvent.RECONCILE,
+        record(lease=lease, kind=CapsuleEvent.RECONCILE,
                from_state=choices.READY, to_state=choices.DEAD,
                reason="manager generation changed",
                was=runtime.manager_generation, now=generation)

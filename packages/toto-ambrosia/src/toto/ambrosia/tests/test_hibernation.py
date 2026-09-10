@@ -66,7 +66,7 @@ class HibernationTestCase(AmbrosiaTestCase):
         with mock.patch("toto.anastasia.jobs.start_runtime") as start:
             start.return_value = {"ready": {"ip": "10.0.0.9"},
                                   "execution": execution}
-            kernel.start(self.ws, gear_uuid=lease.uuid, user=self.owner)
+            kernel.start(self.ws, capsule_uuid=lease.uuid, user=self.owner)
         return execution
 
 
@@ -227,7 +227,7 @@ class HybridHibernationTests(HibernationTestCase):
             start.return_value = {"ready": {"ip": "10.0.0.9"},
                                   "execution": mock.Mock(uuid=lease.uuid)}
             hibernation.rehydrate(self.ws, user=self.owner)
-            kernel.start(self.ws, gear_uuid=lease.uuid, user=self.owner)
+            kernel.start(self.ws, capsule_uuid=lease.uuid, user=self.owner)
         _args, kwargs = start.call_args
         self.assertIn("home/.gitconfig", kwargs["inputs"])
         self.assertTrue(kwargs["params"]["persistent_home"])

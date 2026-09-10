@@ -41,7 +41,7 @@ from toto.anastasia.limits import Limits
 from toto.anastasia.executor import gears, protocol, service
 from toto.anastasia.executor import drivers
 from toto.anastasia.executor.drivers import docker as containers
-from toto.anastasia.models import ComputeLease, Execution, GearEvent
+from toto.anastasia.models import ComputeLease, Execution, CapsuleEvent
 
 PROBE_IMAGE = os.environ.get("ANASTASIA_TEST_IMAGE", "anastasia-pdf:latest")
 
@@ -164,7 +164,7 @@ class DestructiveIsolationTests(TransactionTestCase):
         self.assertEqual(second["execution"].status, choices.SUCCESS)
 
         executions_before = Execution.objects.count()
-        events_before = GearEvent.objects.count()
+        events_before = CapsuleEvent.objects.count()
         self.assertGreaterEqual(executions_before, 2)
 
         # A runtime that is STILL RUNNING when the axe falls — the interesting
@@ -202,7 +202,7 @@ class DestructiveIsolationTests(TransactionTestCase):
 
         # The history survived, including what ran.
         self.assertEqual(Execution.objects.count(), executions_before + 1)
-        self.assertGreaterEqual(GearEvent.objects.count(), events_before)
+        self.assertGreaterEqual(CapsuleEvent.objects.count(), events_before)
         for execution in Execution.objects.filter(status=choices.SUCCESS):
             self.assertEqual(execution.exit_code, 0)
 

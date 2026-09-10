@@ -9,7 +9,7 @@ from django.test import override_settings
 from django.utils import timezone
 
 from toto.anastasia import choices, execute, services
-from toto.anastasia.models import ComputeLease, GearEvent
+from toto.anastasia.models import ComputeLease, CapsuleEvent
 
 from .base import RUNNABLE, SMALL, AnastasiaTestCase, FakeRuntimeBackend
 
@@ -57,7 +57,7 @@ class MountTests(AnastasiaTestCase):
         services.mount(lease=self.lease)
         services.unmount(lease=self.lease)
         services.unmount(lease=self.lease)
-        unmount_events = self.lease.events.filter(kind=GearEvent.UNMOUNT)
+        unmount_events = self.lease.events.filter(kind=CapsuleEvent.UNMOUNT)
         self.assertEqual(unmount_events.count(), 1)
 
     def test_unmounting_an_unmounted_gear_is_not_an_error(self):
@@ -85,7 +85,7 @@ class MountTests(AnastasiaTestCase):
             services.mount(lease=self.lease, actor=self.user)
         self.assertEqual(caught.exception.refusal_code,
                          services.RUNTIME_UNAVAILABLE)
-        event = self.lease.events.filter(kind=GearEvent.MOUNT).first()
+        event = self.lease.events.filter(kind=CapsuleEvent.MOUNT).first()
         self.assertFalse(event.accepted)
         self.assertEqual(event.refusal_code, services.RUNTIME_UNAVAILABLE)
         self.assertEqual(services.runtime_for(self.lease).state,

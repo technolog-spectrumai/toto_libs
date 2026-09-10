@@ -7,7 +7,7 @@ a state the arithmetic can recover from by itself.
 
 from django.contrib import admin
 
-from .models import ComputeLease, Execution, GearEvent, GearRuntime, PoolGuard
+from .models import ComputeLease, Execution, CapsuleEvent, CapsuleRuntime, PoolGuard
 
 
 @admin.register(ComputeLease)
@@ -22,8 +22,8 @@ class ComputeLeaseAdmin(admin.ModelAdmin):
         return False
 
 
-@admin.register(GearRuntime)
-class GearRuntimeAdmin(admin.ModelAdmin):
+@admin.register(CapsuleRuntime)
+class CapsuleRuntimeAdmin(admin.ModelAdmin):
     list_display = ("lease", "state", "state_at", "sampled_at",
                     "manager_generation")
     list_filter = ("state",)
@@ -44,8 +44,8 @@ class ExecutionAdmin(admin.ModelAdmin):
         return False
 
 
-@admin.register(GearEvent)
-class GearEventAdmin(admin.ModelAdmin):
+@admin.register(CapsuleEvent)
+class CapsuleEventAdmin(admin.ModelAdmin):
     list_display = ("created_at", "lease", "kind", "accepted", "refusal_code")
     list_filter = ("kind", "accepted")
 

@@ -5,7 +5,7 @@ Seven tables, and the reason each exists:
 - ``ComputeLease`` — capacity a user consciously reserved. It is deducted from
   the pool **while idle**, because that is what a reservation means; a booking
   that only counted while busy would be a queue, not a reservation.
-- ``GearRuntime`` — the mounted, alive half. Separate from the lease because
+- ``CapsuleRuntime`` — the mounted, alive half. Separate from the lease because
   mounting is a separate act: a user may hold capacity unmounted, and
   unmounting must not surrender the booking.
 - ``Execution`` — one heavy job. Points at the caller's row by
@@ -13,7 +13,7 @@ Seven tables, and the reason each exists:
   to ``aralia.AraliaRun`` would make aralia a hard requirement of anastasia
   importing at all (``fields.E300`` on a host that installs one and not the
   other), and the same table has to serve texlab, ocr and dracena.
-- ``GearEvent`` — the append-only history, refusals included.
+- ``CapsuleEvent`` — the append-only history, refusals included.
 - ``PoolGuard`` — one row, locked to serialise admission (see its docstring).
 - ``AnastasiaUsageEvent`` / ``AnastasiaQuotaPolicy`` — the concrete pair every
   metered app must declare, because ``toto.quota`` owns no tables of its own.
@@ -175,7 +175,7 @@ class PoolGuard(models.Model):
         return "anastasia pool guard"
 
 
-class GearRuntime(models.Model):
+class CapsuleRuntime(models.Model):
     """The mounted half: alive, bounded, and watched.
 
     One row per lease, reused across mount/unmount cycles rather than created
@@ -226,7 +226,7 @@ class GearRuntime(models.Model):
     class Meta:
         verbose_name = "gear runtime"
         indexes = [
-            models.Index(fields=["state"], name="anastasia_gear_state_idx"),
+            models.Index(fields=["state"], name="anastasia_capsule_state_idx"),
         ]
 
     def __str__(self):
@@ -333,7 +333,7 @@ class Execution(models.Model):
         return self.status in choices.FINISHED
 
 
-class GearEvent(models.Model):
+class CapsuleEvent(models.Model):
     """One line of a Gear's history. Append-only, refusals included.
 
     A refused action is recorded rather than dropped: a history that only
