@@ -277,6 +277,18 @@ class SamplesTests(DeskTestCase):
 
 
 class PageTests(DeskTestCase):
+    def test_each_capsule_card_offers_its_history(self):
+        """The 9.6 charts. Closed by default and fetched on open, so the page
+        carries the series URL and the section, not the data."""
+        lease = services.reserve(owner=self.user, name="lab", limits=SMALL)
+        response = self.client.get(reverse("anastasia:index"))
+        self.assertContains(response, "History")
+        self.assertContains(response, reverse("anastasia:samples",
+                                              args=[lease.uuid]))
+        # A gap is a gap: the one Chart.js option that makes NULL honest is
+        # pinned here because it is the easiest thing in the file to lose.
+        self.assertContains(response, "spanGaps: false")
+
     def test_the_page_renders_with_no_capsules(self):
         response = self.client.get(reverse("anastasia:index"))
         self.assertEqual(response.status_code, 200)
