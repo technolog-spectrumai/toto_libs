@@ -416,3 +416,9 @@ class AnastasiaQuotaPolicy(AbstractQuotaPolicy):
     class Meta(AbstractQuotaPolicy.Meta):
         verbose_name = "Compute Capsule quota policy"
         verbose_name_plural = "Compute Capsule quota policies"
+
+
+# The API token lives in its own module because it is about ACCESS, not about
+# compute — but Django only discovers models imported from `models`, so the
+# import is here and deliberate rather than accidental.
+from .tokens import CapsuleToken  # noqa: E402,F401  (re-export for migrations)
