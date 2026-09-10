@@ -23,6 +23,25 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 
+class RunRefused(Exception):
+    """A run a person can do something about, phrased for them.
+
+    Carries the same three things every refusal on this platform carries: the
+    sentence, a machine-readable `code` a client branches on, and the HTTP
+    status that says which KIND of refusal it is (403 you may not, 409 not in
+    this state, 503 not right now).
+
+    Defined in the registry rather than in either language app because the
+    base has to catch it, and the base may not import them.
+    """
+
+    def __init__(self, message: str, *, code: str = "", status: int = 409):
+        super().__init__(message)
+        self.message = message
+        self.code = code
+        self.status = status
+
+
 def _no_settings() -> tuple:
     return ()
 
@@ -63,6 +82,26 @@ class WorkspaceApp:
     # `restore(workspace, manifest=, home_files=, user=, capsule_uuid=)` -> None.
     snapshot: Optional[Callable] = None
     restore: Optional[Callable] = None
+    # THE ONE VERB a workspace of this kind has: run the Python, compile the
+    # LaTeX. A hook rather than two endpoints, for the reason every other line
+    # in this dataclass is a hook — the base has no idea what running means
+    # here, and a client should not have to know either. It asks a workspace
+    # to do its thing and the registry decides what that is.
+    #
+    # `run(workspace, *, user, payload: dict) -> dict`, raising
+    # `RunRefused` for anything a person can act on. `payload` is the client's
+    # JSON body, so a language app can take what it needs from it (Python
+    # takes `code`; LaTeX takes an optional `capsule`) without the base
+    # growing a parameter per language.
+    #
+    # IT MUST DO THE METERING. The page views charge for a run, and an API
+    # that reached the same compute without charging would be a paywall with
+    # a second door. That is why the implementations are extracted from those
+    # views rather than written beside them.
+    #
+    # None where a lab offers no run verb at all; the endpoint then 404s,
+    # which is the honest answer for "this workspace cannot do that".
+    run: Optional[Callable] = None
 
 
 _BY_NAMESPACE: dict[str, WorkspaceApp] = {}
