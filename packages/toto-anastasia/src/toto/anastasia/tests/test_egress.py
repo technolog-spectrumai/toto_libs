@@ -19,13 +19,14 @@ from toto.anastasia.executor import egress, netfilter
 from toto.anastasia.families import PDF
 from toto.anastasia.limits import Limits
 
+BRIDGE = "anastasia-egr0"
 SUBNET = "10.207.0.0/24"
 PROXY_IP = "10.207.0.2"
 PROXY_PORT = 4750
 
 
 def policy(**over) -> egress.Policy:
-    base = {"network": "testy_egress_proxy", "subnet": SUBNET,
+    base = {"network": "testy_egress_proxy", "bridge": BRIDGE, "subnet": SUBNET,
             "proxy_ip": PROXY_IP, "proxy_port": PROXY_PORT}
     base.update(over)
     return egress.Policy(**base)
@@ -40,6 +41,7 @@ class PolicyTests(SimpleTestCase):
     def test_a_fully_stated_policy_is_configured(self):
         p = egress.from_environ({
             "ANASTASIA_EGRESS_NETWORK": "testy_egress_proxy",
+            "ANASTASIA_EGRESS_BRIDGE": BRIDGE,
             "ANASTASIA_EGRESS_SUBNET": SUBNET,
             "ANASTASIA_EGRESS_PROXY_IP": PROXY_IP,
             "ANASTASIA_EGRESS_PROXY_PORT": str(PROXY_PORT),
@@ -52,9 +54,10 @@ class PolicyTests(SimpleTestCase):
         filter for an empty range and then hand out a NIC — the one
         combination this layer exists to prevent."""
         for missing in ("ANASTASIA_EGRESS_SUBNET", "ANASTASIA_EGRESS_PROXY_IP",
-                        "ANASTASIA_EGRESS_PROXY_PORT"):
+                        "ANASTASIA_EGRESS_PROXY_PORT", "ANASTASIA_EGRESS_BRIDGE"):
             env = {
                 "ANASTASIA_EGRESS_NETWORK": "testy_egress_proxy",
+                "ANASTASIA_EGRESS_BRIDGE": BRIDGE,
                 "ANASTASIA_EGRESS_SUBNET": SUBNET,
                 "ANASTASIA_EGRESS_PROXY_IP": PROXY_IP,
                 "ANASTASIA_EGRESS_PROXY_PORT": str(PROXY_PORT),
@@ -67,7 +70,8 @@ class PolicyTests(SimpleTestCase):
 
     def test_an_unparseable_port_is_absent_not_fatal(self):
         p = egress.from_environ({
-            "ANASTASIA_EGRESS_NETWORK": "n", "ANASTASIA_EGRESS_SUBNET": SUBNET,
+            "ANASTASIA_EGRESS_NETWORK": "n", "ANASTASIA_EGRESS_BRIDGE": BRIDGE,
+            "ANASTASIA_EGRESS_SUBNET": SUBNET,
             "ANASTASIA_EGRESS_PROXY_IP": PROXY_IP,
             "ANASTASIA_EGRESS_PROXY_PORT": "four thousand",
         })
@@ -94,60 +98,89 @@ class PolicyTests(SimpleTestCase):
 
 
 class RulesetTests(SimpleTestCase):
-    """What the kernel is asked to enforce, asserted on the text."""
+    """What the kernel is asked to enforce, asserted on the text.
+
+    Whether the kernel ACCEPTS this text is a provisioning probe, not something
+    a unit test can honestly claim — but `nft -c -f` was run against it by hand
+    and the first draft was rejected outright, which is why the interface rules
+    below are asserted so exactly.
+    """
 
     def setUp(self):
-        self.text = netfilter.ruleset(SUBNET, PROXY_IP, PROXY_PORT)
+        self.text = netfilter.ruleset(BRIDGE, SUBNET, PROXY_IP, PROXY_PORT)
+        # INSTRUCTIONS ONLY, for the assertions that forbid something. The
+        # ruleset's comments explain what `policy drop` and `iif "br-*"` would
+        # do, and a rule reading the prose would fail on its own explanation —
+        # the same trap the egress Dockerfile's test records.
+        self.rules = "\n".join(
+            ln for ln in self.text.splitlines()
+            if ln.strip() and not ln.lstrip().startswith("#"))
 
-    def test_the_only_accepted_destination_is_the_proxy_address_and_port(self):
-        self.assertIn(
-            f"ip saddr {SUBNET} ip daddr {PROXY_IP} tcp dport {PROXY_PORT} accept",
-            self.text)
+    def test_the_proxy_may_reach_the_internet(self):
+        """FIRST, and the first draft of this file omitted it: the proxy's own
+        address is inside the subnet, so a blanket drop killed the proxy's
+        outbound connections and nothing could ever be fetched."""
+        accept = self.text.index(f'iifname "{BRIDGE}" ip saddr {PROXY_IP} accept')
+        drop = self.text.index(f'iifname "{BRIDGE}" drop')
+        self.assertLess(accept, drop, "the proxy must be exempted before the drop")
 
-    def test_everything_else_from_the_subnet_is_dropped(self):
-        """The rule that makes the proxy compulsory rather than advisory: a
-        raw socket, DNS to the world, the metadata address and another stack's
-        database all land here."""
-        self.assertIn(f"ip saddr {SUBNET} drop", self.text)
+    def test_everything_else_off_the_bridge_is_dropped(self):
+        self.assertIn(f'iifname "{BRIDGE}" drop', self.text)
 
-    def test_the_accept_precedes_the_drop(self):
-        """Order is the whole ruleset. A drop evaluated first refuses the
-        proxy too, and the feature is dead rather than insecure — but it would
-        be dead in a way that invites somebody to 'fix' it by reordering
-        without understanding which order was wrong."""
-        accept = self.text.index("tcp dport")
-        drop = self.text.index(f"ip saddr {SUBNET} drop")
-        self.assertLess(accept, drop)
+    def test_matching_is_on_the_interface_not_the_source_address(self):
+        """A source address is a field the sender fills in; an interface is
+        not something inside the container can choose."""
+        self.assertNotIn(f"ip saddr {SUBNET} drop", self.rules)
+        self.assertIn(f'iifname "{BRIDGE}"', self.rules)
+
+    def test_there_is_an_input_chain_for_the_host_itself(self):
+        """Host-destined packets are delivered locally and never traverse the
+        forward hook. A filter with only a forward chain stops a capsule
+        reaching the internet and leaves it able to reach everything the host
+        runs."""
+        self.assertIn("hook input", self.text)
+
+    def test_no_wildcard_interface_is_ever_written(self):
+        """nft has no wildcard for `iif`; an invalid one makes the kernel
+        reject the ENTIRE ruleset, so the filter silently filters nothing.
+        This exact mistake shipped in the first draft."""
+        self.assertNotIn('iif "', self.rules)
+        self.assertNotIn("br-*", self.rules)
 
     def test_the_forward_policy_is_accept(self):
         """A `policy drop` on a forward hook drops every forwarded packet on
         the host — every other container, every other stack — the moment this
-        table loads. The drops are scoped to the egress subnet instead."""
-        self.assertIn("policy accept", self.text)
-        self.assertNotIn("policy drop", self.text)
+        table loads."""
+        self.assertIn("policy accept", self.rules)
+        self.assertNotIn("policy drop", self.rules)
 
     def test_capsule_to_capsule_is_filtered_in_the_bridge_family(self):
-        """Same-subnet traffic is BRIDGED, never routed, so it never reaches
-        the forward hook and an L3 drop never sees it. Docker's own
-        enable_icc=false would stop it and cannot be used — the proxy is a
-        container on that bridge too."""
+        """Same-subnet traffic is SWITCHED, never routed, so it never reaches
+        either IP chain. Docker's own enable_icc=false would stop it and
+        cannot be used — the proxy is a container on that bridge too."""
         self.assertIn("table bridge anastasia", self.text)
-        self.assertIn(f"ip saddr {SUBNET} ip daddr {SUBNET} drop", self.text)
+        self.assertIn(f'iifname "{BRIDGE}" oifname "{BRIDGE}" drop', self.text)
 
-    def test_the_proxy_is_reachable_across_the_bridge(self):
-        self.assertIn(f"ip daddr {PROXY_IP} accept", self.text)
+    def test_the_bridge_rules_are_scoped_to_this_bridge_on_both_sides(self):
+        """An unscoped rule in the bridge family applies to EVERY bridge on
+        the host, which would filter other stacks' networks as a side effect
+        of turning egress on for this one."""
+        for line in self.text.splitlines():
+            body = line.strip()
+            if body.endswith(("accept", "drop")) and "oifname" in body:
+                self.assertIn(f'iifname "{BRIDGE}"', body)
+                self.assertIn(f'oifname "{BRIDGE}"', body)
 
-    def test_return_traffic_is_accepted(self):
-        self.assertIn("ct state established,related accept", self.text)
+    def test_the_table_is_replaced_rather_than_appended(self):
+        """`nft -f` ADDS to an existing table, so without the create-then-
+        delete preamble every restart leaves a second copy of every rule."""
+        self.assertIn("delete table inet anastasia", self.text)
+        self.assertIn("delete table bridge anastasia", self.text)
 
-    def test_the_subnet_and_proxy_are_interpolated_not_hardcoded(self):
-        """The executor is told these by the deploy tool that pinned them on
-        the Docker network. A ruleset with its own idea of the subnet would
-        filter a range nothing is on."""
-        other = netfilter.ruleset("172.31.9.0/24", "172.31.9.5", 3128)
-        self.assertIn("ip saddr 172.31.9.0/24 ip daddr 172.31.9.5 "
-                      "tcp dport 3128 accept", other)
-        self.assertNotIn(SUBNET, other)
+    def test_the_facts_are_interpolated_not_hardcoded(self):
+        other = netfilter.ruleset("other0", "172.31.9.0/24", "172.31.9.5", 3128)
+        self.assertIn('iifname "other0" ip saddr 172.31.9.5 accept', other)
+        self.assertNotIn(BRIDGE, other)
 
 
 class RunnerPostureTests(SimpleTestCase):

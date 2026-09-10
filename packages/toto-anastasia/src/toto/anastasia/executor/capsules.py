@@ -31,7 +31,7 @@ from ..families import family as family_for
 from ..families import operation as operation_for
 from ..limits import Limits
 from . import egress as egress_mod
-from . import images, runners, slices, staging
+from . import images, netfilter, runners, slices, staging
 from . import storage
 from .drivers import LABEL_CAPSULE, LABEL_EXEC, docker as docker_driver
 
@@ -146,6 +146,22 @@ class CapsuleManager:
         that has none, and the first symptom would be a job failing to fetch
         something with no explanation anywhere.
         """
+        if egress and self.egress.configured:
+            # RE-PROVEN AT EVERY MOUNT, never trusted from startup. The filter
+            # is in a kernel other things also write to: a `systemctl restart
+            # nftables` or an operator's `nft flush ruleset` removes it, and
+            # the gap between boot and this mount is measured in days. If it
+            # is gone, put it back — and if it will not go back, refuse.
+            try:
+                netfilter.verify(self.egress.bridge, self.egress.subnet,
+                                 self.egress.proxy_ip, self.egress.proxy_port)
+            except netfilter.NetfilterError:
+                log.warning("anastasia: egress ruleset missing at mount; "
+                            "reinstalling before giving %s a network", capsule)
+                netfilter.ensure(self.egress.bridge, self.egress.subnet,
+                                 self.egress.proxy_ip, self.egress.proxy_port)
+                netfilter.verify(self.egress.bridge, self.egress.subnet,
+                                 self.egress.proxy_ip, self.egress.proxy_port)
         if egress and not self.egress.configured:
             raise CapsuleError(
                 "This Capsule asked for internet access and this host cannot "

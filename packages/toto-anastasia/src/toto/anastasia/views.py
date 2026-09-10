@@ -77,6 +77,9 @@ def index(request):
                   .filter(owner=request.user).select_related("runtime"))
     capsules = [services.capsule_report(lease) for lease in leases]
     report = services.pool_report()
+    # Whether to offer the checkbox at all. A host that does not run the proxy
+    # must not show a control whose only outcome is a refused mount.
+    egress_offered = conf.egress_offered()
 
     # Only MOUNTED capsules are polled. An unmounted one has nothing to report,
     # and asking would wake the manager once every five seconds for nothing.
@@ -99,6 +102,7 @@ def index(request):
         "pool_rows": _pool_rows(report),
         "capsules": capsules,
         "runtime_configured": bool(conf.executor_socket()),
+        "egress_offered": egress_offered,
         "max_capsules": conf.max_capsules_per_user(),
         "lease_days": conf.lease_days(),
         "held": len(leases),
@@ -144,9 +148,14 @@ def reserve(request):
             % {"detail": exc}))
 
     try:
-        lease = services.reserve(owner=request.user,
-                                 name=request.POST.get("name", ""),
-                                 limits=limits, actor=request.user)
+        lease = services.reserve(
+            owner=request.user,
+            name=request.POST.get("name", ""),
+            limits=limits, actor=request.user,
+            # A checkbox is present-or-absent, so its mere presence is the
+            # answer. Named explicitly rather than passed through from POST so
+            # the form cannot set anything else on the lease.
+            egress=bool(request.POST.get("egress")))
     except ValidationError as exc:
         return _refusal(request, exc)
 

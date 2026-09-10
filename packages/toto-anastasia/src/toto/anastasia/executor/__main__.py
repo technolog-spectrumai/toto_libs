@@ -119,8 +119,10 @@ def main() -> int:
     egress_ready = False
     if policy.configured:
         try:
-            netfilter.ensure(policy.subnet, policy.proxy_ip, policy.proxy_port)
-            netfilter.verify(policy.subnet, policy.proxy_ip, policy.proxy_port)
+            netfilter.ensure(policy.bridge, policy.subnet,
+                             policy.proxy_ip, policy.proxy_port)
+            netfilter.verify(policy.bridge, policy.subnet,
+                             policy.proxy_ip, policy.proxy_port)
             egress_ready = True
             log.info("anastasia: %s", policy.describe())
         except netfilter.NetfilterError as exc:

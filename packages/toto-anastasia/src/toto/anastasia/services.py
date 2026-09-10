@@ -125,7 +125,8 @@ def record(*, lease, kind, accepted=True, code="", actor=None,
 # --------------------------------------------------------------------------- #
 
 def reserve(*, owner, name: str, limits: Limits, days: int | None = None,
-            actor=None, permanent_home: bool = False) -> ComputeLease:
+            actor=None, permanent_home: bool = False,
+            egress: bool = False) -> ComputeLease:
     """Book capacity for a user, or refuse and say what is short.
 
     The whole function runs inside one transaction that begins by locking the
@@ -176,7 +177,10 @@ def reserve(*, owner, name: str, limits: Limits, days: int | None = None,
             owner=owner, name=name, expires_at=expires_at,
             cpu_millicores=limits.cpu_millicores, ram_mb=limits.ram_mb,
             scratch_mb=limits.scratch_mb, pids=limits.pids,
-            permanent_home=bool(permanent_home))
+            permanent_home=bool(permanent_home),
+            # `bool(...)`, like permanent_home beside it: the value arrives
+            # from a form and a truthy string must not become a network grant.
+            egress=bool(egress))
         CapsuleRuntime.objects.create(lease=lease)
         record(lease=lease, kind=CapsuleEvent.RESERVE, actor=actor or owner,
                to_state=choices.UNMOUNTED, **limits.as_dict())
@@ -426,6 +430,11 @@ def capsule_report(lease: ComputeLease, now=None) -> dict:
         "expires_at": lease.expires_at,
         "executions_running": lease.executions.live().count(),
         "accepts_work": state in choices.ACCEPTING,
+        # What the OWNER asked for when they reserved it. Whether a mounted
+        # Capsule actually got a filtered NIC is the executor's answer, which
+        # arrives in `runtime.detail` if it refused — this is the reservation,
+        # and the desk labels it as such.
+        "egress": bool(lease.egress),
         # WHICH ISOLATION, and a boolean the page can branch on rather than a
         # string it might interpolate. A `{{ tier }}` in one parameterised
         # sentence is exactly how "your code runs in a virtual machine" gets

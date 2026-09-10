@@ -90,6 +90,22 @@ def executor_socket() -> str:
     return (getattr(settings, "ANASTASIA_EXECUTOR_SOCKET", "") or "").strip()
 
 
+def egress_offered() -> bool:
+    """Whether this deployment offers a Capsule filtered internet access.
+
+    A SETTING, not a question asked of the executor. The desk needs the answer
+    on every page render to decide whether to show the checkbox at all, and an
+    IPC round trip per render — one that also has to have an answer when the
+    executor is down — would be a lot of machinery to draw a form field.
+
+    It is deliberately only a claim about the OFFER. Whether a mount actually
+    gets a filtered NIC is settled by the executor, which refuses the mount if
+    its nftables table is not in the kernel. A page that promised more than
+    that would be describing a configuration rather than a guarantee.
+    """
+    return bool(getattr(settings, "ANASTASIA_EGRESS", False))
+
+
 def shared_secret() -> str:
     """The HMAC secret this host signs executor requests with.
 

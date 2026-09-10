@@ -29,6 +29,10 @@ class Policy:
     """The egress facts, or an empty policy when the host has none."""
 
     network: str = ""
+    #: The bridge interface, pinned by the deploy tool. The nftables rules
+    #: match on it rather than on a source address, because an interface is
+    #: not something a workload can forge.
+    bridge: str = ""
     subnet: str = ""
     proxy_ip: str = ""
     proxy_port: int = 0
@@ -43,7 +47,7 @@ class Policy:
         exists to prevent. Partial configuration is treated as no
         configuration, and `describe` says which field is missing.
         """
-        return bool(self.network and self.subnet
+        return bool(self.network and self.bridge and self.subnet
                     and self.proxy_ip and self.proxy_port)
 
     @property
@@ -57,11 +61,12 @@ class Policy:
                     f"({self.subnet})")
         missing = [name for name, value in (
             ("ANASTASIA_EGRESS_NETWORK", self.network),
+            ("ANASTASIA_EGRESS_BRIDGE", self.bridge),
             ("ANASTASIA_EGRESS_SUBNET", self.subnet),
             ("ANASTASIA_EGRESS_PROXY_IP", self.proxy_ip),
             ("ANASTASIA_EGRESS_PROXY_PORT", self.proxy_port),
         ) if not value]
-        if len(missing) == 4:
+        if len(missing) == 5:
             return "egress is not configured on this host"
         return ("egress is only half configured and is therefore OFF; "
                 f"missing: {', '.join(missing)}")
@@ -79,6 +84,7 @@ def from_environ(env=None) -> Policy:
         port = 0
     return Policy(
         network=(env.get("ANASTASIA_EGRESS_NETWORK", "") or "").strip(),
+        bridge=(env.get("ANASTASIA_EGRESS_BRIDGE", "") or "").strip(),
         subnet=(env.get("ANASTASIA_EGRESS_SUBNET", "") or "").strip(),
         proxy_ip=(env.get("ANASTASIA_EGRESS_PROXY_IP", "") or "").strip(),
         proxy_port=port,
