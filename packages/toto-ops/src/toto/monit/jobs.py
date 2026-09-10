@@ -92,7 +92,12 @@ SOURCES: tuple = (
               app_label="toto.ocr", model="ocr.OcrRun",
               error_fields=("error",)),
     JobSource(key="scan", label="Antivirus scans",
-              app_label="toto.antivirus", model="antivirus.ScanRun"),
+              app_label="toto.antivirus", model="antivirus.ScanRun",
+              # A ScanRun has no `started_at` — it is created and finished. The
+              # default name was read through `getattr(..., None)`, so it never
+              # raised; it simply meant no scan has ever had a duration on this
+              # page. Saying "" is the honest version of the same result.
+              started_field=""),
     JobSource(key="transfer", label="Vault transfers",
               app_label="toto.vault", model="vault.TransferRun",
               task_id_field="task_id"),
@@ -105,9 +110,35 @@ SOURCES: tuple = (
               app_label="toto.lacedo", model="lacedo.IngestionRun",
               status_field="state", error_fields=("detail",)),
     JobSource(key="git", label="Git operations",
-              app_label="toto.repo", model="repo.GitRun"),
+              app_label="toto.repo", model="repo.GitRun",
+              # A GitRun keeps its failure in `stderr`; there is no `error`
+              # column, so the default read an attribute that is not there and
+              # every failed push showed on this page with a blank reason —
+              # the one column somebody opens the Jobs page to read.
+              error_fields=("stderr",)),
     JobSource(key="forum_cleanup", label="Forum cleanups",
-              app_label="toto.forum", model="forum.ForumCleanupRun"),
+              app_label="toto.forum", model="forum.ForumCleanupRun",
+              # NO created_at ON THAT MODEL, and the default named one — so
+              # every read of this source raised FieldError, was swallowed by
+              # the caller's guard and logged as "could not read
+              # forum.ForumCleanupRun". The Jobs page has therefore never shown
+              # a forum cleanup. `workflow_node` above already uses "" for the
+              # same reason; this is the same fix, found in a test's log noise.
+              created_field=""),
+    # HEAVY JOBS IN A COMPUTE CAPSULE. A declarative row and nothing else:
+    # `app_label` is a string for `apps.is_installed` and `model` a string for
+    # `apps.get_model`, so toto-ops gains no import edge on toto-anastasia and
+    # a host without capsules simply has no such source.
+    #
+    # Every field name is the default, which is not luck — `Execution` was
+    # written to the same shape as the other run tables. `killed` and `lost`
+    # are not in `_STATUS_MAP` and land in OTHER on purpose: a killed job is a
+    # deadline or somebody's Cancel, which the map already refuses to call a
+    # failure, and an unmapped state is meant to be visible rather than
+    # dropped.
+    JobSource(key="capsule_job", label="Capsule jobs",
+              app_label="toto.anastasia", model="anastasia.Execution",
+              select_related=("lease",)),
 )
 
 

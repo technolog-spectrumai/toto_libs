@@ -10,7 +10,7 @@ from django.utils import timezone
 from toto.core.models import Platform
 
 from .models import Snapshot
-from . import tasks
+from . import jobs, tasks
 from .tasks import monit_prune, monit_sample
 
 
@@ -178,3 +178,55 @@ class TaskRegistrationTests(SimpleTestCase):
             with self.subTest(task=name):
                 self.assertTrue(hasattr(tasks, name.rsplit(".", 1)[1]),
                                 f"{name} is scheduled but not defined")
+
+
+class JobSourceTests(SimpleTestCase):
+    """The declarative run-table adapters.
+
+    Every one of these is a promise about a model in ANOTHER package, made in
+    strings so this one never imports it. Nothing checks that promise at import
+    time — `_rows_for` swallows a FieldError and logs it — so a source whose
+    field names are wrong shows an empty table forever and nobody notices. That
+    is exactly how `forum_cleanup` came to be broken. These tests are the
+    check.
+    """
+
+    def test_every_source_is_declared_once(self):
+        keys = [s.key for s in jobs.SOURCES]
+        self.assertEqual(len(keys), len(set(keys)))
+
+    def test_capsule_jobs_are_a_source(self):
+        source = next(s for s in jobs.SOURCES if s.key == "capsule_job")
+        self.assertEqual(source.model, "anastasia.Execution")
+        # A STRING for apps.is_installed, never an import: toto-ops must not
+        # gain a package edge on toto-anastasia, and a host without capsules
+        # simply has no such source.
+        self.assertEqual(source.app_label, "toto.anastasia")
+
+    def test_no_source_names_a_field_its_model_does_not_have(self):
+        """THE TEST THAT WOULD HAVE CAUGHT `forum_cleanup`.
+
+        Installed sources only — a source for an app this host does not build
+        is not a broken promise, it is an absent one.
+        """
+        from django.apps import apps as django_apps
+
+        for source in jobs.SOURCES:
+            if not django_apps.is_installed(source.app_label):
+                continue
+            with self.subTest(source=source.key):
+                model = django_apps.get_model(source.model)
+                names = {f.name for f in model._meta.get_fields()}
+                declared = [source.status_field, source.started_field,
+                            source.finished_field, source.created_field,
+                            source.task_id_field, *source.error_fields,
+                            *source.select_related]
+                for field in [f for f in declared if f]:
+                    self.assertIn(field, names,
+                                  f"{source.key} names {field!r}")
+
+    def test_a_killed_job_is_not_called_a_failure(self):
+        """`killed` is a deadline or somebody's Cancel. The map already
+        refuses to call `cancelled` a failure and this is the same case."""
+        self.assertNotEqual(jobs._STATUS_MAP.get("killed"), jobs.FAILED)
+        self.assertNotEqual(jobs._STATUS_MAP.get("lost"), jobs.FAILED)
