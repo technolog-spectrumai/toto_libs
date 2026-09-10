@@ -164,6 +164,43 @@ class HybridHibernationTests(HibernationTestCase):
         self.assertTrue(record.home_digest)
         self.assertGreater(record.home_bytes, 0)
 
+    def test_hibernation_reads_the_gear_the_workspace_is_pinned_to(self):
+        """TWO GEARS, and the workspace names the SECOND one.
+
+        `_lease_for` filtered on the owner alone and took the oldest open lease
+        until 2026-09-10, which is right only for an account holding exactly
+        one Gear. Here the older Gear is ordinary and the pinned one keeps a
+        home, so reading the wrong lease silently downgrades the hibernation to
+        a manifest and throws away a $HOME the user reserved capacity to keep.
+
+        The companion failure is worse and is asserted below: `hibernate`
+        defaults to `release_lease=True`, so the old code also RELEASED the
+        older Gear — one the user never mentioned, possibly running work.
+        """
+        from toto.ambrosia import gears as gears_module
+
+        older = self.give_a_gear(permanent_home=False, name="first")
+        pinned = self.give_a_gear(permanent_home=True, name="second")
+        self.assertLess(older.created_at, pinned.created_at)
+
+        with mock.patch.object(gears_module, "preferred",
+                               return_value=str(pinned.uuid)):
+            self.start_kernel_on(pinned)
+            with mock.patch("toto.anastasia.jobs.collect_runtime",
+                            return_value=self.HOME):
+                manifest = hibernation.hibernate(self.ws, user=self.owner)
+
+        self.assertEqual(manifest["depth"], "hybrid",
+                         "the pinned Gear keeps a home; reading the older "
+                         "lease reports 'manifest' and drops it")
+        self.assertTrue(manifest["permanent_home"])
+
+        older.refresh_from_db()
+        self.assertIsNone(
+            older.released_at,
+            "hibernating a workspace pinned to another Gear must not release "
+            "this one")
+
     def test_an_ordinary_gear_keeps_no_home_even_if_one_exists(self):
         """The choice is the Gear's, made when it was reserved."""
         lease = self.give_a_gear(permanent_home=False)

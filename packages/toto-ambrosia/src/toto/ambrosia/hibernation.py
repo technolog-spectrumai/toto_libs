@@ -155,17 +155,44 @@ def _app_for(workspace):
 
 
 def _lease_for(workspace):
-    """The open lease this workspace's runtime is using, or None."""
+    """The open lease this workspace's runtime is using, or None.
+
+    IT HONOURS THE WORKSPACE'S PINNED GEAR. Until 2026-09-10 this filtered on
+    the owner alone and took the OLDEST open lease, which is only ever right
+    for an account holding exactly one. On a two-Gear account, a workspace
+    pinned to the second one had ``permanent_home`` read off the first — so a
+    hibernate could decide not to keep a $HOME the user had paid to keep — and,
+    because ``hibernate`` defaults to ``release_lease=True``, it then RELEASED
+    that first Gear, killing whatever was running in it. Nothing tested it.
+
+    ``gears.preferred`` is the same resolution the compile path already uses
+    (``gears.py:141``), and it validates the stored uuid against what the owner
+    holds NOW, so a stale uuid from a released Gear falls back to automatic
+    rather than raising. Automatic keeps the historical oldest-lease behaviour,
+    which is correct when the user never chose.
+    """
     from django.apps import apps as django_apps
 
     if not django_apps.is_installed("toto.anastasia"):
         return None
     from toto.anastasia.models import ComputeLease
 
-    return (ComputeLease.objects.open()
-            .filter(owner=workspace.owner)
-            .order_by("created_at")
-            .first())
+    leases = ComputeLease.objects.open().filter(owner=workspace.owner)
+
+    app = _app_for(workspace)
+    if app is not None:
+        from . import gears
+
+        try:
+            pinned = gears.preferred(workspace, app.namespace)
+        except Exception:                                   # pragma: no cover
+            pinned = None
+        if pinned:
+            chosen = leases.filter(uuid=pinned).first()
+            if chosen is not None:
+                return chosen
+
+    return leases.order_by("created_at").first()
 
 
 # --------------------------------------------------------------------------- #
