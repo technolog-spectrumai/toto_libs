@@ -331,7 +331,7 @@ class CapsuleManager:
         if self.wants_egress(capsule):
             network = self.egress.network
             run_env.update(egress_mod.runner_environment(self.egress))
-            dns = egress_mod.RUNNER_DNS
+            dns = self.egress.dns_sink
         try:
             parent = self.slices.cgroup_parent(capsule)
         except Exception:  # noqa: BLE001

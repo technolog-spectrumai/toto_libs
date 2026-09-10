@@ -135,6 +135,13 @@ table inet {TABLE} {{
         # chain the filter above stops a capsule reaching the internet and
         # leaves it able to reach everything the host runs.
         type filter hook input priority -10; policy accept;
+
+        # Replies to a flow THIS HOST opened into the bridge. A bare drop
+        # would refuse them, and a capsule cannot reach this rule on its own:
+        # its first packet is dropped below, so conntrack never promotes the
+        # flow past UNREPLIED and `established` is unreachable from inside.
+        iifname "{bridge}" ct state established,related accept
+
         iifname "{bridge}" drop
     }}
 }}

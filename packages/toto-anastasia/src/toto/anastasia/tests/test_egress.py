@@ -23,11 +23,12 @@ BRIDGE = "anastasia-egr0"
 SUBNET = "10.207.0.0/24"
 PROXY_IP = "10.207.0.2"
 PROXY_PORT = 4750
+DNS_SINK = "10.207.0.3"
 
 
 def policy(**over) -> egress.Policy:
     base = {"network": "testy_egress_proxy", "bridge": BRIDGE, "subnet": SUBNET,
-            "proxy_ip": PROXY_IP, "proxy_port": PROXY_PORT}
+            "proxy_ip": PROXY_IP, "proxy_port": PROXY_PORT, "dns_sink": DNS_SINK}
     base.update(over)
     return egress.Policy(**base)
 
@@ -45,6 +46,7 @@ class PolicyTests(SimpleTestCase):
             "ANASTASIA_EGRESS_SUBNET": SUBNET,
             "ANASTASIA_EGRESS_PROXY_IP": PROXY_IP,
             "ANASTASIA_EGRESS_PROXY_PORT": str(PROXY_PORT),
+            "ANASTASIA_EGRESS_DNS": DNS_SINK,
         })
         self.assertTrue(p.configured)
         self.assertEqual(p.proxy_url, f"http://{PROXY_IP}:{PROXY_PORT}")
@@ -54,13 +56,15 @@ class PolicyTests(SimpleTestCase):
         filter for an empty range and then hand out a NIC — the one
         combination this layer exists to prevent."""
         for missing in ("ANASTASIA_EGRESS_SUBNET", "ANASTASIA_EGRESS_PROXY_IP",
-                        "ANASTASIA_EGRESS_PROXY_PORT", "ANASTASIA_EGRESS_BRIDGE"):
+                        "ANASTASIA_EGRESS_PROXY_PORT", "ANASTASIA_EGRESS_BRIDGE",
+                        "ANASTASIA_EGRESS_DNS"):
             env = {
                 "ANASTASIA_EGRESS_NETWORK": "testy_egress_proxy",
                 "ANASTASIA_EGRESS_BRIDGE": BRIDGE,
                 "ANASTASIA_EGRESS_SUBNET": SUBNET,
                 "ANASTASIA_EGRESS_PROXY_IP": PROXY_IP,
                 "ANASTASIA_EGRESS_PROXY_PORT": str(PROXY_PORT),
+                "ANASTASIA_EGRESS_DNS": DNS_SINK,
             }
             del env[missing]
             with self.subTest(missing=missing):
@@ -74,6 +78,7 @@ class PolicyTests(SimpleTestCase):
             "ANASTASIA_EGRESS_SUBNET": SUBNET,
             "ANASTASIA_EGRESS_PROXY_IP": PROXY_IP,
             "ANASTASIA_EGRESS_PROXY_PORT": "four thousand",
+            "ANASTASIA_EGRESS_DNS": DNS_SINK,
         })
         self.assertFalse(p.configured)
 
@@ -207,10 +212,28 @@ class RunnerPostureTests(SimpleTestCase):
         argv = self._argv(network="testy_egress_proxy")
         self.assertEqual(argv[argv.index("--network") + 1], "testy_egress_proxy")
 
+    def test_a_nic_ALWAYS_implies_a_dead_resolver(self):
+        """The rule, not one instance of it. A refactor that drops the `--dns`
+        flag would quietly reopen the embedded-resolver channel, and nothing
+        else in the argv would look different."""
+        for network in ("testy_egress_proxy", "some_other_net"):
+            with self.subTest(network=network):
+                argv = self._argv(network=network, dns=DNS_SINK)
+                self.assertIn("--dns", argv,
+                              "a runner with a network must have its resolver "
+                              "pointed somewhere dead")
+
+    def test_the_resolver_sink_is_not_a_loopback_address(self):
+        """moby dials a LOOPBACK upstream from the daemon's namespace, so
+        `--dns 127.0.0.1` means "whatever answers on the HOST's loopback" —
+        often a real resolver. A non-loopback address is dialled from inside
+        the container, where the packet filter refuses it."""
+        import ipaddress
+        self.assertFalse(ipaddress.ip_address(DNS_SINK).is_loopback)
+
     def test_an_egress_runner_gets_a_resolver_that_does_not_work(self):
         """Docker's embedded resolver forwards from the DAEMON's side, so the
         query leaves as dockerd's packet and no rule in netfilter can see it.
         Names spelled into subdomains would walk straight past the filter."""
-        argv = self._argv(network="testy_egress_proxy",
-                          dns=egress.RUNNER_DNS)
-        self.assertEqual(argv[argv.index("--dns") + 1], "127.0.0.1")
+        argv = self._argv(network="testy_egress_proxy", dns=DNS_SINK)
+        self.assertEqual(argv[argv.index("--dns") + 1], DNS_SINK)

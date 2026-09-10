@@ -36,6 +36,9 @@ class Policy:
     subnet: str = ""
     proxy_ip: str = ""
     proxy_port: int = 0
+    #: Where a runner's DNS is pointed: an address on this bridge that nothing
+    #: answers on. See the module footer for why it must not be a loopback.
+    dns_sink: str = ""
 
     @property
     def configured(self) -> bool:
@@ -48,7 +51,7 @@ class Policy:
         configuration, and `describe` says which field is missing.
         """
         return bool(self.network and self.bridge and self.subnet
-                    and self.proxy_ip and self.proxy_port)
+                    and self.proxy_ip and self.proxy_port and self.dns_sink)
 
     @property
     def proxy_url(self) -> str:
@@ -65,8 +68,9 @@ class Policy:
             ("ANASTASIA_EGRESS_SUBNET", self.subnet),
             ("ANASTASIA_EGRESS_PROXY_IP", self.proxy_ip),
             ("ANASTASIA_EGRESS_PROXY_PORT", self.proxy_port),
+            ("ANASTASIA_EGRESS_DNS", self.dns_sink),
         ) if not value]
-        if len(missing) == 5:
+        if len(missing) == 6:
             return "egress is not configured on this host"
         return ("egress is only half configured and is therefore OFF; "
                 f"missing: {', '.join(missing)}")
@@ -88,6 +92,7 @@ def from_environ(env=None) -> Policy:
         subnet=(env.get("ANASTASIA_EGRESS_SUBNET", "") or "").strip(),
         proxy_ip=(env.get("ANASTASIA_EGRESS_PROXY_IP", "") or "").strip(),
         proxy_port=port,
+        dns_sink=(env.get("ANASTASIA_EGRESS_DNS", "") or "").strip(),
     )
 
 
@@ -114,18 +119,33 @@ def runner_environment(policy: Policy) -> dict:
     }
 
 
-#: What a runner with egress is given for name resolution: nothing that works.
+#: WHY A RUNNER'S DNS IS POINTED AT A DEAD ADDRESS ON ITS OWN BRIDGE.
 #:
 #: THE CHANNEL THIS CLOSES. On a user-defined network Docker puts its embedded
-#: resolver at 127.0.0.11 in the container's `resolv.conf`. That server runs in
-#: the container's namespace but forwards what it cannot answer from the
-#: DAEMON's side — so the query leaves the host as dockerd's packet, never the
-#: container's, and no rule in `netfilter` can see it. A capsule could spell
-#: data into subdomains and read it off an authoritative server.
+#: resolver at 127.0.0.11 in the container's `resolv.conf`, and `--dns` sets
+#: that resolver's UPSTREAM. Left alone, a query the resolver cannot answer is
+#: forwarded to the host's real DNS — so a capsule could spell data into
+#: subdomains and read it off an authoritative server, and no rule in
+#: `netfilter` would see it, because the packet leaves as dockerd's and not as
+#: the container's.
 #:
-#: Pointing the upstream at the container's own loopback, where nothing
-#: listens, makes external resolution fail. A workload with egress does not
-#: need it: it sends `CONNECT host:443` to the proxy BY ADDRESS and Smokescreen
-#: does the resolving — which is also what makes the allowlist enforceable,
-#: since the name is checked by the thing that resolves it.
-RUNNER_DNS = "127.0.0.1"
+#: WHY NOT 127.0.0.1, which is the obvious choice and is wrong. moby marks a
+#: loopback upstream `HostLoopback` and dials it from the DAEMON's namespace —
+#: the branch exists so a host running systemd-resolved on 127.0.0.53 can serve
+#: its containers. `--dns 127.0.0.1` therefore means "whatever answers on the
+#: HOST's loopback", which on many hosts is a working resolver. It reads like
+#: closing the channel and on those hosts leaves it open.
+#:
+#: A non-loopback address is dialled from INSIDE the container's namespace, so
+#: the query becomes an ordinary packet on the egress bridge to something that
+#: is not the proxy — and the nftables drop refuses it. The failure is enforced
+#: by the filter that is supposed to enforce it, and shows in its counters.
+#:
+#: A workload with egress does not need working DNS: it sends
+#: `CONNECT host:443` to the proxy BY ADDRESS and Smokescreen resolves — which
+#: is also what makes the allowlist enforceable, since the thing checking the
+#: name is the thing looking it up.
+#:
+#: WHAT REMAINS. The embedded resolver still answers for container NAMES on the
+#: egress network. That is harmless while the proxy is the only other member,
+#: and it is why nothing else is ever placed on this network.
