@@ -33,7 +33,7 @@ def reconcile() -> dict:
         # toto.registry documents four separate times.
         return {"skipped": "not installed"}
 
-    from . import samples, services
+    from . import install, samples, services
     from .models import ComputeLease
     from .runtime import get_backend
 
@@ -95,6 +95,9 @@ def reconcile() -> dict:
             recorded += 1
     result["refreshed"] = refreshed
     result["recorded"] = recorded
+    # Installs nobody is watching still have to close. A run is advanced by
+    # whoever reads it; when nobody does, this is who.
+    result["installs_closed"] = install.sweep()
     # Retention is this tick's job too. If this task is ever removed, the
     # table has to go with it — `samples.py` says so in its header.
     result["pruned"] = samples.prune()
