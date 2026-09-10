@@ -54,6 +54,9 @@ ROUTES = [
     ("POST", re.compile(rf"^/capsules/({_UUID})/mount$"), "mount"),
     ("POST", re.compile(rf"^/capsules/({_UUID})/unmount$"), "unmount"),
     ("GET", re.compile(rf"^/capsules/({_UUID})/status$"), "capsule_status"),
+    # Separate from status because it costs a filesystem walk: status is
+    # polled every few seconds, this is asked for.
+    ("GET", re.compile(rf"^/capsules/({_UUID})/storage$"), "capsule_storage"),
     ("POST", re.compile(r"^/jobs$"), "start_execution"),
     ("GET", re.compile(rf"^/jobs/({_UUID})$"), "execution_status"),
     ("GET", re.compile(rf"^/jobs/({_UUID})/out$"), "execution_output"),
@@ -109,6 +112,10 @@ class Api:
 
     def capsule_status(self, capsule, payload):
         return 200, self.manager.status(capsule)
+
+    def capsule_storage(self, capsule, payload):
+        """Bytes and file counts. Never a name — see `executor/storage.py`."""
+        return 200, self.manager.storage(capsule)
 
     def start_execution(self, payload):
         # Draining means "no NEW work", and a job is new work even inside a

@@ -201,3 +201,96 @@ class ContractTests(ApiTestCase):
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw}")
         self.assertIn(response.status_code, (400, 409))
+
+
+class StorageEndpointTests(ApiTestCase):
+    """Counts over the API, and the promise that it is only counts."""
+
+    def _lease(self):
+        return services.reserve(owner=self.user, name="thesis", limits=SMALL)
+
+    def test_it_returns_numbers_and_no_names(self):
+        """The boundary, asserted at the edge as well as in the module. An
+        operator may see the size; what is in the capsule stays the owner's."""
+        from unittest import mock
+
+        from toto.anastasia import runtime
+
+        lease = self._lease()
+        reading = {"bytes": 4096, "files": 12, "directories": 3,
+                   "symlinks": 0, "complete": True, "measured_in_seconds": 0.1}
+        backend = mock.Mock()
+        backend.storage.return_value = reading
+        with mock.patch.object(runtime, "get_backend", return_value=backend):
+            body = self.call("get", f"/api/v1/capsules/{lease.uuid}/storage").json()
+        self.assertEqual(body, reading)
+        for value in body.values():
+            self.assertIsInstance(value, (int, float, bool))
+
+    def test_another_persons_capsule_is_a_404(self):
+        theirs = services.reserve(owner=self.other, name="t", limits=SMALL)
+        response = self.call("get", f"/api/v1/capsules/{theirs.uuid}/storage")
+        self.assertEqual(response.status_code, 404)
+
+    def test_a_runtime_that_cannot_answer_says_so_rather_than_lying(self):
+        """An older executor has no storage route. Reporting zero would read
+        as "this capsule is empty", which is a different and worse claim."""
+        from unittest import mock
+
+        from toto.anastasia import runtime
+
+        lease = self._lease()
+        backend = mock.Mock(spec=[])            # no `storage` attribute
+        with mock.patch.object(runtime, "get_backend", return_value=backend):
+            response = self.call(
+                "get", f"/api/v1/capsules/{lease.uuid}/storage")
+        self.assertEqual(response.status_code, 501)
+        self.assertEqual(response.json()["code"], "unsupported")
+
+    def test_an_unreachable_runtime_is_reported_as_incomplete(self):
+        """The backend returns {} when it cannot reach the executor. That must
+        surface as "we could not measure", never as zero bytes."""
+        from unittest import mock
+
+        from toto.anastasia import runtime
+
+        lease = self._lease()
+        backend = mock.Mock()
+        backend.storage.return_value = {}
+        with mock.patch.object(runtime, "get_backend", return_value=backend):
+            body = self.call(
+                "get", f"/api/v1/capsules/{lease.uuid}/storage").json()
+        self.assertFalse(body["complete"])
+
+
+class RouteOrderTests(ApiTestCase):
+    """A catch-all must not swallow its siblings.
+
+    `capsules/<uuid>/<str:action>` matches anything, "storage" and "jobs"
+    included. Django takes the first pattern that matches, so placing it above
+    them made /storage answer 405 — the action view is POST-only — which reads
+    like a broken endpoint rather than a shadowed route. Cheap to break again
+    by adding a path in the obvious place, so it is pinned.
+    """
+
+    def test_named_subpaths_win_over_the_action_catch_all(self):
+        from unittest import mock
+
+        from toto.anastasia import runtime
+
+        lease = services.reserve(owner=self.user, name="t", limits=SMALL)
+        backend = mock.Mock()
+        backend.storage.return_value = {"bytes": 0, "complete": True}
+        with mock.patch.object(runtime, "get_backend", return_value=backend):
+            response = self.call(
+                "get", f"/api/v1/capsules/{lease.uuid}/storage")
+        self.assertEqual(response.status_code, 200,
+                         "the action catch-all has shadowed /storage again")
+
+    def test_the_action_route_still_works(self):
+        lease = services.reserve(owner=self.user, name="t2", limits=SMALL)
+        response = self.call("post", f"/api/v1/capsules/{lease.uuid}/mount",
+                             body={})
+        self.assertIn(response.status_code, (200, 409),
+                      "mount must still resolve through the catch-all")
+

@@ -30,7 +30,7 @@ from django.http import Http404, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
-from . import choices, execute, services
+from . import choices, execute, runtime, services
 from .limits import Limits, LimitsError
 from .models import ComputeLease, Execution
 from .tokens import CapsuleToken
@@ -156,6 +156,28 @@ def capsule_action(request, owner, uuid, action):
         return _refusal(exc)
     lease.refresh_from_db()
     return JsonResponse(services.capsule_report(lease))
+
+
+@require_GET
+@token_required
+def capsule_storage(request, owner, uuid):
+    """How much disk this capsule holds. COUNTS ONLY.
+
+    Sizes and counts, never a filename and never any content — the boundary is
+    enforced in `executor/storage.py`, which has no parameter that could widen
+    it into a listing. An operator may know a capsule is using 4 GB; what is in
+    it remains the owner's business.
+
+    A separate endpoint rather than a field on the capsule report, because it
+    costs a filesystem walk and the report is polled.
+    """
+    lease = _own_lease(owner, uuid)
+    backend = runtime.get_backend()
+    reading = getattr(backend, "storage", None)
+    if reading is None:
+        return _error("this deployment's runtime cannot report storage",
+                      code="unsupported", status=501)
+    return JsonResponse(reading(lease) or {"complete": False})
 
 
 # --------------------------------------------------------------------------- #

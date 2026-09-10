@@ -31,6 +31,7 @@ from ..families import family as family_for
 from ..families import operation as operation_for
 from ..limits import Limits
 from . import images, runners, slices, staging
+from . import storage
 from .drivers import LABEL_CAPSULE, LABEL_EXEC, docker as docker_driver
 
 log = logging.getLogger("toto.anastasia.executor.capsules")
@@ -158,6 +159,15 @@ class CapsuleManager:
 
         shutil.rmtree(self.capsule_dir(capsule), ignore_errors=True)
         return {"unmounted": True, "runners_destroyed": destroyed}
+
+    def storage(self, capsule) -> dict:
+        """How much disk this capsule holds. COUNTS ONLY — see `storage.py`.
+
+        Separate from `status()` because it costs a filesystem walk and
+        `status` is polled every few seconds by an open desk. A caller that
+        wants the numbers asks for them.
+        """
+        return storage.measure(self.capsule_dir(capsule))
 
     def status(self, capsule) -> dict:
         rows = self.docker.list_managed(capsule=str(capsule))

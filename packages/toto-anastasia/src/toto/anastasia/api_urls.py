@@ -20,8 +20,15 @@ urlpatterns = [
     path("capsules", api.capsule_list, name="capsule_list"),
     path("capsules/new", api.capsule_create, name="capsule_create"),
     path("capsules/<uuid:uuid>", api.capsule_detail, name="capsule_detail"),
+    path("capsules/<uuid:uuid>/storage", api.capsule_storage,
+         name="capsule_storage"),
+    path("capsules/<uuid:uuid>/jobs", api.job_create, name="job_create"),
+    # LAST, because `<str:action>` matches anything — including "storage" and
+    # "jobs". Django takes the first pattern that matches, so a catch-all
+    # placed above its siblings silently swallows them: /storage came back 405
+    # (the action view is POST-only) instead of the reading, which reads like
+    # a broken endpoint rather than a shadowed route.
     path("capsules/<uuid:uuid>/<str:action>", api.capsule_action,
          name="capsule_action"),
-    path("capsules/<uuid:uuid>/jobs", api.job_create, name="job_create"),
     path("jobs/<uuid:uuid>", api.job_detail, name="job_detail"),
 ]

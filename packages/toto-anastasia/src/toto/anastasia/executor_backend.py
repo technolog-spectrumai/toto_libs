@@ -159,6 +159,20 @@ class ExecutorRuntimeBackend(RuntimeBackend):
         except RuntimeUnavailable:
             return {}
 
+    def storage(self, lease) -> dict:
+        """Bytes and file counts for one capsule. NEVER a filename.
+
+        A longer timeout than `status` because this walks a tree, and an empty
+        dict when the runtime cannot answer — a storage reading is information,
+        not a precondition, so a missing one must not fail the page that shows
+        everything else.
+        """
+        try:
+            return self._call("GET", f"/capsules/{lease.uuid}/storage",
+                              timeout=30)
+        except RuntimeUnavailable:
+            return {}
+
     def start_execution(self, execution, *, params, payload) -> dict:
         body = {
             "capsule": str(execution.lease.uuid),
