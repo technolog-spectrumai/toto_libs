@@ -28,6 +28,7 @@ import json
 import logging
 import shlex
 import subprocess
+import time
 
 from ...families import Family
 from ...limits import Limits
@@ -247,7 +248,7 @@ class DockerClient(Driver):
         thing that distinguishes "this job needed more memory than its Gear
         allows" from "this job was stopped", and those need different sentences.
         """
-        state = (self.inspect(container) or {}).get("State") or {}
+        state = self._settled_state(container)
         return {
             "exit_code": state.get("ExitCode"),
             "oom_killed": bool(state.get("OOMKilled")),
@@ -255,6 +256,32 @@ class DockerClient(Driver):
             "started_at": state.get("StartedAt"),
             "finished_at": state.get("FinishedAt"),
         }
+
+    # `docker wait` returns as soon as the EXIT CODE is known, which can be
+    # before the daemon has written OOMKilled into the container's state. Read
+    # immediately after a wait, a genuine memory kill therefore reports
+    # `{exit_code: 137, oom_killed: False}` — indistinguishable from a deadline
+    # kill, which is exactly the distinction `exit_state` exists to make. Seen
+    # once on a loaded machine, on a container that lived 91ms.
+    #
+    # A 137 with OOMKilled False is the only ambiguous answer, so that is the
+    # only one worth re-reading; every other state is taken at its word and
+    # costs nothing. Production reaches this through `execution_status`, which
+    # polls until `list_managed` stops calling the container running and so is
+    # already past the window — this closes it for every other caller.
+    _SETTLE_TRIES = 5
+    _SETTLE_PAUSE = 0.05
+
+    def _settled_state(self, container: str) -> dict:
+        state = (self.inspect(container) or {}).get("State") or {}
+        for _ in range(self._SETTLE_TRIES):
+            if state.get("Running") or state.get("ExitCode") != 137:
+                return state
+            if state.get("OOMKilled"):
+                return state
+            time.sleep(self._SETTLE_PAUSE)
+            state = (self.inspect(container) or {}).get("State") or {}
+        return state
 
     def logs(self, container: str, tail: int = 200) -> str:
         result = self._run(["logs", "--tail", str(tail), container], check=False)
