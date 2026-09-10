@@ -129,7 +129,12 @@ def main() -> int:
             log.error("anastasia: egress is OFF — %s", exc)
     else:
         log.info("anastasia: %s", policy.describe())
-    manager.egress = policy if egress_ready else egress.Policy()
+    # The POLICY is kept whatever happened, because it is the only copy of the
+    # bridge, subnet and proxy address the executor has — and the values a
+    # later repair needs. Readiness is a separate flag; conflating them made
+    # the repair path unreachable on exactly the hosts that needed it.
+    manager.egress = policy
+    manager.egress_ready = egress_ready
 
     inherited = reconcile.adopt(manager)
     log.info("anastasia: generation %s adopted %s runner(s) across %s capsule(s)",

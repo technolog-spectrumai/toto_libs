@@ -161,7 +161,14 @@ table bridge {TABLE} {{
         type filter hook forward priority -200; policy accept;
 
         # To and from the proxy: the whole reason this bridge exists.
-        iifname "{bridge}" oifname "{bridge}" ip daddr {proxy_ip} accept
+        # THE PORT IS MATCHED, not just the address. Without `tcp dport` a
+        # capsule reaches every port and protocol the proxy container exposes,
+        # while this module's own docstring claims "the proxy's address and
+        # port are the only thing routable" — a false reassurance is worse
+        # than none, so the rule is made to match the sentence.
+        iifname "{bridge}" oifname "{bridge}" ip daddr {proxy_ip} tcp dport {proxy_port} accept
+        # The return path, left unqualified on purpose: the bridge family has
+        # no conntrack here, so replies cannot be recognised by state.
         iifname "{bridge}" oifname "{bridge}" ip saddr {proxy_ip} accept
 
         # Anything else crossing this bridge, at any protocol. Not just IPv4:
@@ -200,14 +207,28 @@ def ensure(bridge: str, subnet: str, proxy_ip: str, proxy_port: int) -> None:
              bridge, proxy_ip, proxy_port)
 
 
-#: The rules `verify` insists on finding, as nft echoes them back. Kept beside
-#: the ruleset so a rule renamed in one and not the other fails loudly here
-#: rather than silently weakening what is checked.
-def _required(bridge: str, proxy_ip: str):
+#: The rules `verify` insists on finding, per FAMILY and CHAIN.
+#:
+#: THE CHAIN IS PART OF THE KEY, and leaving it out was a real hole rather
+#: than untidiness: `iifname "<bridge>" drop` appears in BOTH the forward and
+#: the input chain, so a table containing only `forward` satisfied every
+#: required substring and `verify` returned cleanly with nothing standing
+#: between a capsule and this host. Proven by loading a forward-only table in
+#: a namespace and watching the old check pass.
+#:
+#: Kept beside the ruleset so a rule renamed in one and not the other fails
+#: loudly here rather than silently weakening what is checked.
+def _required(bridge: str, proxy_ip: str, proxy_port: int):
     return (
-        ("inet", f'iifname "{bridge}" ip saddr {proxy_ip} accept'),
-        ("inet", f'iifname "{bridge}" drop'),
-        ("bridge", f'iifname "{bridge}" oifname "{bridge}" drop'),
+        ("inet", "forward", f'iifname "{bridge}" ip saddr {proxy_ip} accept'),
+        ("inet", "forward", f'iifname "{bridge}" drop'),
+        ("inet", "input",
+         f'iifname "{bridge}" ct state established,related accept'),
+        ("inet", "input", f'iifname "{bridge}" drop'),
+        ("bridge", "forward",
+         f'iifname "{bridge}" oifname "{bridge}" ip daddr {proxy_ip} '
+         f'tcp dport {proxy_port} accept'),
+        ("bridge", "forward", f'iifname "{bridge}" oifname "{bridge}" drop'),
     )
 
 
@@ -223,16 +244,30 @@ def verify(bridge: str, subnet: str, proxy_ip: str, proxy_port: int) -> None:
     boot would prove the filter existed at boot and nothing about the moment a
     Capsule is actually given a NIC — and the window between those two is
     measured in days.
+
+    ASKED PER CHAIN. `nft list chain` also makes the chain's EXISTENCE part of
+    the answer: a missing chain is a non-zero exit, not an empty haystack that
+    a substring search would call satisfied.
+
+    The chain HEADER is deliberately not asserted. nft echoes priorities in its
+    own vocabulary (`priority filter - 10;`), so a literal `priority -10` check
+    fails against a correct kernel — a test that fails on correct input is a
+    test somebody deletes.
     """
-    for family, rule in _required(bridge, proxy_ip):
-        listed = _nft("list", "table", family, TABLE).stdout
+    for family, chain, rule in _required(bridge, proxy_ip, proxy_port):
+        proc = _nft("list", "chain", family, TABLE, chain, check=False)
+        if proc.returncode != 0:
+            raise NetfilterError(
+                f"the {family} table has no {chain} chain "
+                f"({proc.stderr.strip()[-200:]}). Refusing to give a Capsule "
+                "a network it cannot have filtered.")
         # Whitespace-normalised: nft echoes its own formatting, which is not
         # byte-identical to what was written.
-        if " ".join(rule.split()) not in " ".join(listed.split()):
+        if " ".join(rule.split()) not in " ".join(proc.stdout.split()):
             raise NetfilterError(
                 f"the egress ruleset is not in the kernel as written (missing "
-                f"from the {family} table: {rule}). Refusing to give a Capsule "
-                "a network it cannot have filtered.")
+                f"from {family} {chain}: {rule}). Refusing to give a Capsule a "
+                "network it cannot have filtered.")
 
 
 def available() -> bool:

@@ -64,6 +64,15 @@ class CapsuleManager:
         #: the filter could not be established — which is what makes "no
         #: filter" mean "no NIC" rather than "an unfiltered NIC".
         self.egress = egress_mod.Policy()
+        #: Whether the packet filter was PROVEN to be in the kernel. Separate
+        #: from the policy above, and the separation is load-bearing: the
+        #: policy holds the bridge, subnet and proxy address, which are the
+        #: only copy the executor has and the exact values a later repair must
+        #: call `netfilter.ensure` with. Blanking the policy to mean "not
+        #: ready" — which this code did until 2026-09-10 — destroyed those
+        #: values, so the repair path below could never run on precisely the
+        #: host that needed it, and egress stayed dead until a daemon restart.
+        self.egress_ready = False
         #: Which capsules asked for egress at mount time, by uuid string. The
         #: executor has no database: mount is where the app states the policy,
         #: and this set is the executor's memory of it. See `wants_egress` for
@@ -130,7 +139,7 @@ class CapsuleManager:
         reservation that justified it. A job that unexpectedly has no network
         fails loudly; one that unexpectedly HAS network does not.
         """
-        return (self.egress.configured
+        return (self.egress.configured and self.egress_ready
                 and str(capsule) in self._egress_capsules)
 
     def mount(self, capsule, limits: Limits, *, egress: bool = False) -> dict:
@@ -146,6 +155,23 @@ class CapsuleManager:
         that has none, and the first symptom would be a job failing to fetch
         something with no explanation anywhere.
         """
+        if egress and self.egress.configured and not self.egress_ready:
+            # The filter could not be established at startup. Try once more
+            # here rather than refusing for the life of the daemon: nft may
+            # have arrived late, or a boot-time nftables reload may have
+            # raced us.
+            try:
+                netfilter.ensure(self.egress.bridge, self.egress.subnet,
+                                 self.egress.proxy_ip, self.egress.proxy_port)
+                netfilter.verify(self.egress.bridge, self.egress.subnet,
+                                 self.egress.proxy_ip, self.egress.proxy_port)
+                self.egress_ready = True
+                log.info("anastasia: egress filter established at mount time")
+            except netfilter.NetfilterError as exc:
+                raise CapsuleError(
+                    "This Capsule asked for internet access and this host "
+                    f"cannot filter it ({exc}). Mount it without egress, or "
+                    "fix the host.") from exc
         if egress and self.egress.configured:
             # RE-PROVEN AT EVERY MOUNT, never trusted from startup. The filter
             # is in a kernel other things also write to: a `systemctl restart

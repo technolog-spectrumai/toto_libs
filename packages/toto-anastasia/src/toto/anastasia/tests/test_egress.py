@@ -182,10 +182,91 @@ class RulesetTests(SimpleTestCase):
         self.assertIn("delete table inet anastasia", self.text)
         self.assertIn("delete table bridge anastasia", self.text)
 
+    def test_only_the_proxy_PORT_is_reachable_across_the_bridge(self):
+        """`proxy_port` was passed by four call sites and read by none, while
+        two docstrings claimed "the proxy's address and port are the only
+        thing routable". A capsule could open any port on the proxy container,
+        and the comment said otherwise — a false reassurance is worse than no
+        comment."""
+        self.assertIn(
+            f'ip daddr {PROXY_IP} tcp dport {PROXY_PORT} accept', self.text)
+        self.assertNotIn(f'ip daddr {PROXY_IP} accept', self.rules)
+
     def test_the_facts_are_interpolated_not_hardcoded(self):
         other = netfilter.ruleset("other0", "172.31.9.0/24", "172.31.9.5", 3128)
         self.assertIn('iifname "other0" ip saddr 172.31.9.5 accept', other)
+        self.assertIn("tcp dport 3128 accept", other)
         self.assertNotIn(BRIDGE, other)
+
+
+class VerifyTests(SimpleTestCase):
+    """What `verify` will and will not accept as proof.
+
+    `mount` trusts this to decide whether a Capsule gets a NIC, so a check that
+    passes on a half-installed table is the whole guarantee gone.
+    """
+
+    FORWARD_ONLY = (
+        'table inet anastasia {\n'
+        '  chain forward {\n'
+        '    type filter hook forward priority filter - 10; policy accept;\n'
+        '    iifname "anastasia-egr0" ct state established,related accept\n'
+        '    iifname "anastasia-egr0" ip saddr 10.207.0.2 accept\n'
+        '    iifname "anastasia-egr0" drop\n'
+        '  }\n'
+        '}\n'
+    )
+
+    def test_a_missing_input_chain_is_not_proof(self):
+        """THE HOLE THIS CLOSES. `iifname "<bridge>" drop` appears in BOTH the
+        forward and the input chain, so a whole-table substring search was
+        satisfied by a table that had no input chain at all — and the input
+        chain is the one that keeps a capsule off this host. Proven by loading
+        a forward-only table in a namespace and watching the old check pass."""
+        import subprocess
+        from unittest import mock
+
+        def fake_nft(*args, check=True):
+            # `list chain inet anastasia input` — the chain is absent.
+            if args[:2] == ("list", "chain") and args[-1] == "input":
+                return subprocess.CompletedProcess(
+                    args, 1, "", "Error: No such file or directory")
+            return subprocess.CompletedProcess(args, 0, self.FORWARD_ONLY, "")
+
+        with mock.patch.object(netfilter, "_nft", fake_nft):
+            with self.assertRaises(netfilter.NetfilterError) as caught:
+                netfilter.verify(BRIDGE, SUBNET, PROXY_IP, PROXY_PORT)
+        self.assertIn("input", str(caught.exception))
+        # ...and the SAME kernel state satisfies a whole-table search, which is
+        # why asking per chain is the fix rather than the tidier spelling. This
+        # fixture is an earlier draft of our own ruleset: it carried
+        # `ct state established,related accept` in FORWARD, so every string the
+        # old check looked for was present while `input` did not exist.
+        whole_table = " ".join(self.FORWARD_ONLY.split())
+        for _family, chain, rule in netfilter._required(BRIDGE, PROXY_IP,
+                                                        PROXY_PORT):
+            if chain == "input":
+                self.assertIn(" ".join(rule.split()), whole_table,
+                              "the fixture must satisfy the OLD check, or this "
+                              "test proves nothing about the new one")
+
+    def test_the_chain_header_is_never_asserted(self):
+        """nft echoes priorities in its own vocabulary — `priority filter - 10`
+        — so a literal `priority -10` check fails against a correct kernel,
+        and a test that fails on correct input is a test somebody deletes."""
+        for _family, _chain, rule in netfilter._required(BRIDGE, PROXY_IP,
+                                                        PROXY_PORT):
+            self.assertNotIn("priority", rule)
+            self.assertNotIn("policy", rule)
+
+    def test_every_chain_that_matters_is_checked(self):
+        """A rule renamed in the ruleset and not in `_required` weakens what is
+        proven without failing anything, so the two are pinned together."""
+        checked = {(f, c) for f, c, _ in netfilter._required(BRIDGE, PROXY_IP,
+                                                            PROXY_PORT)}
+        self.assertEqual(
+            checked, {("inet", "forward"), ("inet", "input"),
+                      ("bridge", "forward")})
 
 
 class RunnerPostureTests(SimpleTestCase):
