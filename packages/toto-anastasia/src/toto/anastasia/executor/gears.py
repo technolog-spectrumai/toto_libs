@@ -247,6 +247,13 @@ class GearManager:
             "running": False,
             "exit_code": state["exit_code"],
             "oom_killed": state["oom_killed"],
+            # Whether the False above can be believed. A VM tier cannot see
+            # into its own guest, so the app must not read "not an OOM" from
+            # a driver that would be unable to tell. Reported as a fact about
+            # the RUNTIME rather than as a tier name, so the app never has to
+            # know what "kata" means.
+            "oom_observable": bool(
+                getattr(self.docker, "observes_guest_oom", True)),
             "logs": self.docker.logs(row["id"]),
         }
 

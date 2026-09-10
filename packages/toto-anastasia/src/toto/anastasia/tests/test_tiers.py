@@ -151,6 +151,52 @@ def _rendered_source() -> str:
                   page, flags=re.DOTALL)
 
 
+class GuestOomVisibilityTests(SimpleTestCase):
+    """A tier that cannot see a guest OOM must not report "not an OOM".
+
+    Measured on a real machine 2026-09-10, same job and same ceiling, with
+    /dev/shm deliberately larger than the memory limit so only RAM could bind:
+
+        runc   exit 137, OOMKilled true
+        kata   exit 255, OOMKilled false
+
+    The ceiling is not weaker under Kata — it is stronger, since the VM is only
+    as big as the limit. What is lost is the REPORT, and the report is what
+    picks the sentence a user acts on.
+    """
+
+    def test_a_shared_kernel_driver_can_see_its_own_oom_kills(self):
+        self.assertTrue(docker_driver.DockerClient.observes_guest_oom)
+
+    def test_a_vm_driver_admits_it_cannot(self):
+        """The whole point. If this ever flips to True, a Kata user whose job
+        died for want of memory is told it was merely stopped."""
+        self.assertFalse(docker_driver.KataDriver.observes_guest_oom)
+
+    def test_the_default_is_the_safe_one_for_a_shared_kernel(self):
+        """A driver that forgets to declare inherits True, which is right: the
+        base contract is a host-visible cgroup kill, and a VM tier is the
+        exception that has to say so."""
+        self.assertTrue(drivers.Driver.observes_guest_oom)
+
+    def test_exit_255_is_not_treated_as_proof_of_an_oom(self):
+        """The tempting heuristic, refused on purpose.
+
+        Kata reports 255 for a guest OOM — and also for a guest kernel panic
+        and for a shim failure. Mapping 255 to "ran out of memory" would print
+        a guess as a fact, which is the exact failure the tier-honesty rule
+        exists to prevent. `exit_state` must report what it saw, nothing more.
+        """
+        client = docker_driver.KataDriver()
+        client.inspect = lambda cid: {
+            "State": {"ExitCode": 255, "OOMKilled": False, "Running": False}}
+        state = client.exit_state("x")
+        self.assertEqual(state["exit_code"], 255)
+        self.assertFalse(
+            state["oom_killed"],
+            "the driver must not infer an OOM from an exit code")
+
+
 class TierHonestyTests(SimpleTestCase):
     """The page must never promise isolation the runtime did not give.
 

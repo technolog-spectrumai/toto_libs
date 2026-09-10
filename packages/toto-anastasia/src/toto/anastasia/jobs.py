@@ -380,6 +380,26 @@ def _finish(execution, status: dict, report: dict) -> None:
                      "This job ran out of memory inside its Gear. Give the "
                      "Gear more RAM, or ask for less work at once.")
         return
+    # KILLED, ON A TIER THAT CANNOT SEE WHY.
+    #
+    # `oom_killed` is authoritative only where the HOST does the killing. On a
+    # VM tier the guest kernel does it and nothing crosses back, so False there
+    # means "could not tell" (see `Driver.observes_guest_oom`). Saying "it ran
+    # out of memory" anyway would be a guess printed as a fact; saying nothing
+    # sends the user to look at their code when the answer is a bigger Gear.
+    # So: name the uncertainty, then give the same advice.
+    #
+    # Guarded on `is False` rather than falsiness because an OLDER EXECUTOR
+    # does not send the key at all, and a missing key must keep the previous
+    # behaviour rather than start hedging every failure.
+    if (status.get("oom_observable") is False
+            and status.get("exit_code") not in (0, None)):
+        execute.fail(execution,
+                     "This job was killed before it finished. This deployment "
+                     "runs jobs in a virtual machine, and from outside it we "
+                     "cannot see whether it ran out of memory — if it was "
+                     "doing heavy work, give the Gear more RAM and try again.")
+        return
     # The runner's own verdict WINS over the exit code when it has one.
     #
     # Not a preference — the exit code is unreliable in both directions. A

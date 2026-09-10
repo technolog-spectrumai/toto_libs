@@ -386,6 +386,22 @@ class KataDriver(DockerClient):
     name = "kata"
     runtime = "kata"
 
+    #: A guest OOM is invisible from out here, so ``oom_killed`` being False
+    #: means "I could not tell", not "it had memory to spare". Measured
+    #: 2026-09-10, same job, same ceiling, shm deliberately larger than the
+    #: ceiling so only RAM could bind:
+    #:
+    #:     runc   exit 137, OOMKilled true
+    #:     kata   exit 255, OOMKilled false
+    #:
+    #: The ceiling itself is not weaker here — it is stronger, because the VM
+    #: is only as big as the limit and cannot grow past it. `--memory 64m`
+    #: yields a guest whose own `free` reports 37 MB total. What is lost is not
+    #: the enforcement but the REPORT: the guest kernel does the killing, and
+    #: nothing crosses back to the host to say so. `docker events` emits no oom
+    #: for it either, so there is nothing to subscribe to.
+    observes_guest_oom = False
+
 
 #: Every tier this executor can run a job in, by the name a config uses.
 #:

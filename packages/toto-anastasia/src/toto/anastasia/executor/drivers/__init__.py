@@ -67,6 +67,11 @@ class Driver:
       is SIGKILL and says nothing about why, so a deadline kill and an
       out-of-memory kill are indistinguishable without it, and they need
       different sentences.
+
+      **A driver that cannot see a guest's OOM must say so** — see
+      ``observes_guest_oom`` below. Returning ``False`` when the honest answer
+      is "I cannot tell" is how a user gets told their job was merely stopped
+      when in fact it needed more memory.
     * ``list_managed`` → rows of ``{"id", "name", "state", "gear",
       "execution"}``, where ``state`` is lowercase and ``running`` is the value
       reconciliation tests for.
@@ -76,6 +81,24 @@ class Driver:
     #: here is worse than one that fails: the platform would promise isolation
     #: it does not have.
     name = "driver"
+
+    #: Whether this runtime's OOM kills are visible to the HOST, and therefore
+    #: whether ``exit_state()["oom_killed"]`` can be believed when it is False.
+    #:
+    #: True for a shared-kernel runtime: the host cgroup does the killing, so
+    #: ``docker inspect`` reports it. **False for a VM tier**, where the guest
+    #: kernel kills the process inside a machine the host cannot see into.
+    #: Measured on 2026-09-10 with the same job under both:
+    #:
+    #:     runc   exit 137, OOMKilled true
+    #:     kata   exit 255, OOMKilled false
+    #:
+    #: The temptation is to treat 255 as "must have been an OOM". Do not: 255
+    #: means the guest died abnormally, which also covers a guest kernel panic
+    #: and a shim failure. Interpolating a guess into a sentence a user acts on
+    #: is the failure this whole tier-honesty rule exists to prevent. Say the
+    #: platform cannot tell, and say what to try.
+    observes_guest_oom = True
 
     def available(self) -> bool:
         raise NotImplementedError
