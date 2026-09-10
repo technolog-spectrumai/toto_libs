@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+import subprocess
 import unittest
 import uuid
 
@@ -30,14 +31,45 @@ from toto.anastasia.executor.drivers import docker as containers
 PROBE_IMAGE = os.environ.get("ANASTASIA_TEST_IMAGE", "alpine:3.20")
 
 
+#: WHICH TIER these run against. Default docker, because that is what every
+#: machine has; set ANASTASIA_TEST_RUNTIME=kata on a host with the Kata stack
+#: registered and the SAME assertions run against virtual machines.
+#:
+#: That reuse is the point. "No host data, no network, no escalation, every
+#: limit kernel-enforced" are claims about a SANDBOX, not about Docker, and a
+#: second tier that had its own copy of them would eventually prove something
+#: subtly weaker. One matrix, parameterised by tier, is the only way the two
+#: cannot drift.
+TEST_TIER = os.environ.get("ANASTASIA_TEST_RUNTIME", "docker")
+
+
+def _driver():
+    return containers.build_driver(TEST_TIER)
+
+
 def _docker_ready() -> bool:
-    client = containers.DockerClient()
-    return client.available() and client.image_exists(PROBE_IMAGE)
+    try:
+        client = _driver()
+    except Exception:                            # noqa: BLE001 - unknown tier
+        return False
+    if not (client.available() and client.image_exists(PROBE_IMAGE)):
+        return False
+    if TEST_TIER == "docker":
+        return True
+    # A NON-DEFAULT TIER MUST BE PROVED, not assumed. `--runtime kata` on a
+    # daemon with no kata runtime registered is refused outright, and these
+    # tests silently passing against plain containers while claiming to test
+    # VMs is the exact dishonesty the tier work exists to prevent.
+    probe = subprocess.run(
+        ["docker", "run", "--rm", "--runtime", TEST_TIER, PROBE_IMAGE, "true"],
+        capture_output=True, text=True, check=False)
+    return probe.returncode == 0
 
 
 DOCKER = _docker_ready()
 requires_docker = unittest.skipUnless(
-    DOCKER, f"needs a reachable Docker daemon and the {PROBE_IMAGE} image")
+    DOCKER,
+    f"needs a reachable runtime ({TEST_TIER}) and the {PROBE_IMAGE} image")
 
 
 @requires_docker
@@ -49,7 +81,7 @@ class RunnerConfinementTests(SimpleTestCase):
         super().setUpClass()
         # NOT self.client: Django's SimpleTestCase puts its own test HTTP
         # client there in _pre_setup and would shadow this.
-        cls.docker = containers.DockerClient()
+        cls.docker = _driver()
         cls.family = Family(key="probe", label="Probe", image=PROBE_IMAGE,
                             default_limits=Limits(1000, 128, 64, 32))
 
@@ -279,3 +311,78 @@ class SliceIntegrationTests(SimpleTestCase):
 
     def test_sampling_a_slice_that_is_not_there_is_empty_not_an_error(self):
         self.assertEqual(self.driver.sample(uuid.uuid4()), {})
+
+
+@requires_docker
+class TierHonestyIntegrationTests(SimpleTestCase):
+    """The one test that can catch the platform lying about isolation.
+
+    Everything in `test_tiers.py` is about argv, config and the words on a
+    page — all of it verifiable without a runtime, and none of it able to tell
+    you whether a job ACTUALLY got its own kernel. Only this can, and only by
+    running something.
+
+    It is written to be meaningful in both directions. Under `docker` it
+    asserts the platform does NOT claim a separate kernel; under `kata` it
+    asserts the kernel really is separate. A suite that only ran under kata
+    would leave the more common configuration unchecked.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.docker = _driver()
+        cls.family = Family(key="probe", label="Probe", image=PROBE_IMAGE,
+                            default_limits=Limits(1000, 128, 64, 32))
+
+    def _uname(self) -> str:
+        work = tempfile.mkdtemp(prefix="anastasia-tier-")
+        self.addCleanup(shutil.rmtree, work, ignore_errors=True)
+        input_dir, output_dir = os.path.join(work, "in"), os.path.join(work, "out")
+        os.makedirs(input_dir)
+        os.makedirs(output_dir)
+        os.chmod(output_dir, 0o777)
+        name = f"anastasia-tier-{uuid.uuid4().hex[:10]}"
+        container = self.docker.create(
+            family=self.family, limits=Limits(1000, 256, 64, 32), name=name,
+            cgroup_parent=None, input_dir=input_dir, output_dir=output_dir,
+            env=None, labels={}, argv=["uname", "-r"], network=None)
+        self.addCleanup(self.docker.remove, container)
+        self.docker.start(container)
+        self.docker.wait(container, timeout=60)
+        return self.docker.logs(container).strip()
+
+    def test_the_guest_kernel_matches_what_the_tier_claims(self):
+        """THE ASSERTION THE WHOLE CAMPAIGN IS FOR.
+
+        A VM tier that returned the host's kernel would mean `--runtime` was
+        accepted and did nothing — every hardening flag still applied, every
+        page still saying "virtual machine", and every job still sharing this
+        kernel with the vault.
+        """
+        host = os.uname().release
+        guest = self._uname()
+        self.assertTrue(guest, "the probe produced no output")
+
+        from toto.anastasia.services import KERNEL_ISOLATING_TIERS
+
+        if self.docker.name in KERNEL_ISOLATING_TIERS:
+            self.assertNotEqual(
+                guest, host,
+                f"tier {self.docker.name!r} claims a kernel of its own, but the "
+                f"job reported the HOST kernel ({host}). Either the runtime is "
+                "not registered with the daemon, or it was accepted and did "
+                "nothing — and the platform is telling users their code runs "
+                "in a virtual machine when it does not.")
+        else:
+            self.assertEqual(
+                guest, host,
+                f"tier {self.docker.name!r} shares this kernel by definition, "
+                "so a different one means the tier is not what it says")
+
+    def test_a_container_tier_is_not_advertised_as_kernel_isolating(self):
+        """Belt and braces on the whitelist, from the runtime's own side."""
+        from toto.anastasia.services import KERNEL_ISOLATING_TIERS
+
+        if self.docker.name not in KERNEL_ISOLATING_TIERS:
+            self.assertEqual(self._uname(), os.uname().release)
