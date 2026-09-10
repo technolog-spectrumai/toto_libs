@@ -306,9 +306,59 @@ class DockerClient(Driver):
             state = (self.inspect(container) or {}).get("State") or {}
         return state
 
+    #: How much of a log one read may return. A console in a client renders
+    #: what it is given; handing it a 200 MB build log in one response is a
+    #: denial of service against the thing asking for progress.
+    LOG_SLICE_BYTES = 64_000
+
     def logs(self, container: str, tail: int = 200) -> str:
         result = self._run(["logs", "--tail", str(tail), container], check=False)
         return ((result.stdout or "") + (result.stderr or ""))[-8000:]
+
+    def logs_since(self, container: str, offset: int = 0) -> dict:
+        """A slice of the log from ``offset``, and where the next one starts.
+
+        AN OFFSET, NOT A TIMESTAMP. `docker logs --since` takes a time, and two
+        lines written in the same second are indistinguishable to it — a
+        progress console would either repeat them or drop them. A byte offset
+        into the accumulated output is exact, and the caller can hold it
+        without holding a connection.
+
+        The executor stays request/response: nothing here follows the log or
+        keeps a stream open, because the HMAC-and-nonce protocol has no place
+        to put a long-lived connection and the manager's global lock would be
+        held by one for the duration.
+
+        Returns ``{"text", "offset", "complete"}``. `complete` is False when
+        the slice was truncated, so a caller knows to ask again immediately
+        rather than waiting for new output that has already happened.
+        """
+        result = self._run(["logs", container], check=False)
+        whole = (result.stdout or "") + (result.stderr or "")
+        raw = whole.encode("utf-8", "replace")
+        # TOLERATE JUNK. The offset arrives from an HTTP query string, so it
+        # can be "abc", empty, or absent. `int()` raising there would turn a
+        # client's typo into a 500 on the endpoint whose whole job is to show
+        # somebody what went wrong. Start from the beginning instead — the
+        # worst case is one repeated slice.
+        try:
+            offset = max(0, int(offset))
+        except (TypeError, ValueError):
+            offset = 0
+        if offset > len(raw):
+            # The log got SHORTER than the caller's offset. A container was
+            # recreated, or docker rotated it. Starting over beats returning
+            # nothing for ever, which is what a clamped offset would do.
+            offset = 0
+        chunk = raw[offset:offset + self.LOG_SLICE_BYTES]
+        return {
+            # `replace` on the way out too: a slice can cut a multi-byte
+            # character in half, and a console that raises on that shows the
+            # user nothing at all.
+            "text": chunk.decode("utf-8", "replace"),
+            "offset": offset + len(chunk),
+            "complete": offset + len(chunk) >= len(raw),
+        }
 
     def kill(self, container: str) -> None:
         self._run(["kill", container], check=False)

@@ -422,3 +422,7 @@ class AnastasiaQuotaPolicy(AbstractQuotaPolicy):
 # compute — but Django only discovers models imported from `models`, so the
 # import is here and deliberate rather than accidental.
 from .tokens import CapsuleToken  # noqa: E402,F401  (re-export for migrations)
+
+# Retained history, in its own module because it is about TIME rather than
+# about a capsule's current state. Imported here so Django discovers it.
+from .samples import CapsuleSample  # noqa: E402,F401  (re-export for migrations)

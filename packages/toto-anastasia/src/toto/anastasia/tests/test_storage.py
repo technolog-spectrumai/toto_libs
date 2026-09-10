@@ -110,3 +110,67 @@ class MeasureTests(SimpleTestCase):
              "print('clean')"],
             capture_output=True, text=True)
         self.assertIn("clean", probe.stdout, probe.stderr)
+
+
+class BoundaryTests(SimpleTestCase):
+    """The promise, pressed from the outside.
+
+    Everything here is one question asked several ways: can an operator learn
+    anything about a capsule's CONTENTS through an endpoint that exists to
+    report its SIZE. The answer has to stay no as this module grows.
+    """
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="anastasia-boundary-")
+        self.addCleanup(__import__("shutil").rmtree, self.root,
+                        ignore_errors=True)
+
+    def test_measure_takes_no_argument_that_could_widen_it(self):
+        """A `pattern=` or `include_names=` parameter is how this becomes a
+        listing without anybody deciding to make it one."""
+        import inspect
+
+        names = set(inspect.signature(storage.measure).parameters)
+        self.assertEqual(names, {"path", "max_entries", "budget_seconds"})
+
+    def test_by_area_takes_no_such_argument_either(self):
+        import inspect
+
+        names = set(inspect.signature(storage.by_area).parameters)
+        self.assertEqual(names, {"root", "areas", "kwargs"})
+
+    def test_no_function_here_opens_a_file(self):
+        """`stat` is not a read. If `open` ever appears in this module,
+        somebody has started looking inside."""
+        import inspect
+
+        source = inspect.getsource(storage)
+        code = "\n".join(line for line in source.splitlines()
+                          if not line.strip().startswith("#"))
+        self.assertNotIn("open(", code)
+        self.assertNotIn(".read()", code)
+
+    def test_an_area_name_is_not_echoed_from_the_filesystem(self):
+        """Names come from the caller. A directory the caller did not ask
+        about must not appear in the answer, even to say it is there."""
+        _tree(self.root, {"in": {"a": b"1"}, "private-notes": {"b": b"2"}})
+        out = storage.by_area(self.root, ("in",))
+        self.assertEqual(list(out), ["in"])
+        self.assertNotIn("private-notes", repr(out))
+
+    def test_a_deep_tree_is_summed_without_naming_anything(self):
+        _tree(self.root, {"a": {"b": {"c": {"deep.txt": b"x" * 7}}}})
+        out = storage.measure(self.root)
+        self.assertEqual(out["bytes"], 7)
+        self.assertEqual(out["directories"], 3)
+        self.assertNotIn("deep", repr(out))
+
+    def test_an_empty_capsule_reads_as_zero_and_complete(self):
+        """Distinct from "we could not measure", which is `complete: False`.
+        Charting the two the same way is how an unreachable runtime looks like
+        a capsule somebody emptied."""
+        out = storage.measure(self.root)
+        self.assertEqual(out["bytes"], 0)
+        self.assertEqual(out["files"], 0)
+        self.assertTrue(out["complete"])
+

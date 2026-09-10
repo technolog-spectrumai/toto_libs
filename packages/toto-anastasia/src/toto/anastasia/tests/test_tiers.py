@@ -389,3 +389,85 @@ class TierHonestyTests(SimpleTestCase):
         guard = page.rindex("{% if capsule.isolates_kernel %}", 0, strong)
         # Nothing may reopen a branch between the guard and the claim.
         self.assertNotIn("{% if", page[guard + len("{% if capsule.isolates_kernel %}"):strong])
+
+
+class ArgvInjectionTests(SimpleTestCase):
+    """Nothing a caller supplies may become a docker FLAG.
+
+    Every value below reaches `build_run_args` from somewhere a user can
+    influence. The protection is that they are placed as separate argv
+    elements after `--`-style positional boundaries rather than interpolated
+    into a string — but that is a property worth asserting rather than
+    trusting, because one f-string would undo it silently.
+    """
+
+    def test_a_name_that_looks_like_a_flag_stays_one_element(self):
+        argv = docker_driver.DockerClient().build_run_args(
+            family=PDF, limits=RUN, name="--privileged", cgroup_parent=None,
+            input_dir="/in", output_dir="/out", env={}, labels={},
+            argv=["x"], network=None)
+        # It appears exactly once, as the VALUE after --name, and never as a
+        # standalone element docker would read as a flag.
+        self.assertEqual(argv[argv.index("--name") + 1], "--privileged")
+        self.assertEqual(argv.count("--privileged"), 1)
+
+    def test_the_command_is_never_merged_into_one_string(self):
+        """`sh -c "sleep 120"` must stay three elements. Joining them is how a
+        shell metacharacter in a filename becomes a command."""
+        argv = docker_driver.DockerClient().build_run_args(
+            family=PDF, limits=RUN, name="p", cgroup_parent=None,
+            input_dir="/in", output_dir="/out", env={}, labels={},
+            argv=["sh", "-c", "echo hi; rm -rf /"], network=None)
+        self.assertIn("echo hi; rm -rf /", argv)
+        self.assertNotIn("sh -c echo hi; rm -rf /", " ".join(argv[:-3]))
+
+    def test_a_label_value_cannot_add_a_flag(self):
+        argv = docker_driver.DockerClient().build_run_args(
+            family=PDF, limits=RUN, name="p", cgroup_parent=None,
+            input_dir="/in", output_dir="/out", env={},
+            labels={"anastasia.capsule": "x --privileged"},
+            argv=["true"], network=None)
+        self.assertNotIn("--privileged", argv)
+
+    def test_every_limit_reaches_the_argv_as_a_number(self):
+        """A limit that arrived as a string would be accepted by docker and
+        then mean something else, or nothing."""
+        argv = docker_driver.DockerClient().build_run_args(
+            family=PDF, limits=RUN, name="p", cgroup_parent=None,
+            input_dir="/in", output_dir="/out", env={}, labels={},
+            argv=["true"], network=None)
+        self.assertEqual(argv[argv.index("--memory") + 1],
+                         str(RUN.memory_bytes))
+        self.assertEqual(argv[argv.index("--pids-limit") + 1], str(RUN.pids))
+
+
+class ForbiddenEnvTests(SimpleTestCase):
+    """A credential must not reach a runner even when a caller insists.
+
+    The screen RAISES rather than dropping the variable. Silently discarding
+    it would let a caller believe a secret was delivered, and the job would
+    fail somewhere far from the cause.
+    """
+
+    def _build(self, env):
+        return docker_driver.DockerClient().build_run_args(
+            family=PDF, limits=RUN, name="p", cgroup_parent=None,
+            input_dir="/in", output_dir="/out", env=env, labels={},
+            argv=["true"], network=None)
+
+    def test_the_obvious_credentials_are_refused(self):
+        for name in ("SECRET_KEY", "DB_PASSWORD", "POSTGRES_PASSWORD",
+                     "VAULT_KEY", "FIELD_ENCRYPTION_KEY",
+                     "ANASTASIA_SHARED_SECRET"):
+            with self.subTest(variable=name):
+                with self.assertRaises(drivers.DriverError):
+                    self._build({name: "x"})
+
+    def test_the_screen_is_by_PREFIX_so_a_suffix_cannot_dodge_it(self):
+        with self.assertRaises(drivers.DriverError):
+            self._build({"DB_PASSWORD_BACKUP": "x"})
+
+    def test_an_allowed_variable_still_gets_through(self):
+        argv = self._build({"ANASTASIA_OPERATION": "render_pdf"})
+        self.assertIn("ANASTASIA_OPERATION=render_pdf", argv)
+

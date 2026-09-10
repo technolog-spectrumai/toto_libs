@@ -360,3 +360,94 @@ class JobOutputTests(ApiTestCase):
         response = self.call("get", f"/api/v1/jobs/{execution.uuid}/output")
         self.assertEqual(response.status_code, 404)
 
+
+class TokenHardeningTests(AnastasiaTestCase):
+    """The credential, pressed on the parts that would fail quietly."""
+
+    def test_two_tokens_never_share_a_selector(self):
+        """The selector is the index. A collision would make one token find
+        the other's row and then fail the verifier — a working credential
+        rejected, with nothing to see in a log."""
+        selectors = {CapsuleToken.issue(owner=self.user, label=f"t{i}")[0].selector
+                     for i in range(25)}
+        self.assertEqual(len(selectors), 25)
+
+    def test_the_stored_hint_cannot_reconstruct_the_secret(self):
+        """A hint exists so an operator can match a token in a config file to
+        a row. It must not be enough to use."""
+        row, raw = CapsuleToken.issue(owner=self.user, label="laptop")
+        verifier = raw.split(".")[-1]
+        self.assertLess(len(row.hint), len(verifier))
+        self.assertTrue(verifier.endswith(row.hint))
+
+    def test_a_token_is_bound_to_one_owner(self):
+        row, raw = CapsuleToken.issue(owner=self.user, label="mine")
+        self.assertEqual(CapsuleToken.authenticate(raw).owner, self.user)
+        self.assertNotEqual(row.owner, self.other)
+
+    def test_revoking_one_token_leaves_the_others_working(self):
+        _a, raw_a = CapsuleToken.issue(owner=self.user, label="a")
+        b, raw_b = CapsuleToken.issue(owner=self.user, label="b")
+        b.revoke()
+        self.assertIsNone(CapsuleToken.authenticate(raw_b))
+        self.assertIsNotNone(CapsuleToken.authenticate(raw_a))
+
+    def test_a_token_with_no_expiry_does_not_expire(self):
+        """Most tokens are for a machine that runs indefinitely. An accidental
+        default expiry would log a client out at an hour nobody chose."""
+        _row, raw = CapsuleToken.issue(owner=self.user, label="forever")
+        self.assertIsNotNone(CapsuleToken.authenticate(raw))
+
+    def test_the_prefix_is_required(self):
+        """A bare selector.verifier must not authenticate: the prefix is what
+        makes a leaked token recognisable in a log or a config file."""
+        _row, raw = CapsuleToken.issue(owner=self.user, label="x")
+        _prefix, selector, verifier = raw.split(".")
+        self.assertIsNone(CapsuleToken.authenticate(f"{selector}.{verifier}"))
+
+    def test_a_token_for_a_deleted_user_stops_working(self):
+        """CASCADE on the owner. A credential outliving its person is the
+        definition of an orphaned key."""
+        from django.contrib.auth import get_user_model
+
+        doomed = get_user_model().objects.create_user("doomed", password="x")
+        _row, raw = CapsuleToken.issue(owner=doomed, label="theirs")
+        doomed.delete()
+        self.assertIsNone(CapsuleToken.authenticate(raw))
+
+
+class ApiRefusalShapeTests(ApiTestCase):
+    """Every refusal a client can meet, in the one shape it parses."""
+
+    def test_an_unknown_capsule_action_is_a_404_with_a_code(self):
+        lease = services.reserve(owner=self.user, name="c", limits=SMALL)
+        response = self.call("post", f"/api/v1/capsules/{lease.uuid}/detonate",
+                             body={})
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["code"], "bad_action")
+
+    def test_a_get_on_a_post_endpoint_is_405_not_a_crash(self):
+        lease = services.reserve(owner=self.user, name="c", limits=SMALL)
+        self.assertEqual(
+            self.call("get", f"/api/v1/capsules/{lease.uuid}/mount").status_code,
+            405)
+
+    def test_reserving_with_no_limits_is_refused_not_defaulted(self):
+        """Silently defaulting capacity would hand out whatever the code
+        happened to choose, against a pool somebody else is sharing."""
+        response = self.call("post", "/api/v1/capsules/new", body={"name": "x"})
+        self.assertIn(response.status_code, (400, 409))
+
+    def test_every_error_body_has_both_halves(self):
+        """A sentence for the person, a code for the client. A body missing
+        either forces the caller to match on English."""
+        for response in (
+                self.client.get("/api/v1/pool"),
+                self.call("get", "/api/v1/pool", raw="capsule.bad.token"),
+                self.call("post", "/api/v1/capsules/new", body={"name": "x"}),
+        ):
+            with self.subTest(status=response.status_code):
+                body = response.json()
+                self.assertIn("error", body)
+                self.assertIn("code", body)
+
