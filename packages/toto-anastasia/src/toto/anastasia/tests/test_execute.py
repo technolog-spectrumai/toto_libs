@@ -323,3 +323,73 @@ class MeteringRefusalTests(AnastasiaTestCase):
             with self.subTest(name=name):
                 self.assertIn(name, quota.__all__)
                 self.assertTrue(hasattr(quota, name))
+
+
+class UnobservableKillTests(AnastasiaTestCase):
+    """What a user is told when the tier cannot see why their job died.
+
+    `oom_killed` is authoritative only where the HOST does the killing. On a VM
+    tier the guest kernel does it and nothing crosses back, so False there means
+    "could not tell" rather than "it had memory to spare" — see
+    `Driver.observes_guest_oom`. Measured 2026-09-10: the same job, same
+    ceiling, reports 137/true under runc and 255/false under Kata.
+
+    Saying "it ran out of memory" anyway would print a guess as a fact. Saying
+    nothing sends the user to read their own code when the answer is a bigger
+    Gear. So the sentence names the uncertainty and still gives the advice.
+    """
+
+    def _execution(self):
+        from toto.anastasia.models import Execution
+
+        lease = services.reserve(owner=self.user, name="c", limits=SMALL)
+        services.mount(lease=lease, actor=self.user)
+        return Execution.objects.create(
+            lease=lease, operation="render_pdf", family="pdf",
+            cpu_millicores=500, ram_mb=128, scratch_mb=64, pids=32,
+            timeout_seconds=60, requested_by=self.user)
+
+    def _finish_with(self, **status):
+        from toto.anastasia import jobs
+
+        execution = self._execution()
+        base = {"found": True, "running": False, "exit_code": 255, "logs": ""}
+        base.update(status)
+        jobs._finish(execution, base, {})
+        execution.refresh_from_db()
+        return execution
+
+    def test_an_observable_oom_still_says_out_of_memory(self):
+        """The Docker path is untouched: where the host CAN see the kill, the
+        confident sentence is right and must not start hedging."""
+        execution = self._finish_with(oom_killed=True, oom_observable=True,
+                                      exit_code=137)
+        self.assertIn("ran out of memory", execution.error)
+
+    def test_an_unobservable_kill_admits_it_cannot_tell(self):
+        execution = self._finish_with(oom_killed=False, oom_observable=False,
+                                      exit_code=255)
+        self.assertIn("cannot see whether it ran out of memory",
+                      execution.error)
+        self.assertIn("more RAM", execution.error,
+                      "naming the uncertainty is not enough on its own — the "
+                      "user still needs to be told what to try")
+        self.assertNotIn("ran out of memory inside", execution.error,
+                         "must not assert the OOM it could not observe")
+
+    def test_a_missing_key_keeps_the_old_behaviour(self):
+        """AN OLDER EXECUTOR DOES NOT SEND THE KEY.
+
+        The branch guards on `is False`, not on falsiness, so a status dict
+        from an executor that predates this reads as "no opinion" and takes the
+        exit-code path exactly as before. Getting this wrong would make every
+        ordinary failure on every tier start hedging about memory.
+        """
+        execution = self._finish_with(oom_killed=False, exit_code=2)
+        self.assertNotIn("cannot see whether", execution.error)
+
+    def test_a_clean_exit_is_never_reported_as_a_kill(self):
+        """exit 0 with the flag off must not trip the new branch."""
+        execution = self._finish_with(oom_killed=False, oom_observable=False,
+                                      exit_code=0)
+        self.assertNotIn("cannot see whether", execution.error or "")
