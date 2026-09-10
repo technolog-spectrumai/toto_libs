@@ -221,6 +221,91 @@ def pool(request):
 # sees.
 
 
+# --------------------------------------------------------------------------- #
+# API tokens                                                                   #
+# --------------------------------------------------------------------------- #
+# WITHOUT THESE THREE VIEWS THE API IS UNREACHABLE. `CapsuleToken.issue()` had
+# no caller but its own tests until 2026-09-10: no route, no admin
+# registration, no management command. Everything at `/api/v1/` authenticated
+# with a bearer token that a person had no way to obtain, which made a tested,
+# documented, mounted API a feature nobody could use. That is a worse failure
+# than a missing endpoint, because every individual piece looks finished.
+
+#: How many live tokens one person may hold. Not a security boundary — a token
+#: acts as its owner, so a second one grants nothing a first does not — but a
+#: list nobody can read is a list nobody revokes from, and "which of these 40
+#: is my old laptop" is how a stale credential survives.
+MAX_TOKENS_PER_USER = 10
+
+
+@login_required
+def tokens(request):
+    """The tokens this person holds, and the form that mints one.
+
+    Revoked ones are listed too, greyed: "I revoked that yesterday" is a thing
+    a person needs to confirm, and a row that vanishes cannot confirm it.
+    """
+    from .tokens import CapsuleToken
+
+    rows = list(CapsuleToken.objects.filter(owner=request.user)
+                .order_by("revoked_at", "-created_at"))
+    return render(request, "anastasia/tokens.html", PageProcessor().decorate({
+        "tokens": rows,
+        "live_count": sum(1 for row in rows if row.is_live),
+        "max_tokens": MAX_TOKENS_PER_USER,
+        # Shown ONCE, carried in the session by `token_issue` below rather than
+        # in the URL — a query string lands in browser history, in the server
+        # log and in any proxy between the two.
+        "fresh_token": request.session.pop("anastasia_fresh_token", ""),
+        "api_root": request.build_absolute_uri("/api/v1/"),
+    }, request))
+
+
+@login_required
+@require_POST
+def token_issue(request):
+    """Mint one. The raw value is shown once and never again."""
+    from .tokens import CapsuleToken
+
+    label = (request.POST.get("label") or "").strip()
+    if not label:
+        messages.error(request, _("Give the token a label, so you can tell "
+                                  "which client it belongs to when you come "
+                                  "to revoke it."))
+        return redirect("anastasia:tokens")
+    if len(label) > 120:
+        label = label[:120]
+
+    live = CapsuleToken.objects.live().filter(owner=request.user).count()
+    if live >= MAX_TOKENS_PER_USER:
+        messages.error(request, _(
+            "You already hold %(count)s API tokens, which is the limit. "
+            "Revoke one you no longer use.") % {"count": live})
+        return redirect("anastasia:tokens")
+
+    _row, raw = CapsuleToken.issue(owner=request.user, label=label)
+    # The session, not the template context of a redirect target reached by
+    # GET: a POST that renders its own page cannot be reloaded without
+    # re-posting, and a person WILL reload the page holding the only copy of
+    # their token.
+    request.session["anastasia_fresh_token"] = raw
+    return redirect("anastasia:tokens")
+
+
+@login_required
+@require_POST
+def token_revoke(request, pk):
+    """Revoke one of YOUR tokens. Somebody else's is a 404, as everywhere."""
+    from .tokens import CapsuleToken
+
+    row = get_object_or_404(CapsuleToken, pk=pk, owner=request.user)
+    if row.is_live:
+        row.revoke()
+        messages.success(request, _("“%(label)s” can no longer be used.")
+                         % {"label": row.label})
+    return redirect("anastasia:tokens")
+
+
 def _staff_only(user) -> bool:
     return bool(user.is_active and (user.is_staff or user.is_superuser))
 

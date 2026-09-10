@@ -59,12 +59,20 @@ class FakeRuntimeBackend:
     fail_mount = False
     fail_start = False
     generation = "gen-test"
+    #: What a running job has printed. Set by a test that wants to read it
+    #: back through `execution_logs`.
+    log_text = ""
+    #: Flip to make the log reader unreachable — the shape a real runtime
+    #: takes when the executor is down, which must degrade rather than 500.
+    fail_logs = False
 
     @classmethod
     def reset(cls):
         cls.calls = []
         cls.fail_mount = False
         cls.fail_start = False
+        cls.log_text = ""
+        cls.fail_logs = False
 
     def mount(self, lease):
         type(self).calls.append(("mount", str(lease.uuid)))
@@ -90,6 +98,28 @@ class FakeRuntimeBackend:
     def kill_execution(self, execution):
         type(self).calls.append(("kill", str(execution.uuid)))
         return {"killed": True}
+
+    def execution_logs(self, execution, offset=0):
+        """Slice `log_text` the way the real driver slices a container's log.
+
+        Modelled on `drivers/docker.py:logs_since` rather than invented: it
+        takes a BYTE offset into the accumulated output, tolerates junk by
+        starting from zero, and reports where the next slice begins. A fake
+        that returned the whole log regardless of offset would let a broken
+        cursor pass.
+        """
+        type(self).calls.append(("logs", str(execution.uuid), offset))
+        if type(self).fail_logs:
+            return {"text": "", "offset": offset, "complete": False,
+                    "found": False}
+        raw = type(self).log_text.encode("utf-8")
+        try:
+            offset = max(0, int(offset))
+        except (TypeError, ValueError):
+            offset = 0
+        offset = min(offset, len(raw))
+        return {"text": raw[offset:].decode("utf-8", "replace"),
+                "offset": len(raw), "complete": True, "found": True}
 
     def describe(self):
         return {"backend": "fake", "name": "fake"}

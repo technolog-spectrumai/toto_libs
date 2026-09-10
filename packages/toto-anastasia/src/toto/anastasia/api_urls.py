@@ -31,5 +31,8 @@ urlpatterns = [
     path("capsules/<uuid:uuid>/<str:action>", api.capsule_action,
          name="capsule_action"),
     path("jobs/<uuid:uuid>", api.job_detail, name="job_detail"),
+    # Progress while it runs, as opposed to `output` which refuses until the
+    # job is finished. Both are needed and they answer different questions.
+    path("jobs/<uuid:uuid>/logs", api.job_logs, name="job_logs"),
     path("jobs/<uuid:uuid>/output", api.job_output, name="job_output"),
 ]

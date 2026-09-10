@@ -196,6 +196,24 @@ class ExecutorRuntimeBackend(RuntimeBackend):
         return self._call("GET", f"/jobs/{execution.uuid}",
                           {"capsule": str(execution.lease.uuid)}, timeout=15)
 
+    def execution_logs(self, execution, offset: int = 0) -> dict:
+        """A slice of a running job's output. Never raises.
+
+        An empty slice at the caller's own offset when the runtime cannot
+        answer, for the same reason `storage` returns an empty dict: a
+        progress console that 500s is worse than one that shows nothing new,
+        and the caller polls again in a second either way.
+        """
+        try:
+            return self._call(
+                "GET", f"/jobs/{execution.uuid}/logs",
+                {"capsule": str(execution.lease.uuid), "offset": offset})
+        except Exception:                        # noqa: BLE001
+            log.warning("anastasia: could not read logs for %s",
+                        execution.uuid, exc_info=True)
+            return {"text": "", "offset": offset, "complete": False,
+                    "found": False}
+
     def collect(self, execution) -> bytes:
         result = self._call("GET", f"/jobs/{execution.uuid}/out",
                             {"capsule": str(execution.lease.uuid)}, timeout=120)

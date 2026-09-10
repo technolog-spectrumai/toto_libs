@@ -60,6 +60,10 @@ ROUTES = [
     ("POST", re.compile(r"^/jobs$"), "start_execution"),
     ("GET", re.compile(rf"^/jobs/({_UUID})$"), "execution_status"),
     ("GET", re.compile(rf"^/jobs/({_UUID})/out$"), "execution_output"),
+    # Progress, while it is still happening. Separate from /status because
+    # status is a small fixed shape polled constantly and this returns a
+    # slice whose size the caller controls with ?offset=.
+    ("GET", re.compile(rf"^/jobs/({_UUID})/logs$"), "execution_logs"),
     ("POST", re.compile(rf"^/jobs/({_UUID})/kill$"), "kill_execution"),
     ("POST", re.compile(rf"^/jobs/({_UUID})/finish$"), "finish_execution"),
     ("GET", re.compile(r"^/pool$"), "pool"),
@@ -158,6 +162,19 @@ class Api:
         blob = self.manager.collect(capsule=capsule, execution=execution)
         return 200, {"tar_b64": base64.b64encode(blob).decode("ascii"),
                      "bytes": len(blob)}
+
+    def execution_logs(self, execution, payload):
+        """A slice from `offset`. Junk in the query string is not a 500.
+
+        The offset reaches here as a string off an HTTP query — it can be
+        "abc", empty or absent — and the driver already tolerates all three by
+        starting from zero. Passed through rather than parsed here, so there
+        is one rule and not two that can disagree.
+        """
+        capsule = str(payload.get("capsule") or "")
+        return 200, self.manager.execution_logs(
+            capsule=capsule, execution=execution,
+            offset=payload.get("offset", 0))
 
     def kill_execution(self, execution, payload):
         capsule = str(payload.get("capsule") or "")

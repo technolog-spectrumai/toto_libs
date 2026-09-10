@@ -293,6 +293,32 @@ class CapsuleManager:
             "logs": self.docker.logs(row["id"]),
         }
 
+    def execution_logs(self, *, capsule, execution, offset: int = 0) -> dict:
+        """A slice of a RUNNING job's output, and where the next slice starts.
+
+        `execution_status` already returns `logs`, and this is not a duplicate
+        of it: that one returns the WHOLE log and only once the container has
+        stopped, which is the wrong shape for watching something happen. A
+        long install or a slow compile is exactly when somebody wants to see
+        progress, and exactly when the whole log is both unavailable and, by
+        the end, too big to resend every second.
+
+        An OFFSET rather than a timestamp — see the driver's `logs_since` for
+        why two lines written in the same second make `--since` unusable.
+
+        Returns `{"text", "offset", "complete"}`. A job the manager has no
+        container for returns an empty slice at the caller's offset rather
+        than raising: a client polling a job that has just been swept should
+        stop, not error.
+        """
+        rows = [r for r in self.docker.list_managed(capsule=str(capsule))
+                if r["execution"] == str(execution)]
+        if not rows:
+            return {"text": "", "offset": offset, "complete": True,
+                    "found": False}
+        slice_ = self.docker.logs_since(rows[0]["id"], offset)
+        return {**slice_, "found": True}
+
     def collect(self, *, capsule, execution) -> bytes:
         """The output tar. Bounded, and symlinks a runner left are skipped."""
         output_dir = os.path.join(self.exec_dir(capsule, execution), "out")

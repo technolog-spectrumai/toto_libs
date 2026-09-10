@@ -202,15 +202,96 @@ def _job_json(execution) -> dict:
     }
 
 
+#: The most a client may stage into one job, before base64 expansion.
+#:
+#: A ceiling here rather than only in the executor's tar guard, because this
+#: endpoint decodes into memory to build the tar: an unbounded body would be a
+#: memory amplifier on the WEB tier, which the executor's own limits do not
+#: protect. 32 MB is far above a source tree and far below a problem.
+MAX_INPUT_BYTES = 32 * 1024 * 1024
+
+#: How many files. A tar of a hundred thousand one-byte members is small on the
+#: wire and slow everywhere after it.
+MAX_INPUT_FILES = 512
+
+
+def _decode_inputs(raw):
+    """``{name: base64}`` from a client to ``{name: bytes}``, or a refusal.
+
+    Returns ``(files, error_response)`` — exactly one is meaningful.
+
+    THE NAMES ARE NOT TRUSTED HERE and are not the last check either: the
+    executor re-validates every member on the way in (`staging.py` resolves
+    paths and refuses links and traversal). What this rejects is the shape a
+    caller can get wrong by accident, so the refusal names the file rather
+    than arriving as a tar error with no context.
+    """
+    import base64
+    import binascii
+
+    if raw in (None, {}):
+        return {}, None
+    if not isinstance(raw, dict):
+        return None, _error("`inputs` must be a mapping of filename to "
+                            "base64 content.", code="bad_inputs")
+    if len(raw) > MAX_INPUT_FILES:
+        return None, _error(
+            f"that is {len(raw)} input files; at most {MAX_INPUT_FILES} may be "
+            f"staged into one job.", code="too_many_inputs")
+
+    files, total = {}, 0
+    for name, encoded in raw.items():
+        if not isinstance(name, str) or not name:
+            return None, _error("every input needs a filename.",
+                                code="bad_inputs")
+        # Flat names only. The runner reads from one staged directory and a
+        # path here is either a mistake or an attempt; either way the honest
+        # answer names the file.
+        if name.startswith("/") or ".." in name.split("/"):
+            return None, _error(
+                f"“{name}” is not a filename this job may stage.",
+                code="bad_input_name")
+        if not isinstance(encoded, str):
+            return None, _error(f"“{name}” must be base64 text.",
+                                code="bad_inputs")
+        try:
+            body = base64.b64decode(encoded, validate=True)
+        except (binascii.Error, ValueError):
+            return None, _error(f"“{name}” is not valid base64.",
+                                code="bad_inputs")
+        total += len(body)
+        if total > MAX_INPUT_BYTES:
+            return None, _error(
+                f"the staged input is over the "
+                f"{MAX_INPUT_BYTES // (1024 * 1024)} MB limit.",
+                code="inputs_too_large", status=413)
+        files[name] = body
+    return files, None
+
+
 @require_POST
 @token_required
 def job_create(request, owner, uuid):
+    """Submit a job, optionally with the files it should run on.
+
+    **`inputs` is what makes this endpoint usable.** Until 2026-09-10 it
+    accepted only `operation` and `params`, so a client could start
+    `compile_latex` or `run_python` and had no way to say WHAT to compile or
+    run — every family this API can reach needs a staged file. The desk's own
+    callers never noticed, because they call `jobs.run` in-process and pass
+    `inputs=` there.
+    """
     lease = _own_lease(owner, uuid)
     payload = _body(request)
+    files, refusal = _decode_inputs(payload.get("inputs"))
+    if refusal is not None:
+        return refusal
     try:
         execution = execute.submit(
             lease=lease, operation=payload.get("operation") or "",
             params=payload.get("params") or {},
+            payload=jobs.tar_of(files) if files else None,
+            timeout=payload.get("timeout"),
             requested_by=owner)
     except ValidationError as exc:
         return _refusal(exc)
@@ -229,6 +310,49 @@ def _own_execution(owner, uuid) -> Execution:
 @token_required
 def job_detail(request, owner, uuid):
     return JsonResponse(_job_json(_own_execution(owner, uuid)))
+
+
+@require_GET
+@token_required
+def job_logs(request, owner, uuid):
+    """What the job has printed so far, from ``?offset=``.
+
+    THE ENDPOINT FOR WATCHING, as distinct from `job_detail` (is it done?) and
+    `job_output` (what did it produce?). A compile or a long script is exactly
+    when somebody wants to see progress, and exactly when the finished-job
+    endpoints have nothing to say.
+
+    Answers WHILE THE JOB RUNS, which is the difference from `job_output` and
+    is safe for the opposite reason: a partial log is obviously partial —
+    `complete` says so and `offset` says where to resume — whereas a partial
+    output file looks like a whole one.
+
+    A junk offset starts from zero rather than 500ing. It arrives from a query
+    string, so "abc" is a client's typo, and the endpoint whose whole job is to
+    show somebody what went wrong is the worst place to answer a typo with a
+    stack trace.
+    """
+    execution = _own_execution(owner, uuid)
+    backend = runtime.get_backend()
+    reader = getattr(backend, "execution_logs", None)
+    if reader is None:
+        return _error("this deployment's runtime cannot stream job output",
+                      code="unsupported", status=501)
+    try:
+        offset = max(0, int(request.GET.get("offset") or 0))
+    except (TypeError, ValueError):
+        offset = 0
+    slice_ = reader(execution, offset) or {}
+    return JsonResponse({
+        "uuid": str(execution.uuid),
+        "text": slice_.get("text", ""),
+        # Where to ask from next. Echoed back even on failure so a client can
+        # keep its cursor rather than restarting the log from the top.
+        "offset": slice_.get("offset", offset),
+        # False when the slice was truncated: ask again NOW, not in a second.
+        "complete": bool(slice_.get("complete", True)),
+        "finished": execution.status in choices.FINISHED,
+    })
 
 
 @require_GET

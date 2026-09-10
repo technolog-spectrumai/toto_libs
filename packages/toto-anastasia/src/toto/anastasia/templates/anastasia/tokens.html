@@ -1,0 +1,155 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% comment %}API tokens for a client with no browser session.
+
+Three ideas the page has to carry:
+
+  * **The secret is shown once.** Not because it is tidier, but because the
+    server keeps only a hash — there is nothing to show a second time. The
+    page has to make that obvious BEFORE the person navigates away, which is
+    why the fresh token is a loud panel rather than a line in the table.
+  * **A token acts as its owner.** There are no scopes to pick, so the form
+    asks for one thing: which client this is for. That label is what somebody
+    reads six months from now when deciding which row to revoke.
+  * **Revoked rows stay.** "I revoked that yesterday" is a thing a person needs
+    to confirm, and a row that vanishes cannot confirm it.
+{% endcomment %}
+
+{% block title %}{% trans "API tokens" %} – {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+     class="min-h-screen px-4 py-8 transition-colors duration-300">
+  <div class="mx-auto max-w-3xl space-y-6">
+
+    <div>
+      <h1 class="text-2xl font-extrabold">{% trans "API tokens" %}</h1>
+      <p class="mt-1 text-sm opacity-70">
+        {% blocktrans %}A token lets a desktop client use your Compute Capsules without a browser session. It acts as you — it reaches exactly what you reach, and nothing more.{% endblocktrans %}
+      </p>
+      <p class="mt-1 text-sm opacity-70">
+        <a href="{% url 'anastasia:index' %}" class="underline">
+          <i class="fa-solid fa-arrow-left mr-1"></i>{% trans "Back to Compute Capsules" %}
+        </a>
+      </p>
+    </div>
+
+    {% if messages %}
+      {% for message in messages %}
+        <div class="rounded-lg border p-3 text-sm
+                    {% if message.tags == 'error' %}border-red-500/50 bg-red-500/10{% else %}border-green-500/50 bg-green-500/10{% endif %}">
+          {{ message }}
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    {# ------------------------------------------------------- the one copy #}
+    {% if fresh_token %}
+      <div x-data="{ copied: false }"
+           class="rounded-2xl border-2 border-amber-500/60 bg-amber-500/10 p-4 space-y-3">
+        <p class="text-sm font-semibold">
+          <i class="fa-solid fa-key mr-1"></i>
+          {% trans "Copy this now. It is not stored and cannot be shown again." %}
+        </p>
+        <div class="flex items-center gap-2">
+          <code class="flex-1 overflow-x-auto rounded-lg border border-current/20 bg-black/20 px-3 py-2 font-mono text-xs"
+                x-ref="secret">{{ fresh_token }}</code>
+          <button type="button"
+                  @click="navigator.clipboard.writeText($refs.secret.textContent.trim()); copied = true"
+                  class="rounded-lg border border-current/30 px-3 py-2 text-xs font-semibold hover:opacity-85">
+            <span x-show="!copied"><i class="fa-solid fa-copy mr-1"></i>{% trans "Copy" %}</span>
+            <span x-show="copied" x-cloak><i class="fa-solid fa-check mr-1"></i>{% trans "Copied" %}</span>
+          </button>
+        </div>
+        <p class="text-xs opacity-70">
+          {% blocktrans %}The server keeps only a hash of it, so nobody — including an administrator — can recover this value. If you lose it, revoke the token and mint another.{% endblocktrans %}
+        </p>
+      </div>
+    {% endif %}
+
+    {# ------------------------------------------------------------- minting #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-4">
+      <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">
+        {% trans "New token" %}
+      </h2>
+      {% if live_count >= max_tokens %}
+        <p class="mt-3 text-sm">
+          {% blocktrans %}You hold the maximum number of tokens. Revoke one below before minting another.{% endblocktrans %}
+        </p>
+      {% else %}
+        <form method="post" action="{% url 'anastasia:token_issue' %}"
+              class="mt-3 flex flex-wrap items-end gap-3">
+          {% csrf_token %}
+          <label class="flex-1 min-w-[14rem] text-sm">
+            <span class="block opacity-70">{% trans "Which client is this for?" %}</span>
+            <input type="text" name="label" required maxlength="120"
+                   placeholder="{% trans 'Laptop — Python editor' %}"
+                   class="mt-1 w-full rounded-lg border border-current/30 bg-transparent px-3 py-2 text-sm">
+          </label>
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-plus mr-1"></i>{% trans "Mint token" %}
+          </button>
+        </form>
+      {% endif %}
+      <p class="mt-3 text-xs opacity-60">
+        {% blocktrans %}Point the client at this server and paste the token when it asks. The API lives at{% endblocktrans %}
+        <code class="font-mono">{{ api_root }}</code>.
+      </p>
+    </div>
+
+    {# -------------------------------------------------------------- the list #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="overflow-hidden rounded-2xl border">
+      <h2 class="border-b border-current/10 px-4 py-3 text-sm font-semibold uppercase tracking-wide opacity-70">
+        {% trans "Your tokens" %}
+      </h2>
+
+      {% if not tokens %}
+        <p class="px-4 py-8 text-center text-sm opacity-50">
+          {% trans "You hold no API tokens. Mint one above to connect a desktop client." %}
+        </p>
+      {% else %}
+        <ul class="divide-y divide-current/10">
+          {% for token in tokens %}
+            <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3
+                       {% if not token.is_live %}opacity-45{% endif %}">
+              <div class="min-w-0">
+                <p class="truncate text-sm font-semibold">{{ token.label }}</p>
+                <p class="text-xs opacity-60">
+                  <span class="font-mono">…{{ token.hint }}</span>
+                  · {% blocktrans with created=token.created_at|date:"j M Y" %}minted {{ created }}{% endblocktrans %}
+                  {% if token.last_used_at %}
+                    · {% blocktrans with used=token.last_used_at|date:"j M Y" %}last used {{ used }}{% endblocktrans %}
+                  {% else %}
+                    · {% trans "never used" %}
+                  {% endif %}
+                  {% if token.revoked_at %}
+                    · <span class="font-semibold">{% blocktrans with revoked=token.revoked_at|date:"j M Y" %}revoked {{ revoked }}{% endblocktrans %}</span>
+                  {% elif token.expires_at %}
+                    · {% blocktrans with expires=token.expires_at|date:"j M Y" %}expires {{ expires }}{% endblocktrans %}
+                  {% endif %}
+                </p>
+              </div>
+              {% if token.is_live %}
+                <form method="post" action="{% url 'anastasia:token_revoke' token.pk %}"
+                      onsubmit="return confirm('{% trans "Revoke this token? Any client using it stops working immediately." %}')">
+                  {% csrf_token %}
+                  <button type="submit"
+                          class="rounded-lg border border-red-500/50 px-3 py-1.5 text-xs font-semibold text-red-500 transition hover:bg-red-500/10">
+                    <i class="fa-solid fa-ban mr-1"></i>{% trans "Revoke" %}
+                  </button>
+                </form>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+{% endblock %}

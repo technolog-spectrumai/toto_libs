@@ -8,6 +8,7 @@ the half that breaks silently when somebody refactors in here.
 from __future__ import annotations
 
 import json
+from unittest import mock
 
 from django.test import override_settings
 from django.utils import timezone
@@ -16,7 +17,7 @@ from toto.anastasia import services
 from toto.anastasia.limits import Limits
 from toto.anastasia.tokens import CapsuleToken
 
-from .base import SMALL, AnastasiaTestCase
+from .base import SMALL, AnastasiaTestCase, FakeRuntimeBackend
 
 
 class ApiTestCase(AnastasiaTestCase):
@@ -462,3 +463,369 @@ class ApiRefusalShapeTests(ApiTestCase):
                 self.assertIn("error", body)
                 self.assertIn("code", body)
 
+
+
+class TokenDeskTests(AnastasiaTestCase):
+    """HOW A PERSON GETS A TOKEN, which nothing answered until 2026-09-10.
+
+    `CapsuleToken.issue()` had no caller but this file: no route, no admin
+    registration, no management command. Every endpoint above authenticated
+    with a credential a user had no way to obtain, so the whole API was
+    reachable in principle and unusable in practice — and every individual
+    piece looked finished, which is why it survived a full campaign.
+
+    `test_the_api_is_reachable_end_to_end` is the one that would have caught
+    it: it mints through the page and then CALLS the API with what the page
+    printed. Every other test here mints in Python, which is exactly the blind
+    spot that let this ship.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.user)
+
+    def _mint(self, label="laptop"):
+        return self.client.post("/capsules/tokens/new/", {"label": label},
+                                follow=True)
+
+    # -- the gap itself ----------------------------------------------------
+
+    def test_the_api_is_reachable_end_to_end(self):
+        """Mint through the PAGE, then use what the page showed. No shortcuts."""
+        page = self._mint("zinnia")
+        raw = page.context["fresh_token"]
+        self.assertTrue(raw.startswith("capsule."), raw[:20])
+
+        answer = self.client.get("/api/v1/pool", HTTP_AUTHORIZATION=f"Bearer {raw}")
+        self.assertEqual(answer.status_code, 200, answer.content)
+        self.assertIn("total", answer.json())
+
+    def test_the_desk_links_to_the_token_page(self):
+        """An undiscoverable page is the same defect one step later."""
+        body = self.client.get("/capsules/").content.decode()
+        self.assertIn("/capsules/tokens/", body)
+
+    # -- showing the secret ------------------------------------------------
+
+    def test_the_secret_is_shown_once_and_not_on_a_reload(self):
+        """It is popped from the session, so a refresh cannot re-reveal it —
+        and a shoulder-surfer reading the screen later sees nothing."""
+        self.assertTrue(self._mint().context["fresh_token"])
+        again = self.client.get("/capsules/tokens/")
+        self.assertEqual(again.context["fresh_token"], "")
+
+    def test_the_secret_never_reaches_the_url(self):
+        """A query string lands in history, in the access log and in every
+        proxy between. The redirect target must be bare."""
+        response = self.client.post("/capsules/tokens/new/", {"label": "laptop"})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/capsules/tokens/")
+
+    def test_the_page_never_shows_a_secret_it_did_not_just_mint(self):
+        """The hint is 6 characters and the stored half is a hash; neither is
+        the credential. Asserted against the RAW body, because a template that
+        rendered `token.selector` would be handing out half the secret."""
+        _row, raw = CapsuleToken.issue(owner=self.user, label="elsewhere")
+        selector = raw.split(".")[1]
+        body = self.client.get("/capsules/tokens/").content.decode()
+        self.assertIn("elsewhere", body)          # the row is listed
+        self.assertNotIn(selector, body)          # its selector is not
+        self.assertNotIn(raw, body)
+
+    # -- ownership ---------------------------------------------------------
+
+    def test_only_your_own_tokens_are_listed(self):
+        CapsuleToken.issue(owner=self.other, label="not yours")
+        CapsuleToken.issue(owner=self.user, label="mine")
+        body = self.client.get("/capsules/tokens/").content.decode()
+        self.assertIn("mine", body)
+        self.assertNotIn("not yours", body)
+
+    def test_revoking_somebody_elses_token_is_a_404(self):
+        theirs, raw = CapsuleToken.issue(owner=self.other, label="theirs")
+        response = self.client.post(f"/capsules/tokens/{theirs.pk}/revoke/")
+        self.assertEqual(response.status_code, 404)
+        # And it still works, which is the half a 404-not-403 test usually
+        # forgets: refusing to say it exists must not half-revoke it.
+        self.assertIsNotNone(CapsuleToken.authenticate(raw))
+
+    def test_an_anonymous_visitor_cannot_mint(self):
+        """Sent to login, and NOTHING minted.
+
+        The redirect target legitimately contains the token path — it is the
+        `?next=` — so asserting on the URL is the wrong test. What matters is
+        that the row does not exist: a refusal that still writes is not a
+        refusal.
+        """
+        self.client.logout()
+        response = self.client.post("/capsules/tokens/new/", {"label": "x"})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("login", response["Location"])
+        self.assertEqual(CapsuleToken.objects.count(), 0)
+
+    # -- revoking ----------------------------------------------------------
+
+    def test_revoking_stops_the_api_at_once(self):
+        raw = self._mint("doomed").context["fresh_token"]
+        row = CapsuleToken.objects.get(label="doomed")
+        self.client.post(f"/capsules/tokens/{row.pk}/revoke/")
+
+        answer = self.client.get("/api/v1/pool",
+                                 HTTP_AUTHORIZATION=f"Bearer {raw}")
+        self.assertEqual(answer.status_code, 401)
+        self.assertEqual(answer.json()["code"], "bad_token")
+
+    def test_a_revoked_row_is_still_listed(self):
+        """"I revoked that yesterday" is a thing a person needs to confirm,
+        and a row that vanishes cannot confirm it."""
+        row, _raw = CapsuleToken.issue(owner=self.user, label="retired")
+        row.revoke()
+        self.assertIn("retired",
+                      self.client.get("/capsules/tokens/").content.decode())
+
+    def test_revoking_twice_is_harmless(self):
+        row, _raw = CapsuleToken.issue(owner=self.user, label="twice")
+        first = self.client.post(f"/capsules/tokens/{row.pk}/revoke/")
+        self.assertEqual(first.status_code, 302)
+        row.refresh_from_db()
+        stamp = row.revoked_at
+        self.client.post(f"/capsules/tokens/{row.pk}/revoke/")
+        row.refresh_from_db()
+        self.assertEqual(row.revoked_at, stamp, "the second revoke moved the date")
+
+    # -- refusals ----------------------------------------------------------
+
+    def test_a_token_needs_a_label(self):
+        """The label is what somebody reads when deciding which row to revoke.
+        An unlabelled one is a row nobody dares touch."""
+        before = CapsuleToken.objects.count()
+        self._mint("   ")
+        self.assertEqual(CapsuleToken.objects.count(), before)
+
+    def test_the_number_of_live_tokens_is_capped(self):
+        from toto.anastasia import views
+
+        for i in range(views.MAX_TOKENS_PER_USER):
+            CapsuleToken.issue(owner=self.user, label=f"t{i}")
+        self._mint("one too many")
+        self.assertEqual(
+            CapsuleToken.objects.filter(owner=self.user).count(),
+            views.MAX_TOKENS_PER_USER)
+
+    def test_revoking_frees_a_slot(self):
+        """The cap counts LIVE tokens, so it cannot become a permanent lockout
+        for anyone who has ever minted ten."""
+        from toto.anastasia import views
+
+        rows = [CapsuleToken.issue(owner=self.user, label=f"t{i}")[0]
+                for i in range(views.MAX_TOKENS_PER_USER)]
+        rows[0].revoke()
+        self._mint("replacement")
+        self.assertTrue(
+            CapsuleToken.objects.filter(owner=self.user,
+                                        label="replacement").exists())
+
+    def test_the_pages_refuse_a_GET_where_they_write(self):
+        for path in ("/capsules/tokens/new/",):
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 405)
+
+
+class JobInputTests(ApiTestCase):
+    """A job you can actually give work to.
+
+    Until 2026-09-10 `job_create` accepted `operation` and `params` and nothing
+    else, so a client could start `compile_latex` or `run_python` and had no
+    way to say WHAT to compile or run. Every family this API reaches needs a
+    staged file. The desk's own callers never noticed because they call
+    `jobs.run` in-process and pass `inputs=` there — the API was the only door
+    without one.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.lease = services.reserve(owner=self.user, name="lab",
+                                      limits=Limits(3000, 6144, 6144, 768))
+        services.mount(lease=self.lease, actor=self.user)
+        FakeRuntimeBackend.reset()
+
+    def _submit(self, **body):
+        return self.call("post", f"/api/v1/capsules/{self.lease.uuid}/jobs",
+                         body={"operation": "run_python", **body})
+
+    def test_a_script_reaches_the_runtime(self):
+        import base64
+
+        from toto.anastasia import jobs as jobs_mod
+
+        seen = {}
+        original = jobs_mod.tar_of
+
+        def spy(files):
+            seen.update(files)
+            return original(files)
+
+        with mock.patch.object(jobs_mod, "tar_of", spy):
+            response = self._submit(
+                params={"script": "main.py"},
+                inputs={"main.py": base64.b64encode(b"print(1)").decode()})
+
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(seen, {"main.py": b"print(1)"})
+
+    def test_a_job_with_no_inputs_still_works(self):
+        """`render_pdf` needs one, but the field is optional at this layer —
+        the operation's own parameter rules are what refuse a missing file."""
+        self.assertEqual(self._submit().status_code, 201)
+
+    def test_the_timeout_travels(self):
+        response = self._submit(timeout=90)
+        self.assertEqual(response.status_code, 201, response.content)
+        from toto.anastasia.models import Execution
+        self.assertEqual(Execution.objects.latest("created_at").timeout_seconds, 90)
+
+    # -- refusals, each naming the file --------------------------------------
+
+    def test_a_path_is_refused_by_name(self):
+        import base64
+
+        payload = base64.b64encode(b"x").decode()
+        for bad in ("../escape.py", "/etc/passwd", "a/../../b.py"):
+            with self.subTest(name=bad):
+                response = self._submit(inputs={bad: payload})
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.json()["code"], "bad_input_name")
+                self.assertIn(bad, response.json()["error"])
+
+    def test_a_nested_name_is_allowed(self):
+        """`sub/main.tex` is an ordinary thing in a LaTeX project. Only
+        traversal and absolute paths are refused, not directories."""
+        import base64
+
+        response = self._submit(
+            inputs={"sub/main.tex": base64.b64encode(b"x").decode()})
+        self.assertEqual(response.status_code, 201, response.content)
+
+    def test_bad_base64_is_a_refusal_not_a_500(self):
+        response = self._submit(inputs={"main.py": "not base64!!"})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "bad_inputs")
+        self.assertIn("main.py", response.json()["error"])
+
+    def test_inputs_must_be_a_mapping(self):
+        response = self._submit(inputs=["main.py"])
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "bad_inputs")
+
+    def test_too_many_files_is_refused(self):
+        import base64
+
+        from toto.anastasia import api
+
+        payload = base64.b64encode(b"x").decode()
+        many = {f"f{i}.txt": payload for i in range(api.MAX_INPUT_FILES + 1)}
+        response = self._submit(inputs=many)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "too_many_inputs")
+
+    def test_an_oversized_body_is_413_not_a_memory_problem(self):
+        """The ceiling is on the WEB tier, which decodes into memory to build
+        the tar — the executor's own tar guard does not protect this process."""
+        import base64
+
+        from toto.anastasia import api
+
+        with mock.patch.object(api, "MAX_INPUT_BYTES", 16):
+            response = self._submit(
+                inputs={"big.py": base64.b64encode(b"x" * 64).decode()})
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.json()["code"], "inputs_too_large")
+
+    def test_nothing_is_submitted_when_the_inputs_are_refused(self):
+        """A refusal that still books a job is not a refusal."""
+        from toto.anastasia.models import Execution
+
+        before = Execution.objects.count()
+        self._submit(inputs={"../x.py": "eA=="})
+        self.assertEqual(Execution.objects.count(), before)
+
+
+class JobLogTests(ApiTestCase):
+    """Watching a job, as distinct from asking whether it is done."""
+
+    def setUp(self):
+        super().setUp()
+        self.lease = services.reserve(owner=self.user, name="lab",
+                                      limits=Limits(3000, 6144, 6144, 768))
+        services.mount(lease=self.lease, actor=self.user)
+        FakeRuntimeBackend.reset()
+        response = self.call("post", f"/api/v1/capsules/{self.lease.uuid}/jobs",
+                             body={"operation": "run_python"})
+        self.job = response.json()["uuid"]
+
+    def _logs(self, query=""):
+        return self.call("get", f"/api/v1/jobs/{self.job}/logs{query}")
+
+    def test_it_answers_while_the_job_is_still_running(self):
+        """The whole point. `job_output` refuses until finished; this must
+        not, or there is nothing to watch."""
+        FakeRuntimeBackend.log_text = "compiling…\n"
+        body = self._logs().json()
+        self.assertEqual(body["text"], "compiling…\n")
+        self.assertFalse(body["finished"])
+
+    def test_the_offset_advances_and_does_not_repeat(self):
+        FakeRuntimeBackend.log_text = "one\n"
+        first = self._logs().json()
+        self.assertEqual(first["text"], "one\n")
+
+        FakeRuntimeBackend.log_text = "one\ntwo\n"
+        second = self._logs(f"?offset={first['offset']}").json()
+        self.assertEqual(second["text"], "two\n",
+                         "the second slice repeated output the client had")
+        self.assertGreater(second["offset"], first["offset"])
+
+    def test_the_offset_is_a_byte_count_not_a_character_count(self):
+        """A multi-byte line would desynchronise a character-based cursor and
+        the next slice would start mid-codepoint."""
+        FakeRuntimeBackend.log_text = "zażółć\n"
+        body = self._logs().json()
+        self.assertEqual(body["offset"], len("zażółć\n".encode("utf-8")))
+
+    def test_a_junk_offset_starts_from_the_beginning(self):
+        """It arrives from a query string, so "abc" is a typo — and the
+        endpoint whose job is to show what went wrong is the worst place to
+        answer a typo with a stack trace."""
+        FakeRuntimeBackend.log_text = "hello\n"
+        for junk in ("?offset=abc", "?offset=", "?offset=-5", "?offset=1e9999"):
+            with self.subTest(query=junk):
+                response = self._logs(junk)
+                self.assertEqual(response.status_code, 200)
+
+    def test_an_unreachable_runtime_is_an_empty_slice_not_a_500(self):
+        """A progress console that 500s is worse than one showing nothing new,
+        and the client polls again in a second either way."""
+        FakeRuntimeBackend.fail_logs = True
+        body = self._logs("?offset=7").json()
+        self.assertEqual(body["text"], "")
+        self.assertFalse(body["complete"])
+        self.assertEqual(body["offset"], 7,
+                         "the cursor was lost, so the client restarts the log")
+
+    def test_somebody_elses_job_is_a_404(self):
+        _theirs, raw = CapsuleToken.issue(owner=self.other, label="theirs")
+        response = self.call("get", f"/api/v1/jobs/{self.job}/logs", raw=raw)
+        self.assertEqual(response.status_code, 404)
+
+    def test_it_needs_a_token(self):
+        self.assertEqual(
+            self.client.get(f"/api/v1/jobs/{self.job}/logs").status_code, 401)
+
+    def test_a_runtime_with_no_log_reader_says_so_rather_than_crashing(self):
+        """`NullRuntimeBackend` and any older backend have no `execution_logs`;
+        a 501 names the deployment's limit instead of raising AttributeError."""
+        with mock.patch("toto.anastasia.runtime.get_backend",
+                        return_value=mock.Mock(spec=["mount"])):
+            response = self._logs()
+        self.assertEqual(response.status_code, 501)
+        self.assertEqual(response.json()["code"], "unsupported")
