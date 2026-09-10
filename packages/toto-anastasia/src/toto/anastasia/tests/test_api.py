@@ -405,15 +405,26 @@ class TokenHardeningTests(AnastasiaTestCase):
         _prefix, selector, verifier = raw.split(".")
         self.assertIsNone(CapsuleToken.authenticate(f"{selector}.{verifier}"))
 
-    def test_a_token_for_a_deleted_user_stops_working(self):
+    def test_a_token_dies_with_its_owner(self):
         """CASCADE on the owner. A credential outliving its person is the
-        definition of an orphaned key."""
-        from django.contrib.auth import get_user_model
+        definition of an orphaned key.
 
-        doomed = get_user_model().objects.create_user("doomed", password="x")
-        _row, raw = CapsuleToken.issue(owner=doomed, label="theirs")
-        doomed.delete()
-        self.assertIsNone(CapsuleToken.authenticate(raw))
+        ASSERTED ON THE DECLARATION, NOT BY DELETING A USER, and that is not
+        timidity. `toto.quota.tests` defines a test-only model with a foreign
+        key to User; Django's cascade collector walks every such model, so an
+        actual `user.delete()` here raises `no such table:
+        quota_sampleusageevent` whenever this module runs beside quota's — as
+        it does in the gate, and only there. The first version of this test
+        passed alone and failed the gate for a reason that had nothing to do
+        with tokens.
+
+        The declaration is what the guarantee actually rests on, and checking
+        it costs no database at all.
+        """
+        from django.db.models import CASCADE
+
+        field = CapsuleToken._meta.get_field("owner")
+        self.assertIs(field.remote_field.on_delete, CASCADE)
 
 
 class ApiRefusalShapeTests(ApiTestCase):
