@@ -115,6 +115,45 @@ class Driver:
     #: platform cannot tell, and say what to try.
     observes_guest_oom = True
 
+    #: Whether ``--pids-limit`` actually bounds the processes a job can create.
+    #:
+    #: True on a shared kernel: the host cgroup holds the workload itself.
+    #: **False on a VM tier**, where the host limit applies to the sandbox —
+    #: the VMM and its threads — and the workload lives in a guest with its own
+    #: (unbounded) pids cgroup. Measured 2026-09-10:
+    #:
+    #:     docker run --runtime kata --pids-limit 48 alpine \
+    #:         cat /sys/fs/cgroup/pids.max      ->  max
+    #:
+    #: and a fork bomb that makes runc say "can't fork" prints "survived".
+    #:
+    #: The host is not endangered — the guest is memory-bounded, so a fork bomb
+    #: exhausts its own VM and dies there. What is wrong is the PROMISE: `pids`
+    #: is one of four dimensions a user reserves from the pool, and booking a
+    #: number nothing enforces is the kind of claim this tier work exists to
+    #: remove. Whoever reads this flag is responsible for not making it.
+    enforces_guest_pids = True
+
+    #: Whether a syscall filter is applied to the workload itself.
+    #:
+    #: Measured by asking the process, not by reading a config —
+    #: ``grep Seccomp /proc/self/status`` inside a runner reports ``2`` (filter
+    #: mode, 1 filter) under runc and ``0`` under Kata, whose shipped config
+    #: sets ``disable_guest_seccomp = true`` so container profiles are never
+    #: passed to the agent.
+    #:
+    #: FALSE IS DEFENSIBLE ON A VM TIER and indefensible on a shared kernel.
+    #: Docker's default profile exists to shrink the HOST kernel's attack
+    #: surface, which is the thing a container shares. In a VM the workload
+    #: reaches a guest kernel first, so a syscall exploit buys the guest — the
+    #: boundary the tier is built on — rather than the machine. It is depth
+    #: that is missing here, not the wall.
+    #:
+    #: Recorded rather than shrugged at, because "the sandbox applies seccomp"
+    #: is the kind of sentence that gets repeated about a platform long after
+    #: it stops being true of one of its tiers.
+    applies_seccomp = True
+
     def available(self) -> bool:
         raise NotImplementedError
 

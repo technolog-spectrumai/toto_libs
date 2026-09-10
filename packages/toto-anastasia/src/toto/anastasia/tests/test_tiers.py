@@ -12,6 +12,8 @@ Django test package so the gate runs it without a second harness.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from django.test import SimpleTestCase
 
 from toto.anastasia.executor import drivers
@@ -63,15 +65,44 @@ class TierSelectionTests(SimpleTestCase):
 class TierHardeningTests(SimpleTestCase):
     """The point of a subclass: one hardening table, not two."""
 
-    def test_kata_adds_the_runtime_flag_AND_NOTHING_ELSE(self):
-        """If these two argvs ever differ by more than `--runtime kata`, the
-        security model has forked and one tier will drift behind the other."""
+    def test_kata_adds_the_runtime_flag_AND_ONE_DOCUMENTED_COMPENSATION(self):
+        """The tiers may differ ONLY where a mechanism genuinely differs.
+
+        This began as "and nothing else", which was right while `--runtime`
+        was the only difference. It now permits exactly one more: a VM's guest
+        never receives `--pids-limit` (the kata shim strips
+        `linux.resources.pids` from the spec), so `--ulimit nproc` re-imposes
+        the SAME promise by the only route that survives. See
+        `KataDriver.build_run_args`.
+
+        The list is deliberately a closed literal rather than a "kata may add
+        extra flags" allowance. A second entry appearing here should require
+        somebody to write down why, in this test, next to this sentence —
+        which is the whole point of pinning it.
+        """
         plain = _argv(docker_driver.DockerClient())
         kata = _argv(docker_driver.KataDriver())
-        self.assertEqual(len(kata), len(plain) + 2)
-        self.assertEqual([a for a in kata if a not in plain],
-                         ["--runtime", "kata"])
+        extra = [a for a in kata if a not in plain]
+        self.assertEqual(
+            extra,
+            ["--runtime", "kata", "--ulimit", f"nproc={RUN.pids}:{RUN.pids}"],
+            "the tiers have diverged by something undocumented")
         self.assertEqual(kata[:3], ["create", "--runtime", "kata"])
+
+    def test_the_pids_compensation_carries_the_reserved_number(self):
+        """Not a constant. Whatever the user reserved is what is enforced."""
+        limits = Limits(cpu_millicores=500, ram_mb=64, scratch_mb=32, pids=17)
+        argv = docker_driver.KataDriver().build_run_args(
+            family=PDF, limits=limits, name="p", cgroup_parent=None,
+            input_dir="/in", output_dir="/out", env={}, labels={},
+            argv=["x"], network=None)
+        self.assertIn("nproc=17:17", argv)
+
+    def test_the_docker_tier_does_not_carry_the_compensation(self):
+        """A shared kernel already enforces `--pids-limit`. Adding a second,
+        weaker, per-UID mechanism there would be noise implying a doubt that
+        does not exist."""
+        self.assertNotIn("--ulimit", _argv(docker_driver.DockerClient()))
 
     def test_the_docker_tier_names_no_runtime(self):
         """Absent, the daemon uses its default. Naming `runc` explicitly would
@@ -149,6 +180,92 @@ def _rendered_source() -> str:
             / "index.html").read_text()
     return re.sub(r"\{%\s*comment\s*%\}.*?\{%\s*endcomment\s*%\}", "",
                   page, flags=re.DOTALL)
+
+
+class RunnerOwnershipTests(SimpleTestCase):
+    """One daemon, more than one executor. They must not eat each other.
+
+    `anastasia.managed=1` says "an anastasia runner". It does not say WHOSE.
+    `list_managed()` filtered on that alone, so it returned every anastasia
+    container on the daemon, and `destroy_orphan_runners` then removed the ones
+    it could not account for — correctly, by its own lights, because their gears
+    have no staging directory under ITS root.
+
+    Two consequences, one hypothetical and one that actually happened:
+
+    * two deployments sharing a Docker daemon would destroy each other's
+      RUNNING JOBS, continuously, each believing it was tidying up;
+    * the live executor on this machine deleted the integration suite's
+      containers every 30 seconds, which is the whole "flaky under Kata" story
+      — Kata is slow enough that a container lives across a reconcile tick.
+
+    The owner is the executor's staging root, because that is the one thing an
+    executor uniquely owns and already knows.
+    """
+
+    def test_a_runner_is_stamped_with_its_owner(self):
+        driver = docker_driver.DockerClient(owner="/var/lib/anastasia/staging")
+        argv = _argv(driver)
+        self.assertIn("anastasia.owner=/var/lib/anastasia/staging", argv)
+
+    def test_listing_asks_only_for_its_own(self):
+        driver = docker_driver.DockerClient(owner="/srv/one")
+        seen = {}
+
+        def spy(args, **kwargs):
+            seen["argv"] = args
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        driver._run = spy
+        driver.list_managed()
+        self.assertIn("label=anastasia.owner=/srv/one", seen["argv"])
+
+    def test_two_executors_do_not_see_each_other(self):
+        """The regression, stated as the thing that went wrong."""
+        mine = docker_driver.DockerClient(owner="/srv/mine")
+        theirs = docker_driver.DockerClient(owner="/srv/theirs")
+        self.assertNotEqual(
+            [a for a in _argv(mine) if a.startswith("anastasia.owner=")],
+            [a for a in _argv(theirs) if a.startswith("anastasia.owner=")])
+
+    def test_an_unowned_runner_belongs_to_nobody(self):
+        """THE SAFE DIRECTION, and it is deliberate.
+
+        A driver with no owner stamps no owner label and filters on none. So a
+        container from before this existed is claimed by no executor and is
+        therefore destroyed by none: it leaks rather than being deleted while
+        somebody's job runs in it. Leaking a container is recoverable by hand.
+        Destroying another deployment's running job is not.
+        """
+        argv = _argv(docker_driver.DockerClient())
+        self.assertFalse([a for a in argv if a.startswith("anastasia.owner=")])
+
+    def test_the_manager_tells_its_driver_who_it_is(self):
+        """The manager knows the staging root; `build_driver()` does not. If
+        this wiring is lost the labels stop being stamped and the fleet-wide
+        deletion comes back silently."""
+        from toto.anastasia.executor import gears
+
+        driver = docker_driver.DockerClient()
+        gears.GearManager(staging_root="/srv/here", docker=driver,
+                          slice_driver=_NullSlices())
+        self.assertEqual(driver.owner, "/srv/here")
+
+
+class _NullSlices:
+    """Enough of a slice driver for a manager to construct."""
+
+    name = "null"
+    enforced = False
+
+    def ensure(self, *a, **k):
+        pass
+
+    def destroy(self, *a, **k):
+        pass
+
+    def cgroup_parent(self, *a, **k):
+        return None
 
 
 class GuestOomVisibilityTests(SimpleTestCase):

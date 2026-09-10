@@ -73,6 +73,44 @@ requires_docker = unittest.skipUnless(
 
 
 @requires_docker
+class _Vanished(Exception):
+    """Something outside this test deleted the container mid-probe."""
+
+
+#: How many times to re-run a probe whose container was deleted underneath it.
+VANISHED_RETRIES = 2
+
+
+def _retrying(case, attempt_once, what: str):
+    """Run a container probe, retrying ONLY if something else deleted it.
+
+    Shared by both helpers that drive a container, because the first version
+    protected `run_probe` alone and `_uname` — twelve lines away, doing the
+    same three reads — kept failing on the same race a day later.
+
+    The retry is narrow on purpose: it fires on `_Vanished` and never on an
+    assertion, so a genuine failure still fails on the first attempt.
+    """
+    last = None
+    for attempt in range(VANISHED_RETRIES + 1):
+        try:
+            return attempt_once()
+        except _Vanished as exc:
+            last = exc
+            print(f"    {what} container vanished (attempt "
+                  f"{attempt + 1}/{VANISHED_RETRIES + 1}); something else on "
+                  "this daemon deleted it")
+    case.fail(
+        f"{last} — it happened {VANISHED_RETRIES + 1} times running, so this "
+        "is not a blip. Update the deployed anastasia-executord (its reconcile "
+        "is claiming containers that are not its own), or stop it while "
+        "running these tests.")
+
+
+def _is_gone(text: str) -> bool:
+    return "No such container" in (text or "")
+
+
 class RunnerConfinementTests(SimpleTestCase):
     """What Docker actually applies, and whether it holds."""
 
@@ -86,6 +124,30 @@ class RunnerConfinementTests(SimpleTestCase):
                             default_limits=Limits(1000, 128, 64, 32))
 
     def run_probe(self, limits, argv, *, timeout=40, env=None, network=None):
+        """Run the probe, and retry ONLY if something else deleted it.
+
+        A runner is labelled `anastasia.managed=1`, and an executor whose
+        `list_managed()` is not scoped to its own staging root claims every
+        such container on the daemon, then destroys the ones whose gear it
+        cannot account for. A live `anastasia-executord` did exactly that to
+        this suite on a 30-second cycle, taking a different test each run. It
+        only ever showed up on the Kata tier because a VM lives long enough to
+        span a reconcile tick.
+
+        The scoping fix (`LABEL_OWNER`) closes it for any executor built after
+        it — but an OLDER executor already deployed on the test machine still
+        eats these, so the suite has to survive one. The retry is deliberately
+        narrow: it fires when the container vanished, never on an assertion, so
+        a genuine failure still fails on the first attempt.
+        """
+        return _retrying(
+            self,
+            lambda: self._run_probe_once(limits, argv, timeout=timeout,
+                                         env=env, network=network),
+            "probe")
+
+    def _run_probe_once(self, limits, argv, *, timeout=40, env=None,
+                        network=None):
         work = tempfile.mkdtemp(prefix="anastasia-it-")
         self.addCleanup(shutil.rmtree, work, ignore_errors=True)
         input_dir, output_dir = os.path.join(work, "in"), os.path.join(work, "out")
@@ -104,11 +166,33 @@ class RunnerConfinementTests(SimpleTestCase):
         self.addCleanup(self.docker.remove, container)
         self.docker.start(container)
         waited = self.docker.wait(container, timeout=timeout)
+        # DID SOMETHING ELSE DELETE IT? Say so, rather than letting the reads
+        # below come back as "No such container" and read like a driver bug.
+        #
+        # A runner is labelled `anastasia.managed=1`, and an executor whose
+        # `list_managed()` is not scoped to its own staging root claims EVERY
+        # such container on the daemon, then destroys the ones whose gear it
+        # cannot account for. A live executor did exactly that to this suite
+        # every 30 seconds. Scoping (`LABEL_OWNER`) fixes it — but only for an
+        # executor built after that change, so an older one deployed on the
+        # test machine still eats these.
+        if not self.docker.inspect(container):
+            raise _Vanished(
+                "the container vanished between `wait` returning and reading "
+                "its state")
+        state = self.docker.exit_state(container)
+        logs = self.docker.logs(container)
+        # The reads above are three separate `docker` calls, so the deletion
+        # can land between any two of them. Catch that too, rather than
+        # returning a daemon error string as if it were the runner's output.
+        if _is_gone(logs) or state.get("exit_code") is None:
+            raise _Vanished("the container vanished while its output was "
+                            "being read")
         return {
             "container": container,
             "inspect": self.docker.inspect(container),
-            "state": self.docker.exit_state(container),
-            "logs": self.docker.logs(container),
+            "state": state,
+            "logs": logs,
             "timed_out": waited["timed_out"],
             "output_dir": output_dir,
         }
@@ -134,19 +218,44 @@ class RunnerConfinementTests(SimpleTestCase):
         self.assertIn("size=32m", host["Tmpfs"]["/scratch"])
         self.assertIn("noexec", host["Tmpfs"]["/scratch"])
 
-    def test_the_memory_ceiling_oom_kills_rather_than_swapping(self):
+    def test_the_memory_ceiling_stops_the_job_on_every_tier(self):
+        """The ceiling holds everywhere. Only the REPORT differs.
+
+        On a shared kernel the host cgroup does the killing and Docker says so.
+        In a VM the guest kernel does it, inside a machine the host cannot see
+        into, so `OOMKilled` stays false — measured 2026-09-10: the same job at
+        the same ceiling gives 137/true under runc and 255/false under Kata.
+
+        So this asserts what is true of both — the job did NOT succeed — and
+        then holds each tier to its own declared reporting. Relaxing it to
+        "false is fine" would have let a real regression through on Docker.
+        """
         result = self.run_probe(
             Limits(1000, 32, 32, 64),
             ["sh", "-c", "dd if=/dev/zero of=/dev/shm/blob bs=1M count=400"])
-        self.assertTrue(
-            result["state"]["oom_killed"],
-            "a runner over its memory ceiling must be OOM-killed; "
-            f"state was {result['state']}")
+        state = result["state"]
+        self.assertNotEqual(
+            state["exit_code"], 0,
+            f"the memory ceiling did not stop the job; state was {state}")
+        if self.docker.observes_guest_oom:
+            self.assertTrue(
+                state["oom_killed"],
+                "this tier claims it can see a guest OOM, and did not report "
+                f"one; state was {state}")
+        else:
+            self.assertFalse(
+                state["oom_killed"],
+                "this tier declares it CANNOT see a guest OOM but reported "
+                "one. If Kata gained that ability, delete the declaration "
+                f"rather than this assertion; state was {state}")
 
     def test_an_oom_kill_is_not_visible_in_the_exit_code_alone(self):
         """Why ``exit_state`` reports OOMKilled separately: a memory kill and a
         deadline kill both surface as a SIGKILL, and they need different
         sentences."""
+        if not self.docker.observes_guest_oom:
+            self.skipTest("this tier cannot see a guest OOM at all; "
+                          "the memory test above covers what it can promise")
         result = self.run_probe(
             Limits(1000, 32, 32, 64),
             ["sh", "-c", "dd if=/dev/zero of=/dev/shm/b bs=1M count=400; echo done"])
@@ -157,13 +266,98 @@ class RunnerConfinementTests(SimpleTestCase):
             "this assertion exists to record that the exit code is not the "
             "signal — read OOMKilled, not the code")
 
-    def test_the_pid_ceiling_stops_a_fork_bomb(self):
+    def test_the_syscall_filter_matches_what_the_tier_claims(self):
+        """Ask the process whether it is filtered, and hold the tier to it.
+
+        `/proc/self/status` reports the kernel's own view: `Seccomp: 2` means a
+        filter is loaded, `0` means none. Measured 2026-09-10 — runc 2, Kata 0,
+        because the shipped Kata config never passes container profiles to the
+        guest agent.
+
+        Kata's `False` is a considered position, not an oversight: seccomp
+        shrinks the HOST kernel's attack surface, and a VM workload does not
+        touch the host kernel first. But it is pinned so that if somebody flips
+        `disable_guest_seccomp`, the declaration is corrected rather than the
+        platform quietly gaining depth nobody knows it has — or, worse, quietly
+        losing it on the tier that needs it.
+        """
+        result = self.run_probe(
+            Limits(1000, 128, 32, 32),
+            ["sh", "-c", "grep -E '^Seccomp:' /proc/self/status || echo none"])
+        filtered = "Seccomp:\t2" in result["logs"] or "Seccomp: 2" in result["logs"]
+        self.assertEqual(
+            filtered, self.docker.applies_seccomp,
+            f"this tier declares applies_seccomp="
+            f"{self.docker.applies_seccomp} and the runner reports "
+            f"{result['logs'].strip()!r}")
+
+    def test_the_pid_ceiling_matches_what_the_tier_claims(self):
+        """PIDS IS RESERVED FROM THE POOL, SO SOMEBODY MUST ENFORCE IT.
+
+        On a shared kernel the host cgroup holds the workload and the limit
+        bites. In a VM it holds the sandbox — the VMM and its threads — while
+        the workload runs in a guest whose own pids cgroup reads `max`.
+        Measured 2026-09-10: the probe below prints "can't fork" under runc and
+        "survived" under Kata.
+
+        This asserts BOTH directions against `enforces_guest_pids`, so the day
+        Kata starts applying it the test fails and the declaration gets
+        corrected — rather than the platform quietly continuing to describe the
+        old behaviour. That is the point of pinning a known gap: a gap nobody
+        is told about becomes a promise nobody checks.
+        """
         result = self.run_probe(
             Limits(1000, 128, 32, 24),
             ["sh", "-c",
              "i=0; while [ $i -lt 300 ]; do sleep 5 & i=$((i+1)); done; echo survived"])
-        self.assertIn("can't fork", result["logs"],
-                      f"the pids limit did not bite: {result['logs'][:200]}")
+        logs = result["logs"]
+        if self.docker.enforces_guest_pids:
+            self.assertIn("can't fork", logs,
+                          f"the pids limit did not bite: {logs[:200]}")
+        else:
+            self.assertNotIn(
+                "can't fork", logs,
+                "this tier declares it does NOT bound guest processes, and it "
+                "just did. That is good news: update `enforces_guest_pids` and "
+                "tell the booking arithmetic it can trust the dimension again.")
+
+    def test_the_pid_ceiling_is_felt_by_the_workload(self):
+        """ASK THE PROCESS, NOT THE CGROUP.
+
+        An earlier version of this read `/sys/fs/cgroup/pids.max` and demanded
+        a number. That was wrong for a VM tier and would have failed a working
+        capsule: Kata enforces the ceiling through RLIMIT_NPROC, not through a
+        guest cgroup, so `pids.max` legitimately reads `max` while the limit is
+        very much in force. The cgroup is one mechanism; the question is
+        whether the workload is bounded.
+
+        And asking only `ulimit -u` is the SAME MISTAKE MIRRORED: Docker binds
+        through the cgroup and leaves RLIMIT_NPROC unlimited, so that probe
+        failed a perfectly bounded runc container. Two tiers, two mechanisms,
+        neither universally visible.
+
+        So this asks both and requires ONE of them to be finite. That is the
+        real invariant — "something bounds this workload" — and it stays true
+        if a third tier arrives with a third mechanism.
+        """
+        if not self.docker.enforces_guest_pids:
+            self.skipTest("this tier does not claim to bound guest processes")
+        result = self.run_probe(
+            Limits(1000, 128, 32, 48),
+            ["sh", "-c",
+             "echo cgroup=$(cat /sys/fs/cgroup/pids.max 2>/dev/null || echo max); "
+             "echo rlimit=$(ulimit -u)"])
+        logs = result["logs"]
+        cgroup = logs.split("cgroup=")[1].split()[0]
+        rlimit = logs.split("rlimit=")[1].split()[0]
+        bounded = [name for name, value in (("cgroup", cgroup),
+                                            ("rlimit", rlimit))
+                   if value not in ("max", "unlimited")]
+        self.assertTrue(
+            bounded,
+            "NOTHING bounds this workload's processes: the cgroup reads "
+            f"{cgroup!r} and RLIMIT_NPROC reads {rlimit!r}, on a tier that "
+            "claims to enforce the reserved pids")
 
     def test_the_scratch_quota_is_hard(self):
         result = self.run_probe(
@@ -348,6 +542,9 @@ class TierHonestyIntegrationTests(SimpleTestCase):
                             default_limits=Limits(1000, 128, 64, 32))
 
     def _uname(self) -> str:
+        return _retrying(self, self._uname_once, "uname")
+
+    def _uname_once(self) -> str:
         work = tempfile.mkdtemp(prefix="anastasia-tier-")
         self.addCleanup(shutil.rmtree, work, ignore_errors=True)
         input_dir, output_dir = os.path.join(work, "in"), os.path.join(work, "out")
@@ -362,7 +559,11 @@ class TierHonestyIntegrationTests(SimpleTestCase):
         self.addCleanup(self.docker.remove, container)
         self.docker.start(container)
         self.docker.wait(container, timeout=60)
-        return self.docker.logs(container).strip()
+        logs = self.docker.logs(container)
+        if _is_gone(logs):
+            raise _Vanished("the uname container vanished before its output "
+                            "could be read")
+        return logs.strip()
 
     def test_the_guest_kernel_matches_what_the_tier_claims(self):
         """THE ASSERTION THE WHOLE CAMPAIGN IS FOR.

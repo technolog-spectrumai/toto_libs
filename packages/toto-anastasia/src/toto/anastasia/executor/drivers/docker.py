@@ -181,9 +181,26 @@ class DockerClient(Driver):
             self._refuse_forbidden_env(key)
             args += ["--env", f"{key}={value}"]
 
+        # A tier's own compensations go HERE, while flags are still flags.
+        # Appending after the image would hand them to the runner as command
+        # arguments instead — which is exactly what a first attempt did, and
+        # the argv test did not catch because it only asked whether the flag
+        # was PRESENT, not where.
+        args += self.extra_run_flags(limits)
+
         args.append(family.image)
         args += list(argv)
         return args
+
+    def extra_run_flags(self, limits: Limits) -> list[str]:
+        """Flags this tier needs to keep a promise the shared table cannot.
+
+        Empty for a shared kernel: `build_run_args` above already enforces
+        everything on offer. Overridden by a VM tier, where one limit does not
+        survive the trip into the guest. Kept as a named seam so a difference
+        between tiers has to be written down somewhere a reader will find it.
+        """
+        return []
 
     @staticmethod
     def _refuse_forbidden_env(key: str) -> None:
@@ -411,6 +428,58 @@ class KataDriver(DockerClient):
     #: nothing crosses back to the host to say so. `docker events` emits no oom
     #: for it either, so there is nothing to subscribe to.
     observes_guest_oom = False
+
+    #: True, but by a DIFFERENT MECHANISM — see `build_run_args` below.
+    #: `--pids-limit` alone would make this False.
+    enforces_guest_pids = True
+
+    #: The shipped Kata config sets `disable_guest_seccomp = true`, so no
+    #: filter reaches the workload: `/proc/self/status` reports `Seccomp: 0`
+    #: against runc's `2`. Enabling it is a one-line config change and would
+    #: add depth; the VM boundary is why this is a note rather than a defect.
+    applies_seccomp = False
+
+    def build_run_args(self, **kwargs) -> list[str]:
+        """The shared table, plus the one thing a VM needs to keep its word.
+
+        `--pids-limit` does not reach the workload here. Docker emits it into
+        the OCI spec, but the kata shim clears `linux.resources.pids` before
+        the spec reaches the guest — a blanket strip inherited from the Go
+        runtime's "By now only CPU constraints are supported", alongside
+        devices, block_io, network and hugepages. Memory survives because it is
+        also used to size the VM; pids has no sizing role and is simply swept
+        up. Measured: the guest's `pids.max` reads `max`, and a fork bomb that
+        makes runc say "can't fork" prints "survived".
+
+        That matters because `pids` is one of four dimensions a user RESERVES
+        from the pool. A booked number nothing enforces is the sort of claim
+        this tier work exists to delete.
+
+        `--ulimit nproc` gets through, because `process.rlimits` is not part of
+        `linux.resources` and so escapes the strip; the guest agent applies it.
+        Verified on 2026-09-14: with `--user 65534` the same fork bomb is
+        refused under Kata exactly as under runc.
+
+        THREE CONDITIONS MAKE THIS SOUND, and all three are guaranteed by the
+        table this class inherits rather than assumed:
+
+        * RLIMIT_NPROC is per-UID, not per-container — but every runner is
+          `--user 65534:65534`, and a Kata sandbox holds one container, so
+          per-UID and per-container coincide.
+        * It is bypassed by CAP_SYS_RESOURCE and CAP_SYS_ADMIN — and every
+          runner is `--cap-drop ALL`.
+        * It does not bind uid 0 — and no runner is root. (Checked: as root
+          the same probe is unbounded, which is why this is written here and
+          not offered as a general fix.)
+
+        Kept as an override rather than folded into the shared builder so the
+        Docker tier's argv is untouched: a shared kernel already enforces
+        `--pids-limit`, and a second, weaker mechanism there would be noise.
+        """
+        return super().build_run_args(**kwargs)
+
+    def extra_run_flags(self, limits: Limits) -> list[str]:
+        return ["--ulimit", f"nproc={limits.pids}:{limits.pids}"]
 
 
 #: Every tier this executor can run a job in, by the name a config uses.
