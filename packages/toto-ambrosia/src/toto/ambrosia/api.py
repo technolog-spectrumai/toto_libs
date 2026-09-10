@@ -41,11 +41,45 @@ from __future__ import annotations
 
 import json
 
+import functools
+
 from django.core.exceptions import ValidationError
 from django.http import Http404, JsonResponse
 from django.views.decorators.http import require_GET, require_POST
 
-from toto.anastasia.api import token_required
+
+def token_required(view):
+    """`toto.anastasia.api.token_required`, resolved when the view is CALLED.
+
+    NOT A REIMPLEMENTATION — the header above is explicit that there must be
+    one credential and one place it is checked, and this delegates to exactly
+    that function. What it removes is the module-level IMPORT.
+
+    WHY THAT MATTERS. `scripts/check_package_graph.py` counts a module-level
+    import as a HARD package edge, and toto-ambrosia declares `toto-base` and
+    nothing else. Anastasia is OPTIONAL to ambrosia everywhere else in this
+    package — `capsules.available()` and `hibernation` both ask
+    `apps.is_installed("toto.anastasia")` — so declaring it as a dependency
+    would make a workspace host that runs no compute pull in the whole compute
+    tier. Resolving at call time keeps the optionality the rest of the package
+    already assumes.
+
+    A host without anastasia answers anastasia's own refusal SHAPE
+    (`{"error", "code"}`), because that is what every client of this API parses
+    and a different shape here would be a second thing to handle.
+    """
+    @functools.wraps(view)
+    def wrapper(request, *args, **kwargs):
+        try:
+            from toto.anastasia.api import token_required as real
+        except ImportError:
+            return JsonResponse(
+                {"error": "This deployment has no Compute Capsules, so there "
+                          "is no token to authenticate with.",
+                 "code": "anastasia_absent"}, status=501)
+        return real(view)(request, *args, **kwargs)
+    return wrapper
+
 
 from . import filetree, permissions, registry, services
 from .models import Workspace
