@@ -1,7 +1,7 @@
 """What the compute tier writes to the append-only trail, and what it must not.
 
 The trail is what an operator reads after an incident, so the questions it has
-to answer are: who asked for this, which Gear, what isolation did it actually
+to answer are: who asked for this, which Capsule, what isolation did it actually
 run under, and how did it end. Every test here is one of those questions.
 
 The other half matters as much. A job's inputs are the user's documents, and a
@@ -50,17 +50,17 @@ class JobAuditTests(AnastasiaTestCase):
         return execute.submit(lease=self.lease, operation="render_pdf",
                               params={}, requested_by=self.user)
 
-    def test_a_started_job_is_recorded_with_who_and_which_gear(self):
+    def test_a_started_job_is_recorded_with_who_and_which_capsule(self):
         execution = self._run()
         rows = _records("anastasia.job.start")
         self.assertEqual(len(rows), 1)
         row = rows[0]
         self.assertEqual(row.actor_user_id, self.user.pk)
-        self.assertEqual(row.metadata["gear"], str(self.lease.uuid))
+        self.assertEqual(row.metadata["capsule"], str(self.lease.uuid))
         self.assertEqual(row.metadata["operation"], "render_pdf")
         self.assertEqual(row.object_id, str(execution.pk))
 
-    def test_the_recorded_tier_is_the_one_the_gear_was_mounted_under(self):
+    def test_the_recorded_tier_is_the_one_the_capsule_was_mounted_under(self):
         """NOT what a setting asked for. The runtime row carries what the
         executor reported at mount time, and that is the only value an audit
         line may claim."""
@@ -110,7 +110,7 @@ class JobAuditTests(AnastasiaTestCase):
         rows = _records("anastasia.job.refuse")
         self.assertEqual(len(rows), 1)
         self.assertFalse(rows[0].success)
-        self.assertEqual(rows[0].metadata["gear"], str(self.lease.uuid))
+        self.assertEqual(rows[0].metadata["capsule"], str(self.lease.uuid))
         self.assertTrue(rows[0].metadata["error"],
                         "the sentence the user saw must be recorded")
 

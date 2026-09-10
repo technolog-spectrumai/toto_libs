@@ -1,4 +1,4 @@
-"""Anastasia: reserved compute capacity, mounted Gears, disposable runners.
+"""Anastasia: reserved compute capacity, mounted Capsules, disposable runners.
 
 Two halves, deliberately separable:
 

@@ -40,7 +40,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ..families import ParamError
 from ..families import operation as operation_for
 from ..limits import Limits, LimitsError
-from . import gears as gears_mod
+from . import capsules as capsules_mod
 from . import control, pressure, protocol, reconcile, telemetry
 from .drivers import DriverError
 from .staging import StagingError
@@ -51,9 +51,9 @@ MAX_BODY_BYTES = 512 * 1024 * 1024
 
 _UUID = r"[0-9a-fA-F-]{8,40}"
 ROUTES = [
-    ("POST", re.compile(rf"^/gears/({_UUID})/mount$"), "mount"),
-    ("POST", re.compile(rf"^/gears/({_UUID})/unmount$"), "unmount"),
-    ("GET", re.compile(rf"^/gears/({_UUID})/status$"), "gear_status"),
+    ("POST", re.compile(rf"^/capsules/({_UUID})/mount$"), "mount"),
+    ("POST", re.compile(rf"^/capsules/({_UUID})/unmount$"), "unmount"),
+    ("GET", re.compile(rf"^/capsules/({_UUID})/status$"), "capsule_status"),
     ("POST", re.compile(r"^/jobs$"), "start_execution"),
     ("GET", re.compile(rf"^/jobs/({_UUID})$"), "execution_status"),
     ("GET", re.compile(rf"^/jobs/({_UUID})/out$"), "execution_output"),
@@ -75,7 +75,7 @@ ROUTES = [
 class Api:
     """The verbs, separated from the HTTP so they can be tested without a socket."""
 
-    def __init__(self, manager: gears_mod.GearManager):
+    def __init__(self, manager: capsules_mod.CapsuleManager):
         self.manager = manager
         self._lock = threading.Lock()
 
@@ -87,7 +87,7 @@ class Api:
         with self._lock:
             return fn(*args, **kwargs)
 
-    def mount(self, gear, payload):
+    def mount(self, capsule, payload):
         # The OPERATOR's switch first, then the machine's. Both refuse, and
         # both refuse with 503, but they are different sentences: pressure is
         # temporary and self-clearing ("try again shortly"), while a drain or
@@ -102,28 +102,28 @@ class Api:
         if not state["admitting"]:
             return 503, {"error": pressure.refusal(state), "pressure": state}
         limits = Limits.from_mapping(payload.get("limits"))
-        return 200, self._locked(self.manager.mount, gear, limits)
+        return 200, self._locked(self.manager.mount, capsule, limits)
 
-    def unmount(self, gear, payload):
-        return 200, self._locked(self.manager.unmount, gear)
+    def unmount(self, capsule, payload):
+        return 200, self._locked(self.manager.unmount, capsule)
 
-    def gear_status(self, gear, payload):
-        return 200, self.manager.status(gear)
+    def capsule_status(self, capsule, payload):
+        return 200, self.manager.status(capsule)
 
     def start_execution(self, payload):
         # Draining means "no NEW work", and a job is new work even inside a
-        # Gear that is already mounted. Checking only at mount would let a
-        # mounted Gear keep starting jobs through the whole drain, which is
+        # Capsule that is already mounted. Checking only at mount would let a
+        # mounted Capsule keep starting jobs through the whole drain, which is
         # exactly the thing an operator draining for a reboot is trying to
         # stop.
         admission = control.read(self.manager.staging_root)
         if admission["state"] != control.OPEN:
             return 503, {"error": control.refusal(admission),
                          "admission": admission}
-        gear = str(payload.get("gear") or "")
+        capsule = str(payload.get("capsule") or "")
         execution = str(payload.get("execution") or "")
-        if not gear or not execution:
-            return 400, {"error": "gear and execution are required"}
+        if not capsule or not execution:
+            return 400, {"error": "capsule and execution are required"}
 
         op = operation_for(str(payload.get("operation") or ""))
         params = op.clean(payload.get("params"))
@@ -137,29 +137,29 @@ class Api:
             return 400, {"error": "payload_b64 is not valid base64"}
 
         result = self._locked(
-            self.manager.start_execution, gear=gear, execution=execution,
+            self.manager.start_execution, capsule=capsule, execution=execution,
             operation=op.name, params=params, limits=limits, timeout=timeout,
             payload=body)
         return 200, result
 
     def execution_status(self, execution, payload):
-        gear = str(payload.get("gear") or "")
-        return 200, self.manager.execution_status(gear=gear, execution=execution)
+        capsule = str(payload.get("capsule") or "")
+        return 200, self.manager.execution_status(capsule=capsule, execution=execution)
 
     def execution_output(self, execution, payload):
-        gear = str(payload.get("gear") or "")
-        blob = self.manager.collect(gear=gear, execution=execution)
+        capsule = str(payload.get("capsule") or "")
+        blob = self.manager.collect(capsule=capsule, execution=execution)
         return 200, {"tar_b64": base64.b64encode(blob).decode("ascii"),
                      "bytes": len(blob)}
 
     def kill_execution(self, execution, payload):
-        gear = str(payload.get("gear") or "")
-        return 200, self._locked(self.manager.kill_execution, gear=gear,
+        capsule = str(payload.get("capsule") or "")
+        return 200, self._locked(self.manager.kill_execution, capsule=capsule,
                                  execution=execution)
 
     def finish_execution(self, execution, payload):
-        gear = str(payload.get("gear") or "")
-        return 200, self._locked(self.manager.finish_execution, gear=gear,
+        capsule = str(payload.get("capsule") or "")
+        return 200, self._locked(self.manager.finish_execution, capsule=capsule,
                                  execution=execution)
 
     def pool(self, payload):
@@ -172,7 +172,7 @@ class Api:
         }
 
     def reconcile(self, payload):
-        known = payload.get("known_gears")
+        known = payload.get("known_capsules")
         return 200, self._locked(reconcile.tick, self.manager, known)
 
     def drain(self, payload):
@@ -306,7 +306,7 @@ def make_handler(api: Api, secret: str):
                     return self._reply(400, {"error": str(exc)})
                 except StagingError as exc:
                     return self._reply(400, {"error": str(exc)})
-                except gears_mod.GearError as exc:
+                except capsules_mod.CapsuleError as exc:
                     return self._reply(409, {"error": str(exc)})
                 except DriverError as exc:
                     # The BASE, not DockerError: every tier's failures must
@@ -422,7 +422,7 @@ class UnixHTTPServer(ThreadingHTTPServer):
         return True
 
 
-def serve(*, socket_path: str, secret: str, manager: gears_mod.GearManager,
+def serve(*, socket_path: str, secret: str, manager: capsules_mod.CapsuleManager,
           allowed_uids=DEFAULT_PEER_UIDS) -> UnixHTTPServer:
     """Bind the executor's socket and return the server, unstarted.
 

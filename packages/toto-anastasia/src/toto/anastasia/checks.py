@@ -21,10 +21,10 @@ def check_anastasia(app_configs, **kwargs):
 
     if not conf.pool_is_configured():
         messages.append(Warning(
-            "ANASTASIA_POOL is unset, so no Compute Gear can be reserved.",
+            "ANASTASIA_POOL is unset, so no Compute Capsule can be reserved.",
             hint="Set ANASTASIA_POOL = {'cpu_millicores': …, 'ram_mb': …, "
                  "'scratch_mb': …, 'pids': …} to the capacity this machine may "
-                 "hand out. Until then the Gear page refuses every reservation.",
+                 "hand out. Until then the Capsule page refuses every reservation.",
             id="anastasia.W001",
         ))
 
@@ -34,7 +34,7 @@ def check_anastasia(app_configs, **kwargs):
     if is_null and socket_path:
         messages.append(Warning(
             "ANASTASIA_EXECUTOR_SOCKET is set but the runtime backend is still "
-            "the null one, so Gears cannot be mounted.",
+            "the null one, so Capsules cannot be mounted.",
             hint="Set ANASTASIA_RUNTIME_BACKEND to "
                  "toto.anastasia.executor_backend.ExecutorRuntimeBackend.",
             id="anastasia.W002",

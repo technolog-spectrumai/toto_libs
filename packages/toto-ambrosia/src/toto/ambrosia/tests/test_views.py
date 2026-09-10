@@ -371,7 +371,7 @@ class ExecutionGateTests(AmbrosiaTestCase):
     """Running code is a privilege, not a consequence of owning a workspace.
 
     Two privileges now, and they refuse in a different order. Staff-ness is
-    checked first (403); holding a Compute Gear is checked second (409). The
+    checked first (403); holding a Compute Capsule is checked second (409). The
     owner here is given one, so the tests below reach the gate they are
     actually about instead of stopping at "you have nowhere to run this".
     """

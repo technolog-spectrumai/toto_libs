@@ -1,4 +1,4 @@
-"""Submitting one heavy job into a Gear the user chose.
+"""Submitting one heavy job into a Capsule the user chose.
 
 The three-function shape every run table on this platform uses — ``submit``
 makes the row, the backend starts the runner, ``finish``/``fail`` close it —
@@ -44,7 +44,7 @@ def _audit(action: str, *, lease=None, execution=None, actor=None,
     """One line in the append-only trail, for the four things that matter.
 
     WHAT IS RECORDED and what deliberately is not. This is the trail an
-    operator reads after an incident, so it carries WHO asked, WHICH Gear,
+    operator reads after an incident, so it carries WHO asked, WHICH Capsule,
     WHICH operation, WHAT isolation it ran under and HOW it ended. It carries
     no parameters and no output: the job's inputs are the user's data, and an
     audit trail that copied them would become a second place their documents
@@ -62,7 +62,7 @@ def _audit(action: str, *, lease=None, execution=None, actor=None,
 
         payload = {k: v for k, v in metadata.items() if v not in (None, "")}
         if lease is not None:
-            payload["gear"] = str(lease.uuid)
+            payload["capsule"] = str(lease.uuid)
         if execution is not None:
             payload.setdefault("operation", execution.operation)
             payload.setdefault("family", execution.family)
@@ -82,10 +82,10 @@ def _audit(action: str, *, lease=None, execution=None, actor=None,
 
 
 def _resolve_limits(operation, requested) -> Limits:
-    """What this execution books against its Gear.
+    """What this execution books against its Capsule.
 
     Defaults come from the family; a caller may ask for less (a small OCR job
-    need not book a media-sized runner) but never for more than its Gear holds,
+    need not book a media-sized runner) but never for more than its Capsule holds,
     which the admission check below enforces.
     """
     if requested is None:
@@ -109,15 +109,15 @@ def _resolve_limits(operation, requested) -> Limits:
 def submit(*, lease: ComputeLease, operation: str, params: dict | None = None,
            payload=None, limits=None, timeout: int | None = None,
            subject_label: str = "", subject_id="", requested_by=None) -> Execution:
-    """Start a job in this Gear, or refuse with a sentence.
+    """Start a job in this Capsule, or refuse with a sentence.
 
     ``payload`` is the staged input — bytes the caller has already gathered
     from the Vault through its own permissions. Anastasia never reaches into
     a vault; it receives what the caller decided this job may see.
 
     EVERY REFUSAL IS AUDITED, and this wrapper is why. There are ten places
-    below that raise `CannotExecute` — a closed lease, a Gear that is full, a
-    job too big for its Gear, an exhausted quota, arrears, a runtime that will
+    below that raise `CannotExecute` — a closed lease, a Capsule that is full, a
+    job too big for its Capsule, an exhausted quota, arrears, a runtime that will
     not answer — and instrumenting each one would mean the eleventh, added
     later, is the one nobody records. Catching at the boundary makes "a refused
     job leaves a trail" structural rather than a habit.
@@ -151,7 +151,7 @@ def _submit(*, lease: ComputeLease, operation: str, params: dict | None = None,
 
     if not lease.is_open():
         raise CannotExecute(
-            "That Gear's reservation has ended. Reserve a new one to keep "
+            "That Capsule's reservation has ended. Reserve a new one to keep "
             "working.", services.LEASE_CLOSED)
 
     runtime = services.runtime_for(lease)
@@ -170,7 +170,7 @@ def _submit(*, lease: ComputeLease, operation: str, params: dict | None = None,
     # RESERVATION, which is a levy over time and belongs to toto.tax — see
     # metrics.py and the TODO in portal/anastasia.md.
     #
-    # Checked after the Gear is known to be accepting so a refusal names the
+    # Checked after the Capsule is known to be accepting so a refusal names the
     # useful reason first, and before the row is created so a rejected
     # submission leaves nothing behind.
     if requested_by is not None and getattr(requested_by, "pk", None):
@@ -193,29 +193,29 @@ def _submit(*, lease: ComputeLease, operation: str, params: dict | None = None,
                 services.IN_ARREARS) from exc
 
     with transaction.atomic():
-        # Lock the lease row so two submissions into one Gear cannot both read
+        # Lock the lease row so two submissions into one Capsule cannot both read
         # the same headroom — the pool race, one level down.
         locked = ComputeLease.objects.select_for_update().get(pk=lease.pk)
 
         # Two different refusals wear the same shape, and telling a user the
-        # wrong one is worse than telling them nothing: "the Gear is busy" sent
-        # to somebody whose Gear is idle reads as a bug in the platform. So ask
-        # the bigger question first — would this EVER fit in this Gear?
+        # wrong one is worse than telling them nothing: "the Capsule is busy" sent
+        # to somebody whose Capsule is idle reads as a bug in the platform. So ask
+        # the bigger question first — would this EVER fit in this Capsule?
         if not wanted.fits_in(locked.limits):
             raise CannotExecute(
                 f"This job needs more than “{locked.name}” holds in total: "
                 + "; ".join(wanted.shortfalls(locked.limits))
-                + f". Reserve a larger Gear, or ask for less than the "
+                + f". Reserve a larger Capsule, or ask for less than the "
                 f"{op.family.label} default.",
-                services.TOO_BIG_FOR_GEAR)
+                services.TOO_BIG_FOR_CAPSULE)
 
-        free = services.gear_available(locked)
+        free = services.capsule_available(locked)
         if not wanted.fits_in(free):
             raise CannotExecute(
                 f"“{locked.name}” is already running as much as it holds: "
                 + "; ".join(wanted.shortfalls(free))
-                + ". Wait for a job to finish, or reserve a bigger Gear.",
-                services.GEAR_FULL)
+                + ". Wait for a job to finish, or reserve a bigger Capsule.",
+                services.CAPSULE_FULL)
 
         execution = Execution.objects.create(
             lease=locked, operation=op.name, family=op.family.key,
@@ -260,7 +260,7 @@ def _submit(*, lease: ComputeLease, operation: str, params: dict | None = None,
     services.record(lease=lease, kind=CapsuleEvent.EXECUTE,
                     actor=requested_by, operation=op.name,
                     execution=str(execution.uuid))
-    # The TIER comes off the Gear's runtime row, which recorded what the
+    # The TIER comes off the Capsule's runtime row, which recorded what the
     # executor reported at mount time — not off a setting. An audit line
     # saying "kata" because the config asked for it would be the one lie this
     # trail exists to prevent.
@@ -270,7 +270,7 @@ def _submit(*, lease: ComputeLease, operation: str, params: dict | None = None,
 
 
 def _tier_of(lease) -> str:
-    """Which isolation the Gear was mounted under, or "" if it is unknown.
+    """Which isolation the Capsule was mounted under, or "" if it is unknown.
 
     Read from the runtime row rather than from settings, for the reason the
     column exists at all: a setting is what somebody asked for and this is
@@ -282,7 +282,7 @@ def _tier_of(lease) -> str:
 
 def _not_accepting_sentence(lease, state) -> str:
     if state == choices.UNMOUNTED:
-        return (f"“{lease.name}” is not mounted. Mount it on the Compute Gears "
+        return (f"“{lease.name}” is not mounted. Mount it on the Compute Capsules "
                 "page and try again.")
     if state == choices.DEGRADED:
         return (f"“{lease.name}” is degraded — something in it ran out of "
@@ -371,5 +371,5 @@ def close_stuck(execution_pk) -> None:
     if execution is None:
         return
     fail(execution,
-         "This job outlived its Gear's ceiling and was closed by the sweeper.",
+         "This job outlived its Capsule's ceiling and was closed by the sweeper.",
          status=choices.LOST)

@@ -1,4 +1,4 @@
-"""Submitting work: gear admission, the narrow API, and honest closure."""
+"""Submitting work: capsule admission, the narrow API, and honest closure."""
 
 from __future__ import annotations
 
@@ -18,18 +18,18 @@ class SubmitTests(AnastasiaTestCase):
     def setUp(self):
         super().setUp()
         # Deliberately NOT the whole pool: these tests also reserve a second,
-        # tiny Gear to prove the "too big for this Gear" refusal.
+        # tiny Capsule to prove the "too big for this Capsule" refusal.
         self.lease = services.reserve(owner=self.user, name="lab",
                                       limits=Limits(3000, 6144, 6144, 768))
         services.mount(lease=self.lease)
 
-    def test_a_submitted_job_runs_and_books_against_the_gear(self):
-        before = services.gear_available(self.lease)
+    def test_a_submitted_job_runs_and_books_against_the_capsule(self):
+        before = services.capsule_available(self.lease)
         job = execute.submit(lease=self.lease, operation="render_pdf",
                              requested_by=self.user)
         self.assertEqual(job.status, choices.RUNNING)
         self.assertEqual(job.family, "pdf")
-        after = services.gear_available(self.lease)
+        after = services.capsule_available(self.lease)
         self.assertEqual(after.ram_mb,
                          before.ram_mb - families.PDF.default_limits.ram_mb)
 
@@ -40,10 +40,10 @@ class SubmitTests(AnastasiaTestCase):
         execute.submit(lease=self.lease, operation="render_pdf")
         self.assertEqual(services.available().as_dict(), before.as_dict())
 
-    def test_several_jobs_share_one_gear_until_it_is_full(self):
-        """A Gear is a little pool: BUSY does not mean exclusive."""
+    def test_several_jobs_share_one_capsule_until_it_is_full(self):
+        """A Capsule is a little pool: BUSY does not mean exclusive."""
         # Explicit limits so the arithmetic is visible here rather than
-        # depending on what the family defaults happen to be: the Gear holds
+        # depending on what the family defaults happen to be: the Capsule holds
         # 3000 mCPU, so exactly three of these fit.
         third = {"cpu_millicores": 1000, "ram_mb": 1024,
                  "scratch_mb": 1024, "pids": 128}
@@ -54,23 +54,23 @@ class SubmitTests(AnastasiaTestCase):
         with self.assertRaises(ValidationError) as caught:
             execute.submit(lease=self.lease, operation="render_pdf",
                            limits=third)
-        self.assertEqual(caught.exception.refusal_code, services.GEAR_FULL)
+        self.assertEqual(caught.exception.refusal_code, services.CAPSULE_FULL)
 
-    def test_finishing_a_job_returns_its_share_of_the_gear(self):
+    def test_finishing_a_job_returns_its_share_of_the_capsule(self):
         job = execute.submit(lease=self.lease, operation="render_pdf")
-        during = services.gear_available(self.lease)
+        during = services.capsule_available(self.lease)
         execute.finish(job, exit_code=0, usage={"cpu_seconds": 3})
-        after = services.gear_available(self.lease)
+        after = services.capsule_available(self.lease)
         self.assertGreater(after.ram_mb, during.ram_mb)
         self.assertEqual(after.as_dict(), self.lease.limits.as_dict())
 
-    def test_a_job_bigger_than_the_gear_says_so_rather_than_blaming_traffic(self):
+    def test_a_job_bigger_than_the_capsule_says_so_rather_than_blaming_traffic(self):
         small = services.reserve(owner=self.other, name="tiny", limits=SMALL)
         services.mount(lease=small)
         with self.assertRaises(ValidationError) as caught:
             execute.submit(lease=small, operation="render_pdf")
         self.assertEqual(caught.exception.refusal_code,
-                         services.TOO_BIG_FOR_GEAR)
+                         services.TOO_BIG_FOR_CAPSULE)
         self.assertIn("in total", str(caught.exception))
 
     def test_a_caller_may_ask_for_less_than_the_family_default(self):
@@ -95,20 +95,20 @@ class NotAcceptingTests(AnastasiaTestCase):
         self.lease = services.reserve(owner=self.user, name="lab",
                                       limits=RUNNABLE)
 
-    def test_an_unmounted_gear_refuses_and_names_the_page(self):
+    def test_an_unmounted_capsule_refuses_and_names_the_page(self):
         """Conscious provisioning: there is no auto-mount fallback."""
         with self.assertRaises(ValidationError) as caught:
             execute.submit(lease=self.lease, operation="render_pdf")
         self.assertEqual(caught.exception.refusal_code, services.NOT_MOUNTED)
         self.assertIn("not mounted", str(caught.exception))
 
-    def test_a_released_gear_refuses(self):
+    def test_a_released_capsule_refuses(self):
         services.release(lease=self.lease)
         with self.assertRaises(ValidationError) as caught:
             execute.submit(lease=self.lease, operation="render_pdf")
         self.assertEqual(caught.exception.refusal_code, services.LEASE_CLOSED)
 
-    def test_a_degraded_gear_refuses_rather_than_feeding_it_more(self):
+    def test_a_degraded_capsule_refuses_rather_than_feeding_it_more(self):
         services.mount(lease=self.lease)
         runtime = services.runtime_for(self.lease)
         runtime.last_sample = {"oom_kills": 2}
@@ -336,7 +336,7 @@ class UnobservableKillTests(AnastasiaTestCase):
 
     Saying "it ran out of memory" anyway would print a guess as a fact. Saying
     nothing sends the user to read their own code when the answer is a bigger
-    Gear. So the sentence names the uncertainty and still gives the advice.
+    Capsule. So the sentence names the uncertainty and still gives the advice.
     """
 
     def _execution(self):

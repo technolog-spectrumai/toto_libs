@@ -79,7 +79,7 @@ class ExecutorRuntimeBackend(RuntimeBackend):
         if not socket_path:
             raise RuntimeUnavailable(
                 "This deployment has no Anastasia executor socket configured "
-                "(ANASTASIA_EXECUTOR_SOCKET), so Gears cannot be mounted.")
+                "(ANASTASIA_EXECUTOR_SOCKET), so Capsules cannot be mounted.")
         secret = conf.shared_secret()
         if not secret:
             raise RuntimeUnavailable(
@@ -138,12 +138,12 @@ class ExecutorRuntimeBackend(RuntimeBackend):
     # -- the RuntimeBackend contract --------------------------------------
 
     def mount(self, lease) -> dict:
-        return self._call("POST", f"/gears/{lease.uuid}/mount",
+        return self._call("POST", f"/capsules/{lease.uuid}/mount",
                           {"limits": lease.limits.as_dict()})
 
     def unmount(self, lease) -> dict:
         try:
-            return self._call("POST", f"/gears/{lease.uuid}/unmount")
+            return self._call("POST", f"/capsules/{lease.uuid}/unmount")
         except RuntimeUnavailable:
             # Teardown must never be blockable by an absent executor: with
             # the executor gone, so are its containers, and refusing here would
@@ -155,13 +155,13 @@ class ExecutorRuntimeBackend(RuntimeBackend):
 
     def status(self, lease) -> dict:
         try:
-            return self._call("GET", f"/gears/{lease.uuid}/status", timeout=15)
+            return self._call("GET", f"/capsules/{lease.uuid}/status", timeout=15)
         except RuntimeUnavailable:
             return {}
 
     def start_execution(self, execution, *, params, payload) -> dict:
         body = {
-            "gear": str(execution.lease.uuid),
+            "capsule": str(execution.lease.uuid),
             "execution": str(execution.uuid),
             "operation": execution.operation,
             "params": params,
@@ -174,29 +174,29 @@ class ExecutorRuntimeBackend(RuntimeBackend):
 
     def kill_execution(self, execution) -> dict:
         return self._call("POST", f"/jobs/{execution.uuid}/kill",
-                          {"gear": str(execution.lease.uuid)})
+                          {"capsule": str(execution.lease.uuid)})
 
     # -- beyond the ABC: what the caller needs to finish a job -------------
 
     def execution_status(self, execution) -> dict:
         return self._call("GET", f"/jobs/{execution.uuid}",
-                          {"gear": str(execution.lease.uuid)}, timeout=15)
+                          {"capsule": str(execution.lease.uuid)}, timeout=15)
 
     def collect(self, execution) -> bytes:
         result = self._call("GET", f"/jobs/{execution.uuid}/out",
-                            {"gear": str(execution.lease.uuid)}, timeout=120)
+                            {"capsule": str(execution.lease.uuid)}, timeout=120)
         return base64.b64decode(result.get("tar_b64") or "")
 
     def finish_execution(self, execution) -> dict:
         return self._call("POST", f"/jobs/{execution.uuid}/finish",
-                          {"gear": str(execution.lease.uuid)})
+                          {"capsule": str(execution.lease.uuid)})
 
     def pool(self) -> dict:
         return self._call("GET", "/pool", timeout=15)
 
-    def reconcile(self, known_gears) -> dict:
+    def reconcile(self, known_capsules) -> dict:
         return self._call("POST", "/reconcile",
-                          {"known_gears": [str(g) for g in known_gears]},
+                          {"known_capsules": [str(g) for g in known_capsules]},
                           timeout=120)
 
     # -- admission control, for an operator ---------------------------------
@@ -232,7 +232,7 @@ def _error_sentence_from(raw: str, status: int) -> str:
     """The executor's own sentence where it sent one, a fallback where not.
 
     The executor answers every refusal with ``{"error": "..."}`` written for a
-    person. Preferring it over a status code is what lets a 409 say "this Gear
+    person. Preferring it over a status code is what lets a 409 say "this Capsule
     is full" instead of "conflict".
     """
     try:

@@ -400,7 +400,7 @@ class FileTreeTests(AmbrosiaTestCase):
 
 # Every test below asks the vault which editor opens a .py file, and the answer
 # comes from the PYTHON workspace app, toto.dracena. It is a host portion on
-# zenobia and behind BUILD_ANASTASIA there, so a build without Compute Gears
+# zenobia and behind BUILD_ANASTASIA there, so a build without Compute Capsules
 # registers no plugin for "python" and nothing here has a subject.
 #
 # The condition read `is_installed("toto.dracena") or is_installed("toto.dracena")`
@@ -410,7 +410,7 @@ class FileTreeTests(AmbrosiaTestCase):
 # widened the skip.
 @unittest.skipUnless(
     apps.is_installed("toto.dracena"),
-    "no Python workspace app installed (toto.dracena rides with Compute Gears)")
+    "no Python workspace app installed (toto.dracena rides with Compute Capsules)")
 class EditorPluginTests(AmbrosiaTestCase):
     def test_ambrosia_claims_the_python_file_type(self):
         from toto.vault.plugins import VaultEditorPlugin

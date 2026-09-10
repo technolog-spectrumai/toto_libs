@@ -41,7 +41,7 @@ DJANGO_FREE = (
     "toto.anastasia.executor.drivers",
     "toto.anastasia.executor.drivers.docker",
     "toto.anastasia.executor.runners",
-    "toto.anastasia.executor.gears",
+    "toto.anastasia.executor.capsules",
     "toto.anastasia.executor.reconcile",
     "toto.anastasia.executor.pressure",
     "toto.anastasia.executor.control",

@@ -1,4 +1,4 @@
-"""The reconcile beat task: expiry, the authoritative gear list, and silence."""
+"""The reconcile beat task: expiry, the authoritative capsule list, and silence."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ class ReconcileTaskTests(AnastasiaTestCase):
         lease.refresh_from_db()
         self.assertIsNotNone(lease.released_at)
 
-    def test_the_gear_list_is_read_after_expiring(self):
+    def test_the_capsule_list_is_read_after_expiring(self):
         """A lease that has just lapsed must not be sent as live and then
         destroyed on the next pass."""
         live = services.reserve(owner=self.user, name="live", limits=SMALL)
@@ -31,7 +31,7 @@ class ReconcileTaskTests(AnastasiaTestCase):
         ComputeLease.objects.filter(pk=dead.pk).update(
             expires_at=timezone.now() - datetime.timedelta(seconds=1))
         result = tasks.reconcile()
-        self.assertEqual(result["known_gears"], 1)
+        self.assertEqual(result["known_capsules"], 1)
 
     def test_a_null_backend_has_nothing_to_reconcile_with(self):
         """Booking is arithmetic that works with no manager at all."""
@@ -61,7 +61,7 @@ class ReconcileTaskTests(AnastasiaTestCase):
         self.assertTrue(result["manager"]["unreachable"])
         self.assertEqual(result["expired"], 0)
 
-    def test_it_refreshes_mounted_gears_only(self):
+    def test_it_refreshes_mounted_capsules_only(self):
         mounted = services.reserve(owner=self.user, name="up", limits=RUNNABLE)
         services.mount(lease=mounted)
         services.reserve(owner=self.user, name="down", limits=SMALL)
@@ -81,7 +81,7 @@ class ReconcileTaskTests(AnastasiaTestCase):
         runtime = services.runtime_for(mounted)
         self.assertEqual(runtime.last_sample["ram_mb_used"], 42)
 
-    def test_a_manager_that_restarted_marks_the_gear_dead(self):
+    def test_a_manager_that_restarted_marks_the_capsule_dead(self):
         """The reservation survives; the runtime does not. That distinction is
         the whole point of separating the two."""
         lease = services.reserve(owner=self.user, name="up", limits=RUNNABLE)

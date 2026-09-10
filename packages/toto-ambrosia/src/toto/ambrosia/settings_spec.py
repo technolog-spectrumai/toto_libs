@@ -47,7 +47,7 @@ class Field:
     maximum: int | None = None
     choices: tuple[tuple[str, Any], ...] = ()
     # CHOICE only: the options when they depend on the WORKSPACE rather than
-    # on the lab — a Compute Gear is one of the owner's reservations, and that
+    # on the lab — a Compute Capsule is one of the owner's reservations, and that
     # list changes every time they reserve or release one. Called with the
     # workspace; wins over `choices` when set. Kept as a callable on the
     # field, like `bounds()`, so the base stays ignorant of what the options
@@ -228,7 +228,7 @@ def effective(fields: tuple[Field, ...], stored: dict, *, workspace) -> dict:
                 value = number
             elif field.kind == CHOICE and field.choices_for is not None:
                 # The same courtesy the ints get, for an option list that can
-                # shrink underneath a stored value: a released Gear must not
+                # shrink underneath a stored value: a released Capsule must not
                 # keep being "the setting" — it falls back to the default, and
                 # the panel shows that rather than a uuid nothing resolves.
                 if value not in [c for c, _l in field.options(workspace)]:

@@ -161,19 +161,19 @@ class Family:
     label: str
     image: str
     #: What one execution of this family gets if the caller names no limits.
-    #: Always bounded by the Gear it runs in, so these are starting points and
+    #: Always bounded by the Capsule it runs in, so these are starting points and
     #: not guarantees.
     default_limits: Limits
     #: TWO postures, and there is deliberately no third.
     #:
     #: Batch runners get NO network at all. The python family gets one link and
-    #: one only: the Gear's internal network, so the session owner can reach the
+    #: one only: the Capsule's internal network, so the session owner can reach the
     #: kernel's ports. That network reaches no database, no broker and no
     #: internet.
     #:
     #: EGRESS IS GONE (2026-09-10). A `needs_egress` posture existed for one
     #: shape of job — fetching declared packages from an index in a throwaway
-    #: container — and it was the only way anything in a Gear could reach the
+    #: container — and it was the only way anything in a Capsule could reach the
     #: internet. Both families that declared it are deleted, dependencies are
     #: baked into the runner images instead, and the field is removed rather
     #: than left False everywhere: a posture nothing can request is one nobody
@@ -366,7 +366,7 @@ START_PYTHON_RUNTIME = Operation(
     params=(
         # How long the runtime may sit unused before the manager reclaims it.
         # Bounded here; the host's own dial (dracena.kernel_idle) narrows it
-        # further, and a warm Gear keeps it alive across that boundary.
+        # further, and a warm Capsule keeps it alive across that boundary.
         Param("idle_seconds", "int", default=3600, minimum=60, maximum=604800),
         # Whether HOME lives in the OUTPUT area instead of scratch. Scratch is
         # a per-execution tmpfs, so anything a tool writes to $HOME — .ipython

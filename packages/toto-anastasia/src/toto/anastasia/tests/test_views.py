@@ -1,4 +1,4 @@
-"""The Compute Gears desk: ownership, refusals, and what the page shows."""
+"""The Compute Capsules desk: ownership, refusals, and what the page shows."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ class DeskTestCase(AnastasiaTestCase):
 
 
 class OwnershipTests(DeskTestCase):
-    """A Gear belongs to whoever reserved it. There is no borrowing."""
+    """A Capsule belongs to whoever reserved it. There is no borrowing."""
 
     def setUp(self):
         super().setUp()
@@ -47,7 +47,7 @@ class OwnershipTests(DeskTestCase):
         self.theirs = services.reserve(owner=self.other, name="theirs",
                                        limits=SMALL)
 
-    def test_someone_elses_gear_is_404_not_403(self):
+    def test_someone_elses_capsule_is_404_not_403(self):
         """Whether a given uuid exists is not information a stranger needs, and
         a 403 answers exactly that question."""
         for route in ("mount", "unmount", "release"):
@@ -61,9 +61,9 @@ class OwnershipTests(DeskTestCase):
             reverse("anastasia:status", args=[self.theirs.uuid]))
         self.assertEqual(response.status_code, 404)
 
-    def test_the_index_shows_only_my_gears(self):
+    def test_the_index_shows_only_my_capsules(self):
         response = self.client.get(reverse("anastasia:index"))
-        names = [gear["name"] for gear in response.context["gears"]]
+        names = [capsule["name"] for capsule in response.context["capsules"]]
         self.assertEqual(names, ["mine"])
 
     def test_the_index_is_a_decorated_page_not_a_bare_context(self):
@@ -73,7 +73,7 @@ class OwnershipTests(DeskTestCase):
         with no `theme` in the context that expression renders `{}`, and every
         custom colour class silently stops existing. This desk shipped exactly
         that way: it ignored the dark-mode toggle, the browser tab read
-        "Compute Gears – " with a dangling dash (`platform.site_name` missing),
+        "Compute Capsules – " with a dangling dash (`platform.site_name` missing),
         and the Reserve button rendered white-on-nothing — present, clickable,
         invisible. base.html's own comment above the `colors:` line warns that
         one view forgetting PageProcessor costs the page its palette AND its
@@ -98,7 +98,7 @@ class OwnershipTests(DeskTestCase):
 
         from toto.anastasia import views
 
-        request = RequestFactory().get("/gears/")
+        request = RequestFactory().get("/capsules/")
         request.user = AnonymousUser()
         response = views.index(request)
         self.assertEqual(response.status_code, 302)
@@ -113,7 +113,7 @@ class OwnershipTests(DeskTestCase):
 
 
 class ReserveTests(DeskTestCase):
-    def test_reserving_creates_a_gear(self):
+    def test_reserving_creates_a_capsule(self):
         response = self.client.post(reverse("anastasia:reserve"), {
             "name": "thesis", "cpu_millicores": 500, "ram_mb": 1024,
             "scratch_mb": 512, "pids": 128})
@@ -138,7 +138,7 @@ class ReserveTests(DeskTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(ComputeLease.objects.filter(name="junk").exists())
 
-    def test_a_nameless_gear_is_refused(self):
+    def test_a_nameless_capsule_is_refused(self):
         response = self.client.post(reverse("anastasia:reserve"), {
             "name": "  ", "cpu_millicores": 500, "ram_mb": 1024,
             "scratch_mb": 512, "pids": 128}, follow=True)
@@ -208,8 +208,8 @@ class StatusTests(DeskTestCase):
                     "sample_age_seconds", "executions_running"):
             self.assertIn(key, payload)
 
-    def test_only_mounted_gears_are_polled(self):
-        """An unmounted Gear has nothing to report, and asking would wake the
+    def test_only_mounted_capsules_are_polled(self):
+        """An unmounted Capsule has nothing to report, and asking would wake the
         manager every five seconds for nothing."""
         response = self.client.get(reverse("anastasia:index"))
         self.assertEqual(json.loads(response.context["poll_urls_json"]), {})
@@ -229,10 +229,10 @@ class StatusTests(DeskTestCase):
 
 
 class PageTests(DeskTestCase):
-    def test_the_page_renders_with_no_gears(self):
+    def test_the_page_renders_with_no_capsules(self):
         response = self.client.get(reverse("anastasia:index"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Compute Gears")
+        self.assertContains(response, "Compute Capsules")
 
     def test_the_pool_is_shown_to_everyone_not_just_staff(self):
         """Reserving is a choice made against a number; hiding the number turns
@@ -241,7 +241,7 @@ class PageTests(DeskTestCase):
         self.assertTrue(response.context["pool"]["configured"])
         self.assertEqual(len(response.context["pool_rows"]), 4)
 
-    def test_a_mounted_gear_renders_its_card(self):
+    def test_a_mounted_capsule_renders_its_card(self):
         lease = services.reserve(owner=self.user, name="lab", limits=RUNNABLE)
         services.mount(lease=lease)
         response = self.client.get(reverse("anastasia:index"))
@@ -257,7 +257,7 @@ class PageTests(DeskTestCase):
 class OperatorPageTests(DeskTestCase):
     """The staff page: what the machine is doing, and how to stop it.
 
-    Two things under test that the Gear desk cannot express — that an ordinary
+    Two things under test that the Capsule desk cannot express — that an ordinary
     user cannot reach any of it, and that the two switches are genuinely
     different acts rather than one control with two labels.
     """
@@ -328,7 +328,7 @@ class OperatorPageTests(DeskTestCase):
 
 
 class MovedRouteTests(AnastasiaTestCase):
-    """The desk moved from /gears/ to /capsules/ on 2026-09-10.
+    """The desk moved from /capsules/ to /capsules/ on 2026-09-10.
 
     Bookmarks, links in notes and every URL printed in a past support answer
     still say the old one, and a 404 there reads as "the feature was removed"

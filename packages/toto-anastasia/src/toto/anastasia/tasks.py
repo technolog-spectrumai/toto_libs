@@ -2,14 +2,14 @@
 
 One task, not three, and one beat entry — the same judgement
 ``toto.lifecycle.tasks.evaluate`` makes: expiring a lease, telling the manager
-which Gears still exist, and noticing that a Gear's runtime has died are three
+which Capsules still exist, and noticing that a Capsule's runtime has died are three
 views of one question, and running them as separate entries lets them race
 (a lease expiring while reconciliation is mid-pass would have the manager
-destroy a Gear the database still calls live, or the reverse).
+destroy a Capsule the database still calls live, or the reverse).
 
 **The caller's list is authoritative.** The manager does not know what a lease
 is; it holds containers and cgroups labelled with opaque ids. So this task
-sends the set of Gears that SHOULD exist, and the manager destroys whatever
+sends the set of Capsules that SHOULD exist, and the manager destroys whatever
 else it is holding. That direction is the whole reconciliation contract.
 """
 
@@ -43,15 +43,15 @@ def reconcile() -> dict:
     # then destroyed on the next pass.
     known = list(ComputeLease.objects.open().values_list("uuid", flat=True))
 
-    result = {"expired": expired, "known_gears": len(known)}
+    result = {"expired": expired, "known_capsules": len(known)}
     backend = get_backend()
 
     # Two INDEPENDENT jobs, and keeping them independent is load-bearing.
     #
-    # Telling the manager which Gears exist needs a manager; noticing that a
-    # Gear's runtime has died does not. An earlier version returned early when
+    # Telling the manager which Capsules exist needs a manager; noticing that a
+    # Capsule's runtime has died does not. An earlier version returned early when
     # the backend had no reconcile() and so never refreshed at all — which left
-    # every Gear reporting whatever it last reported, forever, on exactly the
+    # every Capsule reporting whatever it last reported, forever, on exactly the
     # backends where that matters most.
     reconcile_with_manager = getattr(backend, "reconcile", None)
     if reconcile_with_manager is None:
@@ -65,7 +65,7 @@ def reconcile() -> dict:
             log.warning("anastasia: the manager did not answer reconciliation")
             result["manager"] = {"unreachable": True}
 
-    # Fold each mounted Gear's live sample onto its row, so the desk shows
+    # Fold each mounted Capsule's live sample onto its row, so the desk shows
     # something current even for a user who has not opened the page — and so a
     # manager that restarted is noticed without anyone having to look.
     refreshed = 0

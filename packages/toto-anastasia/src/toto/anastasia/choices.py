@@ -7,7 +7,7 @@ anything that touches a database.
 
 from __future__ import annotations
 
-#: What a mounted Gear can be doing. Derived from samples, never stored as the
+#: What a mounted Capsule can be doing. Derived from samples, never stored as the
 #: authority — see ``services.derive_state``; the manager's cgroup reading is
 #: the truth and this is the cached answer with a timestamp beside it.
 READY = "ready"
@@ -16,15 +16,15 @@ DEGRADED = "degraded"
 DEAD = "dead"
 UNMOUNTED = "unmounted"
 
-#: The states in which a Gear will accept a new execution. DEGRADED is
-#: deliberately absent: a Gear that has already OOM-killed something is not a
-#: Gear to hand more work to, and the user can see why on the page.
+#: The states in which a Capsule will accept a new execution. DEGRADED is
+#: deliberately absent: a Capsule that has already OOM-killed something is not a
+#: Capsule to hand more work to, and the user can see why on the page.
 ACCEPTING = frozenset({READY, BUSY})
 
-#: A Gear in one of these has runtime worth reconciling against Docker.
+#: A Capsule in one of these has runtime worth reconciling against Docker.
 MOUNTED = frozenset({READY, BUSY, DEGRADED})
 
-GEAR_STATES = (
+CAPSULE_STATES = (
     (READY, "Ready"),
     (BUSY, "Busy"),
     (DEGRADED, "Degraded"),

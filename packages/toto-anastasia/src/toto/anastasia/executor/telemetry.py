@@ -7,7 +7,7 @@ format is a documented, stable, line-oriented thing — a name, optional labels,
 a number — and writing it costs less than the dependency costs to justify.
 
 WHAT IS NOT A LABEL, and this is the part that matters. No user id, no job
-uuid, no Gear uuid, no operation parameters. Prometheus keeps a distinct time
+uuid, no Capsule uuid, no operation parameters. Prometheus keeps a distinct time
 series per label combination FOREVER, so a per-job label is both an unbounded
 cardinality explosion and a durable record of who ran what, sitting in a
 monitoring system with none of the vault's access control. Counts by FAMILY and
@@ -60,7 +60,7 @@ def render(manager, *, admission: dict, pressure_report: dict,
         managed = []
 
     running = [r for r in managed if r.get("state") == "running"]
-    gears = {r.get("gear") for r in managed if r.get("gear")}
+    capsules = {r.get("capsule") for r in managed if r.get("capsule")}
 
     out = [
         f"# HELP {PREFIX}_up The executor is answering.",
@@ -85,9 +85,9 @@ def render(manager, *, admission: dict, pressure_report: dict,
         out.append(_line("runners", 0, {"state": "running"}))
 
     out += [
-        f"# HELP {PREFIX}_gears_mounted Gears with at least one sandbox.",
-        f"# TYPE {PREFIX}_gears_mounted gauge",
-        _line("gears_mounted", len(gears)),
+        f"# HELP {PREFIX}_capsules_mounted Capsules with at least one sandbox.",
+        f"# TYPE {PREFIX}_capsules_mounted gauge",
+        _line("capsules_mounted", len(capsules)),
         f"# HELP {PREFIX}_runners_running Sandboxes currently running.",
         f"# TYPE {PREFIX}_runners_running gauge",
         _line("runners_running", len(running)),
@@ -121,7 +121,7 @@ def render(manager, *, admission: dict, pressure_report: dict,
         f"# HELP {PREFIX}_isolation_tier The tier this executor runs jobs in.",
         f"# TYPE {PREFIX}_isolation_tier gauge",
         _line("isolation_tier", 1, {"tier": manager.docker.name}),
-        f"# HELP {PREFIX}_slice_enforced 1 when the Gear ceiling is a kernel limit.",
+        f"# HELP {PREFIX}_slice_enforced 1 when the Capsule ceiling is a kernel limit.",
         f"# TYPE {PREFIX}_slice_enforced gauge",
         _line("slice_enforced", 1 if manager.slices.enforced else 0),
     ]

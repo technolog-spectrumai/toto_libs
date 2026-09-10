@@ -8,7 +8,7 @@ variables, so those live here rather than being reached for through the Docker
 module by whatever needs them next.
 
 WHY IT MATTERS THAT THIS IS SMALL. The seam is not an abstraction over
-containers — it is the list of things a caller is allowed to know. `gears.py`
+containers — it is the list of things a caller is allowed to know. `capsules.py`
 calls ten methods and reads two dict shapes; that is the whole contract, and it
 is written down in ``Driver`` below so a new runtime has something to satisfy
 rather than something to imitate.
@@ -21,7 +21,7 @@ from __future__ import annotations
 #: Labels are how a restarted executor rebuilds its view of the world. They are
 #: runtime-independent by construction: whatever creates the sandbox must stamp
 #: these, or reconciliation cannot find it again.
-#: Renamed from ``anastasia.gear`` on 2026-09-10, with zero managed containers
+#: Renamed from ``anastasia.capsule`` on 2026-09-10, with zero managed containers
 #: on the daemon — which is the only moment this is free. A live container
 #: cannot be relabelled, so reconcile reads BOTH keys for one release (see
 #: ``labels()``): a runner started before the rename is adopted rather than
@@ -76,7 +76,7 @@ class DriverError(Exception):
 
 
 class Driver:
-    """The ten methods ``gears.py`` and ``reconcile.py`` actually call.
+    """The ten methods ``capsules.py`` and ``reconcile.py`` actually call.
 
     Written down rather than merely implemented, because the alternative is a
     second runtime discovering the contract by breaking it. Not an ABC on
@@ -96,7 +96,7 @@ class Driver:
       ``observes_guest_oom`` below. Returning ``False`` when the honest answer
       is "I cannot tell" is how a user gets told their job was merely stopped
       when in fact it needed more memory.
-    * ``list_managed`` → rows of ``{"id", "name", "state", "gear",
+    * ``list_managed`` → rows of ``{"id", "name", "state", "capsule",
       "execution"}``, where ``state`` is lowercase and ``running`` is the value
       reconciliation tests for.
     """
@@ -204,5 +204,5 @@ class Driver:
     def remove(self, container: str) -> None:
         raise NotImplementedError
 
-    def list_managed(self, *, gear=None) -> list[dict]:
+    def list_managed(self, *, capsule=None) -> list[dict]:
         raise NotImplementedError

@@ -21,16 +21,16 @@ refused.
 The kernel is STOPPED before anything is captured. In-memory state — variables,
 loaded dataframes, open handles — does not survive, and a rehydrated runtime
 starts empty. What comes back is the *environment*, not the session: packages,
-files, configuration, and, on a permanent-home Gear, everything under ``$HOME``.
+files, configuration, and, on a permanent-home Capsule, everything under ``$HOME``.
 
 There is no CRIU-style process checkpoint, no live layer capture, and no live
 network toggling. "Your setup comes back", not "your session resumes".
 
-## Two depths, chosen when the Gear was made
+## Two depths, chosen when the Capsule was made
 
 * **Manifest** — the default. Base image, runtime versions, the declared trees
   a lab knows how to rebuild, the vault snapshot, and where the user was.
-* **Hybrid** — a Gear reserved with ``permanent_home``. All of the above plus a
+* **Hybrid** — a Capsule reserved with ``permanent_home``. All of the above plus a
   collected ``$HOME``: shell history, tool configuration, an interactive
   ``pip --user`` install. It costs a blob per workspace and captures the state
   nobody declared.
@@ -159,15 +159,15 @@ def _lease_for(workspace):
 
     IT HONOURS THE WORKSPACE'S PINNED GEAR. Until 2026-09-10 this filtered on
     the owner alone and took the OLDEST open lease, which is only ever right
-    for an account holding exactly one. On a two-Gear account, a workspace
+    for an account holding exactly one. On a two-Capsule account, a workspace
     pinned to the second one had ``permanent_home`` read off the first — so a
     hibernate could decide not to keep a $HOME the user had paid to keep — and,
     because ``hibernate`` defaults to ``release_lease=True``, it then RELEASED
-    that first Gear, killing whatever was running in it. Nothing tested it.
+    that first Capsule, killing whatever was running in it. Nothing tested it.
 
-    ``gears.preferred`` is the same resolution the compile path already uses
-    (``gears.py:141``), and it validates the stored uuid against what the owner
-    holds NOW, so a stale uuid from a released Gear falls back to automatic
+    ``capsules.preferred`` is the same resolution the compile path already uses
+    (``capsules.py:141``), and it validates the stored uuid against what the owner
+    holds NOW, so a stale uuid from a released Capsule falls back to automatic
     rather than raising. Automatic keeps the historical oldest-lease behaviour,
     which is correct when the user never chose.
     """
@@ -181,10 +181,10 @@ def _lease_for(workspace):
 
     app = _app_for(workspace)
     if app is not None:
-        from . import gears
+        from . import capsules
 
         try:
-            pinned = gears.preferred(workspace, app.namespace)
+            pinned = capsules.preferred(workspace, app.namespace)
         except Exception:                                   # pragma: no cover
             pinned = None
         if pinned:
@@ -236,10 +236,10 @@ def hibernate(workspace, *, user=None, release_lease: bool = True) -> dict:
     #    booking is what the pool counts.
     released = False
     if release_lease and lease is not None:
-        from toto.anastasia import services as gear_services
+        from toto.anastasia import services as capsule_services
 
         try:
-            gear_services.release(lease=lease, reason="workspace hibernated",
+            capsule_services.release(lease=lease, reason="workspace hibernated",
                                   actor=user or workspace.owner)
             released = True
         except Exception:  # noqa: BLE001

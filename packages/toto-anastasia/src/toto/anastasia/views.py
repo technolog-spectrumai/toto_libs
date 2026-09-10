@@ -1,4 +1,4 @@
-"""The Compute Gears desk: reserve, mount, watch, unmount.
+"""The Compute Capsules desk: reserve, mount, watch, unmount.
 
 One page and a handful of POST targets. The shape follows the platform's
 convention — a page that renders derived state, JSON endpoints the page polls,
@@ -10,8 +10,8 @@ Zenobia signs and talks to the manager. That is the whole reason
 ``executor_backend`` exists on this side of the wire rather than the page
 calling the manager directly.
 
-Ownership is simple and strict: a Gear belongs to the user who reserved it.
-Staff can SEE the pool (they have to, to run the machine) but a Gear is not a
+Ownership is simple and strict: a Capsule belongs to the user who reserved it.
+Staff can SEE the pool (they have to, to run the machine) but a Capsule is not a
 shared resource and there is no borrowing.
 """
 
@@ -40,13 +40,13 @@ log = logging.getLogger("toto.anastasia.views")
 
 
 def _own_lease(request, uuid) -> ComputeLease:
-    """A Gear the requesting user actually holds.
+    """A Capsule the requesting user actually holds.
 
-    404 rather than 403 for somebody else's Gear: whether a given uuid exists
+    404 rather than 403 for somebody else's Capsule: whether a given uuid exists
     is not information a stranger needs, and a 403 answers that question.
     """
     # Filtered by owner in the QUERY, not checked after fetching: that is what
-    # makes somebody else's Gear indistinguishable from one that does not
+    # makes somebody else's Capsule indistinguishable from one that does not
     # exist. Raising PermissionDenied here instead would answer "this uuid is
     # real" to anyone who asked, which is the question the docstring above says
     # not to answer.
@@ -75,14 +75,14 @@ def index(request):
     """
     leases = list(ComputeLease.objects.open()
                   .filter(owner=request.user).select_related("runtime"))
-    gears = [services.gear_report(lease) for lease in leases]
+    capsules = [services.capsule_report(lease) for lease in leases]
     report = services.pool_report()
 
-    # Only MOUNTED gears are polled. An unmounted one has nothing to report,
+    # Only MOUNTED capsules are polled. An unmounted one has nothing to report,
     # and asking would wake the manager once every five seconds for nothing.
     poll_urls = {
-        gear["uuid"]: reverse("anastasia:status", args=[gear["uuid"]])
-        for gear in gears if gear["state"] in choices.MOUNTED
+        capsule["uuid"]: reverse("anastasia:status", args=[capsule["uuid"]])
+        for capsule in capsules if capsule["state"] in choices.MOUNTED
     }
 
     # PageProcessor, like every other page on the platform. It is not
@@ -97,7 +97,7 @@ def index(request):
     return render(request, "anastasia/index.html", PageProcessor().decorate({
         "pool": report,
         "pool_rows": _pool_rows(report),
-        "gears": gears,
+        "capsules": capsules,
         "runtime_configured": bool(conf.executor_socket()),
         "max_capsules": conf.max_capsules_per_user(),
         "lease_days": conf.lease_days(),
@@ -196,14 +196,14 @@ def status(request, uuid):
     """What the cards poll.
 
     Asks the manager for a live sample and folds it onto the row, so the page
-    shows what the Gear IS doing rather than what it was doing when somebody
+    shows what the Capsule IS doing rather than what it was doing when somebody
     last loaded it. A manager that does not answer leaves the previous sample
     in place with its age visible — see ``services.derive_state``, which turns
     a stale sample into DEGRADED rather than into a confident lie.
     """
     lease = _own_lease(request, uuid)
     services.refresh_runtime(lease)
-    return JsonResponse(services.gear_report(lease))
+    return JsonResponse(services.capsule_report(lease))
 
 
 @login_required
@@ -214,7 +214,7 @@ def pool(request):
 # --------------------------------------------------------------------------- #
 # The operator's page                                                          #
 # --------------------------------------------------------------------------- #
-# Separate from the Gear desk, and staff-only, because the questions differ.
+# Separate from the Capsule desk, and staff-only, because the questions differ.
 # A user asks "can I run my job"; an operator asks "what is this machine doing,
 # and how do I stop it". The second needs the whole pool, every live job across
 # every owner, and the two switches — none of which belongs on a page a user

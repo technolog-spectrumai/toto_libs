@@ -60,7 +60,7 @@ class MountTests(AnastasiaTestCase):
         unmount_events = self.lease.events.filter(kind=CapsuleEvent.UNMOUNT)
         self.assertEqual(unmount_events.count(), 1)
 
-    def test_unmounting_an_unmounted_gear_is_not_an_error(self):
+    def test_unmounting_an_unmounted_capsule_is_not_an_error(self):
         services.unmount(lease=self.lease)   # never mounted at all
         self.assertEqual(services.runtime_for(self.lease).state,
                          choices.UNMOUNTED)
@@ -93,7 +93,7 @@ class MountTests(AnastasiaTestCase):
 
     def test_the_null_backend_refuses_to_pretend(self):
         """A host with no manager may still book capacity, but it must never
-        report a Gear as mounted when nothing was mounted."""
+        report a Capsule as mounted when nothing was mounted."""
         with override_settings(
                 ANASTASIA_RUNTIME_BACKEND=
                 "toto.anastasia.runtime.NullRuntimeBackend"):
@@ -143,7 +143,7 @@ class DerivedStateTests(AnastasiaTestCase):
             sampled_at=timezone.now() - datetime.timedelta(hours=1))
         self.assertEqual(services.derive_state(runtime), choices.DEGRADED)
 
-    def test_an_oom_kill_degrades_the_gear(self):
+    def test_an_oom_kill_degrades_the_capsule(self):
         runtime = self._touch(sampled_at=timezone.now(),
                               last_sample={"oom_kills": 1})
         self.assertEqual(services.derive_state(runtime), choices.DEGRADED)
@@ -158,7 +158,7 @@ class DerivedStateTests(AnastasiaTestCase):
 
 # NO WarmPolicyTests CLASS since 2026-09-10. It held six tests over
 # `services.set_warm_policy` — a batch family refused warmth, a policy too big
-# for its Gear, a python runtime accepted, zero counts dropped, an unknown
+# for its Capsule, a python runtime accepted, zero counts dropped, an unknown
 # family refused. The service is deleted: warm pools were removed because a
 # fresh sandbox per job makes them meaningless, and they were already
 # vestigial (`served_warm` was hardcoded False, no WARM event was ever

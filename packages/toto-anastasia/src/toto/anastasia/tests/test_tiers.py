@@ -134,9 +134,9 @@ class TierHardeningTests(SimpleTestCase):
         for tier in sorted(docker_driver.DRIVERS):
             with self.subTest(tier=tier):
                 argv = _argv(drivers_build(tier), family=PYTHON,
-                             network="zenobia_gears")
+                             network="zenobia_capsules")
                 self.assertEqual(argv[argv.index("--network") + 1],
-                                 "zenobia_gears")
+                                 "zenobia_capsules")
 
     def test_a_forbidden_variable_is_refused_on_any_tier(self):
         """The refusal lives in the shared half, so it cannot be a tier that
@@ -164,7 +164,7 @@ def drivers_build(tier):
 
 
 def _rendered_source() -> str:
-    """The Gear page's template with `{% comment %}` blocks stripped.
+    """The Capsule page's template with `{% comment %}` blocks stripped.
 
     The comments in that file EXPLAIN the interpolation trap, so they quote it
     — and a test that grepped the raw source would fail on the note warning
@@ -188,7 +188,7 @@ class RunnerOwnershipTests(SimpleTestCase):
     `anastasia.managed=1` says "an anastasia runner". It does not say WHOSE.
     `list_managed()` filtered on that alone, so it returned every anastasia
     container on the daemon, and `destroy_orphan_runners` then removed the ones
-    it could not account for — correctly, by its own lights, because their gears
+    it could not account for — correctly, by its own lights, because their capsules
     have no staging directory under ITS root.
 
     Two consequences, one hypothetical and one that actually happened:
@@ -244,10 +244,10 @@ class RunnerOwnershipTests(SimpleTestCase):
         """The manager knows the staging root; `build_driver()` does not. If
         this wiring is lost the labels stop being stamped and the fleet-wide
         deletion comes back silently."""
-        from toto.anastasia.executor import gears
+        from toto.anastasia.executor import capsules
 
         driver = docker_driver.DockerClient()
-        gears.GearManager(staging_root="/srv/here", docker=driver,
+        capsules.CapsuleManager(staging_root="/srv/here", docker=driver,
                           slice_driver=_NullSlices())
         self.assertEqual(driver.owner, "/srv/here")
 
@@ -324,7 +324,7 @@ class TierHonestyTests(SimpleTestCase):
 
     def test_the_kernel_isolating_set_is_a_whitelist(self):
         """Not `!= "docker"`. A tier this code has never heard of — a newer
-        executor, a typo, a blank column on a Gear mounted before the field
+        executor, a typo, a blank column on a Capsule mounted before the field
         existed — must read as NOT proven rather than inheriting a promise
         from whatever it resembles."""
         from toto.anastasia.services import KERNEL_ISOLATING_TIERS
@@ -361,7 +361,7 @@ class TierHonestyTests(SimpleTestCase):
         """Three hardcoded sentences, not one parameterised by the tier name.
 
         Asserted on the TEMPLATE SOURCE rather than on rendered output,
-        because the failure is a `{{ gear.tier }}` somebody adds inside a
+        because the failure is a `{{ capsule.tier }}` somebody adds inside a
         trans block — which renders fine in every test that has a known tier
         and lies the day a new one appears.
         """
@@ -372,12 +372,12 @@ class TierHonestyTests(SimpleTestCase):
         page = _rendered_source()
         self.assertIn("virtual machine", page,
                       "the strong sentence must exist to be guarded")
-        for interpolation in ("{{ gear.tier }}", "{{ tier }}"):
+        for interpolation in ("{{ capsule.tier }}", "{{ tier }}"):
             with self.subTest(interpolation=interpolation):
                 self.assertNotIn(interpolation, page)
 
     def test_the_strong_sentence_is_guarded_by_the_boolean(self):
-        """`isolates_kernel`, never `tier` truthiness. `{% if gear.tier %}`
+        """`isolates_kernel`, never `tier` truthiness. `{% if capsule.tier %}`
         around the VM sentence would show it for every tier including
         docker."""
         from pathlib import Path as _P
@@ -386,6 +386,6 @@ class TierHonestyTests(SimpleTestCase):
 
         page = _rendered_source()
         strong = page.index("virtual machine")
-        guard = page.rindex("{% if gear.isolates_kernel %}", 0, strong)
+        guard = page.rindex("{% if capsule.isolates_kernel %}", 0, strong)
         # Nothing may reopen a branch between the guard and the claim.
-        self.assertNotIn("{% if", page[guard + len("{% if gear.isolates_kernel %}"):strong])
+        self.assertNotIn("{% if", page[guard + len("{% if capsule.isolates_kernel %}"):strong])

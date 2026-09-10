@@ -2,7 +2,7 @@
 
 THE ATTACK THIS IS FOR. A runner image is where a job's dependencies live —
 texlive, ffmpeg, an interpreter. An image that was quietly replaced between
-being built and being run would execute somebody else's code inside every Gear
+being built and being run would execute somebody else's code inside every Capsule
 on the host, with the platform's own hardening applied to it and nothing in the
 logs to say anything changed. Pinning by digest is the difference between "the
 image called anastasia-latex" and "these exact bytes".

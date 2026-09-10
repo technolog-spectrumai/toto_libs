@@ -22,13 +22,13 @@ DEFAULT_POOL: dict = {}
 DEFAULT_LEASE_DAYS = 7
 MAX_LEASE_DAYS = 90
 
-#: How many live Gears one person may hold. A cap on COUNT as well as on
-#: capacity, because a hundred minimum-size gears is its own denial of service
+#: How many live Capsules one person may hold. A cap on COUNT as well as on
+#: capacity, because a hundred minimum-size capsules is its own denial of service
 #: — each one is a slice, a scratch mount and a reconciliation target.
 DEFAULT_MAX_CAPSULES_PER_USER = 3
 
-#: A sample older than this makes a mounted Gear DEGRADED: the manager is not
-#: answering, so what the page shows is not what the Gear is doing.
+#: A sample older than this makes a mounted Capsule DEGRADED: the manager is not
+#: answering, so what the page shows is not what the Capsule is doing.
 DEFAULT_SAMPLE_STALE_SECONDS = 180
 
 
@@ -93,7 +93,7 @@ def executor_socket() -> str:
 def shared_secret() -> str:
     """The HMAC secret this host signs executor requests with.
 
-    Never rendered, never sent to a browser, never logged. The Gear page proxies
+    Never rendered, never sent to a browser, never logged. The Capsule page proxies
     through the server precisely so this stays here.
     """
     return getattr(settings, "ANASTASIA_SHARED_SECRET", "") or ""

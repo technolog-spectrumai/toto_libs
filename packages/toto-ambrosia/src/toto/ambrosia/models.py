@@ -7,7 +7,7 @@ downloaded or encrypted with the tools that already exist.
 
 Since the 1.46 split ambrosia is the BASE only: the workspace framing, the
 editor, the tree and the file CRUD. What runs lives in the language apps —
-`toto.dracena` (the kernel session, run in a Compute Gear) and `toto.texlab`
+`toto.dracena` (the kernel session, run in a Compute Capsule) and `toto.texlab`
 (the compiler, `LatexRun`) — which register themselves in `registry.py`.
 """
 
@@ -251,7 +251,7 @@ class WorkspaceHibernation(models.Model):
     #: Base image, runtime versions, declared trees, vault snapshot, position —
     #: whatever the lab said to keep, plus what the base records itself.
     manifest = models.JSONField(default=dict, blank=True)
-    #: The collected $HOME, on a permanent-home Gear. Absent for a plain
+    #: The collected $HOME, on a permanent-home Capsule. Absent for a plain
     #: manifest hibernation, which is the ordinary case.
     home = models.FileField(upload_to="ambrosia/hibernation/",
                             storage=_private_storage, blank=True, null=True)

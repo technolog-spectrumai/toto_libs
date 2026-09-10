@@ -130,7 +130,7 @@ class DockerClient(Driver):
         * ``--network none`` unless the family genuinely needs one; only the
           python family does, and its network reaches no database.
         * ``--pids-limit`` — a fork bomb hits a wall instead of the host.
-        * ``--cgroup-parent`` — the Gear's ceiling, above this runner's own.
+        * ``--cgroup-parent`` — the Capsule's ceiling, above this runner's own.
         * ``--rm=false`` — the container is removed EXPLICITLY after its exit
           state has been read. ``--rm`` would delete the evidence (exit code,
           OOMKilled) before anyone could look at it.
@@ -268,7 +268,7 @@ class DockerClient(Driver):
 
         Exit code 137 is SIGKILL and says nothing about why: the timeout kill
         above produces exactly the same code. ``State.OOMKilled`` is the only
-        thing that distinguishes "this job needed more memory than its Gear
+        thing that distinguishes "this job needed more memory than its Capsule
         allows" from "this job was stopped", and those need different sentences.
         """
         state = self._settled_state(container)
@@ -319,7 +319,7 @@ class DockerClient(Driver):
 
     # -- finding what is out there ----------------------------------------
 
-    def list_managed(self, *, gear=None) -> list[dict]:
+    def list_managed(self, *, capsule=None) -> list[dict]:
         """Every container we own, from LABELS rather than from memory.
 
         This is what makes a manager restart survivable: the runtime index is
@@ -335,11 +335,11 @@ class DockerClient(Driver):
                 *(["--filter", f"label={LABEL_OWNER}={self.owner}"]
                   if self.owner else []),
                 "--format", "{{json .}}"]
-        if gear is not None:
+        if capsule is not None:
             # Only the new key. A legacy container cannot be selected by it,
             # which is why `list_managed()` without a capsule filter is what
             # reconcile uses to find and adopt them.
-            args += ["--filter", f"label={LABEL_CAPSULE}={gear}"]
+            args += ["--filter", f"label={LABEL_CAPSULE}={capsule}"]
 
         result = self._run(args, check=False)
         out = []
@@ -359,7 +359,7 @@ class DockerClient(Driver):
                 # READ BOTH. A runner started before the rename carries only
                 # the old key, and reporting it as capsule-less would make
                 # reconcile destroy it as unowned.
-                "gear": (labels.get(LABEL_CAPSULE)
+                "capsule": (labels.get(LABEL_CAPSULE)
                          or labels.get(LABEL_CAPSULE_LEGACY, "")),
                 "execution": labels.get(LABEL_EXEC, ""),
             })

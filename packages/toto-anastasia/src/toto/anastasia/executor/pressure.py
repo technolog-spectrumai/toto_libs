@@ -1,11 +1,11 @@
-"""Whether this machine can take another Gear right now.
+"""Whether this machine can take another Capsule right now.
 
 The pool ceiling is a promise about capacity the deployment CHOSE to hand out.
 Pressure is about the machine underneath it, which may be under load the pool
 knows nothing about — a sibling container, a backup run, an operator's build.
 
 The rule, and it is deliberate: **pressure refuses new mounts and never kills a
-mounted Gear.** A user who reserved capacity and mounted it has been promised
+mounted Capsule.** A user who reserved capacity and mounted it has been promised
 something; taking it back to serve someone else would make a reservation
 meaningless. So pressure closes the door and leaves the room alone — the same
 judgement the platform's levy engine makes when it refuses new usage rather
@@ -114,6 +114,6 @@ def report(staging_root: str, *, min_free_mb: int = DEFAULT_MIN_FREE_MB,
 def refusal(report_data: dict) -> str:
     """One sentence for a user who just tried to mount."""
     reasons = report_data.get("reasons") or ["this machine is under pressure"]
-    return ("This machine cannot take another mounted Gear right now: "
+    return ("This machine cannot take another mounted Capsule right now: "
             + "; ".join(reasons) + ". Your reservation is untouched — try "
             "mounting again shortly.")

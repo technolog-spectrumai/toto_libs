@@ -4,7 +4,7 @@ from django.apps import AppConfig
 class AnastasiaConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "toto.anastasia"
-    verbose_name = "Compute Gears"
+    verbose_name = "Compute Capsules"
 
     def ready(self):
         # Registers the half-configured-deployment warnings. Imported here

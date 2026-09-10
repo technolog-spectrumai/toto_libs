@@ -24,6 +24,6 @@ _SSO_URLS = ("toto.sso_master.urls" if apps.is_installed("toto.sso_master")
              else "toto.sso_client.urls")
 
 urlpatterns = [
-    path("gears/", include("toto.anastasia.urls", namespace="anastasia")),
+    path("capsules/", include("toto.anastasia.urls", namespace="anastasia")),
     path("", include(_SSO_URLS, namespace="sso")),
 ]

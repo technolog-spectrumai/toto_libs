@@ -1,7 +1,7 @@
 """Which bytes a family is allowed to run.
 
 The attack: a runner image quietly replaced between being built and being run
-would execute somebody else's code inside every Gear on the host, with the
+would execute somebody else's code inside every Capsule on the host, with the
 platform's own hardening applied to it and nothing in the logs to say anything
 changed.
 

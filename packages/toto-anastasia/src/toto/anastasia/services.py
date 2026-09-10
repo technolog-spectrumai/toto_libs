@@ -10,7 +10,7 @@ the DURABLE state. It does not own containers: mounting delegates to a
 no Docker and no manager.
 
 One rule runs through all of it: **a reservation is deducted while idle.** The
-pool arithmetic never asks whether a Gear is mounted or busy, only whether its
+pool arithmetic never asks whether a Capsule is mounted or busy, only whether its
 lease is open. That is what makes a reservation a reservation.
 """
 
@@ -35,14 +35,14 @@ log = logging.getLogger("toto.anastasia.services")
 #: part of the interface — a page can branch on them, a person can grep.
 POOL_UNCONFIGURED = "pool_unconfigured"
 POOL_EXHAUSTED = "pool_exhausted"
-TOO_MANY_GEARS = "too_many_gears"
+TOO_MANY_CAPSULES = "too_many_capsules"
 LEASE_CLOSED = "lease_closed"
 NOT_MOUNTED = "not_mounted"
-GEAR_FULL = "gear_full"
-TOO_BIG_FOR_GEAR = "too_big_for_gear"
+CAPSULE_FULL = "capsule_full"
+TOO_BIG_FOR_CAPSULE = "too_big_for_capsule"
 RUNTIME_UNAVAILABLE = "runtime_unavailable"
 #: Not a capacity refusal at all — the daily submission allowance is spent.
-#: Distinct from GEAR_FULL, which is about this instant and clears by itself.
+#: Distinct from CAPSULE_FULL, which is about this instant and clears by itself.
 QUOTA_EXCEEDED = "quota_exceeded"
 #: Also not capacity: a recurring fee went unpaid and the account has stopped
 #: accepting new metered work. Kept distinct from QUOTA_EXCEEDED because
@@ -80,7 +80,7 @@ def available(now=None) -> Limits:
 
 
 def pool_report(now=None) -> dict:
-    """What the Gear page draws above the reserve form."""
+    """What the Capsule page draws above the reserve form."""
     total, used = conf.pool_limits(), booked(now)
     free = total - used
     return {
@@ -88,16 +88,16 @@ def pool_report(now=None) -> dict:
         "total": total.as_dict(),
         "booked": used.as_dict(),
         "available": free.as_dict(),
-        "gears_open": ComputeLease.objects.open(now).count(),
+        "capsules_open": ComputeLease.objects.open(now).count(),
     }
 
 
-def gear_available(lease, now=None) -> Limits:
-    """What is left INSIDE one Gear.
+def capsule_available(lease, now=None) -> Limits:
+    """What is left INSIDE one Capsule.
 
-    The same arithmetic one level down: a Gear is a little pool, and its live
+    The same arithmetic one level down: a Capsule is a little pool, and its live
     executions book against it exactly as its lease books against the host. Two
-    levels, one algebra — which is why a Gear can host several concurrent jobs
+    levels, one algebra — which is why a Capsule can host several concurrent jobs
     without any of them being able to exceed what the user reserved.
     """
     row = lease.executions.live().aggregate(
@@ -135,7 +135,7 @@ def reserve(*, owner, name: str, limits: Limits, days: int | None = None,
     name = (name or "").strip()
     if not name:
         raise CapacityError(
-            "A Gear needs a name — it is how you will pick it when you start "
+            "A Capsule needs a name — it is how you will pick it when you start "
             "heavy work.")
     if not conf.pool_is_configured():
         raise CapacityError(
@@ -157,19 +157,19 @@ def reserve(*, owner, name: str, limits: Limits, days: int | None = None,
         held = ComputeLease.objects.open().filter(owner=owner).count()
         if held >= conf.max_capsules_per_user():
             raise CapacityError(
-                f"You already hold {held} Compute Gears, which is the limit "
-                f"here. Release one before reserving another.", TOO_MANY_GEARS)
+                f"You already hold {held} Compute Capsules, which is the limit "
+                f"here. Release one before reserving another.", TOO_MANY_CAPSULES)
 
         free = available()
         if not limits.fits_in(free):
             raise CapacityError(
-                "The pool does not have room for that Gear: "
+                "The pool does not have room for that Capsule: "
                 + "; ".join(limits.shortfalls(free)) + ".",
                 POOL_EXHAUSTED)
 
         if ComputeLease.objects.open().filter(owner=owner, name=name).exists():
             raise CapacityError(
-                f"You already have a live Gear called “{name}”. Pick another "
+                f"You already have a live Capsule called “{name}”. Pick another "
                 "name, or release that one first.")
 
         lease = ComputeLease.objects.create(
@@ -238,10 +238,10 @@ def runtime_for(lease: ComputeLease) -> CapsuleRuntime:
 
 
 def mount(*, lease: ComputeLease, actor=None) -> CapsuleRuntime:
-    """Bring the Gear up. Refuses on a closed lease; idempotent when mounted."""
+    """Bring the Capsule up. Refuses on a closed lease; idempotent when mounted."""
     if not lease.is_open():
         raise CapacityError(
-            "That Gear's reservation has ended, so it cannot be mounted. "
+            "That Capsule's reservation has ended, so it cannot be mounted. "
             "Reserve a new one.", LEASE_CLOSED)
 
     runtime = runtime_for(lease)
@@ -266,7 +266,7 @@ def mount(*, lease: ComputeLease, actor=None) -> CapsuleRuntime:
     runtime.detail = ""
     runtime.manager_generation = str(result.get("manager_generation", ""))[:64]
     # From the RESPONSE, not from settings. Recording what this host believes
-    # it configured would record a belief; what mounted the Gear is a fact, and
+    # it configured would record a belief; what mounted the Capsule is a fact, and
     # only the executor can report it.
     runtime.tier = str(result.get("tier", ""))[:32]
     runtime.save(update_fields=[
@@ -278,7 +278,7 @@ def mount(*, lease: ComputeLease, actor=None) -> CapsuleRuntime:
 
 
 def unmount(*, lease: ComputeLease, actor=None, reason: str = "") -> CapsuleRuntime:
-    """Take the Gear down. Idempotent, and never raises on an absent runtime.
+    """Take the Capsule down. Idempotent, and never raises on an absent runtime.
 
     Live executions are marked KILLED here rather than left RUNNING: their
     containers are gone with the slice, and a row that still claims to be
@@ -294,7 +294,7 @@ def unmount(*, lease: ComputeLease, actor=None, reason: str = "") -> CapsuleRunt
 
     killed = lease.executions.live().update(
         status=choices.KILLED, finished_at=timezone.now(),
-        error="The Gear was unmounted while this was running.")
+        error="The Capsule was unmounted while this was running.")
 
     previous = runtime.state
     if previous != choices.UNMOUNTED:
@@ -315,11 +315,11 @@ def unmount(*, lease: ComputeLease, actor=None, reason: str = "") -> CapsuleRunt
 
 
 # --------------------------------------------------------------------------- #
-# Deriving what a Gear is doing                                                #
+# Deriving what a Capsule is doing                                                #
 # --------------------------------------------------------------------------- #
 
 def derive_state(runtime: CapsuleRuntime, now=None) -> str:
-    """What the Gear is, from what we know. A pure function of the row.
+    """What the Capsule is, from what we know. A pure function of the row.
 
     Called by the status page as well as by the reconciler, so a stack whose
     manager is down still shows the truth rather than the last thing written.
@@ -334,7 +334,7 @@ def derive_state(runtime: CapsuleRuntime, now=None) -> str:
 
     age = runtime.sample_age_seconds(now)
     if age is not None and age > conf.sample_stale_seconds():
-        # The manager has stopped answering about a Gear it claims to hold.
+        # The manager has stopped answering about a Capsule it claims to hold.
         # Reading that as READY would be the "idle-detector reads a broken
         # probe as zero" bug lifecycle's registry warns about.
         return choices.DEGRADED
@@ -346,13 +346,13 @@ def derive_state(runtime: CapsuleRuntime, now=None) -> str:
 
 
 def refresh_runtime(lease: ComputeLease) -> CapsuleRuntime:
-    """Ask the manager what this Gear is doing, and record the answer.
+    """Ask the manager what this Capsule is doing, and record the answer.
 
     Never raises. A manager that does not answer leaves the PREVIOUS sample in
     place with its timestamp untouched, which is what lets ``derive_state``
     notice the silence and report DEGRADED. Overwriting the sample with an
     empty one would erase exactly the evidence that something is wrong, and
-    clearing ``sampled_at`` would make a silent manager look like a Gear that
+    clearing ``sampled_at`` would make a silent manager look like a Capsule that
     has simply never been sampled.
     """
     runtime = runtime_for(lease)
@@ -374,7 +374,7 @@ def refresh_runtime(lease: ComputeLease) -> CapsuleRuntime:
     runtime.sampled_at = timezone.now()
 
     # A manager generation that has moved means the process we mounted against
-    # is gone. The runtime it created went with it, so this Gear is DEAD until
+    # is gone. The runtime it created went with it, so this Capsule is DEAD until
     # its owner mounts it again — the reservation is untouched either way.
     generation = str(answer.get("manager_generation") or "")
     if (generation and runtime.manager_generation
@@ -382,7 +382,7 @@ def refresh_runtime(lease: ComputeLease) -> CapsuleRuntime:
         runtime.state = choices.DEAD
         runtime.state_at = timezone.now()
         runtime.detail = (
-            "The compute manager restarted, so this Gear's runtime is gone. "
+            "The compute manager restarted, so this Capsule's runtime is gone. "
             "Your reservation is intact — mount it again.")
         fields += ["state", "state_at", "detail"]
         record(lease=lease, kind=CapsuleEvent.RECONCILE,
@@ -390,11 +390,11 @@ def refresh_runtime(lease: ComputeLease) -> CapsuleRuntime:
                reason="manager generation changed",
                was=runtime.manager_generation, now=generation)
     elif not answer.get("mounted", True):
-        # The manager is the same process but has no record of this Gear —
+        # The manager is the same process but has no record of this Capsule —
         # it was torn down out from under us (a reconcile, an operator).
         runtime.state = choices.DEAD
         runtime.state_at = timezone.now()
-        runtime.detail = ("The compute manager no longer holds this Gear. "
+        runtime.detail = ("The compute manager no longer holds this Capsule. "
                           "Mount it again to bring it back.")
         fields += ["state", "state_at", "detail"]
 
@@ -408,12 +408,12 @@ def refresh_runtime(lease: ComputeLease) -> CapsuleRuntime:
 KERNEL_ISOLATING_TIERS = frozenset({"kata"})
 
 
-def gear_report(lease: ComputeLease, now=None) -> dict:
-    """One Gear, as the page draws it."""
+def capsule_report(lease: ComputeLease, now=None) -> dict:
+    """One Capsule, as the page draws it."""
     now = now or timezone.now()
     runtime = runtime_for(lease)
     state = derive_state(runtime, now)
-    free = gear_available(lease, now)
+    free = capsule_available(lease, now)
     return {
         "uuid": str(lease.uuid),
         "name": lease.name,

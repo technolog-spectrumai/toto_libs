@@ -1,10 +1,10 @@
-"""Mounting Gears and running executions inside them.
+"""Mounting Capsules and running executions inside them.
 
 **The manager keeps no database.** Everything it needs to answer a question is
 derivable from three durable-enough places:
 
-* Docker labels — which container belongs to which Gear and execution;
-* the cgroup tree — what a Gear is using right now;
+* Docker labels — which container belongs to which Capsule and execution;
+* the cgroup tree — what a Capsule is using right now;
 * the staging directory layout — where an execution's input and output live.
 
 That is not an optimisation, it is the invariant: "destroy every runner, every
@@ -33,7 +33,7 @@ from ..limits import Limits
 from . import images, runners, slices, staging
 from .drivers import LABEL_CAPSULE, LABEL_EXEC, docker as docker_driver
 
-log = logging.getLogger("toto.anastasia.executor.gears")
+log = logging.getLogger("toto.anastasia.executor.capsules")
 
 #: Where staged input and collected output live. A volume in the compose
 #: stack, and — per anastasia.md — an area that may be destroyed wholesale.
@@ -49,11 +49,11 @@ LABEL_DEADLINE = "anastasia.deadline"
 LABEL_OPERATION = "anastasia.operation"
 
 
-class GearError(Exception):
+class CapsuleError(Exception):
     """Something the manager cannot do, phrased for the caller's log."""
 
 
-class GearManager:
+class CapsuleManager:
     def __init__(self, *, staging_root: str = DEFAULT_STAGING_ROOT,
                  slice_driver=None, docker=None, generation: str = "",
                  kernel_network: str = ""):
@@ -78,7 +78,7 @@ class GearManager:
             except AttributeError:      # a duck-typed fake with __slots__
                 pass
         #: Minted per process. It tells a caller "the manager you mounted
-        #: against is not the one answering now", which is the only way a Gear
+        #: against is not the one answering now", which is the only way a Capsule
         #: row can know it needs re-adopting after a manager restart.
         self.generation = generation or uuid_module.uuid4().hex[:16]
         #: The ONE network any runner may join, and only the kernel family
@@ -99,31 +99,31 @@ class GearManager:
     def capsules_root(self) -> str:
         return os.path.join(self.staging_root, self.CAPSULES_DIRNAME)
 
-    def gear_dir(self, gear) -> str:
-        return os.path.join(self.capsules_root, str(gear))
+    def capsule_dir(self, capsule) -> str:
+        return os.path.join(self.capsules_root, str(capsule))
 
-    def exec_dir(self, gear, execution) -> str:
-        return os.path.join(self.gear_dir(gear), "exec", str(execution))
+    def exec_dir(self, capsule, execution) -> str:
+        return os.path.join(self.capsule_dir(capsule), "exec", str(execution))
 
     # -- mounting ----------------------------------------------------------
 
-    def mount(self, gear, limits: Limits) -> dict:
-        """Bring a Gear up: its cgroup ceiling and its staging area.
+    def mount(self, capsule, limits: Limits) -> dict:
+        """Bring a Capsule up: its cgroup ceiling and its staging area.
 
         A slice that cannot be created is DEGRADED, not fatal: per-runner
         limits still apply and the booking arithmetic still bounds the sum, so
-        the Gear works — it just has no hard backstop, and says so.
+        the Capsule works — it just has no hard backstop, and says so.
         """
-        os.makedirs(self.gear_dir(gear), exist_ok=True)
+        os.makedirs(self.capsule_dir(capsule), exist_ok=True)
 
         enforced = False
         detail = ""
         try:
-            self.slices.ensure(gear, limits)
+            self.slices.ensure(capsule, limits)
             enforced = self.slices.enforced
         except Exception as exc:  # noqa: BLE001 - reported, never fatal
-            log.warning("anastasia: no cgroup ceiling for gear %s: %s", gear, exc)
-            detail = ("This host would not create a cgroup for the Gear, so its "
+            log.warning("anastasia: no cgroup ceiling for capsule %s: %s", capsule, exc)
+            detail = ("This host would not create a cgroup for the Capsule, so its "
                       "combined ceiling is bookkeeping only. Each job is still "
                       "limited individually.")
 
@@ -131,46 +131,46 @@ class GearManager:
             "manager_generation": self.generation,
             "slice_enforced": enforced,
             "slice_driver": self.slices.name,
-            # Which isolation this Gear was actually mounted under. Read off
+            # Which isolation this Capsule was actually mounted under. Read off
             # the live driver, never off a setting: a setting is what somebody
             # asked for, and this is what the next job will get.
             "tier": self.docker.name,
             "detail": detail,
         }
 
-    def unmount(self, gear) -> dict:
+    def unmount(self, capsule) -> dict:
         """Destroy every runner, the cgroup and the staging area.
 
         Order matters: containers first (so the cgroup can actually be
         released), then the slice, then the files. Every step tolerates its
         subject already being gone, because reconciliation calls this
-        speculatively and a half-unmounted Gear must be finishable.
+        speculatively and a half-unmounted Capsule must be finishable.
         """
         destroyed = 0
-        for row in self.docker.list_managed(gear=str(gear)):
+        for row in self.docker.list_managed(capsule=str(capsule)):
             self.docker.remove(row["id"])
             destroyed += 1
 
         try:
-            self.slices.destroy(gear)
+            self.slices.destroy(capsule)
         except Exception:  # noqa: BLE001
-            log.exception("anastasia: could not stop the slice for %s", gear)
+            log.exception("anastasia: could not stop the slice for %s", capsule)
 
-        shutil.rmtree(self.gear_dir(gear), ignore_errors=True)
+        shutil.rmtree(self.capsule_dir(capsule), ignore_errors=True)
         return {"unmounted": True, "runners_destroyed": destroyed}
 
-    def status(self, gear) -> dict:
-        rows = self.docker.list_managed(gear=str(gear))
+    def status(self, capsule) -> dict:
+        rows = self.docker.list_managed(capsule=str(capsule))
         running = [r for r in rows if r["state"] == "running"]
         sample = {}
         try:
-            sample = self.slices.sample(gear)
+            sample = self.slices.sample(capsule)
         except Exception:  # noqa: BLE001
-            log.exception("anastasia: could not sample gear %s", gear)
+            log.exception("anastasia: could not sample capsule %s", capsule)
         sample["executions_running"] = len(running)
         return {
             "manager_generation": self.generation,
-            "mounted": os.path.isdir(self.gear_dir(gear)),
+            "mounted": os.path.isdir(self.capsule_dir(capsule)),
             "slice_enforced": self.slices.enforced,
             "tier": self.docker.name,
             "sample": sample,
@@ -178,7 +178,7 @@ class GearManager:
 
     # -- executing ---------------------------------------------------------
 
-    def start_execution(self, *, gear, execution, operation: str, params: dict,
+    def start_execution(self, *, capsule, execution, operation: str, params: dict,
                         limits: Limits, timeout: int, payload: bytes | None) -> dict:
         """Stage the input, create the runner, start it, and return.
 
@@ -197,7 +197,7 @@ class GearManager:
         params = op.clean(params)
         fam = op.family
         if not self.docker.image_exists(fam.image):
-            raise GearError(
+            raise CapsuleError(
                 f"the {fam.image} runner image is not present on this host; "
                 "build the anastasia images and try again")
         # BEFORE staging anything. A mismatch costs a refusal rather than a tar
@@ -206,9 +206,9 @@ class GearManager:
         try:
             images.verify(self.docker, fam.key, fam.image)
         except images.ImageMismatch as exc:
-            raise GearError(str(exc)) from exc
+            raise CapsuleError(str(exc)) from exc
 
-        work = self.exec_dir(gear, execution)
+        work = self.exec_dir(capsule, execution)
         input_dir = os.path.join(work, "in")
         output_dir = os.path.join(work, "out")
         # A previous attempt with this id must not leak into this one.
@@ -228,7 +228,7 @@ class GearManager:
 
         deadline = int(time.time()) + int(timeout)
         labels = {
-            LABEL_CAPSULE: str(gear),
+            LABEL_CAPSULE: str(capsule),
             LABEL_EXEC: str(execution),
             LABEL_OPERATION: op.name,
             LABEL_DEADLINE: str(deadline),
@@ -242,10 +242,10 @@ class GearManager:
         # python-connected family — which declared both — never got the kernel
         # network at all and reached its ZMQ ports over the egress network
         # instead. Both egress families are deleted (2026-09-10), so there is
-        # one link left: the Gear's internal network, for the kernel.
+        # one link left: the Capsule's internal network, for the kernel.
         network = self.kernel_network or None if fam.kernel_link else None
         try:
-            parent = self.slices.cgroup_parent(gear)
+            parent = self.slices.cgroup_parent(capsule)
         except Exception:  # noqa: BLE001
             parent = None
 
@@ -258,9 +258,9 @@ class GearManager:
 
         return {"container": container, "deadline": deadline}
 
-    def execution_status(self, *, gear, execution) -> dict:
+    def execution_status(self, *, capsule, execution) -> dict:
         """What an execution is doing, read from Docker rather than remembered."""
-        rows = [r for r in self.docker.list_managed(gear=str(gear))
+        rows = [r for r in self.docker.list_managed(capsule=str(capsule))
                 if r["execution"] == str(execution)]
         if not rows:
             return {"found": False}
@@ -285,26 +285,26 @@ class GearManager:
             "logs": self.docker.logs(row["id"]),
         }
 
-    def collect(self, *, gear, execution) -> bytes:
+    def collect(self, *, capsule, execution) -> bytes:
         """The output tar. Bounded, and symlinks a runner left are skipped."""
-        output_dir = os.path.join(self.exec_dir(gear, execution), "out")
+        output_dir = os.path.join(self.exec_dir(capsule, execution), "out")
         if not os.path.isdir(output_dir):
-            raise GearError("this execution has no output directory")
+            raise CapsuleError("this execution has no output directory")
         return staging.pack(output_dir, max_bytes=DEFAULT_OUTPUT_BUDGET)
 
-    def finish_execution(self, *, gear, execution) -> dict:
+    def finish_execution(self, *, capsule, execution) -> dict:
         """Destroy the runner and its scratch. Idempotent."""
         removed = 0
-        for row in self.docker.list_managed(gear=str(gear)):
+        for row in self.docker.list_managed(capsule=str(capsule)):
             if row["execution"] == str(execution):
                 self.docker.remove(row["id"])
                 removed += 1
-        shutil.rmtree(self.exec_dir(gear, execution), ignore_errors=True)
+        shutil.rmtree(self.exec_dir(capsule, execution), ignore_errors=True)
         return {"removed": removed}
 
-    def kill_execution(self, *, gear, execution) -> dict:
+    def kill_execution(self, *, capsule, execution) -> dict:
         killed = 0
-        for row in self.docker.list_managed(gear=str(gear)):
+        for row in self.docker.list_managed(capsule=str(capsule)):
             if row["execution"] == str(execution) and row["state"] == "running":
                 self.docker.kill(row["id"])
                 killed += 1

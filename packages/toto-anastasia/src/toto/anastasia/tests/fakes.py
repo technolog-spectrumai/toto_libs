@@ -22,7 +22,7 @@ class FakeDocker:
     there to prove.
     """
 
-    #: Part of the Driver contract. `gears.mount()` reads it, so a fake without
+    #: Part of the Driver contract. `capsules.mount()` reads it, so a fake without
     #: one makes every mount an AttributeError.
     name = "fake"
 
@@ -103,19 +103,19 @@ class FakeDocker:
         self.removed.append(cid)
         self.containers.pop(cid, None)
 
-    def list_managed(self, *, gear=None):
+    def list_managed(self, *, capsule=None):
         out = []
         for row in self.containers.values():
             labels = row["labels"]
             found = (labels.get(drivers.LABEL_CAPSULE)
                      or labels.get(drivers.LABEL_CAPSULE_LEGACY, ""))
-            if gear is not None and found != gear:
+            if capsule is not None and found != capsule:
                 continue
             out.append({
                 "id": row["id"], "name": row["name"], "state": row["state"],
                 # Mirrors the real driver: a container labelled before the
                 # rename is still owned, not orphaned.
-                "gear": found,
+                "capsule": found,
                 "execution": labels.get(drivers.LABEL_EXEC, ""),
             })
         return out
@@ -139,22 +139,22 @@ class CountingSliceDriver:
         self.destroyed: list = []
         self.fail_ensure = fail_ensure
 
-    def ensure(self, gear, limits):
+    def ensure(self, capsule, limits):
         if self.fail_ensure:
             raise RuntimeError("this host will not create cgroups")
-        self.ensured[str(gear)] = limits
+        self.ensured[str(capsule)] = limits
 
-    def destroy(self, gear):
-        self.destroyed.append(str(gear))
-        self.ensured.pop(str(gear), None)
+    def destroy(self, capsule):
+        self.destroyed.append(str(capsule))
+        self.ensured.pop(str(capsule), None)
 
-    def exists(self, gear):
-        return str(gear) in self.ensured
+    def exists(self, capsule):
+        return str(capsule) in self.ensured
 
-    def cgroup_parent(self, gear):
-        return f"anastasia-gear-{gear}.slice"
+    def cgroup_parent(self, capsule):
+        return f"anastasia-capsule-{capsule}.slice"
 
-    def sample(self, gear):
+    def sample(self, capsule):
         return {"ram_mb_used": 12, "pids_used": 3, "oom_kills": 0}
 
     def describe(self):

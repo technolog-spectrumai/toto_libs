@@ -1,6 +1,6 @@
 """The four numbers, and the arithmetic that books them.
 
-Every capacity question on this platform — the pool, a Gear, one execution —
+Every capacity question on this platform — the pool, a Capsule, one execution —
 is the same four-dimensional vector, so it is one type with one set of
 operations rather than four fields copied into three places.
 
@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-#: Nobody may reserve less than this: a Gear below it cannot start any runner,
+#: Nobody may reserve less than this: a Capsule below it cannot start any runner,
 #: and a reservation that cannot run anything is a trap rather than a choice.
 MIN_CPU_MILLICORES = 100
 MIN_RAM_MB = 128
@@ -168,7 +168,7 @@ def validate_reservation(limits: Limits) -> None:
             missing.append(f"at least {least} {unit} (asked for {want})")
     if missing:
         raise LimitsError(
-            "A Compute Gear needs " + "; ".join(missing) +
+            "A Compute Capsule needs " + "; ".join(missing) +
             ". Below that nothing can start inside it.")
 
 

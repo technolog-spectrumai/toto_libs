@@ -1,7 +1,7 @@
-"""Run one job in a user's Gear and wait for its files. The caller's side.
+"""Run one job in a user's Capsule and wait for its files. The caller's side.
 
 Every migrating caller — aralia, texlab, ocr, the media services — needs the
-same six steps: pick the Gear, tar the inputs, submit, poll, collect, close.
+same six steps: pick the Capsule, tar the inputs, submit, poll, collect, close.
 Written once here so there is one polling idiom on the platform rather than
 four, and so a caller's own module stays about ITS domain.
 
@@ -53,8 +53,8 @@ class JobFailed(Exception):
         self.execution = execution
 
 
-class NoGear(ValidationError):
-    """The caller has no mounted Gear to run in. The message names the page."""
+class NoCapsule(ValidationError):
+    """The caller has no mounted Capsule to run in. The message names the page."""
 
 
 def tar_of(files: dict) -> bytes:
@@ -89,8 +89,8 @@ def files_from(blob: bytes) -> dict:
     return out
 
 
-def usable_gears(user):
-    """This user's Gears that could take work right now, newest first."""
+def usable_capsules(user):
+    """This user's Capsules that could take work right now, newest first."""
     ready = []
     for lease in ComputeLease.objects.open().filter(owner=user):
         if services.derive_state(services.runtime_for(lease)) in choices.ACCEPTING:
@@ -98,14 +98,14 @@ def usable_gears(user):
     return ready
 
 
-def gear_options(user) -> list[dict]:
-    """This user's Gears as a page can render them: value, label, ready.
+def capsule_options(user) -> list[dict]:
+    """This user's Capsules as a page can render them: value, label, ready.
 
     One list, built here, because three pages need the same one and each had
-    been deciding for itself what to call a Gear. A page shows it when the
-    user holds more than one — `require_gear` refuses to guess between them,
-    so with two open Gears a form that does not ask is a form that can only
-    fail. Open rather than only mounted: somebody may pick the Gear they are
+    been deciding for itself what to call a Capsule. A page shows it when the
+    user holds more than one — `require_capsule` refuses to guess between them,
+    so with two open Capsules a form that does not ask is a form that can only
+    fail. Open rather than only mounted: somebody may pick the Capsule they are
     about to mount, and `ready` is what lets the page say so.
     """
     options = []
@@ -123,38 +123,38 @@ def gear_options(user) -> list[dict]:
     return options
 
 
-def require_gear(user, uuid=None) -> ComputeLease:
-    """The Gear this job will run in, or a refusal naming the desk.
+def require_capsule(user, uuid=None) -> ComputeLease:
+    """The Capsule this job will run in, or a refusal naming the desk.
 
     There is NO auto-mount and no fallback to somebody else's capacity: the
     whole model is that a person decides to hold compute open. A caller that
-    silently found a Gear would make that decision invisible.
+    silently found a Capsule would make that decision invisible.
     """
     if uuid:
         lease = ComputeLease.objects.open().filter(
             owner=user, uuid=uuid).first()
         if lease is None:
-            raise NoGear(
-                "That Compute Gear is not available any more. Pick another on "
-                "the Compute Gears page.")
+            raise NoCapsule(
+                "That Compute Capsule is not available any more. Pick another on "
+                "the Compute Capsules page.")
         state = services.derive_state(services.runtime_for(lease))
         if state not in choices.ACCEPTING:
-            raise NoGear(
+            raise NoCapsule(
                 f"“{lease.name}” is not ready to take work ({state}). Mount it "
-                "on the Compute Gears page and try again.")
+                "on the Compute Capsules page and try again.")
         return lease
 
-    candidates = usable_gears(user)
+    candidates = usable_capsules(user)
     if not candidates:
-        raise NoGear(
-            "You have no mounted Compute Gear, so there is nowhere to run "
-            "this. Reserve one and mount it on the Compute Gears page.")
+        raise NoCapsule(
+            "You have no mounted Compute Capsule, so there is nowhere to run "
+            "this. Reserve one and mount it on the Compute Capsules page.")
     if len(candidates) > 1:
         # Ambiguity is the user's to resolve. Picking for them would make a
         # job land somewhere they did not choose, which is the opposite of
         # what a reservation is for.
-        raise NoGear(
-            "You have more than one mounted Gear, so this job needs you to say "
+        raise NoCapsule(
+            "You have more than one mounted Capsule, so this job needs you to say "
             "which one to use.")
     return candidates[0]
 
@@ -377,8 +377,8 @@ def _finish(execution, status: dict, report: dict) -> None:
         return
     if status.get("oom_killed"):
         execute.fail(execution,
-                     "This job ran out of memory inside its Gear. Give the "
-                     "Gear more RAM, or ask for less work at once.")
+                     "This job ran out of memory inside its Capsule. Give the "
+                     "Capsule more RAM, or ask for less work at once.")
         return
     # KILLED, ON A TIER THAT CANNOT SEE WHY.
     #
@@ -386,7 +386,7 @@ def _finish(execution, status: dict, report: dict) -> None:
     # VM tier the guest kernel does it and nothing crosses back, so False there
     # means "could not tell" (see `Driver.observes_guest_oom`). Saying "it ran
     # out of memory" anyway would be a guess printed as a fact; saying nothing
-    # sends the user to look at their code when the answer is a bigger Gear.
+    # sends the user to look at their code when the answer is a bigger Capsule.
     # So: name the uncertainty, then give the same advice.
     #
     # Guarded on `is False` rather than falsiness because an OLDER EXECUTOR
@@ -398,7 +398,7 @@ def _finish(execution, status: dict, report: dict) -> None:
                      "This job was killed before it finished. This deployment "
                      "runs jobs in a virtual machine, and from outside it we "
                      "cannot see whether it ran out of memory — if it was "
-                     "doing heavy work, give the Gear more RAM and try again.")
+                     "doing heavy work, give the Capsule more RAM and try again.")
         return
     # The runner's own verdict WINS over the exit code when it has one.
     #
@@ -411,7 +411,7 @@ def _finish(execution, status: dict, report: dict) -> None:
     if report.get("status") == "error":
         execute.fail(execution,
                      str(report.get("error") or "")
-                     or "This job failed inside its Compute Gear.")
+                     or "This job failed inside its Compute Capsule.")
         execution.usage = usage
         execution.save(update_fields=["usage"])
         return
@@ -434,3 +434,25 @@ def _cleanup(backend, execution) -> None:
     except Exception:  # noqa: BLE001
         log.warning("anastasia: could not clean up %s", execution.uuid,
                     exc_info=True)
+
+
+# --------------------------------------------------------------------------- #
+# Compatibility: the names other packages still call                          #
+# --------------------------------------------------------------------------- #
+#
+# `require_capsule`, `NoCapsule` and `capsule_options` were `require_gear`,
+# `NoGear` and `gear_options` until 2026-09-10. Two packages call them BY THE
+# OLD NAME and cannot be fixed here:
+#
+#     toto-media-ops  manta/views.py, manta/commands/backends.py
+#     toto-works      memo/render_pdf.py
+#
+# Both are pull-only vendored subtrees — an edit there is reverted by the next
+# pull — so these aliases are what keeps a PDF export and a media conversion
+# working through the rename. They are not decoration: delete them and manta
+# raises AttributeError at the moment a user presses Convert.
+#
+# Remove when those packages are either brought in-tree or updated upstream.
+require_gear = require_capsule
+NoGear = NoCapsule
+gear_options = capsule_options

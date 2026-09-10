@@ -94,7 +94,7 @@ class ReserveTests(AnastasiaTestCase):
         self.assertIsNotNone(lease.released_at)
         self.assertEqual(services.expire_due(), 0)   # idempotent
 
-    def test_a_gear_below_the_floor_is_refused(self):
+    def test_a_capsule_below_the_floor_is_refused(self):
         with self.assertRaises(ValidationError) as caught:
             services.reserve(owner=self.user, name="crumb",
                              limits=Limits(1, 1, 1, 1))
@@ -107,18 +107,18 @@ class ReserveTests(AnastasiaTestCase):
         self.assertEqual(caught.exception.refusal_code,
                          services.POOL_UNCONFIGURED)
 
-    def test_the_per_user_gear_count_is_capped(self):
+    def test_the_per_user_capsule_count_is_capped(self):
         with override_settings(ANASTASIA_MAX_CAPSULES_PER_USER=2):
             services.reserve(owner=self.user, name="a", limits=SMALL)
             services.reserve(owner=self.user, name="b", limits=SMALL)
             with self.assertRaises(ValidationError) as caught:
                 services.reserve(owner=self.user, name="c", limits=SMALL)
-        self.assertEqual(caught.exception.refusal_code, services.TOO_MANY_GEARS)
+        self.assertEqual(caught.exception.refusal_code, services.TOO_MANY_CAPSULES)
         # …and the cap is per user, not global.
         with override_settings(ANASTASIA_MAX_CAPSULES_PER_USER=2):
             services.reserve(owner=self.other, name="a", limits=SMALL)
 
-    def test_two_live_gears_cannot_share_a_name_but_released_ones_can(self):
+    def test_two_live_capsules_cannot_share_a_name_but_released_ones_can(self):
         first = services.reserve(owner=self.user, name="thesis", limits=SMALL)
         with self.assertRaises(ValidationError):
             services.reserve(owner=self.user, name="thesis", limits=SMALL)
@@ -145,7 +145,7 @@ class PoolReportTests(AnastasiaTestCase):
         services.reserve(owner=self.user, name="a", limits=SMALL)
         report = services.pool_report()
         self.assertTrue(report["configured"])
-        self.assertEqual(report["gears_open"], 1)
+        self.assertEqual(report["capsules_open"], 1)
         for field in ("cpu_millicores", "ram_mb", "scratch_mb", "pids"):
             self.assertEqual(
                 report["booked"][field] + report["available"][field],

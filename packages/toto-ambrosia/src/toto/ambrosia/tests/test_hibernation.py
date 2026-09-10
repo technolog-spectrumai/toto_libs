@@ -7,7 +7,7 @@ one CANNOT be honestly asserted that is said out loud rather than faked:
 * **Zero billing** is asserted as zero ALLOCATION — `services.booked()` falling
   to nothing — because reserved capacity is not billed on this deployment at
   all. `anastasia.execution` is explicitly "a rate limit on submissions, not a
-  price on compute", and the reservation levy `anastasia.gear_hour` is still a
+  price on compute", and the reservation levy `anastasia.capsule_hour` is still a
   TODO with no taxes.py. A test asserting "the charge is zero" would pass
   against an engine that never charges and prove nothing; asserting the pool is
   free proves the thing that actually matters.
@@ -25,7 +25,7 @@ from django.urls import reverse
 from toto.ambrosia import hibernation
 from toto.ambrosia.models import WorkspaceHibernation, WorkspaceKind
 from toto.ambrosia.tests.base import AmbrosiaTestCase
-from toto.anastasia import services as gear_services
+from toto.anastasia import services as capsule_services
 from toto.anastasia.limits import Limits
 from toto.anastasia.models import ComputeLease
 from toto.dracena.tests.fakes import POOL, FakeKernelBackend
@@ -41,11 +41,11 @@ class HibernationTestCase(AmbrosiaTestCase):
         FakeKernelBackend.reset()
         self.ws = self.make_workspace(name="Py", kind=WorkspaceKind.PYTHON)
 
-    def give_a_gear(self, *, permanent_home=False, name="py"):
-        lease = gear_services.reserve(
+    def give_a_capsule(self, *, permanent_home=False, name="py"):
+        lease = capsule_services.reserve(
             owner=self.owner, name=name, limits=Limits(2000, 2048, 1024, 512),
             permanent_home=permanent_home)
-        gear_services.mount(lease=lease, actor=self.owner)
+        capsule_services.mount(lease=lease, actor=self.owner)
         return lease
 
     def start_kernel_on(self, lease):
@@ -73,7 +73,7 @@ class HibernationTestCase(AmbrosiaTestCase):
 class ManifestHibernationTests(HibernationTestCase):
 
     def test_hibernating_writes_down_what_it_is(self):
-        self.give_a_gear()
+        self.give_a_capsule()
         manifest = hibernation.hibernate(self.ws, user=self.owner)
         self.assertEqual(manifest["kind"], WorkspaceKind.PYTHON)
         self.assertEqual(manifest["depth"], "manifest")
@@ -83,7 +83,7 @@ class ManifestHibernationTests(HibernationTestCase):
 
     def test_it_is_idempotent(self):
         """A double-click is not an error."""
-        self.give_a_gear()
+        self.give_a_capsule()
         first = hibernation.hibernate(self.ws, user=self.owner)
         second = hibernation.hibernate(self.ws, user=self.owner)
         self.assertEqual(first, second)
@@ -94,7 +94,7 @@ class ManifestHibernationTests(HibernationTestCase):
         self.assertFalse(hibernation.is_hibernated(self.ws))
 
     def test_a_round_trip_clears_the_sleeping_state(self):
-        self.give_a_gear()
+        self.give_a_capsule()
         hibernation.hibernate(self.ws, user=self.owner)
         hibernation.rehydrate(self.ws, user=self.owner)
         self.assertFalse(hibernation.is_hibernated(self.ws))
@@ -111,13 +111,13 @@ class ComputeGoesToZeroTests(HibernationTestCase):
         bill a reservation at all (see the module docstring), so allocation is
         the honest measure and the one the pool actually enforces.
         """
-        self.give_a_gear()
-        before = gear_services.booked()
+        self.give_a_capsule()
+        before = capsule_services.booked()
         self.assertGreater(before.cpu_millicores, 0)
 
         hibernation.hibernate(self.ws, user=self.owner)
 
-        after = gear_services.booked()
+        after = capsule_services.booked()
         self.assertEqual(after.cpu_millicores, 0)
         self.assertEqual(after.ram_mb, 0)
         self.assertEqual(after.scratch_mb, 0)
@@ -126,18 +126,18 @@ class ComputeGoesToZeroTests(HibernationTestCase):
     def test_it_releases_rather_than_merely_unmounting(self):
         """Unmounting frees NOTHING: booked() counts every OPEN lease, mounted
         or not. This is the distinction the whole design turns on."""
-        lease = self.give_a_gear()
+        lease = self.give_a_capsule()
         hibernation.hibernate(self.ws, user=self.owner)
         lease.refresh_from_db()
         self.assertIsNotNone(lease.released_at)
         self.assertFalse(lease.is_open())
 
     def test_the_manifest_records_that_it_let_go(self):
-        self.give_a_gear()
+        self.give_a_capsule()
         manifest = hibernation.hibernate(self.ws, user=self.owner)
         self.assertTrue(manifest["lease_released"])
 
-    def test_a_workspace_with_no_gear_still_hibernates(self):
+    def test_a_workspace_with_no_capsule_still_hibernates(self):
         """Nothing to release is not a failure — it is already at zero."""
         manifest = hibernation.hibernate(self.ws, user=self.owner)
         self.assertTrue(hibernation.is_hibernated(self.ws))
@@ -145,45 +145,45 @@ class ComputeGoesToZeroTests(HibernationTestCase):
 
 
 class HybridHibernationTests(HibernationTestCase):
-    """The permanent-home half — the depth chosen when the Gear was reserved."""
+    """The permanent-home half — the depth chosen when the Capsule was reserved."""
 
     HOME = {"home/.ipython/history.sqlite": b"SQLite format 3\\x00",
             "home/.gitconfig": b"[user]\\n\\tname = Ada\\n"}
 
     def _hibernate_with_home(self, files=None):
-        lease = self.give_a_gear(permanent_home=True)
+        lease = self.give_a_capsule(permanent_home=True)
         self.start_kernel_on(lease)
         with mock.patch("toto.anastasia.jobs.collect_runtime",
                         return_value=(self.HOME if files is None else files)):
             return lease, hibernation.hibernate(self.ws, user=self.owner)
 
-    def test_a_permanent_home_gear_keeps_the_home(self):
+    def test_a_permanent_home_capsule_keeps_the_home(self):
         _lease, manifest = self._hibernate_with_home()
         self.assertEqual(manifest["depth"], "hybrid")
         record = WorkspaceHibernation.objects.get(workspace=self.ws)
         self.assertTrue(record.home_digest)
         self.assertGreater(record.home_bytes, 0)
 
-    def test_hibernation_reads_the_gear_the_workspace_is_pinned_to(self):
+    def test_hibernation_reads_the_capsule_the_workspace_is_pinned_to(self):
         """TWO GEARS, and the workspace names the SECOND one.
 
         `_lease_for` filtered on the owner alone and took the oldest open lease
         until 2026-09-10, which is right only for an account holding exactly
-        one Gear. Here the older Gear is ordinary and the pinned one keeps a
+        one Capsule. Here the older Capsule is ordinary and the pinned one keeps a
         home, so reading the wrong lease silently downgrades the hibernation to
         a manifest and throws away a $HOME the user reserved capacity to keep.
 
         The companion failure is worse and is asserted below: `hibernate`
         defaults to `release_lease=True`, so the old code also RELEASED the
-        older Gear — one the user never mentioned, possibly running work.
+        older Capsule — one the user never mentioned, possibly running work.
         """
-        from toto.ambrosia import gears as gears_module
+        from toto.ambrosia import capsules as capsules_module
 
-        older = self.give_a_gear(permanent_home=False, name="first")
-        pinned = self.give_a_gear(permanent_home=True, name="second")
+        older = self.give_a_capsule(permanent_home=False, name="first")
+        pinned = self.give_a_capsule(permanent_home=True, name="second")
         self.assertLess(older.created_at, pinned.created_at)
 
-        with mock.patch.object(gears_module, "preferred",
+        with mock.patch.object(capsules_module, "preferred",
                                return_value=str(pinned.uuid)):
             self.start_kernel_on(pinned)
             with mock.patch("toto.anastasia.jobs.collect_runtime",
@@ -191,19 +191,19 @@ class HybridHibernationTests(HibernationTestCase):
                 manifest = hibernation.hibernate(self.ws, user=self.owner)
 
         self.assertEqual(manifest["depth"], "hybrid",
-                         "the pinned Gear keeps a home; reading the older "
+                         "the pinned Capsule keeps a home; reading the older "
                          "lease reports 'manifest' and drops it")
         self.assertTrue(manifest["permanent_home"])
 
         older.refresh_from_db()
         self.assertIsNone(
             older.released_at,
-            "hibernating a workspace pinned to another Gear must not release "
+            "hibernating a workspace pinned to another Capsule must not release "
             "this one")
 
-    def test_an_ordinary_gear_keeps_no_home_even_if_one_exists(self):
-        """The choice is the Gear's, made when it was reserved."""
-        lease = self.give_a_gear(permanent_home=False)
+    def test_an_ordinary_capsule_keeps_no_home_even_if_one_exists(self):
+        """The choice is the Capsule's, made when it was reserved."""
+        lease = self.give_a_capsule(permanent_home=False)
         self.start_kernel_on(lease)
         with mock.patch("toto.anastasia.jobs.collect_runtime",
                         return_value=self.HOME) as collect:
@@ -222,7 +222,7 @@ class HybridHibernationTests(HibernationTestCase):
         from toto.dracena import kernel
 
         self._hibernate_with_home()
-        lease = self.give_a_gear(permanent_home=True, name="py2")
+        lease = self.give_a_capsule(permanent_home=True, name="py2")
         with mock.patch("toto.anastasia.jobs.start_runtime") as start:
             start.return_value = {"ready": {"ip": "10.0.0.9"},
                                   "execution": mock.Mock(uuid=lease.uuid)}
@@ -249,7 +249,7 @@ class TamperingTests(HibernationTestCase):
     """A home is executable state — shell profiles, a pip --user tree."""
 
     def _sleep_with_home(self):
-        lease = self.give_a_gear(permanent_home=True)
+        lease = self.give_a_capsule(permanent_home=True)
         self.start_kernel_on(lease)
         with mock.patch("toto.anastasia.jobs.collect_runtime",
                         return_value={"home/.bashrc": b"echo hello\\n"}):
@@ -321,7 +321,7 @@ class MissingBaseTests(HibernationTestCase):
         state (shell profiles, a `pip --user` tree), so restoring bytes that do
         not match what was stored is the failure worth refusing.
         """
-        lease = self.give_a_gear(permanent_home=True)
+        lease = self.give_a_capsule(permanent_home=True)
         self.start_kernel_on(lease)
         hibernation.hibernate(self.ws, user=self.owner)
 
@@ -343,7 +343,7 @@ class MissingBaseTests(HibernationTestCase):
         keeping: a workspace that kept nothing round-trips without a hook
         having to say so.
         """
-        self.give_a_gear()
+        self.give_a_capsule()
         hibernation.hibernate(self.ws, user=self.owner)
         hibernation.rehydrate(self.ws, user=self.owner)
         self.assertFalse(hibernation.is_hibernated(self.ws))
@@ -370,19 +370,19 @@ class PartialSnapshotTests(HibernationTestCase):
             room_panels=app.room_panels,
             snapshot=broken, restore=app.restore)
 
-        self.give_a_gear()
+        self.give_a_capsule()
         manifest = hibernation.hibernate(self.ws, user=self.owner)
 
         self.assertTrue(hibernation.is_hibernated(self.ws))
         self.assertIn("error", manifest)
         # And the compute still went away, which is the part that costs money.
-        self.assertEqual(gear_services.booked().cpu_millicores, 0)
+        self.assertEqual(capsule_services.booked().cpu_millicores, 0)
 
 
 class ConcurrencyTests(HibernationTestCase):
 
     def test_two_hibernations_produce_one_record(self):
-        self.give_a_gear()
+        self.give_a_capsule()
         hibernation.hibernate(self.ws, user=self.owner)
         hibernation.hibernate(self.ws, user=self.owner)
         self.assertEqual(
@@ -390,14 +390,14 @@ class ConcurrencyTests(HibernationTestCase):
 
     def test_releasing_twice_is_harmless(self):
         """`release()` is idempotent by design; hibernation leans on that."""
-        lease = self.give_a_gear()
+        lease = self.give_a_capsule()
         hibernation.hibernate(self.ws, user=self.owner)
-        gear_services.release(lease=lease, reason="again", actor=self.owner)
+        capsule_services.release(lease=lease, reason="again", actor=self.owner)
         self.assertEqual(ComputeLease.objects.open().count(), 0)
 
     def test_two_workspaces_hibernate_independently(self):
         other = self.make_workspace(name="Other", kind=WorkspaceKind.PYTHON)
-        self.give_a_gear()
+        self.give_a_capsule()
         hibernation.hibernate(self.ws, user=self.owner)
         self.assertTrue(hibernation.is_hibernated(self.ws))
         self.assertFalse(hibernation.is_hibernated(other))
@@ -413,7 +413,7 @@ class EndpointTests(HibernationTestCase):
         return reverse(f"dracena:{name}", kwargs={"slug": self.ws.slug})
 
     def test_the_owner_can_put_it_to_sleep_and_wake_it(self):
-        self.give_a_gear()
+        self.give_a_capsule()
         response = self.client.post(self._url("workspace_hibernate"))
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["hibernated"])
@@ -435,7 +435,7 @@ class EndpointTests(HibernationTestCase):
         survives. The endpoint contract is what this test is for: a refusal is
         409 and a sentence, never a traceback.
         """
-        lease = self.give_a_gear(permanent_home=True)
+        lease = self.give_a_capsule(permanent_home=True)
         self.start_kernel_on(lease)
         self.client.post(self._url("workspace_hibernate"))
 

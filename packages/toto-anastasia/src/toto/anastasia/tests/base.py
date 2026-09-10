@@ -1,4 +1,4 @@
-"""Shared fixture: a pool, a user, and a Gear that fits in it."""
+"""Shared fixture: a pool, a user, and a Capsule that fits in it."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ HALF = Limits(cpu_millicores=2000, ram_mb=4096, scratch_mb=4096, pids=512)
 SMALL = Limits(cpu_millicores=500, ram_mb=1024, scratch_mb=1024, pids=128)
 #: Big enough for one runner at the family defaults — what a test that
 #: actually submits work needs. SMALL is deliberately below them, so it is
-#: also the fixture for "this job will never fit in this Gear".
+#: also the fixture for "this job will never fit in this Capsule".
 RUNNABLE = Limits(cpu_millicores=1500, ram_mb=2048, scratch_mb=2048, pids=256)
 
 
@@ -34,14 +34,14 @@ class AnastasiaTestCase(TestCase):
         # PageProcessor, whose _get_config raises Http404 when no active
         # platform exists — so without this every page test dies with a 404
         # whose context has none of the view's keys, and the KeyError it
-        # produces ("gears") points nowhere near the cause. Same fixture the
+        # produces ("capsules") points nowhere near the cause. Same fixture the
         # ocr tests carry, for the same reason.
         from toto.core.models import Platform
 
         Platform.objects.create(site_name="Test", author="Test",
                                 publication_year=2024, active=True)
         User = get_user_model()
-        self.user = User.objects.create_user("gearowner", password="x")
+        self.user = User.objects.create_user("capsuleowner", password="x")
         self.other = User.objects.create_user("someoneelse", password="x")
 
 

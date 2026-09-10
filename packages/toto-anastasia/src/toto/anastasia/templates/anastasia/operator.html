@@ -17,7 +17,7 @@
   <div class="flex flex-wrap items-center justify-between gap-3">
     <h1 class="text-2xl font-bold">{% trans "Compute operations" %}</h1>
     <a href="{% url 'anastasia:index' %}" class="text-sm underline opacity-70">
-      {% trans "The Gear desk" %}
+      {% trans "The Capsule desk" %}
     </a>
   </div>
 
@@ -106,7 +106,7 @@
              <p class="font-mono text-xs">{{ health.generation|default:"—" }}</p></div>
         <div><p class="text-xs opacity-60">{% trans "Runtime" %}</p>
              <p>{% if health.docker %}{% trans "reachable" %}{% else %}{% trans "not answering" %}{% endif %}</p></div>
-        <div><p class="text-xs opacity-60">{% trans "Mounted Gears" %}</p>
+        <div><p class="text-xs opacity-60">{% trans "Mounted Capsules" %}</p>
              <p>{{ mounted|length }}</p></div>
       </div>
     {% endif %}
@@ -141,7 +141,7 @@
             <tr>
               <th class="py-1 pr-3">{% trans "Job" %}</th>
               <th class="py-1 pr-3">{% trans "Operation" %}</th>
-              <th class="py-1 pr-3">{% trans "Gear" %}</th>
+              <th class="py-1 pr-3">{% trans "Capsule" %}</th>
               <th class="py-1 pr-3">{% trans "Asked by" %}</th>
               <th class="py-1">{% trans "Started" %}</th>
             </tr>

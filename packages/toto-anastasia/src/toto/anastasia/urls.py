@@ -1,6 +1,6 @@
-"""Routes for the Compute Gears desk.
+"""Routes for the Compute Capsules desk.
 
-The uuid converter, not a plain string: a Gear is addressed by an opaque id and
+The uuid converter, not a plain string: a Capsule is addressed by an opaque id and
 a malformed one should 404 at the router rather than reach a query.
 """
 

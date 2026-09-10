@@ -58,11 +58,11 @@ class LeaseQuerySet(models.QuerySet):
 
 
 class ComputeLease(models.Model):
-    """Capacity a user reserved. A Compute Gear, before anyone mounts it."""
+    """Capacity a user reserved. A Compute Capsule, before anyone mounts it."""
 
-    #: The opaque identifier the manager knows this Gear by. A UUID rather than
+    #: The opaque identifier the manager knows this Capsule by. A UUID rather than
     #: the pk because it travels to a process that must learn nothing about how
-    #: many gears exist or who owns them.
+    #: many capsules exist or who owns them.
     uuid = models.UUIDField(default=uuid_module.uuid4, unique=True,
                             editable=False)
     owner = models.ForeignKey(
@@ -70,16 +70,16 @@ class ComputeLease(models.Model):
         related_name="compute_leases")
     name = models.CharField(
         max_length=60,
-        help_text="What this Gear is for — shown wherever you pick one.")
+        help_text="What this Capsule is for — shown wherever you pick one.")
 
     cpu_millicores = models.PositiveIntegerField()
     ram_mb = models.PositiveIntegerField()
     scratch_mb = models.PositiveIntegerField()
     pids = models.PositiveIntegerField()
 
-    #: Whether workspaces running in this Gear keep a persistent HOME.
+    #: Whether workspaces running in this Capsule keep a persistent HOME.
     #:
-    #: Asked when the Gear is RESERVED rather than when something is
+    #: Asked when the Capsule is RESERVED rather than when something is
     #: hibernated, because it changes what a runtime does from its first start:
     #: HOME moves off the throwaway tmpfs into the collected output area. A
     #: choice made later could not recover what the earlier kernels threw away.
@@ -112,7 +112,7 @@ class ComputeLease(models.Model):
                          name="anastasia_lease_owner_idx"),
         ]
         constraints = [
-            # Two live Gears called "thesis" is a person's mistake, not a
+            # Two live Capsules called "thesis" is a person's mistake, not a
             # feature. Released ones may share a name freely.
             models.UniqueConstraint(
                 fields=["owner", "name"], condition=Q(released_at__isnull=True),
@@ -137,14 +137,14 @@ class ComputeLease(models.Model):
 
     @property
     def slice_name(self) -> str:
-        """The systemd slice this Gear's runners live in.
+        """The systemd slice this Capsule's runners live in.
 
         Dash-nesting is systemd's own hierarchy notation: this slice sits
         inside ``anastasia.slice``, which carries the pool ceiling, so a
-        runner is bounded by its Gear AND by the pool without either limit
+        runner is bounded by its Capsule AND by the pool without either limit
         having to know about the other.
         """
-        return f"anastasia-gear-{self.uuid.hex}.slice"
+        return f"anastasia-capsule-{self.uuid.hex}.slice"
 
 
 class PoolGuard(models.Model):
@@ -179,13 +179,13 @@ class CapsuleRuntime(models.Model):
     """The mounted half: alive, bounded, and watched.
 
     One row per lease, reused across mount/unmount cycles rather than created
-    afresh — the history of a Gear is one story, and a user who unmounts and
-    remounts has not made a new Gear.
+    afresh — the history of a Capsule is one story, and a user who unmounts and
+    remounts has not made a new Capsule.
     """
 
     lease = models.OneToOneField(ComputeLease, on_delete=models.CASCADE,
                                  related_name="runtime")
-    state = models.CharField(max_length=12, choices=choices.GEAR_STATES,
+    state = models.CharField(max_length=12, choices=choices.CAPSULE_STATES,
                              default=choices.UNMOUNTED)
     #: When the cached state was last written, so a page can say "I have not
     #: heard from the manager in 40 minutes" instead of quietly presenting a
@@ -200,13 +200,13 @@ class CapsuleRuntime(models.Model):
     #: could not be adopted and is DEAD.
     manager_generation = models.CharField(max_length=64, blank=True)
 
-    #: WHICH ISOLATION this Gear is mounted under, as the executor reported it
+    #: WHICH ISOLATION this Capsule is mounted under, as the executor reported it
     #: at mount time — never as a setting claimed.
     #:
     #: The distinction is the whole reason the column exists. A setting says
     #: what an operator asked for; this says what the runtime answered, and
     #: they disagree exactly when it matters: a host configured for VMs whose
-    #: Kata runtime is not registered, a Gear mounted before a tier change and
+    #: Kata runtime is not registered, a Capsule mounted before a tier change and
     #: still running under the old one.
     #:
     #: Blank means "mounted before this column existed, or by an executor too
@@ -220,11 +220,11 @@ class CapsuleRuntime(models.Model):
     last_sample = models.JSONField(default=dict, blank=True)
     sampled_at = models.DateTimeField(null=True, blank=True)
 
-    #: Why the Gear is DEGRADED, in a sentence, when it is.
+    #: Why the Capsule is DEGRADED, in a sentence, when it is.
     detail = models.CharField(max_length=200, blank=True)
 
     class Meta:
-        verbose_name = "gear runtime"
+        verbose_name = "capsule runtime"
         indexes = [
             models.Index(fields=["state"], name="anastasia_capsule_state_idx"),
         ]
@@ -264,7 +264,7 @@ class Execution(models.Model):
 
     operation = models.CharField(max_length=40)
     #: Denormalised from the operation so the index can answer "what is this
-    #: Gear running" without a catalogue lookup per row.
+    #: Capsule running" without a catalogue lookup per row.
     family = models.CharField(max_length=16)
 
     cpu_millicores = models.PositiveIntegerField()
@@ -334,7 +334,7 @@ class Execution(models.Model):
 
 
 class CapsuleEvent(models.Model):
-    """One line of a Gear's history. Append-only, refusals included.
+    """One line of a Capsule's history. Append-only, refusals included.
 
     A refused action is recorded rather than dropped: a history that only
     contains what worked cannot answer "why can I not mount this", which is the
@@ -388,31 +388,31 @@ class CapsuleEvent(models.Model):
     def save(self, *args, **kwargs):
         if self.pk is not None:
             raise ValidationError(
-                "A gear event records something that already happened; it "
+                "A capsule event records something that already happened; it "
                 "cannot be edited.")
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
         raise ValidationError(
-            "The gear history is append-only; an event cannot be deleted.")
+            "The capsule history is append-only; an event cannot be deleted.")
 
 
 # --------------------------------------------------------------------------- #
 # toto.quota owns no tables, so each metered app declares its own concrete pair
 # and the rows live in that app's migrations. See toto/quota/models.py.
-# Metric: anastasia.execution (one heavy job in a Gear) — a rate limit on
+# Metric: anastasia.execution (one heavy job in a Capsule) — a rate limit on
 # submissions, NOT a price on compute. What compute costs is the reservation,
 # which is a levy over time and belongs to toto.tax; see metrics.py.
 
 class AnastasiaUsageEvent(AbstractUsageEvent):
     class Meta(AbstractUsageEvent.Meta):
-        verbose_name = "Compute Gear usage event"
-        verbose_name_plural = "Compute Gear usage events"
+        verbose_name = "Compute Capsule usage event"
+        verbose_name_plural = "Compute Capsule usage events"
 
 
 class AnastasiaQuotaPolicy(AbstractQuotaPolicy):
     events = AnastasiaUsageEvent
 
     class Meta(AbstractQuotaPolicy.Meta):
-        verbose_name = "Compute Gear quota policy"
-        verbose_name_plural = "Compute Gear quota policies"
+        verbose_name = "Compute Capsule quota policy"
+        verbose_name_plural = "Compute Capsule quota policies"

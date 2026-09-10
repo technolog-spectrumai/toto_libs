@@ -94,7 +94,7 @@ def _run_ocr(params: dict) -> list:
 
 def _start_python_runtime(params: dict) -> list:
     # The kernel runner is the one long-lived family: it starts a kernel, writes
-    # /out/connection.json, and stays up until the Gear is unmounted or the
+    # /out/connection.json, and stays up until the Capsule is unmounted or the
     # idle deadline passes. Dracena owns everything the user calls a session;
     # this is only the runtime under it.
     argv = [

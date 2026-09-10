@@ -1,4 +1,4 @@
-"""Read-mostly admin. Reserving and mounting are user acts on the Gear page.
+"""Read-mostly admin. Reserving and mounting are user acts on the Capsule page.
 
 Nothing here can create a lease: a reservation that skipped
 ``services.reserve`` would skip pool admission, and an over-booked pool is not

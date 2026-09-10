@@ -1,18 +1,18 @@
-"""The Gear ceiling: one cgroup per Gear, holding every runner inside it.
+"""The Capsule ceiling: one cgroup per Capsule, holding every runner inside it.
 
 Layering, and why there are three drivers rather than one:
 
 * **Per-runner limits are always applied** — ``--memory``, ``--cpus``,
   ``--pids-limit`` on every container, on every host, whatever else is
   available. One runner can never exceed its own execution limits.
-* **The booking arithmetic** (``services.gear_available``) is what stops the
-  SUM of a Gear's runners exceeding what the user reserved.
+* **The booking arithmetic** (``services.capsule_available``) is what stops the
+  SUM of a Capsule's runners exceeding what the user reserved.
 * **The slice** is the backstop that makes that sum *hard* rather than
   bookkeeping — a runner that somehow escaped its own limit still cannot
-  escape its Gear's.
+  escape its Capsule's.
 
 A host that cannot give us the third layer is degraded, not broken, and must
-say so rather than pretend: ``describe()["enforced"]`` is False and the Gear
+say so rather than pretend: ``describe()["enforced"]`` is False and the Capsule
 page shows it. That is the platform's standing rule about probes — an
 unenforceable ceiling reported as enforced is worse than no ceiling.
 
@@ -40,9 +40,9 @@ CGROUP_ROOT = "/sys/fs/cgroup"
 DBUS_SOCKET = "/run/dbus/system_bus_socket"
 
 
-def slice_name(gear_uuid) -> str:
+def slice_name(capsule_uuid) -> str:
     """systemd nests by DASH, so this name IS its placement under the pool."""
-    hexid = getattr(gear_uuid, "hex", None) or str(gear_uuid).replace("-", "")
+    hexid = getattr(capsule_uuid, "hex", None) or str(capsule_uuid).replace("-", "")
     return f"anastasia-capsule-{hexid}.slice"
 
 
@@ -54,7 +54,7 @@ def slice_cgroup_path(unit: str) -> str:
     at ``anastasia.slice/anastasia-capsule.slice/anastasia-capsule-abc.slice``,
     with an
     intermediate slice systemd creates on the way. Guessing the shallow path
-    finds nothing, reads no usage, and reports a healthy Gear as unmeasurable.
+    finds nothing, reads no usage, and reports a healthy Capsule as unmeasurable.
 
     Verified against ``systemctl show -p ControlGroup`` on a real transient
     slice; that property is the authority if this ever disagrees.
@@ -85,25 +85,25 @@ class SliceNotSettled(Exception):
 
 
 class SliceDriver:
-    """Backends must be stateless — no per-gear state on ``self``."""
+    """Backends must be stateless — no per-capsule state on ``self``."""
 
     name = "abstract"
     enforced = False
 
-    def ensure(self, gear_uuid, limits: Limits) -> None:
+    def ensure(self, capsule_uuid, limits: Limits) -> None:
         raise NotImplementedError
 
-    def destroy(self, gear_uuid) -> None:
+    def destroy(self, capsule_uuid) -> None:
         raise NotImplementedError
 
-    def exists(self, gear_uuid) -> bool:
+    def exists(self, capsule_uuid) -> bool:
         raise NotImplementedError
 
-    def cgroup_parent(self, gear_uuid) -> str | None:
+    def cgroup_parent(self, capsule_uuid) -> str | None:
         """What to pass Docker as ``--cgroup-parent``, or None."""
         return None
 
-    def sample(self, gear_uuid) -> dict:
+    def sample(self, capsule_uuid) -> dict:
         return {}
 
     def describe(self) -> dict:
@@ -118,7 +118,7 @@ class SystemdSliceDriver(SliceDriver):
     systemd itself.
 
     A transient *slice* is used rather than a scope because a scope needs a
-    process to hold it open, and an idle mounted Gear has none — that is the
+    process to hold it open, and an idle mounted Capsule has none — that is the
     whole point of separating mounting from executing. A slice with no children
     stays active until it is stopped, so the ceiling exists before the first
     runner and survives between jobs.
@@ -137,7 +137,7 @@ class SystemdSliceDriver(SliceDriver):
         ``busctl`` on PATH and a bus socket on disk say nothing about whether
         polkit will allow StartTransientUnit — an unprivileged process is
         refused with "Access denied" at the moment it matters, which is long
-        after this driver has told everyone the Gear ceiling is enforced.
+        after this driver has told everyone the Capsule ceiling is enforced.
         A manager that believes it is enforcing when it is not is worse than
         one that knows it is not, so the probe actually creates and stops a
         unit and reports what happened.
@@ -153,12 +153,12 @@ class SystemdSliceDriver(SliceDriver):
                 check=False, timeout=cls.PROBE_TIMEOUT)
         except (OSError, subprocess.SubprocessError):
             log.warning("anastasia: the system bus did not answer the slice "
-                        "probe in %ss; the Gear ceiling falls back",
+                        "probe in %ss; the Capsule ceiling falls back",
                         cls.PROBE_TIMEOUT)
             return False
         if probe.returncode != 0:
             log.warning("anastasia: systemd will not create slices for this "
-                        "process (%s); the Gear ceiling falls back",
+                        "process (%s); the Capsule ceiling falls back",
                         (probe.stderr or "").strip()[:120])
             return False
         driver._busctl(
@@ -181,9 +181,9 @@ class SystemdSliceDriver(SliceDriver):
             ["busctl", "--system", f"--timeout={timeout}", *args],
             capture_output=True, text=True, timeout=timeout + 2, check=check)
 
-    def ensure(self, gear_uuid, limits: Limits) -> None:
-        unit = slice_name(gear_uuid)
-        if self.exists(gear_uuid):
+    def ensure(self, capsule_uuid, limits: Limits) -> None:
+        unit = slice_name(capsule_uuid)
+        if self.exists(capsule_uuid):
             return
         # CPUQuotaPerSecUSec is microseconds of CPU per second of wall clock:
         # 1000 millicores == one whole core == 1_000_000 us/s.
@@ -203,14 +203,14 @@ class SystemdSliceDriver(SliceDriver):
         # slice whose limits systemd has not written yet, which is a ceiling
         # that silently is not one. So wait for the cgroup to actually carry
         # the number we asked for.
-        self._await_limits(gear_uuid, limits)
+        self._await_limits(capsule_uuid, limits)
 
     #: How long to wait for systemd to write the limits it accepted. Generous
     #: for a loaded machine, bounded so a mount cannot hang on a wedged systemd.
     SETTLE_SECONDS = 5.0
 
-    def _await_limits(self, gear_uuid, limits: Limits) -> None:
-        path = self.path(gear_uuid)
+    def _await_limits(self, capsule_uuid, limits: Limits) -> None:
+        path = self.path(capsule_uuid)
         memory_file = os.path.join(path, "memory.max")
         deadline = time.monotonic() + self.SETTLE_SECONDS
         while time.monotonic() < deadline:
@@ -221,14 +221,14 @@ class SystemdSliceDriver(SliceDriver):
         # still bounds the sum. But the caller must be told the backstop is not
         # in place rather than being allowed to assume it.
         raise SliceNotSettled(
-            f"{slice_name(gear_uuid)} did not take its limits within "
+            f"{slice_name(capsule_uuid)} did not take its limits within "
             f"{self.SETTLE_SECONDS:.0f}s (memory.max is "
             f"{_read_int(memory_file)!r}, wanted {limits.memory_bytes})")
 
-    def destroy(self, gear_uuid) -> None:
+    def destroy(self, capsule_uuid) -> None:
         """Stop the slice, which kills everything still inside it.
 
-        That IS the teardown: a Gear's runners do not need to be enumerated and
+        That IS the teardown: a Capsule's runners do not need to be enumerated and
         killed one by one, because stopping their cgroup parent takes them all.
         A slice that is already gone is not an error — teardown is idempotent by
         contract, and reconciliation calls it speculatively.
@@ -236,22 +236,22 @@ class SystemdSliceDriver(SliceDriver):
         result = self._busctl(
             "call", "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
             "org.freedesktop.systemd1.Manager", "StopUnit", "ss",
-            slice_name(gear_uuid), "replace", check=False)
+            slice_name(capsule_uuid), "replace", check=False)
         if result.returncode != 0 and "not loaded" not in (result.stderr or ""):
             log.warning("anastasia: could not stop %s: %s",
-                        slice_name(gear_uuid), (result.stderr or "").strip())
+                        slice_name(capsule_uuid), (result.stderr or "").strip())
 
-    def exists(self, gear_uuid) -> bool:
-        return os.path.isdir(self.path(gear_uuid))
+    def exists(self, capsule_uuid) -> bool:
+        return os.path.isdir(self.path(capsule_uuid))
 
-    def path(self, gear_uuid) -> str:
-        return slice_cgroup_path(slice_name(gear_uuid))
+    def path(self, capsule_uuid) -> str:
+        return slice_cgroup_path(slice_name(capsule_uuid))
 
-    def cgroup_parent(self, gear_uuid) -> str:
-        return slice_name(gear_uuid)
+    def cgroup_parent(self, capsule_uuid) -> str:
+        return slice_name(capsule_uuid)
 
-    def sample(self, gear_uuid) -> dict:
-        return read_cgroup(self.path(gear_uuid))
+    def sample(self, capsule_uuid) -> dict:
+        return read_cgroup(self.path(capsule_uuid))
 
 
 class CgroupfsSliceDriver(SliceDriver):
@@ -270,16 +270,16 @@ class CgroupfsSliceDriver(SliceDriver):
     def available() -> bool:
         return os.access(os.path.join(CGROUP_ROOT, "cgroup.procs"), os.W_OK)
 
-    def path(self, gear_uuid) -> str:
-        return slice_cgroup_path(slice_name(gear_uuid))
+    def path(self, capsule_uuid) -> str:
+        return slice_cgroup_path(slice_name(capsule_uuid))
 
-    def ensure(self, gear_uuid, limits: Limits) -> None:
-        parent = os.path.dirname(self.path(gear_uuid))
+    def ensure(self, capsule_uuid, limits: Limits) -> None:
+        parent = os.path.dirname(self.path(capsule_uuid))
         os.makedirs(parent, exist_ok=True)
         # Controllers must be delegated by the PARENT before a child can use
         # them; without this the child's memory.max simply does not exist.
         self._enable_controllers(parent)
-        target = self.path(gear_uuid)
+        target = self.path(capsule_uuid)
         os.makedirs(target, exist_ok=True)
         self._write(os.path.join(target, "memory.max"), str(limits.memory_bytes))
         self._write(os.path.join(target, "pids.max"), str(limits.pids))
@@ -302,8 +302,8 @@ class CgroupfsSliceDriver(SliceDriver):
         except OSError as exc:
             log.warning("anastasia: could not set %s=%s (%s)", path, value, exc)
 
-    def destroy(self, gear_uuid) -> None:
-        target = self.path(gear_uuid)
+    def destroy(self, capsule_uuid) -> None:
+        target = self.path(capsule_uuid)
         if not os.path.isdir(target):
             return
         try:
@@ -313,36 +313,36 @@ class CgroupfsSliceDriver(SliceDriver):
             # kills the containers first; this is the tidy-up behind them.
             log.warning("anastasia: cgroup %s not empty yet (%s)", target, exc)
 
-    def exists(self, gear_uuid) -> bool:
-        return os.path.isdir(self.path(gear_uuid))
+    def exists(self, capsule_uuid) -> bool:
+        return os.path.isdir(self.path(capsule_uuid))
 
-    def cgroup_parent(self, gear_uuid) -> str:
-        return os.path.relpath(self.path(gear_uuid), CGROUP_ROOT)
+    def cgroup_parent(self, capsule_uuid) -> str:
+        return os.path.relpath(self.path(capsule_uuid), CGROUP_ROOT)
 
-    def sample(self, gear_uuid) -> dict:
-        return read_cgroup(self.path(gear_uuid))
+    def sample(self, capsule_uuid) -> dict:
+        return read_cgroup(self.path(capsule_uuid))
 
 
 class NullSliceDriver(SliceDriver):
     """No aggregate ceiling available. Per-runner limits still apply.
 
-    Reports ``enforced: False`` so the Gear page can say the backstop is
+    Reports ``enforced: False`` so the Capsule page can say the backstop is
     missing instead of implying a guarantee this host cannot make.
     """
 
     name = "null"
     enforced = False
 
-    def ensure(self, gear_uuid, limits):  # noqa: D102 - nothing to do
+    def ensure(self, capsule_uuid, limits):  # noqa: D102 - nothing to do
         return None
 
-    def destroy(self, gear_uuid):
+    def destroy(self, capsule_uuid):
         return None
 
-    def exists(self, gear_uuid) -> bool:
+    def exists(self, capsule_uuid) -> bool:
         return False
 
-    def sample(self, gear_uuid) -> dict:
+    def sample(self, capsule_uuid) -> dict:
         return {}
 
 
@@ -350,7 +350,7 @@ def read_cgroup(path: str) -> dict:
     """Live usage from a cgroup v2 directory. Empty when it is not there.
 
     The same files ``toto.monit.collectors`` reads, one level down: this asks
-    about ONE Gear rather than about the whole container.
+    about ONE Capsule rather than about the whole container.
     """
     if not os.path.isdir(path):
         return {}
@@ -380,7 +380,7 @@ def read_cgroup(path: str) -> dict:
         pass
 
     # memory.events counts oom_kill cumulatively. It is the ONLY reliable way
-    # to learn that something in this Gear was killed for memory: the container
+    # to learn that something in this Capsule was killed for memory: the container
     # is gone by the time anyone asks, and its exit code (137) is
     # indistinguishable from an ordinary SIGKILL.
     try:
@@ -404,5 +404,5 @@ def detect_driver() -> SliceDriver:
         return CgroupfsSliceDriver()
     log.warning(
         "anastasia: no cgroup driver available — per-runner limits still "
-        "apply, but a Gear's aggregate ceiling is bookkeeping only")
+        "apply, but a Capsule's aggregate ceiling is bookkeeping only")
     return NullSliceDriver()

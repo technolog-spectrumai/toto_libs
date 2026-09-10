@@ -1,4 +1,4 @@
-"""The seam between booking and the thing that actually mounts a Gear.
+"""The seam between booking and the thing that actually mounts a Capsule.
 
 The assets-backend shape, which ``lifecycle/power.py`` also copies: a stateless
 ABC, a safe default that records and refuses, and a factory that resolves a
@@ -33,12 +33,12 @@ class RuntimeBackend:
     name = "abstract"
 
     def mount(self, lease) -> dict:
-        """Create the Gear's bounded environment. Returns a status mapping."""
+        """Create the Capsule's bounded environment. Returns a status mapping."""
         raise NotImplementedError
 
     def unmount(self, lease) -> dict:
         """Destroy every runner and the environment. MUST be idempotent —
-        unmounting an already-unmounted Gear is an ordinary outcome, not an
+        unmounting an already-unmounted Capsule is an ordinary outcome, not an
         error, because that is exactly what reconciliation does."""
         raise NotImplementedError
 
@@ -62,7 +62,7 @@ class NullRuntimeBackend(RuntimeBackend):
 
     Not a stub that pretends. A host with no manager configured can still let
     people reserve and release capacity — that is pure arithmetic in this
-    database — but it must not report a Gear as mounted when nothing was
+    database — but it must not report a Capsule as mounted when nothing was
     mounted. So mount refuses, loudly, naming what is missing; unmount succeeds
     (there is provably nothing to tear down, and an idempotent teardown that
     refuses would block release); and status reports nothing known.
@@ -72,7 +72,7 @@ class NullRuntimeBackend(RuntimeBackend):
 
     def mount(self, lease):
         raise RuntimeUnavailable(
-            "This deployment has no Anastasia executor, so a Gear cannot be "
+            "This deployment has no Anastasia executor, so a Capsule cannot be "
             "mounted. Set ANASTASIA_EXECUTOR_SOCKET and "
             "ANASTASIA_RUNTIME_BACKEND, and start the anastasia-executord "
             "service on the host.")

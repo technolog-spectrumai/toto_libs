@@ -135,7 +135,7 @@ class CatalogueTests(SimpleTestCase):
         """ONE link, one family, and no second posture to order against.
 
         `kernel_link` (renamed from `needs_internal_network` on 2026-09-10) puts
-        a runner on the Gear's internal network so the session owner can reach
+        a runner on the Capsule's internal network so the session owner can reach
         the kernel's ports. That network reaches no database and no broker.
         """
         networked = {k for k, f in families.FAMILIES.items() if f.kernel_link}
@@ -166,7 +166,7 @@ class CatalogueTests(SimpleTestCase):
                 self.assertIn(op.family.key, families.FAMILIES)
 
     def test_the_install_operation_is_gone(self):
-        """Nothing may ask a Gear to install packages.
+        """Nothing may ask a Capsule to install packages.
 
         `install_python_packages` and `start_python_runtime_connected` were the
         two operations with egress. Both are deleted; asking for either must be
@@ -181,7 +181,7 @@ class CatalogueTests(SimpleTestCase):
 
     def test_every_family_default_is_above_the_reservation_floor(self):
         """A family whose default runner could not fit in the smallest legal
-        Gear would be undiscoverable until someone tried it."""
+        Capsule would be undiscoverable until someone tried it."""
         for fam in families.FAMILIES.values():
             with self.subTest(family=fam.key):
                 validate_reservation(fam.default_limits)

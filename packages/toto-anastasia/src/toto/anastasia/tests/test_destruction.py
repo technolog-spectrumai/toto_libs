@@ -38,7 +38,7 @@ from django.test import TransactionTestCase, override_settings
 
 from toto.anastasia import choices, execute, jobs, services
 from toto.anastasia.limits import Limits
-from toto.anastasia.executor import gears, protocol, service
+from toto.anastasia.executor import capsules, protocol, service
 from toto.anastasia.executor import drivers
 from toto.anastasia.executor.drivers import docker as containers
 from toto.anastasia.models import ComputeLease, Execution, CapsuleEvent
@@ -92,7 +92,7 @@ class DestructiveIsolationTests(TransactionTestCase):
 
         self.user = get_user_model().objects.create_user("destroyer",
                                                          password="x")
-        self.manager = gears.GearManager(staging_root=self.staging,
+        self.manager = capsules.CapsuleManager(staging_root=self.staging,
                                          generation="destruction-1")
         # A REAL unix socket, as production uses. The suite runs as an
         # ordinary user while every production caller is container-root, so the
@@ -206,8 +206,8 @@ class DestructiveIsolationTests(TransactionTestCase):
         for execution in Execution.objects.filter(status=choices.SUCCESS):
             self.assertEqual(execution.exit_code, 0)
 
-    def test_the_gear_reports_dead_rather_than_pretending(self):
-        """A Gear whose runtime is gone must not still say READY.
+    def test_the_capsule_reports_dead_rather_than_pretending(self):
+        """A Capsule whose runtime is gone must not still say READY.
 
         That is the one state a polling page cannot recover from, and the
         reason `derive_state` is a function of the row rather than a stored
@@ -256,7 +256,7 @@ class DestructiveIsolationTests(TransactionTestCase):
         # That exercises the stale-socket unlink in server_bind: without it the
         # second bind fails EADDRINUSE and the executor never comes back.
         os.makedirs(self.staging, exist_ok=True)
-        self.manager = gears.GearManager(staging_root=self.staging,
+        self.manager = capsules.CapsuleManager(staging_root=self.staging,
                                          generation="destruction-2")
         self.httpd = service.serve(socket_path=self.socket_path,
                                    secret=SECRET, manager=self.manager,
@@ -293,16 +293,16 @@ class DestructiveIsolationTests(TransactionTestCase):
         execute.submit(lease=lease, operation="render_pdf", params={},
                        requested_by=self.user)
 
-        successor = gears.GearManager(staging_root=self.staging,
+        successor = capsules.CapsuleManager(staging_root=self.staging,
                                       generation="successor")
         inherited = reconcile.adopt(successor)
         self.assertGreaterEqual(inherited["runners"], 1)
-        self.assertIn(str(lease.uuid), inherited["gears"])
+        self.assertIn(str(lease.uuid), inherited["capsules"])
         self.assertEqual(inherited["generation"], "successor")
 
     def test_an_orphan_runner_is_reaped_by_the_caller_s_list(self):
         """The manager does not know what a lease is. The caller says which
-        Gears should exist, and everything else is destroyed."""
+        Capsules should exist, and everything else is destroyed."""
         from toto.anastasia.executor import reconcile
 
         durable = self._durable_data()
@@ -311,7 +311,7 @@ class DestructiveIsolationTests(TransactionTestCase):
         self.assertTrue(self.manager.docker.list_managed())
 
         destroyed = reconcile.destroy_orphan_runners(self.manager,
-                                                     known_gears=[])
+                                                     known_capsules=[])
         self.assertGreaterEqual(destroyed, 1)
         self.assertEqual(self.manager.docker.list_managed(), [])
 
@@ -333,10 +333,10 @@ class RunnerIsolationTests(TransactionTestCase):
             lambda: subprocess.run(
                 "docker ps -aq --filter label=anastasia.managed=1 "
                 "| xargs -r docker rm -f", shell=True, capture_output=True))
-        self.manager = gears.GearManager(staging_root=self.staging,
+        self.manager = capsules.CapsuleManager(staging_root=self.staging,
                                          generation="isolation")
-        self.gear = str(uuid.uuid4())
-        self.manager.mount(self.gear, Limits(2000, 2048, 1024, 512))
+        self.capsule = str(uuid.uuid4())
+        self.manager.mount(self.capsule, Limits(2000, 2048, 1024, 512))
 
     def _run(self, argv, timeout=60):
         """One raw runner, bypassing the operation catalogue, so the container
@@ -354,7 +354,7 @@ class RunnerIsolationTests(TransactionTestCase):
             family=PDF, limits=Limits(1000, 512, 256, 64), name=name,
             cgroup_parent=None, input_dir=input_dir, output_dir=output_dir,
             env={"ANASTASIA_OPERATION": "probe"},
-            labels={containers.LABEL_CAPSULE: self.gear,
+            labels={containers.LABEL_CAPSULE: self.capsule,
                     containers.LABEL_EXEC: name},
             argv=argv)
         self.addCleanup(client.remove, container)

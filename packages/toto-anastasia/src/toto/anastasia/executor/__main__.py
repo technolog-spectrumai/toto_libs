@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 
-from . import drivers, gears, reconcile, service
+from . import drivers, capsules, reconcile, service
 from .drivers import docker as drivers_docker
 
 #: Where the socket lives when nothing says otherwise. The DIRECTORY is what a
@@ -43,7 +43,7 @@ def _allowed_uids(raw: str) -> frozenset:
     return frozenset(uids) or service.DEFAULT_PEER_UIDS
 
 
-def _reconcile_forever(manager: gears.GearManager, every: int) -> None:
+def _reconcile_forever(manager: capsules.CapsuleManager, every: int) -> None:
     """Deadlines and orphans, on a loop.
 
     A daemon thread rather than a scheduler: it has one job, it must not keep
@@ -81,9 +81,9 @@ def main() -> int:
         log.error("%s", exc)
         return 4
 
-    manager = gears.GearManager(
+    manager = capsules.CapsuleManager(
         staging_root=os.environ.get("ANASTASIA_STAGING_ROOT",
-                                    gears.DEFAULT_STAGING_ROOT),
+                                    capsules.DEFAULT_STAGING_ROOT),
         kernel_network=os.environ.get("ANASTASIA_KERNEL_NETWORK", ""),
         docker=driver,
     )
@@ -97,9 +97,9 @@ def main() -> int:
     log.info("anastasia: isolation tier %s", manager.docker.name)
 
     inherited = reconcile.adopt(manager)
-    log.info("anastasia: generation %s adopted %s runner(s) across %s gear(s)",
+    log.info("anastasia: generation %s adopted %s runner(s) across %s capsule(s)",
              inherited["generation"], inherited["runners"],
-             len(inherited["gears"]))
+             len(inherited["capsules"]))
     log.info("anastasia: cgroup ceiling: %s", manager.slices.describe())
 
     threading.Thread(

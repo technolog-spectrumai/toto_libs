@@ -23,7 +23,7 @@ import uuid
 from django.test import SimpleTestCase
 
 from toto.anastasia.limits import Limits
-from toto.anastasia.executor import control, gears, protocol, service
+from toto.anastasia.executor import control, capsules, protocol, service
 from toto.anastasia.executor_backend import UnixHTTPConnection
 
 from .fakes import CountingSliceDriver, FakeDocker
@@ -52,7 +52,7 @@ class ServiceTestCase(SimpleTestCase):
         _lock.start()
         self.addCleanup(_lock.stop)
         self.docker = FakeDocker()
-        self.manager = gears.GearManager(
+        self.manager = capsules.CapsuleManager(
             staging_root=self.root, slice_driver=CountingSliceDriver(),
             docker=self.docker, generation="gen-http")
         # A REAL unix socket, in a directory this test owns. The whole point
@@ -70,7 +70,7 @@ class ServiceTestCase(SimpleTestCase):
         thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         thread.start()
         self.addCleanup(self.httpd.shutdown)
-        self.gear = str(uuid.uuid4())
+        self.capsule = str(uuid.uuid4())
 
     def call(self, method, path, payload=None, *, secret=SECRET, headers=None):
         body = protocol.encode(payload or {})
@@ -152,7 +152,7 @@ class AuthenticationTests(ServiceTestCase):
 
 class RouteTests(ServiceTestCase):
     def mount(self):
-        return self.call("POST", f"/gears/{self.gear}/mount",
+        return self.call("POST", f"/capsules/{self.capsule}/mount",
                          {"limits": Limits(2000, 1024, 512, 256).as_dict()})
 
     def test_mount_then_execute_then_collect_then_unmount(self):
@@ -162,27 +162,27 @@ class RouteTests(ServiceTestCase):
 
         execution = str(uuid.uuid4())
         status, body = self.call("POST", "/jobs", {
-            "gear": self.gear, "execution": execution,
+            "capsule": self.capsule, "execution": execution,
             "operation": "render_pdf",
             "limits": Limits(1000, 512, 256, 64).as_dict(),
         })
         self.assertEqual(status, 200)
 
         status, body = self.call("GET", f"/jobs/{execution}",
-                                 {"gear": self.gear})
+                                 {"capsule": self.capsule})
         self.assertEqual(status, 200)
         self.assertTrue(body["running"])
 
         import os
-        out = os.path.join(self.manager.exec_dir(self.gear, execution), "out")
+        out = os.path.join(self.manager.exec_dir(self.capsule, execution), "out")
         with open(os.path.join(out, "output.pdf"), "wb") as handle:
             handle.write(b"%PDF-1.4")
         status, body = self.call("GET", f"/jobs/{execution}/out",
-                                 {"gear": self.gear})
+                                 {"capsule": self.capsule})
         self.assertEqual(status, 200)
         self.assertTrue(base64.b64decode(body["tar_b64"]))
 
-        status, body = self.call("POST", f"/gears/{self.gear}/unmount")
+        status, body = self.call("POST", f"/capsules/{self.capsule}/unmount")
         self.assertEqual(status, 200)
         self.assertEqual(body["runners_destroyed"], 1)
 
@@ -195,7 +195,7 @@ class RouteTests(ServiceTestCase):
                         {"cap_add": ["SYS_ADMIN"]}, {"network": "host"}):
             with self.subTest(param=next(iter(hostile))):
                 status, body = self.call("POST", "/jobs", {
-                    "gear": self.gear, "execution": str(uuid.uuid4()),
+                    "capsule": self.capsule, "execution": str(uuid.uuid4()),
                     "operation": "render_pdf", "params": hostile})
                 self.assertEqual(status, 400)
                 self.assertIn("does not take", body["error"])
@@ -203,7 +203,7 @@ class RouteTests(ServiceTestCase):
     def test_an_unknown_operation_is_a_400_not_a_500(self):
         self.mount()
         status, body = self.call("POST", "/jobs", {
-            "gear": self.gear, "execution": str(uuid.uuid4()),
+            "capsule": self.capsule, "execution": str(uuid.uuid4()),
             "operation": "docker_run"})
         self.assertEqual(status, 400)
         self.assertIn("not an Anastasia operation", body["error"])
@@ -218,7 +218,7 @@ class RouteTests(ServiceTestCase):
             info.size = 1
             archive.addfile(info, io.BytesIO(b"x"))
         status, body = self.call("POST", "/jobs", {
-            "gear": self.gear, "execution": str(uuid.uuid4()),
+            "capsule": self.capsule, "execution": str(uuid.uuid4()),
             "operation": "render_pdf",
             "payload_b64": base64.b64encode(evil.getvalue()).decode()})
         self.assertEqual(status, 400)
@@ -227,7 +227,7 @@ class RouteTests(ServiceTestCase):
     def test_bad_limits_are_a_400(self):
         self.mount()
         status, body = self.call("POST", "/jobs", {
-            "gear": self.gear, "execution": str(uuid.uuid4()),
+            "capsule": self.capsule, "execution": str(uuid.uuid4()),
             "operation": "render_pdf", "limits": {"gpus": 8}})
         self.assertEqual(status, 400)
         self.assertIn("gpus", body["error"])
@@ -236,7 +236,7 @@ class RouteTests(ServiceTestCase):
         self.mount()
         self.docker.images.discard("anastasia-pdf")
         status, body = self.call("POST", "/jobs", {
-            "gear": self.gear, "execution": str(uuid.uuid4()),
+            "capsule": self.capsule, "execution": str(uuid.uuid4()),
             "operation": "render_pdf"})
         self.assertEqual(status, 409)
         self.assertIn("runner image", body["error"])
@@ -247,12 +247,12 @@ class RouteTests(ServiceTestCase):
         self.assertIn("slice_driver", body)
         self.assertIn("admitting", body["pressure"])
 
-    def test_reconcile_takes_the_callers_gear_list(self):
+    def test_reconcile_takes_the_callers_capsule_list(self):
         self.mount()
         self.call("POST", "/jobs", {
-            "gear": self.gear, "execution": str(uuid.uuid4()),
+            "capsule": self.capsule, "execution": str(uuid.uuid4()),
             "operation": "render_pdf"})
-        status, body = self.call("POST", "/reconcile", {"known_gears": []})
+        status, body = self.call("POST", "/reconcile", {"known_capsules": []})
         self.assertEqual(status, 200)
         self.assertEqual(body["orphans_destroyed"], 1)
 
@@ -357,7 +357,7 @@ class AdmissionControlTests(ServiceTestCase):
         self.assertEqual(body["admission"]["state"], "open")
 
     def test_draining_refuses_a_mount_but_kills_nothing(self):
-        self.call("POST", f"/gears/{self.gear}/mount",
+        self.call("POST", f"/capsules/{self.capsule}/mount",
                   {"limits": {"cpu_millicores": 1000, "ram_mb": 512,
                               "scratch_mb": 256, "pids": 64}})
         before = len(self.docker.containers)
@@ -365,7 +365,7 @@ class AdmissionControlTests(ServiceTestCase):
         status, _ = self.call("POST", "/control/drain", {"reason": "reboot"})
         self.assertEqual(status, 200)
 
-        status, body = self.call("POST", f"/gears/{uuid.uuid4()}/mount",
+        status, body = self.call("POST", f"/capsules/{uuid.uuid4()}/mount",
                                  {"limits": {"cpu_millicores": 1000,
                                              "ram_mb": 512, "scratch_mb": 256,
                                              "pids": 64}})
@@ -375,15 +375,15 @@ class AdmissionControlTests(ServiceTestCase):
                          "a drain must not destroy anything")
 
     def test_draining_refuses_new_JOBS_too(self):
-        """Not only mounts. A Gear mounted before the drain would otherwise
+        """Not only mounts. A Capsule mounted before the drain would otherwise
         keep starting jobs through the whole of it — which is exactly what an
         operator draining for a reboot is trying to stop."""
-        self.call("POST", f"/gears/{self.gear}/mount",
+        self.call("POST", f"/capsules/{self.capsule}/mount",
                   {"limits": {"cpu_millicores": 1000, "ram_mb": 512,
                               "scratch_mb": 256, "pids": 64}})
         self.call("POST", "/control/drain")
         status, body = self.call("POST", "/jobs", {
-            "gear": self.gear, "execution": str(uuid.uuid4()),
+            "capsule": self.capsule, "execution": str(uuid.uuid4()),
             "operation": "render_pdf", "params": {},
             "limits": {"cpu_millicores": 1000, "ram_mb": 512,
                        "scratch_mb": 256, "pids": 64}, "timeout": 60})
@@ -391,11 +391,11 @@ class AdmissionControlTests(ServiceTestCase):
         self.assertIn("drained", body["error"])
 
     def test_the_emergency_stop_destroys_every_runner(self):
-        self.call("POST", f"/gears/{self.gear}/mount",
+        self.call("POST", f"/capsules/{self.capsule}/mount",
                   {"limits": {"cpu_millicores": 2000, "ram_mb": 2048,
                               "scratch_mb": 1024, "pids": 256}})
         self.call("POST", "/jobs", {
-            "gear": self.gear, "execution": str(uuid.uuid4()),
+            "capsule": self.capsule, "execution": str(uuid.uuid4()),
             "operation": "render_pdf", "params": {},
             "limits": {"cpu_millicores": 1000, "ram_mb": 512,
                        "scratch_mb": 256, "pids": 64}, "timeout": 600})
@@ -411,7 +411,7 @@ class AdmissionControlTests(ServiceTestCase):
         decision. Telling somebody to retry into a stopped machine is how a
         refusal becomes a support ticket."""
         self.call("POST", "/control/stop", {"reason": "incident"})
-        _, body = self.call("POST", f"/gears/{uuid.uuid4()}/mount",
+        _, body = self.call("POST", f"/capsules/{uuid.uuid4()}/mount",
                             {"limits": {"cpu_millicores": 1000, "ram_mb": 512,
                                         "scratch_mb": 256, "pids": 64}})
         self.assertIn("stopped by an administrator", body["error"])
@@ -434,7 +434,7 @@ class AdmissionControlTests(ServiceTestCase):
 
         # A brand-new manager and API over the same staging root, which is
         # what a restarted unit is.
-        fresh = gears.GearManager(
+        fresh = capsules.CapsuleManager(
             staging_root=self.root, slice_driver=CountingSliceDriver(),
             docker=FakeDocker(), generation="gen-restarted")
         state = control.read(fresh.staging_root)
@@ -488,7 +488,7 @@ class MetricsTests(ServiceTestCase):
         self.assertIn("anastasia_executor_admitting 0", scrape)
         self.assertIn('admission_state{state="draining"} 1', scrape)
 
-    def test_no_user_job_or_gear_identifier_is_ever_a_label(self):
+    def test_no_user_job_or_capsule_identifier_is_ever_a_label(self):
         """THE ASSERTION THIS FILE EXISTS FOR.
 
         Prometheus keeps a distinct series per label combination forever, so a
@@ -496,19 +496,19 @@ class MetricsTests(ServiceTestCase):
         record of who ran what — in a monitoring system with none of the
         vault's access control.
         """
-        self.call("POST", f"/gears/{self.gear}/mount",
+        self.call("POST", f"/capsules/{self.capsule}/mount",
                   {"limits": {"cpu_millicores": 2000, "ram_mb": 2048,
                               "scratch_mb": 1024, "pids": 256}})
         execution = str(uuid.uuid4())
         self.call("POST", "/jobs", {
-            "gear": self.gear, "execution": execution,
+            "capsule": self.capsule, "execution": execution,
             "operation": "render_pdf", "params": {},
             "limits": {"cpu_millicores": 1000, "ram_mb": 512,
                        "scratch_mb": 256, "pids": 64}, "timeout": 600})
 
         scrape = self._scrape()
         self.assertNotIn(execution, scrape)
-        self.assertNotIn(self.gear, scrape)
+        self.assertNotIn(self.capsule, scrape)
         for forbidden in ("user", "owner", "uuid", "job=", "execution="):
             with self.subTest(label=forbidden):
                 self.assertNotIn(forbidden, scrape)

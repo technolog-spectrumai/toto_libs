@@ -24,7 +24,7 @@ def headers_for(body=b"{}", *, secret=SECRET, method="POST", path="/executions",
 
 class SigningTests(SimpleTestCase):
     def test_a_correctly_signed_request_verifies(self):
-        body = protocol.encode({"gear": "g", "operation": "render_pdf"})
+        body = protocol.encode({"capsule": "g", "operation": "render_pdf"})
         protocol.verify(secret=SECRET, method="POST", path="/executions",
                         body=body, headers=headers_for(body))
 
@@ -48,7 +48,7 @@ class SigningTests(SimpleTestCase):
         sent = headers_for(body, path="/executions")
         with self.assertRaises(protocol.SignatureError):
             protocol.verify(secret=SECRET, method="POST",
-                            path="/gears/x/unmount", body=body, headers=sent)
+                            path="/capsules/x/unmount", body=body, headers=sent)
 
     def test_a_tampered_method_is_refused(self):
         body = b"{}"

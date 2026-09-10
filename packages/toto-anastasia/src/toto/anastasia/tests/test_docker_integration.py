@@ -128,7 +128,7 @@ class RunnerConfinementTests(SimpleTestCase):
 
         A runner is labelled `anastasia.managed=1`, and an executor whose
         `list_managed()` is not scoped to its own staging root claims every
-        such container on the daemon, then destroys the ones whose gear it
+        such container on the daemon, then destroys the ones whose capsule it
         cannot account for. A live `anastasia-executord` did exactly that to
         this suite on a 30-second cycle, taking a different test each run. It
         only ever showed up on the Kata tier because a VM lives long enough to
@@ -171,7 +171,7 @@ class RunnerConfinementTests(SimpleTestCase):
         #
         # A runner is labelled `anastasia.managed=1`, and an executor whose
         # `list_managed()` is not scoped to its own staging root claims EVERY
-        # such container on the daemon, then destroys the ones whose gear it
+        # such container on the daemon, then destroys the ones whose capsule it
         # cannot account for. A live executor did exactly that to this suite
         # every 30 seconds. Scoping (`LABEL_OWNER`) fixes it — but only for an
         # executor built after that change, so an older one deployed on the
@@ -439,12 +439,12 @@ class RunnerConfinementTests(SimpleTestCase):
         """What makes a manager restart survivable: the index is rebuilt by
         looking, so removing a container really does remove the knowledge."""
         result = self.run_probe(Limits(1000, 64, 32, 32), ["true"])
-        found = self.docker.list_managed(gear="it")
+        found = self.docker.list_managed(capsule="it")
         self.assertIn(result["container"][:12],
                       [row["id"][:12] for row in found])
         self.docker.remove(result["container"])
         self.assertNotIn(result["container"][:12],
-                         [row["id"][:12] for row in self.docker.list_managed(gear="it")])
+                         [row["id"][:12] for row in self.docker.list_managed(capsule="it")])
 
 
 @requires_docker
@@ -479,13 +479,13 @@ class SliceIntegrationTests(SimpleTestCase):
     def setUp(self):
         if not self.permitted:
             self.skipTest("this process may not create systemd slices")
-        self.gear = uuid.uuid4()
-        self.addCleanup(self.driver.destroy, self.gear)
+        self.capsule = uuid.uuid4()
+        self.addCleanup(self.driver.destroy, self.capsule)
 
     def test_a_slice_carries_the_limits_we_asked_for(self):
         limits = Limits(cpu_millicores=1500, ram_mb=256, scratch_mb=256, pids=64)
-        self.driver.ensure(self.gear, limits)
-        path = self.driver.path(self.gear)
+        self.driver.ensure(self.capsule, limits)
+        path = self.driver.path(self.capsule)
         self.assertTrue(os.path.isdir(path), f"no cgroup at {path}")
         with open(os.path.join(path, "memory.max")) as handle:
             self.assertEqual(int(handle.read().strip()), limits.memory_bytes)
@@ -494,26 +494,26 @@ class SliceIntegrationTests(SimpleTestCase):
 
     def test_the_cgroup_path_follows_systemds_dash_nesting(self):
         """systemd expands EVERY dash into a level, so the obvious shallow path
-        finds nothing and a healthy Gear reads as unmeasurable."""
-        self.driver.ensure(self.gear, Limits(1000, 128, 64, 32))
-        expected = slices.slice_cgroup_path(slices.slice_name(self.gear))
-        self.assertEqual(self.driver.path(self.gear), expected)
-        self.assertIn("anastasia.slice/anastasia-gear.slice/", expected)
+        finds nothing and a healthy Capsule reads as unmeasurable."""
+        self.driver.ensure(self.capsule, Limits(1000, 128, 64, 32))
+        expected = slices.slice_cgroup_path(slices.slice_name(self.capsule))
+        self.assertEqual(self.driver.path(self.capsule), expected)
+        self.assertIn("anastasia.slice/anastasia-capsule.slice/", expected)
         self.assertTrue(os.path.isdir(expected))
 
     def test_sampling_a_live_slice_returns_usage(self):
-        self.driver.ensure(self.gear, Limits(1000, 128, 64, 32))
-        sample = self.driver.sample(self.gear)
+        self.driver.ensure(self.capsule, Limits(1000, 128, 64, 32))
+        sample = self.driver.sample(self.capsule)
         self.assertIn("pids_used", sample)
         self.assertIn("oom_kills", sample)
 
     def test_ensure_is_idempotent_and_destroy_is_too(self):
         limits = Limits(1000, 128, 64, 32)
-        self.driver.ensure(self.gear, limits)
-        self.driver.ensure(self.gear, limits)
-        self.driver.destroy(self.gear)
-        self.driver.destroy(self.gear)
-        self.assertFalse(self.driver.exists(self.gear))
+        self.driver.ensure(self.capsule, limits)
+        self.driver.ensure(self.capsule, limits)
+        self.driver.destroy(self.capsule)
+        self.driver.destroy(self.capsule)
+        self.assertFalse(self.driver.exists(self.capsule))
 
     def test_sampling_a_slice_that_is_not_there_is_empty_not_an_error(self):
         self.assertEqual(self.driver.sample(uuid.uuid4()), {})
