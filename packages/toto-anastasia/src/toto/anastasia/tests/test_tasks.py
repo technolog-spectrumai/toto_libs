@@ -119,3 +119,107 @@ class ReconcileTaskTests(AnastasiaTestCase):
         runtime.refresh_from_db()
         self.assertEqual(runtime.last_sample, {"ram_mb_used": 99})
         self.assertEqual(services.derive_state(runtime), choices.DEGRADED)
+
+
+class HistoryRecordingTests(AnastasiaTestCase):
+    """The beat writes `CapsuleSample`, and is the only thing that does.
+
+    Until 2026-09-11 nothing called `samples.record` or `samples.prune`, so
+    the history table shipped empty and unbounded at once.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.mounted = services.reserve(owner=self.user, name="up",
+                                        limits=RUNNABLE)
+        services.mount(lease=self.mounted)
+        services.reserve(owner=self.user, name="down", limits=SMALL)
+
+    def _reconcile_with(self, backend_cls):
+        globals()[backend_cls.__name__] = backend_cls
+        with override_settings(
+                ANASTASIA_RUNTIME_BACKEND=
+                f"toto.anastasia.tests.test_tasks.{backend_cls.__name__}"):
+            return tasks.reconcile()
+
+    def test_a_mounted_capsule_gets_a_reading_with_its_storage(self):
+        from toto.anastasia.samples import CapsuleSample
+
+        class Measuring(FakeRuntimeBackend):
+            def status(self, lease):
+                return {"sample": {"ram_mb_used": 42, "net_rx_bytes": 1000},
+                        "manager_generation": type(self).generation,
+                        "mounted": True}
+
+            def storage(self, lease):
+                return {"bytes": 4096, "files": 3, "complete": True}
+
+        result = self._reconcile_with(Measuring)
+        self.assertEqual(result["recorded"], 1)
+        row = CapsuleSample.objects.get(lease=self.mounted)
+        self.assertEqual(row.ram_mb_used, 42)
+        self.assertEqual(row.net_rx_bytes, 1000)
+        self.assertEqual(row.storage_bytes, 4096)
+        self.assertTrue(row.storage_complete)
+        # The unmounted one has nothing to read and gets no row.
+        self.assertEqual(CapsuleSample.objects.count(), 1)
+
+    def test_the_throttle_holds_across_ticks(self):
+        """Two minutes between beats, five between readings: the second tick
+        records nothing and, more to the point, does not walk storage."""
+        walks = []
+
+        class Counting(FakeRuntimeBackend):
+            def status(self, lease):
+                return {"sample": {"ram_mb_used": 1},
+                        "manager_generation": type(self).generation,
+                        "mounted": True}
+
+            def storage(self, lease):
+                walks.append(str(lease.uuid))
+                return {"bytes": 1, "files": 1, "complete": True}
+
+        self.assertEqual(self._reconcile_with(Counting)["recorded"], 1)
+        self.assertEqual(self._reconcile_with(Counting)["recorded"], 0)
+        self.assertEqual(len(walks), 1)
+
+    def test_a_backend_without_storage_records_null_not_zero(self):
+        from toto.anastasia.samples import CapsuleSample
+
+        class NoStorage(FakeRuntimeBackend):
+            def status(self, lease):
+                return {"sample": {"ram_mb_used": 7},
+                        "manager_generation": type(self).generation,
+                        "mounted": True}
+
+        self._reconcile_with(NoStorage)
+        row = CapsuleSample.objects.get(lease=self.mounted)
+        self.assertEqual(row.ram_mb_used, 7)
+        self.assertIsNone(row.storage_bytes)
+
+    def test_a_storage_reading_that_raises_costs_only_the_storage(self):
+        from toto.anastasia.samples import CapsuleSample
+
+        class Exploding(FakeRuntimeBackend):
+            def status(self, lease):
+                return {"sample": {"ram_mb_used": 7},
+                        "manager_generation": type(self).generation,
+                        "mounted": True}
+
+            def storage(self, lease):
+                raise RuntimeError("walk failed")
+
+        result = self._reconcile_with(Exploding)
+        self.assertEqual(result["recorded"], 1)
+        self.assertIsNone(CapsuleSample.objects.get(lease=self.mounted)
+                          .storage_bytes)
+
+    def test_the_tick_prunes(self):
+        from django.utils import timezone
+
+        from toto.anastasia import samples
+
+        old = timezone.now() - timezone.timedelta(days=samples.RETENTION_DAYS + 1)
+        samples.CapsuleSample.objects.create(lease=self.mounted, taken_at=old)
+        result = self._reconcile_with(FakeRuntimeBackend)
+        self.assertEqual(result["pruned"], 1)

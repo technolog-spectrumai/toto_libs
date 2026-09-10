@@ -33,7 +33,7 @@ def reconcile() -> dict:
         # toto.registry documents four separate times.
         return {"skipped": "not installed"}
 
-    from . import services
+    from . import samples, services
     from .models import ComputeLease
     from .runtime import get_backend
 
@@ -68,11 +68,34 @@ def reconcile() -> dict:
     # Fold each mounted Capsule's live sample onto its row, so the desk shows
     # something current even for a user who has not opened the page — and so a
     # manager that restarted is noticed without anyone having to look.
-    refreshed = 0
+    refreshed = recorded = 0
     for lease in ComputeLease.objects.open().select_related("runtime"):
         runtime = services.runtime_for(lease)
-        if runtime.is_mounted:
-            services.refresh_runtime(lease)
-            refreshed += 1
+        if not runtime.is_mounted:
+            continue
+        services.refresh_runtime(lease)
+        refreshed += 1
+        # THE HISTORY TABLE IS WRITTEN HERE AND NOWHERE ELSE. `CapsuleSample`
+        # shipped with a recorder and a pruner and no caller for either, so
+        # every chart drawn from it was empty and every row it would have
+        # kept was never written. The throttle is asked FIRST, because the
+        # storage reading is a tree walk on the executor and this tick runs
+        # every two minutes; a walk whose result is thrown away is the one
+        # cost here worth avoiding.
+        if not samples.due(lease):
+            continue
+        storage = None
+        read_storage = getattr(backend, "storage", None)
+        if read_storage is not None:
+            try:
+                storage = read_storage(lease) or None
+            except Exception:  # noqa: BLE001 — a reading is information, not a precondition
+                log.warning("anastasia: no storage reading for %s", lease.uuid)
+        if samples.record(lease, services.capsule_report(lease), storage):
+            recorded += 1
     result["refreshed"] = refreshed
+    result["recorded"] = recorded
+    # Retention is this tick's job too. If this task is ever removed, the
+    # table has to go with it — `samples.py` says so in its header.
+    result["pruned"] = samples.prune()
     return result
