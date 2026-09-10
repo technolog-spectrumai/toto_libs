@@ -423,6 +423,88 @@ class CapsuleEvent(models.Model):
             "The capsule history is append-only; an event cannot be deleted.")
 
 
+class InstallRun(models.Model):
+    """One request to install packages into a Capsule, watched rather than
+    waited on.
+
+    THE INSTALL PATH (todo 9.4). A `jobs.run` is submit-wait-collect inside one
+    request; an install is minutes of pip output that somebody wants to WATCH,
+    so it is a row that is advanced by whoever looks at it — the API poll, the
+    beat — rather than a call that blocks until it is over.
+
+    A PHASE AND A COUNT, NOT ONE PERCENTAGE. sepulka's position, kept here on
+    purpose: resolving, downloading and installing are not comparable stages,
+    and one bar drawn over all of them "would be a lie told smoothly". The
+    count is honest in a narrower way too — it is how many of the REQUESTED
+    distributions pip has reported, not how many of the dependencies it
+    decided to fetch, because the former is known in advance and the latter is
+    not known until resolution ends.
+
+    THE LOG IS A COPY. The runner's own output streams through
+    `execution_logs` byte-offset by byte-offset; this row keeps what has been
+    read so far, appended in SQL, so the record survives the runner (which is
+    thrown away) and so a client that arrives late reads the whole thing. It
+    is capped — a log is a diagnostic, not an archive — and says when it was.
+
+    WHERE THE PACKAGES GO. `/files/site-packages`, the Capsule's files area
+    (todo 9.7), which lives as long as the reservation: an install survives
+    every later job and every unmount, and dies with the Capsule. Nothing is
+    installed into the runner image, which stays read-only.
+    """
+
+    uuid = models.UUIDField(default=uuid_module.uuid4, unique=True,
+                            editable=False)
+    lease = models.ForeignKey(ComputeLease, on_delete=models.CASCADE,
+                              related_name="installs")
+    #: The job that carries it. SET_NULL because an execution row may be
+    #: swept independently; the install keeps its record either way.
+    execution = models.ForeignKey(Execution, on_delete=models.SET_NULL,
+                                  null=True, blank=True,
+                                  related_name="installs")
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name="anastasia_installs")
+
+    #: PEP 503-normalised names, as cleaned by the `dists` parameter.
+    packages = models.JSONField(default=list, blank=True)
+
+    status = models.CharField(max_length=12, choices=choices.EXECUTION_STATUSES,
+                              default=choices.PENDING)
+    #: queued, resolving, downloading, installing, finished, failed. Derived
+    #: from the log by `install.refresh`, never typed by a caller.
+    phase = models.CharField(max_length=32, blank=True)
+    packages_done = models.PositiveIntegerField(default=0)
+    packages_total = models.PositiveIntegerField(default=0)
+
+    #: The appendable copy of the runner's output. See the class docstring.
+    log = models.TextField(blank=True)
+    #: BYTE offset into the runner's log, so the next read starts where the
+    #: last one stopped. Bytes, not characters: the executor slices bytes.
+    log_offset = models.PositiveIntegerField(default=0)
+    #: Set when the copy stopped growing at its cap. The runner's log is still
+    #: readable through `execution_logs` while the runner exists.
+    log_truncated = models.BooleanField(default=False)
+
+    #: One sentence for a person: why it failed, or what to look at.
+    detail = models.CharField(max_length=500, blank=True)
+
+    created_at = models.DateTimeField(default=timezone.now)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        indexes = [models.Index(fields=["lease", "status"],
+                                name="anastasia_install_lease_idx")]
+
+    def __str__(self):
+        return f"install {'+'.join(self.packages)} ({self.status})"
+
+    @property
+    def is_finished(self) -> bool:
+        return self.status in choices.FINISHED
+
+
 # --------------------------------------------------------------------------- #
 # toto.quota owns no tables, so each metered app declares its own concrete pair
 # and the rows live in that app's migrations. See toto/quota/models.py.

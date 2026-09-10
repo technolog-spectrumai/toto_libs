@@ -7,7 +7,8 @@ a state the arithmetic can recover from by itself.
 
 from django.contrib import admin
 
-from .models import ComputeLease, Execution, CapsuleEvent, CapsuleRuntime, PoolGuard
+from .models import (ComputeLease, Execution, CapsuleEvent, CapsuleRuntime,
+                     InstallRun, PoolGuard)
 
 
 @admin.register(ComputeLease)
@@ -62,3 +63,15 @@ class CapsuleEventAdmin(admin.ModelAdmin):
 
 
 admin.site.register(PoolGuard)
+
+
+@admin.register(InstallRun)
+class InstallRunAdmin(admin.ModelAdmin):
+    list_display = ("uuid", "lease", "status", "phase", "packages_done",
+                    "packages_total", "created_at", "finished_at")
+    list_filter = ("status", "phase")
+    search_fields = ("uuid", "lease__name")
+    readonly_fields = ("uuid", "log", "log_offset", "created_at")
+
+    def has_add_permission(self, request):
+        return False
