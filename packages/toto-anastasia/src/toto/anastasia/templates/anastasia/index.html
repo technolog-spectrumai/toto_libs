@@ -29,9 +29,9 @@ Two ideas the page has to carry, or it is just a form:
           {% trans "Reserve capacity, mount it, and pick it when you start heavy work. Reserved capacity is yours until you release it — mounted or not." %}
         </p>
       </div>
-      {# The only door to the token page. Without a link here the API is
-         reachable in principle and undiscoverable in practice, which is the
-         state it shipped in. #}
+      {% comment %}The only door to the token page. Without a link here the API
+      is reachable in principle and undiscoverable in practice, which is the
+      state it shipped in.{% endcomment %}
       <a href="{% url 'anastasia:tokens' %}"
          class="shrink-0 rounded-lg border border-current/30 px-3 py-2 text-sm font-semibold transition hover:opacity-85">
         <i class="fa-solid fa-key mr-1"></i>{% trans "API tokens" %}
