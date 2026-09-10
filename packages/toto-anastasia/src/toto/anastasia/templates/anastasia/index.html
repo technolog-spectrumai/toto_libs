@@ -60,7 +60,7 @@ Two ideas the page has to carry, or it is just a form:
     </div>
 
     {# ------------------------------------------------------------- reserve #}
-    {% if pool.configured and held < max_gears %}
+    {% if pool.configured and held < max_capsules %}
     <form method="post" action="{% url 'anastasia:reserve' %}"
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
           class="rounded-lg border p-5">

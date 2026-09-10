@@ -99,7 +99,7 @@ def index(request):
         "pool_rows": _pool_rows(report),
         "gears": gears,
         "runtime_configured": bool(conf.executor_socket()),
-        "max_gears": conf.max_gears_per_user(),
+        "max_capsules": conf.max_capsules_per_user(),
         "lease_days": conf.lease_days(),
         "held": len(leases),
         "poll_urls_json": json.dumps(poll_urls),

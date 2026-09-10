@@ -108,14 +108,14 @@ class ReserveTests(AnastasiaTestCase):
                          services.POOL_UNCONFIGURED)
 
     def test_the_per_user_gear_count_is_capped(self):
-        with override_settings(ANASTASIA_MAX_GEARS_PER_USER=2):
+        with override_settings(ANASTASIA_MAX_CAPSULES_PER_USER=2):
             services.reserve(owner=self.user, name="a", limits=SMALL)
             services.reserve(owner=self.user, name="b", limits=SMALL)
             with self.assertRaises(ValidationError) as caught:
                 services.reserve(owner=self.user, name="c", limits=SMALL)
         self.assertEqual(caught.exception.refusal_code, services.TOO_MANY_GEARS)
         # …and the cap is per user, not global.
-        with override_settings(ANASTASIA_MAX_GEARS_PER_USER=2):
+        with override_settings(ANASTASIA_MAX_CAPSULES_PER_USER=2):
             services.reserve(owner=self.other, name="a", limits=SMALL)
 
     def test_two_live_gears_cannot_share_a_name_but_released_ones_can(self):
@@ -160,3 +160,51 @@ class PoolReportTests(AnastasiaTestCase):
                 "scratch_mb": 64, "pids": 32}):
             free = services.available()
         self.assertTrue(free.is_zero)
+
+
+class LegacyCapsuleCapSettingTests(AnastasiaTestCase):
+    """`ANASTASIA_MAX_GEARS_PER_USER` still counts, for hosts that never moved.
+
+    `getattr` with a default cannot tell "unset" from "set to a name I no
+    longer read", so renaming a setting read that way silently reverts a
+    deployment that had raised the cap — no error, no log line, just users
+    refused a capsule they had paid for.
+
+    THE ORDER MATTERS AND IS EASY TO GET BACKWARDS. Zenobia's own settings.py
+    always defines the new name (defaulting to 3), so a host that reads
+    "new, else old" would ignore the old one forever — which is exactly what
+    the first version of this did, and why the cap test above had to change.
+    The env-var fallback lives in settings.py; this one covers a host that sets
+    the Django setting directly and never renamed it.
+    """
+
+    def test_the_old_name_is_honoured_when_the_new_one_is_absent(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from toto.anastasia import conf
+
+        stub = SimpleNamespace(ANASTASIA_MAX_GEARS_PER_USER=7)
+        with mock.patch.object(conf, "settings", stub):
+            self.assertEqual(conf.max_capsules_per_user(), 7)
+
+    def test_the_new_name_wins_when_both_are_set(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from toto.anastasia import conf
+
+        stub = SimpleNamespace(ANASTASIA_MAX_CAPSULES_PER_USER=2,
+                               ANASTASIA_MAX_GEARS_PER_USER=7)
+        with mock.patch.object(conf, "settings", stub):
+            self.assertEqual(conf.max_capsules_per_user(), 2)
+
+    def test_neither_falls_back_to_the_documented_default(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from toto.anastasia import conf
+
+        with mock.patch.object(conf, "settings", SimpleNamespace()):
+            self.assertEqual(conf.max_capsules_per_user(),
+                             conf.DEFAULT_MAX_CAPSULES_PER_USER)

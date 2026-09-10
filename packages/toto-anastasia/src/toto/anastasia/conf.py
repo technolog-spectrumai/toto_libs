@@ -25,7 +25,7 @@ MAX_LEASE_DAYS = 90
 #: How many live Gears one person may hold. A cap on COUNT as well as on
 #: capacity, because a hundred minimum-size gears is its own denial of service
 #: — each one is a slice, a scratch mount and a reconciliation target.
-DEFAULT_MAX_GEARS_PER_USER = 3
+DEFAULT_MAX_CAPSULES_PER_USER = 3
 
 #: A sample older than this makes a mounted Gear DEGRADED: the manager is not
 #: answering, so what the page shows is not what the Gear is doing.
@@ -46,9 +46,26 @@ def lease_days() -> int:
     return max(1, min(value, MAX_LEASE_DAYS))
 
 
-def max_gears_per_user() -> int:
-    return max(1, int(getattr(settings, "ANASTASIA_MAX_GEARS_PER_USER",
-                              DEFAULT_MAX_GEARS_PER_USER)))
+def max_capsules_per_user() -> int:
+    """How many capsules one person may hold at once.
+
+    READS THE OLD NAME TOO, and that is not politeness. `getattr` with a
+    default cannot tell "unset" from "set to something I no longer look at", so
+    a deployment that had raised `ANASTASIA_MAX_GEARS_PER_USER` to 5 would
+    silently drop back to 3 — no error, no log line, just users refused a
+    capsule they were entitled to. Renaming a setting read this way is a data
+    loss with no exception attached.
+
+    Precedence is new-then-old, so a config carrying both means what it most
+    recently said. Drop the fallback once no live config can still use the old
+    spelling.
+    """
+    for name in ("ANASTASIA_MAX_CAPSULES_PER_USER",
+                 "ANASTASIA_MAX_GEARS_PER_USER"):
+        value = getattr(settings, name, None)
+        if value is not None:
+            return max(1, int(value))
+    return DEFAULT_MAX_CAPSULES_PER_USER
 
 
 def sample_stale_seconds() -> int:

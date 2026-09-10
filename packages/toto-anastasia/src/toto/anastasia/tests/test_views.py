@@ -325,3 +325,36 @@ class OperatorPageTests(DeskTestCase):
                 "toto.anastasia.runtime.NullRuntimeBackend"):
             response = self.client.get(reverse("anastasia:operator"))
         self.assertEqual(response.status_code, 200)
+
+
+class MovedRouteTests(AnastasiaTestCase):
+    """The desk moved from /gears/ to /capsules/ on 2026-09-10.
+
+    Bookmarks, links in notes and every URL printed in a past support answer
+    still say the old one, and a 404 there reads as "the feature was removed"
+    rather than "it was renamed".
+    """
+
+    def setUp(self):
+        super().setUp()
+        # The host gates every page behind login, so an anonymous GET is a 302
+        # to the login form and never reaches the redirect under test.
+        self.client.force_login(self.user)
+
+    def test_the_old_desk_url_redirects_permanently(self):
+        response = self.client.get("/gears/")
+        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response["Location"], "/capsules/")
+
+    def test_a_deep_link_keeps_its_path(self):
+        """A per-route list would have to be kept in step with urls.py and
+        would not be, so the redirect is a prefix rewrite."""
+        response = self.client.get("/gears/operations/")
+        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response["Location"], "/capsules/operations/")
+
+    def test_the_query_string_survives(self):
+        """The reserve form round-trips through one."""
+        response = self.client.get("/gears/?name=thesis")
+        self.assertEqual(response.status_code, 301)
+        self.assertIn("name=thesis", response["Location"])

@@ -155,7 +155,7 @@ def reserve(*, owner, name: str, limits: Limits, days: int | None = None,
         _lock_pool()
 
         held = ComputeLease.objects.open().filter(owner=owner).count()
-        if held >= conf.max_gears_per_user():
+        if held >= conf.max_capsules_per_user():
             raise CapacityError(
                 f"You already hold {held} Compute Gears, which is the limit "
                 f"here. Release one before reserving another.", TOO_MANY_GEARS)
