@@ -102,6 +102,21 @@ class WorkspaceApp:
     # None where a lab offers no run verb at all; the endpoint then 404s,
     # which is the honest answer for "this workspace cannot do that".
     run: Optional[Callable] = None
+    # POLLING THE ANSWER, for a lab whose `run` only queues one.
+    #
+    # `poll(workspace, *, user, run_id) -> dict`, raising `RunRefused` — or a
+    # 404 through the base — for a run that is not this workspace's.
+    #
+    # None where a run answers synchronously, and that is not an oversight:
+    # dracena's Run IS the result, so there is nothing to come back for and an
+    # endpoint that existed would only ever 404. A LaTeX compile takes tens of
+    # seconds and returns a receipt, so texlab registers one.
+    #
+    # WITHOUT THIS A QUEUED ANSWER IS A DEAD END. `run` handed a client a run
+    # id and there was no token-authenticated way to ask what became of it —
+    # the page had `texlab:latex_run`, which needs a session. A desktop LaTeX
+    # editor could start a compile and never learn whether it worked.
+    poll: Optional[Callable] = None
 
 
 _BY_NAMESPACE: dict[str, WorkspaceApp] = {}

@@ -319,3 +319,32 @@ def workspace_run(request, owner, slug):
         "queued": bool(result.get("status") == "queued"),
         **result,
     })
+
+
+@require_GET
+@token_required
+def workspace_run_detail(request, owner, slug, run_id):
+    """What became of a queued run.
+
+    THE OTHER HALF OF `run`. A LaTeX compile answers with a receipt and takes
+    tens of seconds; without this the receipt is a dead end — the client is
+    holding an id with nothing to ask about it. The room had
+    `texlab:latex_run`, which needs a session.
+
+    `for_edit=False`: watching a compile is reading. Somebody who may see the
+    workspace may see what its runs did, and a staff member looking at a failed
+    build should not have to be given write access to read the log.
+
+    404 where the lab has no polling verb, which is the honest answer for a
+    Python workspace: its Run IS the result, so there is nothing to come back
+    for and a run id it could ask about does not exist.
+    """
+    workspace = _own_workspace(owner, slug)
+    app = registry.for_kind(workspace.kind)
+    if app is None or app.poll is None:
+        return _error("runs in this workspace answer immediately, so there is "
+                      "nothing to poll", code="no_poll_verb", status=404)
+    try:
+        return JsonResponse(app.poll(workspace, user=owner, run_id=run_id))
+    except registry.RunRefused as exc:
+        return _error(exc.message, code=exc.code, status=exc.status)

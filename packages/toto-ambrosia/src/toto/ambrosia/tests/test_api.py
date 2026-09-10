@@ -369,3 +369,161 @@ class MeteringParityTests(WorkspaceApiTestCase):
             with self.subTest(kind=kind):
                 self.assertIsNotNone(
                     app.run, f"{app.namespace} registered no run hook")
+
+
+class PollTests(WorkspaceApiTestCase):
+    """The other half of `run`, for a lab that only queues one.
+
+    Without it a queued answer is a dead end: the client is handed a run id and
+    has no session-free way to ask what became of it. A desktop LaTeX editor
+    could start a compile and never learn whether it worked.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.latex = self.make_workspace(name="Paper", kind=WorkspaceKind.LATEX)
+
+    def _url(self, run_id, slug=None):
+        return f"/api/v1/workspaces/{slug or self.latex.slug}/runs/{run_id}"
+
+    def test_a_python_workspace_has_nothing_to_poll(self):
+        """Its Run IS the result. A 404 naming that is the honest answer — an
+        endpoint that existed would only ever 404 anyway."""
+        response = self.call("get", f"/api/v1/workspaces/{self.ws.slug}/runs/1")
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["code"], "no_poll_verb")
+
+    def test_it_calls_the_labs_hook(self):
+        fake = mock.Mock(return_value={"id": 7, "state": "success",
+                                       "finished": True})
+        self._with_poll(fake)
+        body = self.call("get", self._url(7)).json()
+        self.assertEqual(body["state"], "success")
+        self.assertEqual(fake.call_args.kwargs["run_id"], 7)
+        self.assertEqual(fake.call_args.kwargs["user"], self.owner)
+
+    def test_a_run_from_another_workspace_is_refused_by_the_lab(self):
+        self._with_poll(mock.Mock(side_effect=registry.RunRefused(
+            "no such compile in this workspace", code="no_such_run",
+            status=404)))
+        response = self.call("get", self._url(999))
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["code"], "no_such_run")
+
+    def test_polling_is_reading_so_a_viewer_may_watch_a_build(self):
+        """`for_edit=False`. A staff member looking at a failed build should not
+        have to be given write access to read the log."""
+        self._with_poll(mock.Mock(return_value={"id": 1, "state": "failed"}))
+        theirs = self.make_workspace(owner=self.other, name="Theirs",
+                                     kind=WorkspaceKind.LATEX)
+        _row, raw = CapsuleToken.issue(owner=self.admin, label="staff")
+        response = self.call("get", self._url(1, slug=theirs.slug), raw=raw)
+        self.assertEqual(response.status_code, 200)
+        # …and that same reader may NOT queue one.
+        self.assertEqual(
+            self.call("post", f"/api/v1/workspaces/{theirs.slug}/run",
+                      body={}, raw=raw).status_code, 404)
+
+    def test_it_needs_a_token(self):
+        self.assertEqual(self.client.get(self._url(1)).status_code, 401)
+
+    def test_a_strangers_token_cannot_poll_your_build(self):
+        """A NON-STAFF stranger, because `self.owner` is staff and staff read
+        everything — testing this with the owner's token would prove the
+        opposite of what it says. Same trap as OwnershipTests."""
+        self._with_poll(mock.Mock(return_value={"id": 1, "state": "failed"}))
+        _row, raw = CapsuleToken.issue(owner=self.other, label="stranger")
+        response = self.call("get", self._url(1), raw=raw)
+        self.assertEqual(response.status_code, 404)
+        # And nothing about the build leaked in the refusal.
+        self.assertNotIn("failed", response.content.decode())
+
+    def _with_poll(self, hook):
+        app = registry.for_kind(WorkspaceKind.LATEX)
+        self.addCleanup(registry._BY_KIND.__setitem__, WorkspaceKind.LATEX, app)
+        registry._BY_KIND[WorkspaceKind.LATEX] = registry.WorkspaceApp(
+            namespace=app.namespace, kind=app.kind,
+            extra_context=app.extra_context, extra_urls=app.extra_urls,
+            teardown=app.teardown, main_id_for=app.main_id_for,
+            settings_fields=app.settings_fields,
+            settings_template=app.settings_template,
+            room_panels=app.room_panels, snapshot=app.snapshot,
+            restore=app.restore, run=app.run, poll=hook)
+
+
+class RegistryContractTests(WorkspaceApiTestCase):
+    """The two hooks, and what each lab must answer for.
+
+    The API dispatches `run` and `poll` through the registry so it never
+    imports a language app. That makes the registry the contract, and a lab
+    that registers half of it produces an endpoint that 404s for a reason
+    nobody can see from either side.
+    """
+
+    def test_a_lab_that_queues_must_also_offer_polling(self):
+        """THE PAIR IS THE CONTRACT. A `run` that answers `status: queued` hands
+        the client a receipt; without `poll` there is no token-authenticated
+        way to redeem it, and a desktop LaTeX editor could start compiles and
+        never learn whether they worked. That is exactly what shipped until
+        2026-09-10.
+
+        Asserted per lab rather than globally, because the converse is fine:
+        dracena answers synchronously and correctly registers no `poll`.
+        """
+        latex = registry.for_kind(WorkspaceKind.LATEX)
+        self.assertIsNotNone(latex.run, "texlab registers no run hook")
+        self.assertIsNotNone(
+            latex.poll,
+            "texlab queues its compiles and registers no poll hook, so the "
+            "run id it returns cannot be redeemed over the API")
+
+    def test_a_lab_that_answers_at_once_needs_no_polling(self):
+        """And must not pretend to. A `poll` on dracena would be an endpoint
+        that can only 404 — its Run IS the result."""
+        python = registry.for_kind(WorkspaceKind.PYTHON)
+        self.assertIsNotNone(python.run)
+        self.assertIsNone(
+            python.poll,
+            "dracena answers synchronously; a poll hook would only ever 404")
+
+    def test_both_hooks_take_the_registry_shape(self):
+        """One signature, so the base can call either without knowing which lab
+        it has. A hook with a different shape fails at call time, in a request,
+        rather than here."""
+        import inspect
+
+        for kind in (WorkspaceKind.PYTHON, WorkspaceKind.LATEX):
+            app = registry.for_kind(kind)
+            with self.subTest(kind=kind, hook="run"):
+                params = inspect.signature(app.run).parameters
+                self.assertEqual(list(params), ["workspace", "user", "payload"])
+            if app.poll is None:
+                continue
+            with self.subTest(kind=kind, hook="poll"):
+                params = inspect.signature(app.poll).parameters
+                self.assertEqual(list(params), ["workspace", "user", "run_id"])
+
+    def test_a_refusal_from_either_hook_keeps_its_status(self):
+        """`RunRefused` carries the status because the KINDS differ: 403 you
+        may not, 409 not in this state, 503 not right now. Flattening them to
+        one code would make a client retry a permission error."""
+        for status in (403, 409, 503):
+            with self.subTest(status=status):
+                self._with_run(mock.Mock(side_effect=registry.RunRefused(
+                    "no", code="x", status=status)))
+                self.assertEqual(
+                    self.call("post", self.api("/run"), body={}).status_code,
+                    status)
+
+    def _with_run(self, hook):
+        app = registry.for_kind(WorkspaceKind.PYTHON)
+        self.addCleanup(registry._BY_KIND.__setitem__,
+                        WorkspaceKind.PYTHON, app)
+        registry._BY_KIND[WorkspaceKind.PYTHON] = registry.WorkspaceApp(
+            namespace=app.namespace, kind=app.kind,
+            extra_context=app.extra_context, extra_urls=app.extra_urls,
+            teardown=app.teardown, main_id_for=app.main_id_for,
+            settings_fields=app.settings_fields,
+            settings_template=app.settings_template,
+            room_panels=app.room_panels, snapshot=app.snapshot,
+            restore=app.restore, run=hook, poll=app.poll)

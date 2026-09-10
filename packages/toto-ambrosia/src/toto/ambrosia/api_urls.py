@@ -27,6 +27,11 @@ urlpatterns = [
     path("workspaces/<slug:slug>/tree", api.workspace_tree,
          name="workspace_tree"),
     path("workspaces/<slug:slug>/run", api.workspace_run, name="workspace_run"),
+    # The other half of `run`, for a lab that only queues one. `runs/<int>`
+    # cannot collide with `run` — different segment, and the int converter
+    # refuses anything else.
+    path("workspaces/<slug:slug>/runs/<int:run_id>", api.workspace_run_detail,
+         name="workspace_run_detail"),
 
     # Files. `files/new` and `folders/new` before `files/<int:pk>` — the int
     # converter would refuse "new" anyway, but the next person to reach for a
