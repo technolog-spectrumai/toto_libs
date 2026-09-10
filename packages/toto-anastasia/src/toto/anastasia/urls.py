@@ -18,6 +18,9 @@ urlpatterns = [
     path("<uuid:uuid>/unmount/", views.unmount, name="unmount"),
     path("<uuid:uuid>/release/", views.release, name="release"),
     path("<uuid:uuid>/status/", views.status, name="status"),
+    # The retained series behind the card's charts. A GET, owner-only, and
+    # counts only — see `views.samples`.
+    path("<uuid:uuid>/samples/", views.samples, name="samples"),
     # API tokens. Above the operator block and below the capsule verbs,
     # because that is the order a person meets them: reserve a capsule, then
     # mint a token so a desktop client can use it.

@@ -31,7 +31,7 @@ from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
 
-from . import choices, conf, families, services
+from . import choices, conf, families, samples as samples_mod, services
 from .limits import Limits, LimitsError
 from .models import ComputeLease, Execution, CapsuleRuntime
 from .runtime import RuntimeUnavailable, get_backend
@@ -213,6 +213,28 @@ def status(request, uuid):
     lease = _own_lease(request, uuid)
     services.refresh_runtime(lease)
     return JsonResponse(services.capsule_report(lease))
+
+
+@login_required
+def samples(request, uuid):
+    """One Capsule's history, as JSON. The 9.2 endpoint.
+
+    OWNER ONLY, through `_own_lease` like every other per-capsule route here:
+    a series of how hard somebody's capsule has been working is theirs, and
+    "somebody else's capsule is a 404" is the rule this app already follows.
+
+    NO FILENAMES AND NO CONTENTS — `storage_bytes` and `storage_files` are
+    counts, the boundary `executor/storage.py` draws and `samples.py` repeats.
+    There is deliberately no parameter here that could widen this into a
+    listing.
+    """
+    lease = _own_lease(request, uuid)
+    try:
+        hours = int(request.GET.get("hours", 24))
+    except (TypeError, ValueError):
+        # A junk window is 24 hours, not a 500. The caller is a chart.
+        hours = 24
+    return JsonResponse(samples_mod.series(lease, hours=hours))
 
 
 @login_required

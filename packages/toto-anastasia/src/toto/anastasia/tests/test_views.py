@@ -11,6 +11,7 @@ from django.urls import reverse
 
 from toto.anastasia import choices, services
 from toto.anastasia.models import ComputeLease
+from toto.anastasia.samples import CapsuleSample
 
 from .base import RUNNABLE, SMALL, AnastasiaTestCase
 
@@ -226,6 +227,53 @@ class StatusTests(DeskTestCase):
             self.assertEqual(
                 payload["booked"][field] + payload["available"][field],
                 payload["total"][field])
+
+
+class SamplesTests(DeskTestCase):
+    """The history endpoint behind the card's charts (9.2)."""
+
+    def setUp(self):
+        super().setUp()
+        self.lease = services.reserve(owner=self.user, name="lab",
+                                      limits=RUNNABLE)
+        self.theirs = services.reserve(owner=self.other, name="theirs",
+                                       limits=SMALL)
+        CapsuleSample.objects.create(lease=self.lease, cpu_percent=10.0,
+                                     ram_mb_used=100, storage_bytes=500)
+
+    def _url(self, lease, query=""):
+        return reverse("anastasia:samples", args=[lease.uuid]) + query
+
+    def test_the_owner_gets_the_series(self):
+        payload = json.loads(self.client.get(self._url(self.lease)).content)
+        self.assertEqual(payload["points"], 1)
+        cpu = next(m for m in payload["measures"] if m["key"] == "cpu_percent")
+        self.assertEqual(cpu["values"], [10.0])
+
+    def test_someone_elses_history_is_404(self):
+        """How hard a capsule has been worked is its owner's business, and a
+        403 would confirm the uuid exists — the rule every per-capsule route
+        in this app follows."""
+        response = self.client.get(self._url(self.theirs))
+        self.assertEqual(response.status_code, 404)
+
+    def test_a_junk_window_is_a_day_not_a_500(self):
+        """The caller is a chart with a query string, not a form with
+        validation."""
+        payload = json.loads(
+            self.client.get(self._url(self.lease, "?hours=lots")).content)
+        self.assertEqual(payload["hours"], 24)
+
+    def test_it_carries_counts_and_never_names(self):
+        """Storage is a size and a count. A history of CONTENTS would be worse
+        than a live listing, because it persists — the boundary
+        `executor/storage.py` draws, held at the far end of the wire."""
+        payload = json.loads(self.client.get(self._url(self.lease)).content)
+        keys = [m["key"] for m in payload["measures"]]
+        self.assertNotIn("storage_files", keys)
+        for measure in payload["measures"]:
+            for value in measure["values"]:
+                self.assertNotIsInstance(value, str)
 
 
 class PageTests(DeskTestCase):

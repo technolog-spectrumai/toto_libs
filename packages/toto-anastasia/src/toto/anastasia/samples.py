@@ -119,3 +119,74 @@ def prune(*, now=None, days: int = RETENTION_DAYS) -> int:
     cutoff = now - timezone.timedelta(days=days)
     deleted, _ = CapsuleSample.objects.filter(taken_at__lt=cutoff).delete()
     return deleted
+
+
+# ---------------------------------------------------------------------------
+# Reading the series back (9.2 / 9.6)
+# ---------------------------------------------------------------------------
+
+#: What a chart may ask for, and the widest window the table can honestly
+#: answer. Asking for more than `RETENTION_DAYS` is not an error — it is
+#: clamped, and `series()` reports the window it actually used, so a page that
+#: asked for a year does not draw thirty days and label them a year.
+MAX_HOURS = RETENTION_DAYS * 24
+
+#: The measures a capsule chart can draw, and the unit each is in.
+#:
+#: DECLARED RATHER THAN DERIVED from the model's fields: a chart that iterated
+#: the columns would start drawing `pids_used` and `executions_running` the day
+#: somebody added them to the table, on a page nobody had thought about. This
+#: tuple is the contract, and adding a line to it is the decision.
+MEASURES = (
+    ("cpu_percent", "CPU", "%"),
+    ("ram_mb_used", "RAM", "MB"),
+    ("storage_bytes", "Disk", "bytes"),
+)
+
+
+def series(lease, *, hours: int = 24) -> dict:
+    """One capsule's history, ready for a chart.
+
+    NULL SURVIVES AS NULL, and that is the whole reason this function exists
+    rather than a list comprehension at the call site. A sample taken while the
+    runtime was unreachable recorded what it could and left the rest NULL,
+    which means "not measured" — and this module's own header says a zero in
+    its place "would be charted as a capsule that emptied itself". Chart.js
+    draws `null` as a GAP, which is the truth; it draws `0` as a floor, which
+    is a lie. So the conversion must not coalesce.
+
+    OLDEST FIRST. The table's index is newest-first because every other reader
+    wants the latest row; a chart wants time to run left to right, and
+    reversing in the template is how one caller ends up drawing it backwards.
+    """
+    hours = max(1, min(int(hours or 24), MAX_HOURS))
+    # timezone.timedelta, matching prune() and should_sample() above: Django
+    # re-exports it and this module never imports datetime.
+    cutoff = timezone.now() - timezone.timedelta(hours=hours)
+    rows = list(CapsuleSample.objects.filter(lease=lease, taken_at__gte=cutoff)
+                .order_by("taken_at"))
+    return {
+        "hours": hours,
+        "points": len(rows),
+        # ISO 8601, in UTC, because the browser is the only thing that knows
+        # which timezone to show and it can only convert from something
+        # unambiguous.
+        "taken_at": [r.taken_at.isoformat() for r in rows],
+        "measures": [
+            {
+                "key": key,
+                "label": label,
+                "unit": unit,
+                "values": [getattr(r, key) for r in rows],
+                # Whether ANYTHING was measured. A measure that is entirely
+                # NULL is not a flat line at zero and must not be drawn as
+                # one — the caller hides it and says why.
+                "measured": any(getattr(r, key) is not None for r in rows),
+            }
+            for key, label, unit in MEASURES
+        ],
+        #: The oldest and newest readings, so a page can say how stale the
+        #: picture is. The desk already has that habit for live samples.
+        "oldest": rows[0].taken_at.isoformat() if rows else "",
+        "newest": rows[-1].taken_at.isoformat() if rows else "",
+    }

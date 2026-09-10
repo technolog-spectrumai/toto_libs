@@ -93,3 +93,98 @@ class PruneTests(AnastasiaTestCase):
         samples.record(self.lease, {"state": "ready"})
         self.lease.delete()
         self.assertEqual(samples.CapsuleSample.objects.count(), 0)
+
+
+class SeriesTests(AnastasiaTestCase):
+    """Reading the history back, for a chart or the JSON endpoint (9.2/9.6)."""
+
+    def setUp(self):
+        super().setUp()
+        self.lease = services.reserve(owner=self.user, name="c", limits=SMALL)
+
+    def _at(self, minutes_ago, **fields):
+        """A reading placed in the past, bypassing the throttle deliberately.
+
+        `record()` refuses a second reading inside MIN_INTERVAL_SECONDS, which
+        is the behaviour PruneTests relies on; a series test needs several
+        readings and cares about their ORDER, not about how they were spaced.
+        """
+        return samples.CapsuleSample.objects.create(
+            lease=self.lease,
+            taken_at=timezone.now() - timezone.timedelta(minutes=minutes_ago),
+            **fields)
+
+    def test_null_stays_null_and_is_never_zero(self):
+        """THE TEST THIS CLASS EXISTS FOR.
+
+        Chart.js draws `null` as a gap and `0` as a floor. A sample taken while
+        the runtime was unreachable recorded what it could and left the rest
+        NULL — coalescing here would draw a capsule that emptied itself, which
+        is this module's oldest rule stated at the reading end.
+        """
+        self._at(30, cpu_percent=40.0, ram_mb_used=512, storage_bytes=1000)
+        self._at(20)
+        self._at(10, cpu_percent=55.0, ram_mb_used=640, storage_bytes=1200)
+        out = samples.series(self.lease, hours=1)
+        cpu = next(m for m in out["measures"] if m["key"] == "cpu_percent")
+        self.assertEqual(cpu["values"], [40.0, None, 55.0])
+
+    def test_it_reads_oldest_first(self):
+        """A chart wants time left to right. The table's own ordering is
+        newest-first because every other reader wants the latest row, and
+        reversing in a template is how one caller draws it backwards."""
+        self._at(10, cpu_percent=3.0)
+        self._at(30, cpu_percent=1.0)
+        self._at(20, cpu_percent=2.0)
+        out = samples.series(self.lease, hours=1)
+        cpu = next(m for m in out["measures"] if m["key"] == "cpu_percent")
+        self.assertEqual(cpu["values"], [1.0, 2.0, 3.0])
+
+    def test_an_entirely_unmeasured_measure_says_so(self):
+        """Not a flat line at zero: `measured` is False, so the card hides the
+        line and explains rather than drawing a floor nobody measured."""
+        self._at(10, cpu_percent=12.0)
+        out = samples.series(self.lease, hours=1)
+        disk = next(m for m in out["measures"] if m["key"] == "storage_bytes")
+        self.assertFalse(disk["measured"])
+        self.assertEqual(disk["values"], [None])
+        cpu = next(m for m in out["measures"] if m["key"] == "cpu_percent")
+        self.assertTrue(cpu["measured"])
+
+    def test_the_window_is_clamped_to_what_is_retained(self):
+        """Asking for a year draws thirty days; the answer says thirty, so a
+        page cannot label a month as a year."""
+        self.assertEqual(samples.series(self.lease, hours=24 * 365)["hours"],
+                         samples.MAX_HOURS)
+        # A zero window is not a window; it is an unspecified one, and it
+        # falls back to the default day rather than to the one-hour floor. A
+        # NEGATIVE window is somebody's arithmetic and clamps to that floor.
+        self.assertEqual(samples.series(self.lease, hours=0)["hours"], 24)
+        self.assertEqual(samples.series(self.lease, hours=-5)["hours"], 1)
+
+    def test_a_reading_outside_the_window_is_not_in_it(self):
+        self._at(10, cpu_percent=1.0)
+        self._at(60 * 5, cpu_percent=9.0)
+        out = samples.series(self.lease, hours=1)
+        self.assertEqual(out["points"], 1)
+
+    def test_it_reads_one_capsule_only(self):
+        other = services.reserve(owner=self.user, name="d", limits=SMALL)
+        samples.CapsuleSample.objects.create(lease=other, cpu_percent=99.0)
+        self._at(5, cpu_percent=1.0)
+        out = samples.series(self.lease, hours=1)
+        cpu = next(m for m in out["measures"] if m["key"] == "cpu_percent")
+        self.assertEqual(cpu["values"], [1.0])
+
+    def test_the_measures_are_declared_not_derived(self):
+        """Adding a line to a user's chart is a decision, never a side effect
+        of somebody adding a column to the table."""
+        out = samples.series(self.lease, hours=1)
+        self.assertEqual([m["key"] for m in out["measures"]],
+                         ["cpu_percent", "ram_mb_used", "storage_bytes"])
+
+    def test_an_empty_history_is_an_empty_series_not_an_error(self):
+        out = samples.series(self.lease)
+        self.assertEqual(out["points"], 0)
+        self.assertEqual(out["oldest"], "")
+        self.assertTrue(all(m["values"] == [] for m in out["measures"]))
