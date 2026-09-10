@@ -527,3 +527,155 @@ class RegistryContractTests(WorkspaceApiTestCase):
             settings_template=app.settings_template,
             room_panels=app.room_panels, snapshot=app.snapshot,
             restore=app.restore, run=hook, poll=app.poll)
+
+
+class VaultRulesTests(WorkspaceApiTestCase):
+    """The API must not be a way round the vault's own rules.
+
+    Every write here goes through `services`, which is where size limits, type
+    rules, the antivirus door and the storage levy's byte count live. A view
+    that touched `VaultFile` directly would bypass all four, and the symptom
+    would be a quota that stops adding up rather than an error.
+    """
+
+    def _a_file(self, name="notes.py"):
+        return self.call("post", self.api("/files/new"),
+                         body={"name": name}).json()["pk"]
+
+    def test_a_write_updates_the_billed_byte_count(self):
+        """`file_size_bytes` is what the storage levy bills. A write that did
+        not update it would be free storage."""
+        from toto.vault.models import VaultFile
+
+        pk = self._a_file()
+        self.call("post", self.api(f"/files/{pk}/save"),
+                  body={"content": "x" * 500})
+        self.assertEqual(VaultFile.objects.get(pk=pk).file_size_bytes, 500)
+
+    def test_the_reported_size_is_the_stored_size(self):
+        pk = self._a_file()
+        body = self.call("post", self.api(f"/files/{pk}/save"),
+                         body={"content": "abc"}).json()
+        read = self.call("get", self.api(f"/files/{pk}")).json()
+        self.assertEqual(body["size"], read["size"])
+
+    def test_a_file_lands_in_the_workspace_bucket(self):
+        """Not at the vault root, and not in somebody else's bucket. The bucket
+        IS the boundary every file lookup here relies on."""
+        from toto.vault.models import VaultFile
+
+        pk = self._a_file()
+        self.assertEqual(VaultFile.objects.get(pk=pk).bucket_id,
+                         self.ws.bucket_id)
+
+    def test_a_duplicate_name_is_refused_with_a_sentence(self):
+        """`VaultFile.save()` raises on a duplicate key — unique per BUCKET —
+        so this must be caught and phrased rather than 500ing."""
+        self._a_file("twice.py")
+        response = self.call("post", self.api("/files/new"),
+                             body={"name": "twice.py"})
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("twice.py", response.json()["error"])
+
+    def test_creating_in_a_directory_puts_it_there(self):
+        made = self.call("post", self.api("/folders/new"),
+                         body={"name": "src"}).json()
+        folder = next(i for i in made["items"] if i["name"] == "src")
+        created = self.call("post", self.api("/files/new"),
+                            body={"name": "inner.py", "directory": folder["id"]})
+        self.assertEqual(created.status_code, 201, created.content)
+        row = next(i for i in created.json()["items"] if i["name"] == "inner.py")
+        self.assertEqual(row["pid"], folder["id"])
+
+    def test_a_directory_from_another_bucket_is_a_404(self):
+        """`_resolve_dir`'s rule, reused: anywhere in this bucket, nowhere
+        else. Without it a caller could plant a file in somebody else's tree."""
+        theirs = self.make_workspace(owner=self.other, name="Theirs",
+                                     kind=WorkspaceKind.PYTHON)
+        response = self.call("post", self.api("/files/new"),
+                             body={"name": "x.py",
+                                   "directory": theirs.root_directory_id})
+        self.assertEqual(response.status_code, 404)
+
+
+class TreeShapeTests(WorkspaceApiTestCase):
+    """The tree the client draws.
+
+    Its exact shape matters more than most: the desktop client builds paths by
+    walking `pid`, and a renamed key would leave every row at the top level
+    with no error anywhere.
+    """
+
+    def test_a_row_carries_what_the_client_walks(self):
+        self.call("post", self.api("/files/new"), body={"name": "a.py"})
+        items = self.call("get", self.api("/tree")).json()["items"]
+        row = next(i for i in items if i["name"] == "a.py")
+        for key in ("t", "id", "pid", "depth", "name"):
+            self.assertIn(key, row, f"the client walks {key}")
+
+    def test_directories_and_files_are_told_apart_by_t(self):
+        self.call("post", self.api("/folders/new"), body={"name": "src"})
+        items = self.call("get", self.api("/tree")).json()["items"]
+        kinds = {i["name"]: i["t"] for i in items}
+        self.assertEqual(kinds["src"], "dir")
+
+    def test_AN_ID_IS_ONLY_UNIQUE_WITHIN_ITS_KIND(self):
+        """THE TRAP IN THIS SHAPE, and it is easy to walk into.
+
+        `id` is the primary key of `VaultFile` OR of `VaultDirectory` — two
+        tables, two sequences — so a directory and a file routinely share a
+        number. Any `{row.id: row}` map silently loses one of them, and any
+        "find the row with this id" matches the wrong kind.
+
+        Written as a test rather than a comment because the first version of
+        the depth test below did exactly that and produced a confusing
+        off-by-one instead of an obvious failure. `pid` is a DIRECTORY id
+        always, which is what makes the walk work at all.
+        """
+        made = self.call("post", self.api("/folders/new"),
+                         body={"name": "outer"}).json()
+        outer = next(i for i in made["items"] if i["name"] == "outer")
+        self.call("post", self.api("/files/new"),
+                  body={"name": "deep.py", "directory": outer["id"]})
+        items = self.call("get", self.api("/tree")).json()["items"]
+
+        ids = [i["id"] for i in items]
+        self.assertNotEqual(
+            len(ids), len(set(ids)),
+            "ids happen to be unique in this fixture, so this test is no "
+            "longer demonstrating the trap — pick a fixture that collides")
+        # …and unique once the kind is part of the key, which is the fix.
+        keyed = [(i["t"], i["id"]) for i in items]
+        self.assertEqual(len(keyed), len(set(keyed)))
+
+    def test_depth_and_pid_agree(self):
+        """A child's depth is its parent's plus one. The client indents on
+        `depth` and nests on `pid`; if they disagreed the tree would render
+        with rows at the wrong level under the right parent.
+
+        Keyed on `(t, id)` — see the test above for why `{id: row}` is wrong.
+        """
+        made = self.call("post", self.api("/folders/new"),
+                         body={"name": "outer"}).json()
+        outer = next(i for i in made["items"] if i["name"] == "outer")
+        self.call("post", self.api("/files/new"),
+                  body={"name": "deep.py", "directory": outer["id"]})
+        items = self.call("get", self.api("/tree")).json()["items"]
+        dirs = {i["id"]: i for i in items if i["t"] == "dir"}
+        deep = next(i for i in items if i["name"] == "deep.py")
+        self.assertEqual(deep["depth"], dirs[deep["pid"]]["depth"] + 1)
+
+    def test_a_python_file_is_marked_runnable(self):
+        self.call("post", self.api("/files/new"), body={"name": "script.py"})
+        items = self.call("get", self.api("/tree")).json()["items"]
+        row = next(i for i in items if i["name"] == "script.py")
+        self.assertTrue(row["runnable"])
+
+    def test_the_tree_is_scoped_to_this_workspace(self):
+        """Two workspaces in two buckets must not see each other's files."""
+        other_ws = self.make_workspace(name="Second", kind=WorkspaceKind.PYTHON)
+        self.call("post", self.api("/files/new", slug=other_ws.slug),
+                  body={"name": "elsewhere.py"})
+        names = {i["name"] for i in
+                 self.call("get", self.api("/tree")).json()["items"]}
+        self.assertNotIn("elsewhere.py", names)

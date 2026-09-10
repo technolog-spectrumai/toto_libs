@@ -861,3 +861,83 @@ class JobLogTests(ApiTestCase):
             response = self._logs()
         self.assertEqual(response.status_code, 501)
         self.assertEqual(response.json()["code"], "unsupported")
+
+
+class InputRoundTripTests(ApiTestCase):
+    """What a client stages is what the runner receives.
+
+    The client base64-encodes; the server decodes and tars; the executor
+    untars. Three hops, and the one that silently corrupts is encoding — a
+    naive `btoa` mangles anything outside Latin-1 and nothing raises.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.lease = services.reserve(owner=self.user, name="lab",
+                                      limits=Limits(3000, 6144, 6144, 768))
+        services.mount(lease=self.lease, actor=self.user)
+        FakeRuntimeBackend.reset()
+
+    def test_utf8_survives_the_encode_decode_tar_round_trip(self):
+        """A Polish comment or an emoji in a script must arrive byte-identical.
+        This is the hop where a naive base64 mangles it silently."""
+        import base64
+
+        from toto.anastasia import jobs as jobs_mod
+
+        source = "# zażółć gęślą jaźń\nprint('🐍')\n".encode("utf-8")
+        seen = {}
+        original = jobs_mod.tar_of
+
+        def spy(files):
+            seen.update(files)
+            return original(files)
+
+        with mock.patch.object(jobs_mod, "tar_of", spy):
+            response = self.call(
+                "post", f"/api/v1/capsules/{self.lease.uuid}/jobs",
+                body={"operation": "run_python",
+                      "inputs": {"main.py": base64.b64encode(source).decode()}})
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(seen["main.py"], source)
+        self.assertEqual(seen["main.py"].decode("utf-8"),
+                         "# zażółć gęślą jaźń\nprint('🐍')\n")
+
+    def test_binary_content_is_not_mangled(self):
+        """A `.png` a script needs, or a `.sty`. Base64 carries bytes, and
+        nothing on this path may assume text."""
+        import base64
+
+        from toto.anastasia import jobs as jobs_mod
+
+        blob = bytes(range(256))
+        seen = {}
+        with mock.patch.object(jobs_mod, "tar_of",
+                               lambda files: seen.update(files) or b""):
+            self.call("post", f"/api/v1/capsules/{self.lease.uuid}/jobs",
+                      body={"operation": "run_python",
+                            "inputs": {"logo.png": base64.b64encode(blob).decode()}})
+        self.assertEqual(seen["logo.png"], blob)
+
+    def test_an_empty_file_is_staged_rather_than_dropped(self):
+        """An empty `__init__.py` is a real thing a Python project needs."""
+        from toto.anastasia import jobs as jobs_mod
+
+        seen = {}
+        with mock.patch.object(jobs_mod, "tar_of",
+                               lambda files: seen.update(files) or b""):
+            self.call("post", f"/api/v1/capsules/{self.lease.uuid}/jobs",
+                      body={"operation": "run_python",
+                            "inputs": {"__init__.py": ""}})
+        self.assertIn("__init__.py", seen)
+        self.assertEqual(seen["__init__.py"], b"")
+
+    def test_the_tar_a_client_sends_is_readable_by_the_runner_helper(self):
+        """End to end through the real `tar_of`/`files_from` pair, which is
+        what the executor untars with. A tar this pair cannot round-trip is one
+        the runner would find empty."""
+        from toto.anastasia import jobs as jobs_mod
+
+        files = {"main.py": "print('hi')\n".encode("utf-8"),
+                 "sub/helper.py": b"x = 1\n"}
+        self.assertEqual(jobs_mod.files_from(jobs_mod.tar_of(files)), files)
