@@ -311,9 +311,11 @@ Rich output renders `image/png` (matplotlib), `image/svg+xml`, `text/html` and
 offers `text/plain` alongside a figure, and sending both would draw the chart and
 then its repr underneath it.
 
-Three ways in, all through the same path: **Run file** (saves first — running a
+Two ways in, both through the same path: **Run file** (saves first — running a
 buffer that differs from the file on disk is the kind of confusion that costs an
-afternoon), **Run selection**, and typing at the prompt.
+afternoon), and typing at the prompt. **Run selection** was removed on
+2026-09-10 with the rest of the built-in interface work; the assistant's
+read/write handlers use the ACE selection API directly and were unaffected.
 
 ## Security
 

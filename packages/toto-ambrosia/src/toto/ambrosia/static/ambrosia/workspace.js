@@ -431,10 +431,12 @@
       },
 
       /* ---- the assistant --------------------------------------------------
-       * The workspace room already knew how to read a selection — `runSelection`
-       * below has done it since it was written. This hands the same two
-       * operations to the shared client, so a Python or LaTeX file open in a
-       * lab gets the same toolbar as one open in the plain editor.
+       * This hands read and write to the shared client, so a Python or LaTeX
+       * file open in a lab gets the same toolbar as one open in the plain
+       * editor. It uses the ACE selection API directly and does NOT depend on
+       * the room's own run-a-selection button, which was removed on
+       * 2026-09-10 — the assistant kept working precisely because it never
+       * borrowed it.
        *
        * The surface is chosen from the workspace KIND, because that is what
        * decides the language here: a .py inside a LaTeX project opens in the
@@ -485,13 +487,6 @@
                      height: self.editor.renderer.lineHeight || 16, width: 0 };
           },
         });
-      },
-
-      runSelection: function () {
-        if (!this.editor) return;
-        var selected = this.editor.getSelectedText();
-        if (!selected.trim()) { this.statusLine = "Nothing selected."; return; }
-        this.execute(selected, "(selection)");
       },
 
       runPrompt: function () {

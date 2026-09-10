@@ -86,13 +86,6 @@
       {% if config_data.stevenSurface %}
         {% include "steven/_ai.html" with surface=config_data.stevenSurface %}
       {% endif %}
-      <button type="button" @click="runSelection()" :disabled="!activeTab || !kernelReady"
-              title="{% trans "Run selection" %}" aria-label="{% trans "Run selection" %}"
-              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-              class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-30">
-        <i class="fa-solid fa-square-caret-right"></i>
-        <span class="hidden sm:inline">{% trans "Run selection" %}</span>
-      </button>
 
       <span class="mx-1 hidden h-6 w-px opacity-20 sm:inline-block" :class="darkMode ? 'bg-text-main-dark' : 'bg-text-main-light'"></span>
 

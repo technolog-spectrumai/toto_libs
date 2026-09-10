@@ -1,10 +1,18 @@
 """Who may open a workspace, and who may run code in one.
 
 These are two different questions and the second is the serious one. Editing a
-file is ordinary vault access. Running code is not: by decision this platform
-runs workspace code as the server, with the ORM, SECRET_KEY, database
-credentials and the media volume all reachable. So execution is gated on a
-deliberate grant rather than on merely owning a workspace.
+file is ordinary vault access. Running code is not: it spends capacity somebody
+reserved, and on a shared-kernel deployment it runs beside the vault. So
+execution is gated on a deliberate grant rather than on merely owning a
+workspace.
+
+WHAT THIS USED TO SAY, and why the correction matters: "by decision this
+platform runs workspace code as the server, with the ORM, SECRET_KEY, database
+credentials and the media volume all reachable". True until 1.50; false since.
+Code runs in a capsule now — in another kernel entirely on the Kata tier —
+reaching no credential and no database. The grant is still right, for the
+reasons above; the reasoning behind it was three versions out of date, and a
+stale security claim is one somebody eventually acts on.
 """
 
 from __future__ import annotations
