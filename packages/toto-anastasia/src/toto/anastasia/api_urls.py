@@ -26,6 +26,10 @@ urlpatterns = [
     path("capsules/<uuid:uuid>/storage", api.capsule_storage,
          name="capsule_storage"),
     path("capsules/<uuid:uuid>/jobs", api.job_create, name="job_create"),
+    # Installs: POST starts one, GET lists them. Above the catch-all for the
+    # reason the comment below gives.
+    path("capsules/<uuid:uuid>/installs", api.install_collection,
+         name="install_collection"),
     # LAST, because `<str:action>` matches anything — including "storage" and
     # "jobs". Django takes the first pattern that matches, so a catch-all
     # placed above its siblings silently swallows them: /storage came back 405
@@ -38,4 +42,9 @@ urlpatterns = [
     # job is finished. Both are needed and they answer different questions.
     path("jobs/<uuid:uuid>/logs", api.job_logs, name="job_logs"),
     path("jobs/<uuid:uuid>/output", api.job_output, name="job_output"),
+    # A watched install: reading it advances it. `?since=` keeps a client's
+    # place in the log copy.
+    path("installs/<uuid:uuid>", api.install_detail, name="install_detail"),
+    path("installs/<uuid:uuid>/cancel", api.install_cancel,
+         name="install_cancel"),
 ]

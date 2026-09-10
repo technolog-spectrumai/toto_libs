@@ -139,6 +139,10 @@ SOURCES: tuple = (
     JobSource(key="capsule_job", label="Capsule jobs",
               app_label="toto.anastasia", model="anastasia.Execution",
               select_related=("lease",)),
+    # A watched install. Its sentence lives in `detail`, not `error`.
+    JobSource(key="capsule_install", label="Capsule installs",
+              app_label="toto.anastasia", model="anastasia.InstallRun",
+              error_fields=("detail",), select_related=("lease",)),
 )
 
 

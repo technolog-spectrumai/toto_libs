@@ -28,11 +28,11 @@ import json
 from django.core.exceptions import ValidationError
 from django.http import Http404, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
-from . import choices, execute, jobs, runtime, services
+from . import choices, execute, install, jobs, runtime, services
 from .limits import Limits, LimitsError
-from .models import ComputeLease, Execution
+from .models import ComputeLease, Execution, InstallRun
 from .tokens import CapsuleToken
 
 #: The version in the path. When a shape must break, v2 appears beside v1 and
@@ -387,6 +387,75 @@ def job_logs(request, owner, uuid):
         "complete": bool(slice_.get("complete", True)),
         "finished": execution.status in choices.FINISHED,
     })
+
+
+# --------------------------------------------------------------------------- #
+# Installs — a job that is watched                                            #
+# --------------------------------------------------------------------------- #
+
+def _own_install(owner, uuid) -> InstallRun:
+    run = InstallRun.objects.filter(
+        uuid=uuid, lease__owner=owner).select_related("lease", "execution").first()
+    if run is None:
+        raise Http404("no such install")
+    return run
+
+
+@require_http_methods(["GET", "POST"])
+@token_required
+def install_collection(request, owner, uuid):
+    """``POST`` starts an install into this Capsule; ``GET`` lists recent ones.
+
+    The body names `packages`, as "numpy+pandas" or as a list of names. Names
+    only — the `dists` parameter refuses versions and operators, and says so.
+    A Capsule reserved without internet access is refused with a sentence
+    before anything starts (`install.NO_EGRESS`).
+    """
+    lease = _own_lease(owner, uuid)
+    if request.method == "GET":
+        runs = lease.installs.select_related("lease", "execution")[:20]
+        return JsonResponse({"installs": [install.describe(r) for r in runs]})
+    payload = _body(request)
+    packages = payload.get("packages")
+    if isinstance(packages, (list, tuple)):
+        packages = "+".join(str(name) for name in packages)
+    if not isinstance(packages, str) or not packages:
+        return _error("`packages` must name at least one distribution, as "
+                      "“numpy+pandas” or a list of names.", code="bad_packages")
+    try:
+        run = install.start(lease=lease, dists=packages, requested_by=owner,
+                            timeout=payload.get("timeout"))
+    except ValidationError as exc:
+        return _refusal(exc)
+    return JsonResponse(install.describe(run), status=201)
+
+
+@require_GET
+@token_required
+def install_detail(request, owner, uuid):
+    """The run, advanced: reading it is what pulls the next slice of log.
+
+    ``?since=N`` returns the log from character N, so a client that already
+    has the first N keeps its place; `log_length` in the body is where to ask
+    from next. The whole copy is capped — `log_truncated` says when it was.
+    """
+    run = install.refresh(_own_install(owner, uuid))
+    try:
+        since = max(0, int(request.GET.get("since") or 0))
+    except (TypeError, ValueError):
+        since = 0
+    body = install.describe(run)
+    body["log"] = run.log[since:]
+    body["log_since"] = min(since, len(run.log))
+    return JsonResponse(body)
+
+
+@require_POST
+@token_required
+def install_cancel(request, owner, uuid):
+    run = install.cancel(_own_install(owner, uuid), actor=owner,
+                         reason=str(_body(request).get("reason") or "")[:200])
+    return JsonResponse(install.describe(run))
 
 
 @require_GET
