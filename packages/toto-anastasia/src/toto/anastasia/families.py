@@ -37,13 +37,13 @@ _SAFE_LANG = re.compile(r"^[a-z]{3}(\+[a-z]{3}){0,3}$")
 #: A plain name — an output stem, never a path and never an extension.
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,59}$")
 
-#: A wheelhouse selection: PEP 503 normalised distribution names, joined by
-#: "+" the way _SAFE_LANG joins OCR languages. NO VERSIONS AND NO OPERATORS —
-#: the wheelhouse pins exactly one build of each distribution, so a version in
-#: a request could only ever agree with the pin or contradict it, and a
-#: requirement specifier is a small language nobody needs here. It is also what
-#: keeps this out of argv-injection territory: the names go to pip as separate
-#: arguments after --no-index, and nothing else can be spelled.
+#: Distribution names to install: PEP 503 normalised, joined by "+" the way
+#: _SAFE_LANG joins OCR languages. NO VERSIONS AND NO OPERATORS. Written when
+#: the names selected from a pinned wheelhouse; kept now that they reach an
+#: index through the Capsule's filtering proxy, because a requirement
+#: specifier is a small language nobody needs here and the rule is what keeps
+#: this out of argv-injection territory: each name goes to pip as ONE separate
+#: argument, and nothing else can be spelled.
 _SAFE_DISTS = re.compile(r"^[a-z0-9]([a-z0-9._-]*[a-z0-9])?"
                          r"(\+[a-z0-9]([a-z0-9._-]*[a-z0-9])?)*$")
 
@@ -171,13 +171,16 @@ class Family:
     #: kernel's ports. That network reaches no database, no broker and no
     #: internet.
     #:
-    #: EGRESS IS GONE (2026-09-10). A `needs_egress` posture existed for one
     #: NO NETWORK FIELD AT ALL, since 2026-09-10. Two have been deleted here.
     #:
     #: `needs_egress` was first: one shape of job — fetching declared packages
     #: from an index in a throwaway container — and the only way anything in a
-    #: Capsule could reach the internet. Both families that declared it are
-    #: deleted and dependencies are baked into the runner images.
+    #: Capsule could reach the internet. Both families that declared it were
+    #: deleted. INTERNET ACCESS CAME BACK THE SAME DAY AS A PROPERTY OF THE
+    #: RESERVATION, never of a family: `ComputeLease.egress` is asked at
+    #: reservation, and a runner in such a Capsule gets one NIC onto the
+    #: filtering proxy (see executor/egress.py). The install operation below
+    #: exists again on that basis and refuses a Capsule without it.
     #:
     #: `kernel_link` was second. It put the python family on the Capsule's
     #: internal network so the web tier could reach a long-lived kernel's ZMQ
@@ -382,10 +385,27 @@ RUN_PYTHON = Operation(
     outputs=(),
 )
 
+INSTALL_PACKAGES = Operation(
+    name="install_packages", family=PYTHON, label="Install Python packages",
+    params=(
+        # Names only, normalised — see `_SAFE_DISTS`. What pip resolves them
+        # to is whatever the index serves today, and the install log says
+        # which versions those were.
+        Param("dists", "dists", required=True),
+    ),
+    # Minutes, not seconds: resolution plus downloads through a proxy. The
+    # ceiling is still a ceiling — an install that takes half an hour is a
+    # Capsule holding a NIC for half an hour, and the deadline kill closes it.
+    default_timeout=600, max_timeout=1800,
+    # Nothing in /out. The packages land in the Capsule's own files area
+    # (/files/site-packages), which is what makes them survive this job.
+    outputs=(),
+)
+
 OPERATIONS = {
     op.name: op for op in (
         RENDER_PDF, COMPILE_LATEX, RUN_MEDIA_COMMAND, RUN_OCR,
-        RUN_PYTHON,
+        RUN_PYTHON, INSTALL_PACKAGES,
     )
 }
 

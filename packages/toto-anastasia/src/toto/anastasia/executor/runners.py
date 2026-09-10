@@ -96,11 +96,55 @@ def _run_python(params: dict) -> list:
     # One script, once. The long-lived kernel runner this replaces wrote
     # /out/connection.json and stayed up until the Capsule was unmounted; there
     # is no such family any more, and nothing in a Capsule outlives its job.
-    return ["anastasia-run-python", "--script", params["script"]]
+    #
+    # PYTHONPATH names the install target so packages an earlier
+    # `install_packages` put in the Capsule's files area are importable. A
+    # directory that does not exist is ignored by the interpreter, so a
+    # Capsule that never installed anything runs exactly as before.
+    return ["env", f"PYTHONPATH={SITE_PACKAGES}",
+            "anastasia-run-python", "--script", params["script"]]
+
+
+#: Where an install puts its packages, and where a script finds them. ONE
+#: constant, because the two argv builders below must agree and a path spelled
+#: twice is a path that drifts: an install into one directory and a script
+#: reading another is "import numpy" failing after a green install.
+SITE_PACKAGES = "/files/site-packages"
+
+
+def _install_packages(params: dict) -> list:
+    """pip, into the Capsule's files area, one name per argument.
+
+    `env` FIRST, because the runner's rootfs is read-only and the image's
+    default temp and cache locations are on it. TMPDIR is where pip unpacks
+    wheels; HOME is where it would write a cache and a config it must not
+    find; both point at /scratch, the one writable tmpfs every runner has.
+    PIP_NO_CACHE_DIR keeps it from trying anyway.
+
+    `--target` rather than a user or system install: nothing is written into
+    the image, and the result is a directory a later job puts on its
+    PYTHONPATH. `--upgrade` because a second install of a name already there
+    is a request to replace it, not a no-op with a warning. `--no-input` and
+    `--progress-bar off` because nobody is typing and the log is read as text.
+
+    The proxy is not named here: a Capsule with egress hands every runner
+    HTTPS_PROXY (executor/egress.py), and pip honours it. A Capsule without
+    egress has no NIC, so pip fails at the first connection — loudly, which
+    is the posture — but the app refuses such an install before it starts.
+    """
+    names = params["dists"].split("+")
+    return [
+        "env", "TMPDIR=/scratch", "HOME=/scratch", "PIP_NO_CACHE_DIR=1",
+        "python", "-m", "pip", "install",
+        "--disable-pip-version-check", "--no-input", "--progress-bar", "off",
+        "--upgrade", "--target", SITE_PACKAGES,
+        *names,
+    ]
 
 
 _BUILDERS = {
     "render_pdf": _render_pdf,
+    "install_packages": _install_packages,
     "compile_latex": _compile_latex,
     "run_media_command": _run_media_command,
     "run_ocr": _run_ocr,

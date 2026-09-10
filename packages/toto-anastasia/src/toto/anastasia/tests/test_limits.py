@@ -167,6 +167,12 @@ class CatalogueTests(SimpleTestCase):
         families, and no operation names a family outside it. If a batch family
         ever gains egress, a job that renders somebody else's document has an
         exfiltration path.
+
+        STILL TRUE WITH INTERNET ACCESS BACK (2026-09-10/11): egress is a
+        property of the RESERVATION (`ComputeLease.egress`), never of a
+        family, and the install operation that returned with it runs in the
+        python family like any other job — it is the Capsule that has a NIC,
+        not the family.
         """
         for key, fam in families.FAMILIES.items():
             with self.subTest(family=key):
@@ -178,12 +184,13 @@ class CatalogueTests(SimpleTestCase):
             with self.subTest(operation=name):
                 self.assertIn(op.family.key, families.FAMILIES)
 
-    def test_the_install_operation_is_gone(self):
-        """Nothing may ask a Capsule to install packages.
-
-        `install_python_packages` and `start_python_runtime_connected` were the
-        two operations with egress. Both are deleted; asking for either must be
-        a refusal naming what exists, not a KeyError.
+    def test_the_old_install_operations_stay_gone(self):
+        """`install_python_packages` and `start_python_runtime_connected` were
+        the two operations that carried egress ON THE FAMILY. Both stay
+        deleted; asking for either must be a refusal naming what exists, not a
+        KeyError. The install that exists now (`install_packages`, below) is a
+        different thing: it has no network of its own and runs only in a
+        Capsule whose reservation has one.
         """
         for name in ("install_python_packages",
                      "start_python_runtime_connected"):
@@ -191,6 +198,23 @@ class CatalogueTests(SimpleTestCase):
                 self.assertNotIn(name, families.OPERATIONS)
                 with self.assertRaises(families.ParamError):
                     families.operation(name)
+
+    def test_installing_packages_is_an_operation_on_the_python_family(self):
+        """THE DECISION, pinned (todo 9.4, 2026-09-11). An install is an
+        ordinary python-family job whose argv is pip; nothing about the
+        family changed, and the one parameter is the names-only `dists`."""
+        op = families.operation("install_packages")
+        self.assertIs(op.family, families.PYTHON)
+        self.assertEqual([p.name for p in op.params], ["dists"])
+        self.assertEqual(op.params[0].kind, "dists")
+        self.assertTrue(op.params[0].required)
+        # Names only. A version or an operator is a refusal in a sentence.
+        for bad in ("numpy==1.0", "numpy>=2", "numpy pandas", "-e .", ""):
+            with self.subTest(dists=bad):
+                with self.assertRaises(families.ParamError):
+                    op.clean({"dists": bad})
+        self.assertEqual(op.clean({"dists": "NumPy+Pandas"})["dists"],
+                         "numpy+pandas")
 
     def test_every_family_default_is_above_the_reservation_floor(self):
         """A family whose default runner could not fit in the smallest legal
