@@ -294,3 +294,69 @@ class RouteOrderTests(ApiTestCase):
         self.assertIn(response.status_code, (200, 409),
                       "mount must still resolve through the catch-all")
 
+
+class JobOutputTests(ApiTestCase):
+    """Fetching what a job produced, without a browser."""
+
+    def _execution(self, status):
+        from toto.anastasia.models import Execution
+
+        lease = services.reserve(owner=self.user, name="o", limits=SMALL)
+        return Execution.objects.create(
+            lease=lease, operation="render_pdf", family="pdf", status=status,
+            cpu_millicores=500, ram_mb=128, scratch_mb=64, pids=32,
+            timeout_seconds=60, requested_by=self.user)
+
+    def test_a_running_job_refuses_rather_than_returning_a_partial(self):
+        """A partial output that looks complete is the kind of answer a client
+        writes to a file and a person then trusts."""
+        from toto.anastasia import choices
+
+        execution = self._execution(choices.RUNNING)
+        response = self.call("get", f"/api/v1/jobs/{execution.uuid}/output")
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "still_running")
+
+    def test_a_finished_job_returns_its_files_base64(self):
+        import base64
+        from unittest import mock
+
+        from toto.anastasia import choices, jobs, runtime
+
+        execution = self._execution(choices.SUCCESS)
+        backend = mock.Mock()
+        backend.collect.return_value = jobs.tar_of({"out.pdf": b"%PDF-1.4"})
+        with mock.patch.object(runtime, "get_backend", return_value=backend):
+            body = self.call(
+                "get", f"/api/v1/jobs/{execution.uuid}/output").json()
+        self.assertEqual(base64.b64decode(body["files"]["out.pdf"]), b"%PDF-1.4")
+
+    def test_an_unreachable_runtime_is_a_503_not_a_500(self):
+        """A 500 sends a client into a retry loop against a machine that is
+        down; a 503 says come back later, which is the truth."""
+        from unittest import mock
+
+        from toto.anastasia import choices, runtime
+
+        execution = self._execution(choices.SUCCESS)
+        backend = mock.Mock()
+        backend.collect.side_effect = OSError("socket gone")
+        with mock.patch.object(runtime, "get_backend", return_value=backend):
+            response = self.call(
+                "get", f"/api/v1/jobs/{execution.uuid}/output")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["code"], "runtime_unavailable")
+
+    def test_another_persons_job_output_is_a_404(self):
+        from toto.anastasia import choices
+        from toto.anastasia.models import Execution
+
+        theirs = services.reserve(owner=self.other, name="t", limits=SMALL)
+        execution = Execution.objects.create(
+            lease=theirs, operation="render_pdf", family="pdf",
+            status=choices.SUCCESS, cpu_millicores=500, ram_mb=128,
+            scratch_mb=64, pids=32, timeout_seconds=60,
+            requested_by=self.other)
+        response = self.call("get", f"/api/v1/jobs/{execution.uuid}/output")
+        self.assertEqual(response.status_code, 404)
+

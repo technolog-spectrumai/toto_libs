@@ -30,7 +30,7 @@ from django.http import Http404, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
-from . import choices, execute, runtime, services
+from . import choices, execute, jobs, runtime, services
 from .limits import Limits, LimitsError
 from .models import ComputeLease, Execution
 from .tokens import CapsuleToken
@@ -229,3 +229,40 @@ def _own_execution(owner, uuid) -> Execution:
 @token_required
 def job_detail(request, owner, uuid):
     return JsonResponse(_job_json(_own_execution(owner, uuid)))
+
+
+@require_GET
+@token_required
+def job_output(request, owner, uuid):
+    """The files a finished job produced, as ``{name: base64}``.
+
+    Base64 rather than a tar download, because the client is a desktop app
+    assembling its own view and not a browser saving a file — and because a
+    JSON body keeps this endpoint the same shape as every other one here.
+
+    REFUSED WHILE THE JOB IS STILL RUNNING, rather than returning what happens
+    to be on disk so far. A partial output that looks complete is the kind of
+    answer a client writes to a file and a person then trusts. The client polls
+    `finished` and asks once.
+    """
+    import base64
+
+    execution = _own_execution(owner, uuid)
+    if execution.status not in choices.FINISHED:
+        return _error(
+            "this job has not finished, so its output is not complete yet",
+            code="still_running", status=409)
+    backend = runtime.get_backend()
+    try:
+        blob = backend.collect(execution)
+    except Exception as exc:                     # noqa: BLE001
+        # The runtime being unreachable is not the caller's mistake, and a 500
+        # would send a client into a retry loop against a machine that is down.
+        return _error(f"the runtime could not return this job's output ({exc})",
+                      code="runtime_unavailable", status=503)
+    files = jobs.files_from(blob)
+    return JsonResponse({
+        "uuid": str(execution.uuid),
+        "files": {name: base64.b64encode(body).decode("ascii")
+                  for name, body in sorted(files.items())},
+    })

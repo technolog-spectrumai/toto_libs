@@ -31,4 +31,5 @@ urlpatterns = [
     path("capsules/<uuid:uuid>/<str:action>", api.capsule_action,
          name="capsule_action"),
     path("jobs/<uuid:uuid>", api.job_detail, name="job_detail"),
+    path("jobs/<uuid:uuid>/output", api.job_output, name="job_output"),
 ]
