@@ -25,6 +25,21 @@ LABEL_GEAR = "anastasia.gear"
 LABEL_EXEC = "anastasia.exec"
 LABEL_MANAGED = "anastasia.managed"
 
+#: WHICH executor owns this runner. The value is the executor's staging root,
+#: because that is the one thing an executor uniquely owns and already knows.
+#:
+#: `anastasia.managed=1` is a constant, so `list_managed()` used to select every
+#: anastasia runner ON THE WHOLE DAEMON. Two deployments sharing a daemon would
+#: therefore reconcile each other's runners away, each correctly concluding the
+#: other's containers were orphans with no staging directory. That is not
+#: hypothetical: it is what a live executor did to the integration suite on
+#: 2026-09-10, deleting a container mid-test every 30 seconds.
+#:
+#: A container with no owner label belongs to NOBODY and is left alone. Leaking
+#: a container is recoverable by hand; destroying another deployment's running
+#: job is not.
+LABEL_OWNER = "anastasia.owner"
+
 #: The user every runner runs as. 65534 is nobody/nogroup on Debian bases —
 #: chosen because it is guaranteed to exist and to own nothing.
 RUNNER_UID = "65534:65534"

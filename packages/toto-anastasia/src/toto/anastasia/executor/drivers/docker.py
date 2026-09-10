@@ -33,7 +33,7 @@ import time
 from ...families import Family
 from ...limits import Limits
 from . import (FORBIDDEN_ENV_PREFIXES, LABEL_EXEC, LABEL_GEAR,  # noqa: F401
-               LABEL_MANAGED, RUNNER_UID, Driver, DriverError)
+               LABEL_MANAGED, LABEL_OWNER, RUNNER_UID, Driver, DriverError)
 
 log = logging.getLogger("toto.anastasia.executor.drivers.docker")
 
@@ -57,9 +57,12 @@ class DockerClient(Driver):
     runtime = None
 
     def __init__(self, binary: str = "docker", timeout: int = 60,
-                 runtime: str | None = None):
+                 runtime: str | None = None, owner: str = ""):
         self.binary = binary
         self.timeout = timeout
+        #: Which executor's runners these are. Set by the manager from its
+        #: staging root; empty only in tests that never reconcile.
+        self.owner = owner
         if runtime is not None:
             self.runtime = runtime
 
@@ -171,6 +174,8 @@ class DockerClient(Driver):
         for key, value in sorted((labels or {}).items()):
             args += ["--label", f"{key}={value}"]
         args += ["--label", f"{LABEL_MANAGED}=1"]
+        if self.owner:
+            args += ["--label", f"{LABEL_OWNER}={self.owner}"]
 
         for key, value in sorted((env or {}).items()):
             self._refuse_forbidden_env(key)
@@ -306,6 +311,11 @@ class DockerClient(Driver):
         """
         args = ["ps", "--all", "--no-trunc",
                 "--filter", f"label={LABEL_MANAGED}=1",
+                # MINE ONLY. Without this the query returns every anastasia
+                # runner on the daemon, including another deployment's and the
+                # test suite's — and reconcile then destroys them.
+                *(["--filter", f"label={LABEL_OWNER}={self.owner}"]
+                  if self.owner else []),
                 "--format", "{{json .}}"]
         if gear is not None:
             args += ["--filter", f"label={LABEL_GEAR}={gear}"]

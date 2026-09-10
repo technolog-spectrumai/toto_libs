@@ -60,6 +60,23 @@ class GearManager:
         self.staging_root = staging_root
         self.slices = slice_driver if slice_driver is not None else slices.detect_driver()
         self.docker = docker if docker is not None else docker_driver.DockerClient()
+        # TELL THE DRIVER WHOSE RUNNERS THESE ARE.
+        #
+        # `anastasia.managed=1` says "an anastasia runner"; it does not say
+        # WHICH executor's. Without an owner, `list_managed()` returns every
+        # anastasia container on the daemon and reconcile destroys the ones it
+        # cannot account for — which on 2026-09-10 meant a live executor
+        # deleting the integration suite's containers mid-test, and would mean
+        # two deployments on one daemon destroying each other's running jobs.
+        #
+        # Set here rather than at construction because the staging root is the
+        # manager's fact, and `build_driver()` does not know it. Never
+        # overwritten: a caller that passed an explicit owner meant it.
+        if not getattr(self.docker, "owner", ""):
+            try:
+                self.docker.owner = self.staging_root
+            except AttributeError:      # a duck-typed fake with __slots__
+                pass
         #: Minted per process. It tells a caller "the manager you mounted
         #: against is not the one answering now", which is the only way a Gear
         #: row can know it needs re-adopting after a manager restart.
