@@ -87,6 +87,50 @@ class CatalogueTests(SimpleTestCase):
                 self.assertFalse(hasattr(fam, "warmable"),
                                  f"{key} carries a warmable flag again")
 
+    def test_a_wheelhouse_selection_takes_names_and_nothing_else(self):
+        """The ``dists`` kind: package NAMES, never a requirement specifier.
+
+        A wheelhouse pins exactly one build of each distribution, so a version
+        in the request could only agree with the pin or contradict it. Refusing
+        the whole grammar is simpler than resolving that, and it keeps the
+        parameter far away from argv injection: the names reach pip as separate
+        arguments after ``--no-index``, and there is nothing else to spell.
+        """
+        param = families.Param(name="packages", kind="dists")
+        for good in ("numpy", "numpy+pandas", "scikit-learn"):
+            with self.subTest(value=good):
+                self.assertEqual(param.clean(good), good)
+
+    def test_a_wheelhouse_selection_is_normalised_the_way_pep_503_says(self):
+        """PEP 503 compares names case-insensitively, so a person typing
+        "NumPy" means numpy. Normalising HERE, on the trusted side, is what
+        lets the check against the manifest be a plain string equality."""
+        param = families.Param(name="packages", kind="dists")
+        self.assertEqual(param.clean("NumPy"), "numpy")
+        self.assertEqual(param.clean("SciPy+Pandas"), "scipy+pandas")
+        # A run of separators collapses, so these name ONE distribution each.
+        self.assertEqual(param.clean("zope.interface"), "zope-interface")
+        self.assertEqual(param.clean("num_py"), "num-py")
+        self.assertEqual(param.clean("numpy--x"), "numpy-x")
+
+    def test_a_wheelhouse_selection_refuses_everything_else(self):
+        """Each of these was tried against the real validator.
+
+        The interesting ones are not the shell metacharacters — they are
+        ``numpy==1.2`` (a version, i.e. the requirement grammar this kind
+        exists to exclude) and ``numpy+numpy``, which would otherwise install
+        one distribution twice and read as a manifest disagreement later.
+        """
+        param = families.Param(name="packages", kind="dists")
+        for bad in ("numpy==1.2", "numpy>=1.0", "numpy pandas",
+                    "../etc/passwd", "numpy;rm -rf /", "numpy&&curl",
+                    "$(id)", "-numpy", "numpy+", "+numpy", "",
+                    "numpy+numpy", "numpy+NumPy", "zope.interface+zope_interface",
+                    "http://example.invalid/x.whl"):
+            with self.subTest(value=bad):
+                with self.assertRaises(families.ParamError):
+                    param.clean(bad)
+
     def test_only_the_python_runtime_gets_a_network(self):
         """ONE link, one family, and no second posture to order against.
 

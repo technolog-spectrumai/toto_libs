@@ -37,6 +37,16 @@ _SAFE_LANG = re.compile(r"^[a-z]{3}(\+[a-z]{3}){0,3}$")
 #: A plain name — an output stem, never a path and never an extension.
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,59}$")
 
+#: A wheelhouse selection: PEP 503 normalised distribution names, joined by
+#: "+" the way _SAFE_LANG joins OCR languages. NO VERSIONS AND NO OPERATORS —
+#: the wheelhouse pins exactly one build of each distribution, so a version in
+#: a request could only ever agree with the pin or contradict it, and a
+#: requirement specifier is a small language nobody needs here. It is also what
+#: keeps this out of argv-injection territory: the names go to pip as separate
+#: arguments after --no-index, and nothing else can be spelled.
+_SAFE_DISTS = re.compile(r"^[a-z0-9]([a-z0-9._-]*[a-z0-9])?"
+                         r"(\+[a-z0-9]([a-z0-9._-]*[a-z0-9])?)*$")
+
 #: An ffmpeg time position: seconds, or HH:MM:SS with optional milliseconds.
 #: Bounded because it is interpolated into an argv, and because "whatever
 #: ffmpeg accepts" is a much larger surface than anything a form needs.
@@ -50,7 +60,7 @@ class ParamError(ValueError):
 @dataclass(frozen=True)
 class Param:
     name: str
-    kind: str      # "str"|"int"|"bool"|"enum"|"path"|"lang"|"time"
+    kind: str      # "str"|"int"|"bool"|"enum"|"path"|"lang"|"time"|"dists"
     required: bool = False
     default: object = None
     choices: tuple = ()
@@ -119,6 +129,24 @@ class Param:
                 raise ParamError(
                     f"{self.name} must be language codes like “eng” or "
                     "“eng+pol”.")
+            return raw
+        if self.kind == "dists":
+            # FULL PEP 503 NORMALISATION, not just a lower(). The spec says
+            # names compare case-insensitively AND that any run of -, _ or .
+            # collapses to a single -, so "NumPy", "numpy" and "num_py" are one
+            # distribution and "numpy--x" is "numpy-x". Doing it here, on the
+            # trusted side, is what lets the check against the wheelhouse
+            # manifest be a plain string equality; lower-casing alone would let
+            # two spellings of one package through as two, and the duplicate
+            # check below would not see them.
+            raw = re.sub(r"[-_.]+", "-", raw.lower())
+            if not _SAFE_DISTS.match(raw):
+                raise ParamError(
+                    f"{self.name} must be package names like “numpy” or "
+                    "“numpy+pandas”, with no versions and no spaces.")
+            names = raw.split("+")
+            if len(set(names)) != len(names):
+                raise ParamError(f"{self.name} names the same package twice.")
             return raw
         raise ParamError(f"{self.name} has an unknown parameter kind.")
 
