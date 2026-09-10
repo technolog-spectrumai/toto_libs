@@ -41,7 +41,7 @@ from ..families import ParamError
 from ..families import operation as operation_for
 from ..limits import Limits, LimitsError
 from . import gears as gears_mod
-from . import control, pressure, protocol, reconcile
+from . import control, pressure, protocol, reconcile, telemetry
 from .drivers import DriverError
 from .staging import StagingError
 
@@ -68,6 +68,7 @@ ROUTES = [
     ("POST", re.compile(r"^/control/resume$"), "resume"),
     ("POST", re.compile(r"^/control/stop$"), "stop"),
     ("GET", re.compile(r"^/control$"), "control_status"),
+    ("GET", re.compile(r"^/metrics$"), "metrics"),
 ]
 
 
@@ -203,6 +204,24 @@ class Api:
         killed = self._locked(reconcile.kill_everything, self.manager)
         return 200, {"admission": state, "runners_destroyed": killed}
 
+    def metrics(self, payload):
+        """Prometheus text. Still HMAC-signed, like every other route.
+
+        Unusual for a metrics endpoint — most are left open on the assumption
+        that they leak nothing. This one is not left open for two reasons: it
+        is on a socket only root can open anyway, so signing costs nothing, and
+        an unauthenticated route on THIS process would be the only one, which
+        is exactly the sort of exception that outlives the reason for it.
+
+        The response is a STRING, not a dict — the one route here that is not
+        JSON. `_reply_text` below carries it, because a scraper reading
+        `{"metrics": "..."}` would have to unwrap it and none do.
+        """
+        return 200, telemetry.render(
+            self.manager,
+            admission=control.read(self.manager.staging_root),
+            pressure_report=pressure.report(self.manager.staging_root))
+
     def control_status(self, payload):
         return 200, {"admission": control.read(self.manager.staging_root)}
 
@@ -239,6 +258,15 @@ def make_handler(api: Api, secret: str):
             self.end_headers()
             self.wfile.write(body)
 
+        def _reply_text(self, status: int, body: str):
+            raw = body.encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type",
+                             "text/plain; version=0.0.4; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
         def _handle(self, method: str):
             path = self.path.split("?", 1)[0]
             try:
@@ -269,6 +297,11 @@ def make_handler(api: Api, secret: str):
                     if not isinstance(payload, dict):
                         raise ValueError("request body must be a JSON object")
                     status, result = getattr(api, name)(*match.groups(), payload)
+                    if isinstance(result, str):
+                        # Prometheus text, not JSON. The only route that
+                        # answers with a string, and the content type has to
+                        # match or every scraper refuses it.
+                        return self._reply_text(status, result)
                 except (ParamError, LimitsError, ValueError) as exc:
                     return self._reply(400, {"error": str(exc)})
                 except StagingError as exc:

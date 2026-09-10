@@ -428,3 +428,93 @@ class AdmissionControlTests(ServiceTestCase):
         self.call("POST", "/control/drain", {"reason": "maintenance"})
         _, body = self.call("GET", "/health")
         self.assertEqual(body["admission"]["state"], "draining")
+
+
+class MetricsTests(ServiceTestCase):
+    """Prometheus text, and what must never be a label in it."""
+
+    def _scrape(self) -> str:
+        body = protocol.encode({})
+        sent = protocol.sign(secret=SECRET, method="GET", path="/metrics",
+                             body=body)
+        conn = UnixHTTPConnection(self.socket_path, timeout=10)
+        try:
+            conn.request("GET", "/metrics", body=body, headers=sent)
+            response = conn.getresponse()
+            raw = response.read().decode("utf-8")
+            self.assertEqual(response.status, 200)
+            self.assertIn("text/plain", response.getheader("Content-Type"))
+            return raw
+        finally:
+            conn.close()
+
+    def test_a_scrape_parses_as_prometheus_text(self):
+        """Every non-comment line is `name value` or `name{labels} value`."""
+        for line in self._scrape().splitlines():
+            if not line or line.startswith("#"):
+                continue
+            with self.subTest(line=line):
+                self.assertRegex(
+                    line, r'^anastasia_executor_[a-z_]+(\{[^}]*\})? -?\d+(\.\d+)?$')
+
+    def test_the_tier_is_reported_as_a_label(self):
+        """So a dashboard can answer "how much of the fleet is on kata", and
+        an alert can fire on one that silently fell back to containers."""
+        self.assertIn('isolation_tier{tier="fake"} 1', self._scrape())
+
+    def test_admission_is_a_number_an_alert_can_fire_on(self):
+        """A host left draining after a maintenance window is invisible
+        otherwise: nothing is broken, nothing errors, and no work runs."""
+        self.assertIn("anastasia_executor_admitting 1", self._scrape())
+        self.call("POST", "/control/drain")
+        scrape = self._scrape()
+        self.assertIn("anastasia_executor_admitting 0", scrape)
+        self.assertIn('admission_state{state="draining"} 1', scrape)
+
+    def test_no_user_job_or_gear_identifier_is_ever_a_label(self):
+        """THE ASSERTION THIS FILE EXISTS FOR.
+
+        Prometheus keeps a distinct series per label combination forever, so a
+        per-job label is both an unbounded cardinality explosion and a durable
+        record of who ran what — in a monitoring system with none of the
+        vault's access control.
+        """
+        self.call("POST", f"/gears/{self.gear}/mount",
+                  {"limits": {"cpu_millicores": 2000, "ram_mb": 2048,
+                              "scratch_mb": 1024, "pids": 256}})
+        execution = str(uuid.uuid4())
+        self.call("POST", "/jobs", {
+            "gear": self.gear, "execution": execution,
+            "operation": "render_pdf", "params": {},
+            "limits": {"cpu_millicores": 1000, "ram_mb": 512,
+                       "scratch_mb": 256, "pids": 64}, "timeout": 600})
+
+        scrape = self._scrape()
+        self.assertNotIn(execution, scrape)
+        self.assertNotIn(self.gear, scrape)
+        for forbidden in ("user", "owner", "uuid", "job=", "execution="):
+            with self.subTest(label=forbidden):
+                self.assertNotIn(forbidden, scrape)
+
+    def test_a_scrape_survives_an_unreachable_runtime(self):
+        """A scrape must never be the thing that breaks — and an unreachable
+        runtime is itself the most interesting thing to report."""
+        def explode(*_args, **_kwargs):
+            raise RuntimeError("the daemon is gone")
+
+        self.docker.list_managed = explode
+        self.docker.available = lambda: False
+        scrape = self._scrape()
+        self.assertIn("anastasia_executor_up 1", scrape)
+        self.assertIn("anastasia_executor_runtime_reachable 0", scrape)
+
+    def test_the_metrics_route_is_signed_like_every_other(self):
+        """An unauthenticated route on this process would be the only one,
+        which is exactly the sort of exception that outlives its reason."""
+        conn = UnixHTTPConnection(self.socket_path, timeout=10)
+        try:
+            conn.request("GET", "/metrics",
+                         headers={"Content-Type": "application/json"})
+            self.assertEqual(conn.getresponse().status, 401)
+        finally:
+            conn.close()
