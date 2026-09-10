@@ -284,6 +284,24 @@ class DockerClient(Driver):
         """
         return ((self.inspect(container) or {}).get("Config") or {}).get("Labels") or {}
 
+    def container_pid(self, container: str) -> int:
+        """The runner's main PID on the HOST, or 0 if it has none.
+
+        A driver method rather than a caller digging `State.Pid` out of
+        `inspect()`, for the same reason `labels()` is one: the raw inspect
+        document is this runtime's wire format, and a second driver must be
+        able to answer the question without fabricating one.
+
+        WHAT IT IS FOR: reaching the runner's network namespace at
+        ``/proc/<pid>/net/dev`` to read its byte counters. A stopped container
+        reports 0, which `network.py` reads as "no namespace to measure".
+        """
+        state = (self.inspect(container) or {}).get("State") or {}
+        try:
+            return int(state.get("Pid") or 0)
+        except (TypeError, ValueError):
+            return 0
+
     def exit_state(self, container: str) -> dict:
         """Exit code and — the part that matters — whether the kernel OOM-killed it.
 

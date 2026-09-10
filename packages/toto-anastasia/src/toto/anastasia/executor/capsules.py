@@ -31,6 +31,7 @@ from ..families import family as family_for
 from ..families import operation as operation_for
 from ..limits import Limits
 from . import egress as egress_mod
+from . import network as network_mod
 from . import images, netfilter, runners, slices, staging
 from . import storage
 from .drivers import LABEL_CAPSULE, LABEL_EXEC, docker as docker_driver
@@ -78,6 +79,10 @@ class CapsuleManager:
         #: and this set is the executor's memory of it. See `wants_egress` for
         #: what a restart does to that memory, which is deliberate.
         self._egress_capsules = set()
+        #: Per-capsule internet byte totals, accumulated across the runners
+        #: that carry them. See `network.py` for why a counter that lives on
+        #: the runner has to be accumulated somewhere that outlives it.
+        self.network = network_mod.NetworkMeter()
         self.slices = slice_driver if slice_driver is not None else slices.detect_driver()
         self.docker = docker if docker is not None else docker_driver.DockerClient()
         # TELL THE DRIVER WHOSE RUNNERS THESE ARE.
@@ -199,6 +204,9 @@ class CapsuleManager:
             self._egress_capsules.add(str(capsule))
         else:
             self._egress_capsules.discard(str(capsule))
+        # A remount is a new machine: a byte total carried across one would
+        # attribute the previous reservation's traffic to this one.
+        self.network.forget(capsule)
 
         enforced = False
         detail = ""
@@ -246,6 +254,7 @@ class CapsuleManager:
             log.exception("anastasia: could not stop the slice for %s", capsule)
 
         shutil.rmtree(self.capsule_dir(capsule), ignore_errors=True)
+        self.network.forget(capsule)
         return {"unmounted": True, "runners_destroyed": destroyed}
 
     def storage(self, capsule) -> dict:
@@ -266,6 +275,18 @@ class CapsuleManager:
         except Exception:  # noqa: BLE001
             log.exception("anastasia: could not sample capsule %s", capsule)
         sample["executions_running"] = len(running)
+        # INTERNET BYTES, and only for a capsule that actually has a NIC. One
+        # without egress has no namespace to read, and reporting zero for it
+        # would be a measurement nobody took — the rule this table has kept
+        # since it was written.
+        if self.wants_egress(capsule):
+            try:
+                moved = self.network.sample(self.docker, capsule, rows)
+            except Exception:  # noqa: BLE001 — never fatal to a status poll
+                log.exception("anastasia: could not meter capsule %s", capsule)
+                moved = None
+            if moved:
+                sample.update(moved)
         return {
             "manager_generation": self.generation,
             "mounted": os.path.isdir(self.capsule_dir(capsule)),
