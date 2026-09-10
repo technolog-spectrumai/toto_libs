@@ -138,8 +138,15 @@ class ExecutorRuntimeBackend(RuntimeBackend):
     # -- the RuntimeBackend contract --------------------------------------
 
     def mount(self, lease) -> dict:
+        # `egress` travels with the limits because it is the same kind of fact:
+        # what this reservation was granted. The executor refuses the mount
+        # outright if it cannot filter the network — so a Capsule whose owner
+        # asked for the internet on a host that cannot supply it fails loudly
+        # here, rather than mounting and failing at the first fetch with
+        # nothing pointing at the cause.
         return self._call("POST", f"/capsules/{lease.uuid}/mount",
-                          {"limits": lease.limits.as_dict()})
+                          {"limits": lease.limits.as_dict(),
+                           "egress": bool(getattr(lease, "egress", False))})
 
     def unmount(self, lease) -> dict:
         try:

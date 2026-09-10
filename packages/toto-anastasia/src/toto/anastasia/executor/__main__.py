@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 
-from . import drivers, capsules, reconcile, service
+from . import drivers, capsules, egress, netfilter, reconcile, service
 from .drivers import docker as drivers_docker
 
 #: Where the socket lives when nothing says otherwise. The DIRECTORY is what a
@@ -100,6 +100,34 @@ def main() -> int:
     # Say which tier is live, every start. An operator reading a log should
     # never have to infer whether this host runs jobs in VMs or in containers.
     log.info("anastasia: isolation tier %s", manager.docker.name)
+
+    # EGRESS, AND ITS FILTER, BEFORE ANYTHING CAN MOUNT.
+    #
+    # Installed here rather than lazily at the first mount for one reason: a
+    # filter applied while a Capsule is already running has a window in which
+    # that Capsule is on the network unfiltered. At startup there is nothing
+    # running yet — `adopt` below is what finds survivors, and it runs after
+    # this line so an adopted runner meets a kernel that is already filtering.
+    #
+    # FAIL CLOSED HERE MEANS REFUSE TO OFFER EGRESS, not refuse to boot. A host
+    # whose nft is missing or whose ruleset will not load still runs every
+    # batch family perfectly — they have no network at all. Taking the whole
+    # compute tier down because the optional half cannot be secured would be
+    # the wrong trade; what must never happen is the NIC being handed out
+    # anyway, and `CapsuleManager` refuses that when `egress_ready` is False.
+    policy = egress.from_environ()
+    egress_ready = False
+    if policy.configured:
+        try:
+            netfilter.ensure(policy.subnet, policy.proxy_ip, policy.proxy_port)
+            netfilter.verify(policy.subnet, policy.proxy_ip, policy.proxy_port)
+            egress_ready = True
+            log.info("anastasia: %s", policy.describe())
+        except netfilter.NetfilterError as exc:
+            log.error("anastasia: egress is OFF — %s", exc)
+    else:
+        log.info("anastasia: %s", policy.describe())
+    manager.egress = policy if egress_ready else egress.Policy()
 
     inherited = reconcile.adopt(manager)
     log.info("anastasia: generation %s adopted %s runner(s) across %s capsule(s)",

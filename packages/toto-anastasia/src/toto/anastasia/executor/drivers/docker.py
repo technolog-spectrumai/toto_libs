@@ -113,7 +113,8 @@ class DockerClient(Driver):
                        cgroup_parent: str | None, input_dir: str,
                        output_dir: str, env: dict | None,
                        labels: dict, argv: list[str],
-                       network: str | None = None) -> list[str]:
+                       network: str | None = None,
+                       dns: str | None = None) -> list[str]:
         """Every flag a runner gets. Assembled, never accepted.
 
         Read this as the security model in one place:
@@ -172,6 +173,23 @@ class DockerClient(Driver):
             "--workdir", "/scratch",
         ]
         args += ["--network", network or "none"]
+        # NAME RESOLUTION, only ever pointed somewhere dead.
+        #
+        # `dns` is set exactly when a runner has egress, and its value is the
+        # container's own loopback where nothing listens. That is not belt and
+        # braces: on a user-defined network Docker puts its embedded resolver
+        # at 127.0.0.11 in the container's resolv.conf, and that server
+        # forwards what it cannot answer from the DAEMON's side — so the query
+        # leaves as dockerd's packet, not the container's, and no rule in
+        # `netfilter` can see it. Names spelled into subdomains would walk
+        # straight out past the filter.
+        #
+        # A workload with egress does not need working DNS: it sends
+        # `CONNECT host:443` to the proxy by address, and Smokescreen resolves
+        # — which is also what makes the allowlist enforceable, since the thing
+        # checking the name is the thing looking it up.
+        if dns:
+            args += ["--dns", dns]
         if cgroup_parent:
             args += ["--cgroup-parent", cgroup_parent]
 

@@ -30,6 +30,7 @@ import uuid as uuid_module
 from ..families import family as family_for
 from ..families import operation as operation_for
 from ..limits import Limits
+from . import egress as egress_mod
 from . import images, runners, slices, staging
 from . import storage
 from .drivers import LABEL_CAPSULE, LABEL_EXEC, docker as docker_driver
@@ -58,6 +59,16 @@ class CapsuleManager:
     def __init__(self, *, staging_root: str = DEFAULT_STAGING_ROOT,
                  slice_driver=None, docker=None, generation: str = ""):
         self.staging_root = staging_root
+        #: The host's egress policy, set by `__main__` AFTER the packet filter
+        #: is proven to be in the kernel. Empty by default and empty whenever
+        #: the filter could not be established — which is what makes "no
+        #: filter" mean "no NIC" rather than "an unfiltered NIC".
+        self.egress = egress_mod.Policy()
+        #: Which capsules asked for egress at mount time, by uuid string. The
+        #: executor has no database: mount is where the app states the policy,
+        #: and this set is the executor's memory of it. See `wants_egress` for
+        #: what a restart does to that memory, which is deliberate.
+        self._egress_capsules = set()
         self.slices = slice_driver if slice_driver is not None else slices.detect_driver()
         self.docker = docker if docker is not None else docker_driver.DockerClient()
         # TELL THE DRIVER WHOSE RUNNERS THESE ARE.
@@ -103,14 +114,49 @@ class CapsuleManager:
 
     # -- mounting ----------------------------------------------------------
 
-    def mount(self, capsule, limits: Limits) -> dict:
+    def wants_egress(self, capsule) -> bool:
+        """Whether this Capsule's runners get a NIC into the proxy.
+
+        BOTH HALVES, and the host's half is checked first. A Capsule that asked
+        for egress on a host whose filter is not in the kernel gets nothing:
+        the answer to "we cannot filter it" is no network, never an unfiltered
+        one.
+
+        FORGOTTEN ACROSS A RESTART, on purpose. The executor keeps no database,
+        so a capsule adopted by `reconcile` after a restart is not in this set
+        and its next runner has no network until the app mounts it again. The
+        alternative — persisting the opt-in somewhere the executor can read
+        without the app — is a file that grants network access and outlives the
+        reservation that justified it. A job that unexpectedly has no network
+        fails loudly; one that unexpectedly HAS network does not.
+        """
+        return (self.egress.configured
+                and str(capsule) in self._egress_capsules)
+
+    def mount(self, capsule, limits: Limits, *, egress: bool = False) -> dict:
         """Bring a Capsule up: its cgroup ceiling and its staging area.
 
         A slice that cannot be created is DEGRADED, not fatal: per-runner
         limits still apply and the booking arithmetic still bounds the sum, so
         the Capsule works — it just has no hard backstop, and says so.
+
+        `egress` is REFUSED rather than downgraded when this host cannot offer
+        it. A mount that silently succeeded without the network the caller
+        asked for would leave the app showing a Capsule with internet access
+        that has none, and the first symptom would be a job failing to fetch
+        something with no explanation anywhere.
         """
+        if egress and not self.egress.configured:
+            raise CapsuleError(
+                "This Capsule asked for internet access and this host cannot "
+                "give it any: no egress proxy is configured, or its packet "
+                "filter could not be established. Mount it without egress, or "
+                "fix the host.")
         os.makedirs(self.capsule_dir(capsule), exist_ok=True)
+        if egress:
+            self._egress_capsules.add(str(capsule))
+        else:
+            self._egress_capsules.discard(str(capsule))
 
         enforced = False
         detail = ""
@@ -131,6 +177,11 @@ class CapsuleManager:
             # the live driver, never off a setting: a setting is what somebody
             # asked for, and this is what the next job will get.
             "tier": self.docker.name,
+            # What this Capsule ACTUALLY got, read from the manager rather than
+            # echoed from the request: the app shows this, and a page that
+            # echoed the ask would claim internet access a refused mount never
+            # granted.
+            "egress": self.wants_egress(capsule),
             "detail": detail,
         }
 
@@ -238,20 +289,33 @@ class CapsuleManager:
             LABEL_OPERATION: op.name,
             LABEL_DEADLINE: str(deadline),
         }
-        # ONE POSTURE. No runner of any family gets a network — the driver
-        # turns None into `--network none`.
+        # TWO POSTURES, and which one applies is a property of the CAPSULE,
+        # never of the family and never of the request.
         #
-        # There were three, and the ordering between them was a real defect:
-        # the egress branch stood first and shadowed the kernel branch, so the
-        # python-connected family, which declared both, reached its ZMQ ports
-        # over the EGRESS network. Egress went with the package installer and
-        # the kernel link went with the kernel (2026-09-10). Nothing to order,
-        # and nothing to get wrong.
+        # No network is still the default and still what every batch job gets:
+        # the driver turns None into `--network none`. A Capsule whose owner
+        # reserved it with egress gets one NIC, onto the proxy network, where
+        # the executor's nftables table makes the proxy's address and port the
+        # only reachable thing.
         #
-        # `docker.create` still takes a network, and deliberately: that
-        # parameter is how `--network none` is emitted at all, and it is the
-        # seam a future posture would arrive through. It must arrive as a
-        # FAMILY declaration, never as something a caller sends.
+        # WHY NOT ON THE FAMILY. Three postures used to live on `Family` and
+        # the ordering between them was a real defect — the egress branch stood
+        # first and shadowed the kernel branch, so python-connected reached its
+        # ZMQ ports over the EGRESS network. Both were deleted on 2026-09-10.
+        # A family declaring egress would give it to every user of that family
+        # on every host; the reservation is where a person accepted the trade,
+        # so the reservation is where it is recorded.
+        #
+        # `wants_egress` checks the HOST's filter as well as the capsule's ask,
+        # so an unfilterable host silently yields the no-network posture rather
+        # than an unfiltered NIC.
+        run_env = {"ANASTASIA_OPERATION": op.name}
+        network = None
+        dns = None
+        if self.wants_egress(capsule):
+            network = self.egress.network
+            run_env.update(egress_mod.runner_environment(self.egress))
+            dns = egress_mod.RUNNER_DNS
         try:
             parent = self.slices.cgroup_parent(capsule)
         except Exception:  # noqa: BLE001
@@ -260,8 +324,8 @@ class CapsuleManager:
         container = self.docker.create(
             family=fam, limits=limits, name=f"anastasia-{execution}",
             cgroup_parent=parent, input_dir=input_dir, output_dir=output_dir,
-            env={"ANASTASIA_OPERATION": op.name}, labels=labels,
-            argv=runners.build_argv(op, params), network=None)
+            env=run_env, labels=labels,
+            argv=runners.build_argv(op, params), network=network, dns=dns)
         self.docker.start(container)
 
         return {"container": container, "deadline": deadline}

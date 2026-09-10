@@ -109,7 +109,13 @@ class Api:
         if not state["admitting"]:
             return 503, {"error": pressure.refusal(state), "pressure": state}
         limits = Limits.from_mapping(payload.get("limits"))
-        return 200, self._locked(self.manager.mount, capsule, limits)
+        # `bool(...)` on whatever arrived, not `payload.get("egress")` passed
+        # through: a JSON body is untrusted input, and a truthy string reaching
+        # the manager as a network decision is the kind of thing that works in
+        # every test and surprises somebody in production.
+        want_egress = bool(payload.get("egress", False))
+        return 200, self._locked(self.manager.mount, capsule, limits,
+                                 egress=want_egress)
 
     def unmount(self, capsule, payload):
         return 200, self._locked(self.manager.unmount, capsule)

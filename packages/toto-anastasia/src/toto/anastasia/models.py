@@ -92,6 +92,32 @@ class ComputeLease(models.Model):
         help_text="Keep each workspace's home directory between sessions "
                   "(shell history, tool configuration, interactive installs).")
 
+    #: Whether this Capsule's jobs may reach the internet, through the proxy.
+    #:
+    #: ASKED AT RESERVATION, like `permanent_home` above and for a related
+    #: reason: it is a property of the capacity somebody booked, not of the job
+    #: they happen to run. A family declaring egress would hand it to every
+    #: user of that family on every host; the reservation is where one person
+    #: accepted one trade, so the reservation is where it is recorded. (Two
+    #: egress postures previously lived on `Family` and were deleted on
+    #: 2026-09-10 — see the note there for how their ordering misrouted a job.)
+    #:
+    #: OFF BY DEFAULT, and every Capsule reserved before this field existed is
+    #: off: a migration defaulting to True would give the internet to capacity
+    #: whose owner never asked for it and is not around to be asked.
+    #:
+    #: WHAT IT IS NOT. Not "unrestricted internet". A Capsule with this set
+    #: gets ONE NIC onto a proxy network, where the executor's nftables table
+    #: makes the proxy's address and port the only reachable thing, and the
+    #: proxy refuses every destination not on the host's allowlist. It also
+    #: depends on the HOST offering egress: a mount asking for it where the
+    #: packet filter is not in the kernel is REFUSED, never quietly downgraded.
+    egress = models.BooleanField(
+        default=False,
+        help_text="Let jobs in this Capsule reach the internet, through this "
+                  "platform's filtering proxy. Only the destinations your "
+                  "administrator allows are reachable.")
+
     created_at = models.DateTimeField(default=timezone.now)
     expires_at = models.DateTimeField()
     released_at = models.DateTimeField(null=True, blank=True)
