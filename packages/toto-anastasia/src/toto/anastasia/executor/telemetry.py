@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import time
 
+from . import netfilter
+
 PREFIX = "anastasia_executor"
 
 #: Started when the module is imported, which is close enough to process start
@@ -75,6 +77,21 @@ def render(manager, *, admission: dict, pressure_report: dict,
         f"# HELP {PREFIX}_runners Sandboxes this executor owns, by state.",
         f"# TYPE {PREFIX}_runners gauge",
     ]
+    # THE ONE PLACE THIS SCRAPE HAS COUNTERS, and they are not the executor's:
+    # they live in the kernel's nftables objects and survive nothing longer
+    # than the ruleset, which is reinstalled on every executor start. No
+    # labels — the rules match one bridge, so there is one number per claim
+    # and no way to attach a capsule to it even by accident.
+    egress = netfilter.counters() if manager.egress_ready else {}
+    if egress:
+        out += [
+            f"# HELP {PREFIX}_egress_bytes_total Bytes the proxy fetched for capsules, since the ruleset was installed.",
+            f"# TYPE {PREFIX}_egress_bytes_total counter",
+            _line("egress_bytes_total", egress.get("egress_bytes", 0)),
+            f"# HELP {PREFIX}_egress_refused_bytes_total Bytes capsules tried to send past the proxy, since the ruleset was installed.",
+            f"# TYPE {PREFIX}_egress_refused_bytes_total counter",
+            _line("egress_refused_bytes_total", egress.get("refused_bytes", 0)),
+        ]
     by_state: dict = {}
     for row in managed:
         by_state[row.get("state") or "unknown"] = \

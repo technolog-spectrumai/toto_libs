@@ -125,12 +125,36 @@ class RulesetTests(SimpleTestCase):
         """FIRST, and the first draft of this file omitted it: the proxy's own
         address is inside the subnet, so a blanket drop killed the proxy's
         outbound connections and nothing could ever be fetched."""
-        accept = self.text.index(f'iifname "{BRIDGE}" ip saddr {PROXY_IP} accept')
-        drop = self.text.index(f'iifname "{BRIDGE}" drop')
+        accept = self.text.index(
+            f'iifname "{BRIDGE}" ip saddr {PROXY_IP} '
+            f'counter name "{netfilter.ACCEPTED_COUNTER}" accept')
+        drop = self.text.index(
+            f'iifname "{BRIDGE}" counter name "{netfilter.REFUSED_COUNTER}" drop')
         self.assertLess(accept, drop, "the proxy must be exempted before the drop")
 
     def test_everything_else_off_the_bridge_is_dropped(self):
-        self.assertIn(f'iifname "{BRIDGE}" drop', self.text)
+        self.assertIn(
+            f'iifname "{BRIDGE}" counter name "{netfilter.REFUSED_COUNTER}" drop',
+            self.text)
+
+    def test_the_counters_are_named_objects_in_the_table(self):
+        """Named, so `counters()` can read them by name without parsing rules;
+        and declared, because `counter name` on a rule refers to an object
+        that must exist or the whole document is rejected by the kernel —
+        which would leave a host with no filter and every mount refused."""
+        for name in (netfilter.ACCEPTED_COUNTER, netfilter.REFUSED_COUNTER):
+            with self.subTest(counter=name):
+                self.assertIn(f"counter {name} {{}}", self.rules)
+
+    def test_both_drops_count_into_one_object(self):
+        """Refused is refused. A probe at the host and a probe at the internet
+        are one claim, and two numbers a reader must add before they mean
+        anything are worse than one."""
+        drops = [ln for ln in self.rules.splitlines()
+                 if ln.strip().endswith(" drop") and "oifname" not in ln]
+        self.assertEqual(len(drops), 2, drops)
+        for ln in drops:
+            self.assertIn(f'counter name "{netfilter.REFUSED_COUNTER}"', ln)
 
     def test_matching_is_on_the_interface_not_the_source_address(self):
         """A source address is a field the sender fills in; an interface is
@@ -194,7 +218,9 @@ class RulesetTests(SimpleTestCase):
 
     def test_the_facts_are_interpolated_not_hardcoded(self):
         other = netfilter.ruleset("other0", "172.31.9.0/24", "172.31.9.5", 3128)
-        self.assertIn('iifname "other0" ip saddr 172.31.9.5 accept', other)
+        self.assertIn(
+            f'iifname "other0" ip saddr 172.31.9.5 '
+            f'counter name "{netfilter.ACCEPTED_COUNTER}" accept', other)
         self.assertIn("tcp dport 3128 accept", other)
         self.assertNotIn(BRIDGE, other)
 
@@ -243,21 +269,95 @@ class VerifyTests(SimpleTestCase):
         # `ct state established,related accept` in FORWARD, so every string the
         # old check looked for was present while `input` did not exist.
         whole_table = " ".join(self.FORWARD_ONLY.split())
-        for _family, chain, rule in netfilter._required(BRIDGE, PROXY_IP,
-                                                        PROXY_PORT):
+        for _family, chain, parts in netfilter._required(BRIDGE, PROXY_IP,
+                                                         PROXY_PORT):
             if chain == "input":
-                self.assertIn(" ".join(rule.split()), whole_table,
-                              "the fixture must satisfy the OLD check, or this "
-                              "test proves nothing about the new one")
+                for part in parts:
+                    self.assertIn(" ".join(part.split()), whole_table,
+                                  "the fixture must satisfy the OLD check, or "
+                                  "this test proves nothing about the new one")
 
     def test_the_chain_header_is_never_asserted(self):
         """nft echoes priorities in its own vocabulary — `priority filter - 10`
         — so a literal `priority -10` check fails against a correct kernel,
         and a test that fails on correct input is a test somebody deletes."""
-        for _family, _chain, rule in netfilter._required(BRIDGE, PROXY_IP,
-                                                        PROXY_PORT):
-            self.assertNotIn("priority", rule)
-            self.assertNotIn("policy", rule)
+        for _family, _chain, parts in netfilter._required(BRIDGE, PROXY_IP,
+                                                         PROXY_PORT):
+            self.assertNotIn("priority", " ".join(parts))
+            self.assertNotIn("policy", " ".join(parts))
+
+    def test_a_required_rule_is_matched_on_one_line_not_across_the_chain(self):
+        """THE DISARM THIS GUARDS. `_required` is fragments now, because a
+        rule carries its counter in the middle; a fragment search over the
+        whole chain would be satisfied by three DIFFERENT rules that happen
+        to be near each other — which is how a filter with the drop removed
+        could still verify green. Planted, as every check here is."""
+        parts = (f'iifname "{BRIDGE}"', "drop")
+        # The drop removed: only the accept remains.
+        disarmed = (f'chain forward {{\n  iifname "{BRIDGE}" ip saddr {PROXY_IP} '
+                    f'counter name "x" accept\n}}')
+        self.assertFalse(netfilter._line_matching(disarmed, parts))
+        # The fragments present, on different lines, for different interfaces.
+        split = (f'chain forward {{\n  iifname "{BRIDGE}" accept\n'
+                 f'  iifname "other0" drop\n}}')
+        self.assertFalse(netfilter._line_matching(split, parts))
+        # Out of order is not a match either.
+        self.assertFalse(netfilter._line_matching(
+            f'iifname "{BRIDGE}" accept ip saddr {PROXY_IP}',
+            (f'iifname "{BRIDGE}"', f"ip saddr {PROXY_IP}", "accept")))
+        # And what the kernel actually echoes back, counter and all, is one.
+        echoed = (f'  iifname "{BRIDGE}" counter packets 3 bytes 180 '
+                  f'name "refused" drop')
+        self.assertTrue(netfilter._line_matching(echoed, parts))
+
+    def test_counters_are_read_by_name_from_the_kernel(self):
+        """`nft -j list counters` answers with objects; the reader picks the
+        two it declared and ignores anything else in the table."""
+        import json
+        import subprocess
+        from unittest import mock
+
+        doc = {"nftables": [
+            {"metainfo": {"version": "1.1.0"}},
+            {"counter": {"family": "inet", "name": netfilter.ACCEPTED_COUNTER,
+                         "table": netfilter.TABLE, "packets": 12,
+                         "bytes": 34567}},
+            {"counter": {"family": "inet", "name": netfilter.REFUSED_COUNTER,
+                         "table": netfilter.TABLE, "packets": 3,
+                         "bytes": 180}},
+            {"counter": {"family": "inet", "name": "somebody_elses",
+                         "table": netfilter.TABLE, "packets": 9, "bytes": 9}},
+        ]}
+        calls = []
+
+        def fake_nft(*args, check=True):
+            calls.append(args)
+            return subprocess.CompletedProcess(args, 0, json.dumps(doc), "")
+
+        with mock.patch.object(netfilter, "_nft", fake_nft):
+            out = netfilter.counters()
+        self.assertEqual(out, {"egress_bytes": 34567, "egress_packets": 12,
+                               "refused_bytes": 180, "refused_packets": 3})
+        self.assertIn("-j", calls[0])
+
+    def test_unreadable_counters_are_absent_not_zero(self):
+        """A host without nft, without the table or without permission says
+        nothing. Zero would be "no capsule has used the internet", which is a
+        claim, and not one this reader can make."""
+        import subprocess
+        from unittest import mock
+
+        def refused(*args, check=True):
+            return subprocess.CompletedProcess(args, 1, "", "Operation not permitted")
+
+        with mock.patch.object(netfilter, "_nft", refused):
+            self.assertEqual(netfilter.counters(), {})
+
+        def junk(*args, check=True):
+            return subprocess.CompletedProcess(args, 0, "not json", "")
+
+        with mock.patch.object(netfilter, "_nft", junk):
+            self.assertEqual(netfilter.counters(), {})
 
     def test_every_chain_that_matters_is_checked(self):
         """A rule renamed in the ruleset and not in `_required` weakens what is

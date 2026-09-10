@@ -40,7 +40,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ..families import ParamError
 from ..families import operation as operation_for
 from ..limits import Limits, LimitsError
-from . import capsules as capsules_mod
+from . import capsules as capsules_mod, netfilter
 from . import control, pressure, protocol, reconcile, telemetry
 from .drivers import DriverError
 from .staging import StagingError
@@ -199,6 +199,11 @@ class Api:
             "slice_driver": self.manager.slices.describe(),
             "pressure": state,
             "adopted": reconcile.adopt(self.manager),
+            # HOST-WIDE egress totals since this executor installed its
+            # ruleset — "bytes fetched through the proxy" and "bytes that
+            # tried to go around it", which are different claims. {} on a
+            # host without egress, never zeros: see `netfilter.counters`.
+            "egress": netfilter.counters() if self.manager.egress_ready else {},
         }
 
     def reconcile(self, payload):
