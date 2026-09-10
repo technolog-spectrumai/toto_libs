@@ -365,7 +365,7 @@ class FileEndpointTests(AmbrosiaTestCase):
 @override_settings(
     ANASTASIA_POOL={"cpu_millicores": 4000, "ram_mb": 8192,
                     "scratch_mb": 8192, "pids": 2048},
-    ANASTASIA_RUNTIME_BACKEND="toto.dracena.tests.fakes.FakeKernelBackend",
+    ANASTASIA_RUNTIME_BACKEND="toto.dracena.tests.fakes.FakeRunBackend",
 )
 class ExecutionGateTests(AmbrosiaTestCase):
     """Running code is a privilege, not a consequence of owning a workspace.
@@ -405,45 +405,58 @@ class ExecutionGateTests(AmbrosiaTestCase):
         self.assertEqual(response.status_code, 403)
         self.assertIn("server", response.json()["error"].lower())
 
-    def test_empty_code_is_refused_before_the_kernel_is_touched(self):
+    def test_empty_code_is_refused_before_anything_is_submitted(self):
         response = self._execute_as(self.owner, code="   ")
         self.assertEqual(response.status_code, 400)
 
-    def test_a_build_without_a_kernel_says_so(self):
-        from toto.dracena import kernel
+    def test_a_job_that_could_not_run_says_so(self):
+        """503 and a sentence — never a traceback.
+
+        Repointed on 2026-09-10 from `kernel.KernelUnavailable` ("this build
+        cannot talk to a Python kernel") to `scripts.ScriptFailed`. The claim
+        is the same and the class it belongs to is the same: the platform could
+        not run this, as distinct from the code having a bug in it.
+        """
+        from toto.dracena import scripts
 
         with mock.patch.object(
-                kernel, "execute",
-                side_effect=kernel.KernelUnavailable("no interpreter here")):
+                scripts, "run",
+                side_effect=scripts.ScriptFailed("no interpreter here")):
             response = self._execute_as(self.owner)
         self.assertEqual(response.status_code, 503)
         self.assertIn("no interpreter here", response.json()["error"])
 
     def test_a_successful_run_returns_the_console_shape(self):
-        from toto.dracena import kernel
+        from toto.dracena import scripts
 
-        fake = {"status": "ok", "stdout": "hi\n", "stderr": "", "rich": [],
-                "execution_count": 1, "error": ""}
-        with mock.patch.object(kernel, "execute", return_value=fake):
+        fake = {"status": "ok", "stdout": "hi\n", "stderr": "", "error": "",
+                "exit_code": 0, "files": []}
+        with mock.patch.object(scripts, "run", return_value=fake):
             data = self._execute_as(self.owner).json()
         self.assertTrue(data["ok"])
         self.assertEqual(data["stdout"], "hi\n")
-        self.assertEqual(data["execution_count"], 1)
+        self.assertEqual(data["exit_code"], 0)
+        # `rich` and `execution_count` were in this shape until 2026-09-10 and
+        # are gone with the kernel that produced them. Absent, not empty: a
+        # client that reads them should fail its own check rather than draw
+        # nothing forever.
+        self.assertNotIn("rich", data)
+        self.assertNotIn("execution_count", data)
 
-    def test_kernel_actions_are_gated_too(self):
-        theirs = self.make_workspace(owner=self.other, name="Theirs")
-        self.client.force_login(self.other)
-        response = self.client.post(
-            reverse("dracena:kernel_action",
-                    kwargs={"slug": theirs.slug, "action": "start"}))
-        self.assertEqual(response.status_code, 403)
+    def test_the_kernel_routes_are_gone_rather_than_left_answering(self):
+        """`kernel/status/` and `kernel/<action>/` are UNROUTED since
+        2026-09-10 — not 410s, not no-ops. Their only caller was the room's own
+        JavaScript, and a tombstone that answers is one somebody writes a
+        client against.
+        """
+        from django.urls import NoReverseMatch
 
-    def test_an_unknown_kernel_action_is_refused(self):
-        self.client.force_login(self.owner)
-        response = self.client.post(
-            reverse("dracena:kernel_action",
-                    kwargs={"slug": self.ws.slug, "action": "explode"}))
-        self.assertEqual(response.status_code, 400)
+        for name, kwargs in (("kernel_status", {"slug": self.ws.slug}),
+                             ("kernel_action", {"slug": self.ws.slug,
+                                                "action": "start"})):
+            with self.subTest(route=name):
+                with self.assertRaises(NoReverseMatch):
+                    reverse(f"dracena:{name}", kwargs=kwargs)
 
 
 class PermissionSettingTests(AmbrosiaTestCase):

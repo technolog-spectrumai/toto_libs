@@ -89,9 +89,14 @@
       // is the same reference, so Vue's hasChanged() sees no change. Every
       // update therefore goes through syncConsole(), which assigns a NEW array.
       entries: transcript.entries.slice(),
-      prompt: "",
       autoScroll: true,
-      kernelState: "stopped",
+      // NAMED FOR A KERNEL, MEANS "a job is in flight" since 2026-09-10.
+      // `kernelState` and `prompt` sat beside it and are gone with the kernel;
+      // this one is still set by runFile() and read by the LaTeX toolbar's
+      // `busy` getter, so it is a live flag with a stale name. Left alone
+      // deliberately: renaming it touches ~10 sites across a file that is
+      // about to be ported to enigma, and a rename is not worth a merge
+      // conflict there. See zenobia/limbo/workspace_ui/.
       kernelBusy: false,
 
       // latex
@@ -135,9 +140,10 @@
         // link people have bookmarked should not stop working.
         if (config.openSettings) this.openSettings();
         this.mountEditor();
-        // A LaTeX workspace has no kernel to poll — the toolbar shows Compile
-        // instead, and polling a kernel that will never exist just logs 503s.
-        if (config.canExecute && !this.isLatex) this.pollKernel();
+        // NOTHING TO POLL since 2026-09-10. A Python workspace used to ask
+        // `dracena:kernel_status` on load; the route is deleted and there is no
+        // state to report — a Run starts a process and it exits. A LaTeX
+        // workspace never polled, for the same reason it does now: no kernel.
         this.syncLatexNames();
 
         // ?file=<pk> — how the vault browser's Edit button lands here.
@@ -384,34 +390,18 @@
       },
 
       // ---- execution ----
-      get kernelReady() { return this.kernelState === "ready" && !this.kernelBusy; },
-
-      get kernelLabel() {
-        if (this.kernelBusy) return "running…";
-        return { ready: "kernel ready", starting: "starting…",
-                 dead: "kernel died", stopped: "kernel stopped" }[this.kernelState]
-               || this.kernelState;
-      },
-
-      pollKernel: function () {
-        var self = this;
-        get(config.urls.kernel.replace(/\/status\/$/, "/status/")).then(function (data) {
-          if (data.ok) self.kernelState = data.status;
-        });
-      },
-
-      kernelAction: function (action) {
-        var self = this;
-        this.kernelBusy = true;
-        this.statusLine = action + "ing the kernel…";
-        post(config.urls.kernel.replace(/\/status\/$/, "/" + action + "/"), {})
-          .then(function (data) {
-            self.kernelBusy = false;
-            if (!data.ok) { self.statusLine = data.error; return; }
-            self.kernelState = data.status;
-            self.statusLine = "Kernel " + data.status;
-          });
-      },
+      //
+      // FOUR MEMBERS WENT ON 2026-09-10 with the kernel they drove:
+      // `kernelReady` and `kernelLabel` (the toolbar pip and its caption),
+      // `pollKernel` (GET dracena:kernel_status) and `kernelAction` (POST
+      // dracena:kernel_action, for Restart and Stop). Both routes are deleted.
+      //
+      // `canRun` REPLACES `kernelReady` as the Run button's guard, and the
+      // change of meaning is the point: it used to ask "is there a live
+      // interpreter", which after the removal would have been false forever
+      // and left the button permanently greyed out. It now asks the only
+      // question left — is something already running.
+      get canRun() { return !this.kernelBusy; },
 
       runFile: function () {
         var tab = this.activeTab;
@@ -489,13 +479,6 @@
         });
       },
 
-      runPrompt: function () {
-        var code = this.prompt;
-        if (!code.trim()) return;
-        this.prompt = "";
-        this.execute(code, code);
-      },
-
       execute: function (code, source) {
         var self = this;
         this.kernelBusy = true;
@@ -507,7 +490,6 @@
             self.statusLine = data.error || "Execution failed.";
           } else {
             transcript.pushResult(data, source);
-            self.kernelState = "ready";
             self.statusLine = data.status === "ok" ? "Done." : data.status;
           }
           self.syncConsole();

@@ -106,8 +106,11 @@ class CapsuleSettingTests(AmbrosiaTestCase):
         response = self._save(str(a.uuid))
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.json()["settings"][capsules.KEY], str(a.uuid))
-        self.assertTrue(response.json()["restartRequired"],
-                        "a kernel moves Capsules only when it restarts")
+        self.assertFalse(
+            response.json()["restartRequired"],
+            "nothing has to be restarted to move Capsules: every lab resolves "
+            "one per job now, so the badge would tell people to restart a room "
+            "that has nothing running in it")
 
     def test_somebody_elses_capsule_is_refused_by_name(self):
         theirs = self._capsule("theirs", owner=self.other)
@@ -177,12 +180,30 @@ class CapsuleSettingTests(AmbrosiaTestCase):
         self.assertIsNone(capsules.preferred(self.ws, "dracena"))
         self.assertEqual(capsules.resolve(self.ws, "dracena").pk, a.pk)
 
-    def test_the_restart_badge_is_the_labs_call(self):
-        """A LaTeX room has no kernel to restart."""
+    def test_no_lab_asks_for_a_restart_badge_any_more(self):
+        """It is still the LAB'S call, and both labs now answer no.
+
+        Python said yes until 2026-09-10 — a kernel moved Capsules only when it
+        restarted — and LaTeX said no, because a compile resolves the Capsule
+        afresh every time and there is no kernel to restart. Dracena works the
+        LaTeX way now: each Run resolves a Capsule and exits.
+
+        The badge MECHANISM is deliberately kept — `restart_hint` is still a
+        field on `Field` and still rendered — because it is the right seam for
+        a lab that does hold something between calls, which is what antaresia
+        would be. What is asserted is that nobody claims it today, so a badge
+        appearing again is a change somebody made rather than a leftover.
+        """
         from toto.dracena import workspace_settings as py
         from toto.texlab import workspace_settings as tex
-        self.assertTrue(py.fields()[0].restart_hint)
-        self.assertFalse(tex.fields()[0].restart_hint)
+
+        for lab, fields in (("dracena", py.fields()), ("texlab", tex.fields())):
+            for field in fields:
+                with self.subTest(lab=lab, field=field.key):
+                    self.assertFalse(
+                        field.restart_hint,
+                        f"{lab}.{field.key} badges a restart; there is nothing "
+                        f"long-lived left to restart")
 
     def test_the_cap_is_three_concurrent_capsules(self):
         """Named here because it is why this whole setting exists."""

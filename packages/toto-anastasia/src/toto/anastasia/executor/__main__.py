@@ -81,10 +81,15 @@ def main() -> int:
         log.error("%s", exc)
         return 4
 
+    # ANASTASIA_KERNEL_NETWORK is no longer read (2026-09-10). It named the
+    # Capsule's internal network, which existed so the web tier could reach a
+    # long-lived kernel; there is no kernel, so every runner is `--network
+    # none`. A stale variable in an old .env is ignored rather than refused:
+    # unlike a retired CONFIG key, this one cannot change behaviour by being
+    # present, and refusing it would break a running deployment on upgrade.
     manager = capsules.CapsuleManager(
         staging_root=os.environ.get("ANASTASIA_STAGING_ROOT",
                                     capsules.DEFAULT_STAGING_ROOT),
-        kernel_network=os.environ.get("ANASTASIA_KERNEL_NETWORK", ""),
         docker=driver,
     )
     os.makedirs(manager.staging_root, exist_ok=True)

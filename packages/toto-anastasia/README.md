@@ -1,7 +1,14 @@
 # toto-anastasia
 
 `toto-anastasia` is the **compute** distribution of the toto suite: reserved
-capacity, mounted Compute Gears, and disposable runners. It is infrastructure,
+capacity, mounted Compute Capsules, and disposable runners.
+
+> **Gear was renamed Capsule on 2026-09-10.** `anastasia.gear` survives as a
+> container label that is read and never written, so a runner started before
+> the rename is adopted rather than destroyed. Three pull-only packages keep
+> the old name on purpose — `toto.manta`'s `gear_uuid` and `GearPreference`,
+> `toto.memo`'s `render_pdf.gear_for()`, and the subscriptions entitlement
+> label. It is infrastructure,
 not a product — it owns no documents, no datasets and no business workflows,
 and it is the successor to the retired *placidia* host's compute role.
 
@@ -13,7 +20,7 @@ Compute is not something a feature quietly grabs. It is something a user
 reserves, mounts, watches, and then selects:
 
 ```text
-pool → reserve → ComputeLease → mount → GearRuntime → select → Execution
+pool → reserve → ComputeLease → mount → CapsuleRuntime → select → Execution
 ```
 
 Three concepts, kept separate on purpose:
@@ -21,11 +28,11 @@ Three concepts, kept separate on purpose:
 | Concept | What it is |
 |---|---|
 | `ComputeLease` | reserved CPU / RAM / scratch / PIDs. **Deducted from the pool while idle** — that is what a reservation means. |
-| `GearRuntime` | the mounted, alive, bounded environment: `READY` / `BUSY` / `DEGRADED` / `DEAD`, with live usage. |
-| `Execution` | one heavy job — a disposable runner created inside the Gear and destroyed when it finishes. |
+| `CapsuleRuntime` | the mounted, alive, bounded environment: `READY` / `BUSY` / `DEGRADED` / `DEAD`, with live usage. |
+| `Execution` | one heavy job — a disposable runner created inside the Capsule and destroyed when it finishes. |
 
 Mounting is a **separate act** from reserving, and unmounting does **not**
-surrender the booking. A Gear stays mounted across many jobs until the user
+surrender the booking. A Capsule stays mounted across many jobs until the user
 unmounts it or the lease expires.
 
 ## What it does (functional)
@@ -34,25 +41,34 @@ unmounts it or the lease expires.
   deployment will hand out. Reservations are admitted against it in all four
   dimensions at once, and a refusal names every dimension that is short rather
   than making somebody discover them one retry at a time.
-- **Two levels of the same algebra.** A Gear is a little pool: its live
+- **Two levels of the same algebra.** A Capsule is a little pool: its live
   executions book against it exactly as its lease books against the host. That
-  is what lets one Gear host several concurrent jobs while none of them can
+  is what lets one Capsule host several concurrent jobs while none of them can
   exceed what the user reserved.
 - **A narrow logical API.** Callers name an *operation* — `render_pdf`,
-  `compile_latex`, `normalize_media`, `run_ocr`, `start_python_runtime` — and
+  `compile_latex`, `run_media_command`, `run_ocr`, `run_python` — and
   supply *declared parameters*. There is no way to express an image, a mount, a
   flag, a capability, a command or privileged mode, because the vocabulary in
   `families.py` has no word for them.
 - **Nothing idles, anywhere.** A runner is created for one job and destroyed
   when it ends. Warm pools existed until 2026-09-10 (`warm_policy`, kept
-  runners inside a mounted Gear) and were deleted: they had become vestigial —
+  runners inside a mounted Capsule) and were deleted: they had become vestigial —
   nothing ever served a job from a warm runner — and a fresh sandbox per job is
   what the isolation rework needs anyway.
-- **No network, with one exception.** Batch families get none at all. The
-  `python` family gets the Gear's internal network so the session owner can
-  reach the kernel's ports, and that network reaches no database and no broker.
-  A third posture, `needs_egress`, let package installs fetch from an index and
-  was deleted with them: nothing in a Gear can reach the internet now.
+- **No network. No exception.** Every runner of every family gets
+  `--network none`.
+
+  There were three postures and two Family fields, and both fields are now
+  DELETED rather than left set to False everywhere — a field nothing can
+  request is one nobody has to reason about, and an unused field is one
+  somebody sets. `needs_egress` let package installs fetch from an index and
+  went with the installer; dependencies are baked into the runner images.
+  `kernel_link` put the `python` family on the Capsule's internal network so
+  the web tier could reach a long-lived kernel's ZMQ ports, and went with the
+  kernel on 2026-09-10 — a Run is one job that writes its output and exits, so
+  nothing needs to be reachable. `tests/test_limits.py` asserts the ABSENCE OF
+  THE FIELDS rather than that no family sets them True, because a truthiness
+  check would quietly pass on a field somebody re-added.
 - **An append-only history**, refusals included: a history that only records
   what worked cannot answer "why can I not mount this".
 
@@ -71,20 +87,27 @@ Two halves, deliberately separable:
   own guard bites before trusting what it lets through.
 
 Between them sits `runtime.RuntimeBackend` — a stateless ABC with a safe
-default (`NullRuntimeBackend`, which refuses to pretend a Gear is mounted when
+default (`NullRuntimeBackend`, which refuses to pretend a Capsule is mounted when
 nothing was mounted) and a lazily-resolved dotted path, so every service in
 this package is testable with no Docker, no executor and no network.
 
 ### Enforcement
 
-Runners are bounded by systemd slice nesting, so a runner is inside its Gear
+Runners are bounded by systemd slice nesting, so a runner is inside its Capsule
 *by construction* rather than by a check:
 
 ```text
-anastasia.slice                  ← the pool ceiling
-  anastasia-gear-<uuid>.slice    ← the Gear ceiling (CPUQuota/MemoryMax/TasksMax)
-    docker-<runner>.scope        ← the execution
+anastasia.slice                     ← the pool ceiling
+  anastasia-capsule-<uuid>.slice    ← the Capsule ceiling (CPUQuota/MemoryMax/TasksMax)
+    docker-<runner>.scope           ← the execution
 ```
+
+**On the Kata tier the process ceiling arrives differently.** The kata shim
+strips `linux.resources` from the OCI spec, so `--pids-limit` is accepted by
+Docker and enforced by nothing — the guest's `pids.max` reads `max`. The driver
+sends `--ulimit nproc` there instead, which the agent applies inside the guest.
+The suite accepts either mechanism: what is promised is a process ceiling, not
+a particular cgroup file.
 
 `Limits.memory_bytes` is `ram_mb + scratch_mb` on purpose: scratch is a tmpfs
 (the deploy hosts run overlayfs on ext4, where `--storage-opt size=` is
@@ -121,7 +144,9 @@ unprivileged local users before parsing anything they sent, plus an honest
 audit line naming the calling pid and its cgroup.
 
 **It keeps no database.** Everything it needs is derivable from container
-labels (`anastasia.gear`, `anastasia.exec`, `anastasia.deadline`), the cgroup
+labels (`anastasia.capsule`, `anastasia.exec`, `anastasia.deadline`,
+`anastasia.owner`; `anastasia.gear` is still read for runners predating the
+rename), the cgroup
 tree, and the staging directory layout. That is what makes "destroy every
 runner, every scratch area and the executor itself" survivable rather than a
 data loss — and it means a restarted executor rebuilds its view by looking, so
@@ -133,10 +158,12 @@ reason: a thread dies with the executor and leaves its runner running forever.
 |---|---|
 | HMAC over method + path + body digest + timestamp + nonce | `protocol.py` |
 | Hardened tar in and out (no links, budgets, resolved-path containment) | `staging.py` |
-| The Gear cgroup: systemd transient slice, cgroupfs fallback, honest null | `slices.py` |
-| Every Docker flag a runner gets — assembled, never accepted | `containers.py` |
+| The Capsule cgroup: systemd transient slice, cgroupfs fallback, honest null | `slices.py` |
+| Every Docker flag a runner gets — assembled, never accepted | `drivers/docker.py` |
+| Which isolation tier, and one hardening table shared by both | `drivers/__init__.py` |
 | Operation → argv, on the trusted side only | `runners.py` |
-| Mount / execute / collect / unmount | `gears.py` |
+| Mount / execute / collect / unmount | `capsules.py` |
+| Per-capsule disk statistics (counts and bytes, never names) | `storage.py` |
 | Deadlines, orphans, staging sweep, adoption | `reconcile.py` |
 | Refuse new mounts under memory or disk pressure | `pressure.py` |
 
@@ -146,9 +173,9 @@ Two details worth knowing before changing any of it:
   actually carry the limits it asked for; returning early would let a runner
   launch into a slice whose ceiling systemd had not written yet.
 * **systemd expands every dash into a level**, so
-  `anastasia-gear-<hex>.slice` lives at
-  `anastasia.slice/anastasia-gear.slice/anastasia-gear-<hex>.slice`. The
-  obvious shallow path finds nothing and reports a healthy Gear as
+  `anastasia-capsule-<hex>.slice` lives at
+  `anastasia.slice/anastasia-capsule.slice/anastasia-capsule-<hex>.slice`. The
+  obvious shallow path finds nothing and reports a healthy Capsule as
   unmeasurable.
 
 `ExecutorRuntimeBackend` (in `executor_backend.py`) is the Django side of the

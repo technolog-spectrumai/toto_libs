@@ -76,11 +76,20 @@ def _choices(workspace) -> tuple[tuple[str, str], ...]:
 def field(*, restart_hint: bool = False) -> Field | None:
     """The declaration a lab appends to its fields, or None with no Capsules.
 
-    ``restart_hint`` is the LAB's to say, not this module's. A Python
-    workspace moves Capsules only when its kernel restarts, so the panel should
-    badge the field and say so after a save; a LaTeX workspace resolves the
-    Capsule afresh on every compile and has no kernel — the same badge there
-    told people to "restart the kernel" of a room that has none.
+    ``restart_hint`` is the LAB's to say, not this module's — and since
+    2026-09-10 no lab says yes.
+
+    A Python workspace used to: it moved Capsules only when its kernel
+    restarted, so the panel badged the field and said so after a save. A LaTeX
+    workspace never did, because a compile resolves the Capsule afresh every
+    time and there is no kernel — the same badge there told people to "restart
+    the kernel" of a room that has none. Dracena's kernel is gone and its Runs
+    resolve a Capsule per job, so it is now in exactly LaTeX's position.
+
+    The parameter stays because the question is still a real one: a lab that
+    holds something between calls would want the badge, and the honest place to
+    decide it is the lab. False is the answer for anything that resolves per
+    job, which is everything today.
     """
     if not available():
         return None

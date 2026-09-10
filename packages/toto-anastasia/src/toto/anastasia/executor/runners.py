@@ -92,18 +92,11 @@ def _run_ocr(params: dict) -> list:
     ]
 
 
-def _start_python_runtime(params: dict) -> list:
-    # The kernel runner is the one long-lived family: it starts a kernel, writes
-    # /out/connection.json, and stays up until the Capsule is unmounted or the
-    # idle deadline passes. Dracena owns everything the user calls a session;
-    # this is only the runtime under it.
-    argv = [
-        "anastasia-python-runtime",
-        "--idle-seconds", params["idle_seconds"],
-    ]
-    if params.get("persistent_home"):
-        argv.append("--persistent-home")
-    return argv
+def _run_python(params: dict) -> list:
+    # One script, once. The long-lived kernel runner this replaces wrote
+    # /out/connection.json and stayed up until the Capsule was unmounted; there
+    # is no such family any more, and nothing in a Capsule outlives its job.
+    return ["anastasia-run-python", "--script", params["script"]]
 
 
 _BUILDERS = {
@@ -111,7 +104,7 @@ _BUILDERS = {
     "compile_latex": _compile_latex,
     "run_media_command": _run_media_command,
     "run_ocr": _run_ocr,
-    "start_python_runtime": _start_python_runtime,
+    "run_python": _run_python,
 }
 
 

@@ -172,17 +172,22 @@ class Family:
     #: internet.
     #:
     #: EGRESS IS GONE (2026-09-10). A `needs_egress` posture existed for one
-    #: shape of job — fetching declared packages from an index in a throwaway
-    #: container — and it was the only way anything in a Capsule could reach the
-    #: internet. Both families that declared it are deleted, dependencies are
-    #: baked into the runner images instead, and the field is removed rather
-    #: than left False everywhere: a posture nothing can request is one nobody
-    #: has to reason about.
+    #: NO NETWORK FIELD AT ALL, since 2026-09-10. Two have been deleted here.
     #:
-    #: Still a property of the FAMILY, never a parameter: a caller names an
-    #: operation and the operation carries its posture. There is no way to ask
-    #: for a network.
-    kernel_link: bool = False
+    #: `needs_egress` was first: one shape of job — fetching declared packages
+    #: from an index in a throwaway container — and the only way anything in a
+    #: Capsule could reach the internet. Both families that declared it are
+    #: deleted and dependencies are baked into the runner images.
+    #:
+    #: `kernel_link` was second. It put the python family on the Capsule's
+    #: internal network so the web tier could reach a long-lived kernel's ZMQ
+    #: ports. There is no kernel: a Run is one job that writes its output and
+    #: exits, and nothing needs to connect TO a runner.
+    #:
+    #: With both gone the posture collapses to one case — every runner of every
+    #: family gets `--network none` — and that is why the field is removed
+    #: rather than left False everywhere. A posture nothing can request is one
+    #: nobody has to reason about, and an unused field is one somebody sets.
 
 
 PDF = Family(
@@ -206,9 +211,8 @@ OCR = Family(
     default_limits=Limits(cpu_millicores=1000, ram_mb=512, scratch_mb=128, pids=64),
 )
 PYTHON = Family(
-    key="python", label="Python runtime", image="anastasia-python",
+    key="python", label="Python", image="anastasia-python",
     default_limits=Limits(cpu_millicores=1000, ram_mb=1024, scratch_mb=512, pids=128),
-    kernel_link=True,
 )
 FAMILIES = {f.key: f for f in (PDF, LATEX, MEDIA, OCR, PYTHON)}
 
@@ -361,34 +365,27 @@ RUN_OCR = Operation(
     outputs=("output.json", "output.txt"),
 )
 
-START_PYTHON_RUNTIME = Operation(
-    name="start_python_runtime", family=PYTHON, label="Start a Python runtime",
+RUN_PYTHON = Operation(
+    name="run_python", family=PYTHON, label="Run a Python script",
     params=(
-        # How long the runtime may sit unused before the manager reclaims it.
-        # Bounded here; the host's own dial (dracena.kernel_idle) narrows it
-        # further, and a warm Capsule keeps it alive across that boundary.
-        Param("idle_seconds", "int", default=3600, minimum=60, maximum=604800),
-        # Whether HOME lives in the OUTPUT area instead of scratch. Scratch is
-        # a per-execution tmpfs, so anything a tool writes to $HOME — .ipython
-        # history, .jupyter config, a `pip --user` install — dies with the
-        # container. /out is a bind mount the caller collects, so the same
-        # writes survive and can be staged back on the next start.
-        #
-        # An ordinary typed parameter, not a container flag: it changes one
-        # environment variable inside the runner and nothing about how the
-        # container is built.
-        Param("persistent_home", "bool", default=False),
+        # WHERE the script was staged, not the script itself. Source arrives
+        # as staged input like any other payload: an argv has a length limit
+        # measured in kilobytes, and a script passed as an argument would show
+        # up in `ps` for every process on the host.
+        Param("script", "path", default="main.py"),
     ),
-    # A runtime is not a job: the "timeout" is how long START may take, not how
-    # long the kernel lives.
-    default_timeout=120, max_timeout=300,
-    outputs=("connection.json",),
+    # A real job timeout now, not "how long may START take". The runtime this
+    # replaces was the one long-lived family; nothing here outlives its job.
+    default_timeout=120, max_timeout=900,
+    # Whatever the script wrote. Empty rather than a fixed name, because a run
+    # that produces nothing is ordinary and demanding a file would fail it.
+    outputs=(),
 )
 
 OPERATIONS = {
     op.name: op for op in (
         RENDER_PDF, COMPILE_LATEX, RUN_MEDIA_COMMAND, RUN_OCR,
-        START_PYTHON_RUNTIME,
+        RUN_PYTHON,
     )
 }
 

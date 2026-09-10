@@ -127,8 +127,11 @@ class DockerClient(Driver):
           a binary it just wrote, and ``nosuid``/``nodev`` for the obvious.
         * ``--cap-drop ALL`` + ``no-new-privileges`` — nothing to escalate to.
         * ``--user`` non-root — a container escape lands as nobody.
-        * ``--network none`` unless the family genuinely needs one; only the
-          python family does, and its network reaches no database.
+        * ``--network none``. Since 2026-09-10 that is every runner of every
+          family: the python family was the last exception and its network
+          existed to reach a kernel that no longer runs. The parameter stays
+          because it is how ``none`` is spelled, and because a future posture
+          must arrive through a declaration rather than by growing a new flag.
         * ``--pids-limit`` — a fork bomb hits a wall instead of the host.
         * ``--cgroup-parent`` — the Capsule's ceiling, above this runner's own.
         * ``--rm=false`` — the container is removed EXPLICITLY after its exit

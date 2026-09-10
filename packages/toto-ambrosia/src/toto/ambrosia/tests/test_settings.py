@@ -21,8 +21,32 @@ from toto.ambrosia.tests.base import AmbrosiaTestCase
 
 
 
+#: The dial these clamp tests are written against — DECLARED HERE, on purpose.
+#:
+#: This file was written against `dracena.kernel_idle`, which was deleted on
+#: 2026-09-10 when the Python kernel went, and every number below was a literal
+#: (3600, 7200, 604800) tied to that declaration. Retiring the dial would have
+#: turned real assertions into assertions about a key `times` does not know —
+#: where `free_seconds` answers 0 rather than raising, so the class keeps
+#: passing while proving nothing.
+#:
+#: Repointing at another app's dial only moves the problem: texlab can be
+#: retired too. What is under test is AMBROSIA'S OWN RULE — "cap always, charge
+#: where there is a ledger", `limits.py` — so the subject belongs to this file.
+#: `_use_the_test_dial` registers it per test and removes it afterwards, the
+#: same way the registry entry is swapped elsewhere in this suite.
+DIAL = "ambrosia.test_dial"
+FREE, CEILING = 3600, 604800
+
+
+def _free() -> int:
+    from toto.quota import times
+
+    return times.free_seconds(DIAL)
+
+
 def _ceiling() -> int:
-    """How far `dracena.kernel_idle` may be turned up ON THIS HOST.
+    """How far `DIAL` may be turned up ON THIS HOST.
 
     See toto.ambrosia.limits: with a ledger installed a paid grant binds the
     range, so an ungranted workspace cannot exceed the free default; without
@@ -33,8 +57,8 @@ def _ceiling() -> int:
     from toto.quota import times
 
     if apps.is_installed("toto.tax"):
-        return times.free_seconds("dracena.kernel_idle")
-    return times.ceiling_seconds("dracena.kernel_idle")
+        return times.free_seconds(DIAL)
+    return times.ceiling_seconds(DIAL)
 
 
 class SettingsEndpointTests(AmbrosiaTestCase):
@@ -63,13 +87,13 @@ class SettingsEndpointTests(AmbrosiaTestCase):
         self.assertEqual(self.ws.settings_for("dracena")["exec_timeout"], 45)
 
     def test_settings_survive_a_reload(self):
+        # Posted two keys until 2026-09-10; `inline_plots` is deleted with the
+        # kernel that ran %matplotlib, and dracena declares one field now.
         self.client.force_login(self.owner)
-        self._post({"settings": {"exec_timeout": 45, "inline_plots": False}})
+        self._post({"settings": {"exec_timeout": 45}})
 
         fresh = Workspace.objects.get(pk=self.ws.pk)
-        stored = fresh.settings_for("dracena")
-        self.assertEqual(stored["exec_timeout"], 45)
-        self.assertIs(stored["inline_plots"], False)
+        self.assertEqual(fresh.settings_for("dracena")["exec_timeout"], 45)
 
     def test_a_stranger_gets_404_not_403(self):
         # Same reasoning as every other mutation here: 403 would confirm the
@@ -103,29 +127,6 @@ class SettingsEndpointTests(AmbrosiaTestCase):
         self.client.force_login(self.owner)
         response = self._post({"settings": {"exec_timeout": "soon"}})
         self.assertEqual(response.status_code, 409)
-
-    def test_a_bad_environment_variable_name_is_refused(self):
-        self.client.force_login(self.owner)
-        response = self._post({"settings": {"env": {"NOT A NAME": "1"}}})
-        self.assertEqual(response.status_code, 409)
-        self.assertIn("env", response.json()["fields"])
-
-    def test_a_null_byte_in_a_value_is_refused(self):
-        # postgres jsonb cannot store a NUL, so without this guard a deployed
-        # host answers 500 from the database where the sqlite test database
-        # accepts it silently — the worst kind of environment-only failure.
-        self.client.force_login(self.owner)
-        response = self._post({"settings": {"env": {"TOKEN": "a\x00b"}}})
-        self.assertEqual(response.status_code, 409)
-        self.assertIn("env", response.json()["fields"])
-
-    def test_environment_variables_round_trip(self):
-        self.client.force_login(self.owner)
-        response = self._post({"settings": {"env": {"API_HOST": "example.test"}}})
-        self.assertTrue(response.json()["ok"])
-        self.ws.refresh_from_db()
-        self.assertEqual(self.ws.settings_for("dracena")["env"],
-                         {"API_HOST": "example.test"})
 
     @override_settings(AMBROSIA_EXECUTION_ACCESS="superuser")
     def test_an_execution_knob_is_refused_without_the_right_to_run(self):
@@ -186,6 +187,54 @@ class ClampTests(AmbrosiaTestCase):
     def setUp(self):
         super().setUp()
         self.ws = self.make_workspace(name="Clamped", kind="python")
+        self._use_the_test_dial()
+
+    def _use_the_test_dial(self):
+        """Register `DIAL` for the duration of one test, then take it away.
+
+        The registry has no `unregister` — it is populated once at startup and
+        never edited — so the entry is removed by hand on cleanup. Poking
+        `_limits` is the same liberty `PartialSnapshotTests` takes with
+        `registry._BY_KIND`: a test that needs a hook swapped has to reach for
+        the dict, and doing it under `addCleanup` is what keeps it contained.
+        """
+        from toto.quota import times
+
+        limit = times.TimeLimit(
+            key=DIAL, label="Clamp test dial", app_label="ambrosia",
+            scope="workspace", scope_model="ambrosia.Workspace",
+            scope_owner_attr="owner_id",
+            free_seconds=FREE, ceiling_seconds=CEILING,
+            description="Declared by toto.ambrosia's own tests.")
+        # ORDER MATTERS: addCleanup is LIFO, so the leak check has to be
+        # registered FIRST to run LAST — after the pop. Registered the other
+        # way round it fires while the dial is still there and fails every
+        # test in the class, which is exactly what happened when this was
+        # written as a test of its own.
+        self.addCleanup(
+            lambda: self.assertIsNone(
+                times.registry.get(DIAL),
+                "the clamp test dial outlived its test — every other suite, "
+                "and any page listing a user's dials, would now see it"))
+        self.addCleanup(times.registry._limits.pop, DIAL, None)
+        times.registry._limits[DIAL] = limit
+
+    def test_the_dial_under_test_exists(self):
+        """THE GUARD ON EVERY OTHER TEST IN THIS CLASS.
+
+        `times.free_seconds` and `ceiling_seconds` degrade to 0 on an unknown
+        key rather than raising — deliberately, so a missing dial never 500s a
+        page. That same kindness means this whole class would clamp everything
+        to [0, 0] and still pass if `DIAL` named nothing. First.
+        """
+        from toto.quota import times
+
+        self.assertIsNotNone(times.registry.get(DIAL),
+                             f"{DIAL} is not registered, so every clamp test "
+                             f"below is asserting against zeroes")
+        self.assertEqual(_free(), FREE)
+        self.assertGreater(times.ceiling_seconds(DIAL), _free())
+
 
     def test_how_far_the_knob_turns_depends_on_whether_there_is_a_ledger(self):
         """"Cap always, charge where there is a ledger" — both halves.
@@ -196,49 +245,119 @@ class ClampTests(AmbrosiaTestCase):
         from a ledger-free host to one with a ledger, which is why it asserts
         the rule rather than a number.
         """
-        low, high = limits.allowed_range("dracena.kernel_idle", self.ws)
-        self.assertEqual(low, 3600)         # free — the floor, always
+        low, high = limits.allowed_range(DIAL, self.ws)
+        self.assertEqual(low, _free())      # free — the floor, always
         self.assertEqual(high, _ceiling())
 
     def test_nothing_stored_means_the_entitlement_unchanged(self):
         # An untouched workspace behaves exactly as it did before the feature.
-        self.assertEqual(
-            limits.resolve_seconds("dracena.kernel_idle", self.ws, None), 3600)
+        self.assertEqual(limits.resolve_seconds(DIAL, self.ws, None), _free())
 
     def test_a_stored_value_is_clamped_at_both_ends(self):
         self.assertEqual(
-            limits.resolve_seconds("dracena.kernel_idle", self.ws, 10), 3600)
+            limits.resolve_seconds(DIAL, self.ws, 1), _free())
         self.assertEqual(
-            limits.resolve_seconds("dracena.kernel_idle", self.ws, 10 ** 9),
-            _ceiling())
-        # 7200 is above the free floor, so it only survives where the range
-        # actually extends past it.
+            limits.resolve_seconds(DIAL, self.ws, 10 ** 9), _ceiling())
+        # Halfway up is above the free floor, so it only survives where the
+        # range actually extends past it.
+        midway = (_free() + _ceiling()) // 2
         self.assertEqual(
-            limits.resolve_seconds("dracena.kernel_idle", self.ws, 7200),
-            7200 if _ceiling() >= 7200 else 3600)
+            limits.resolve_seconds(DIAL, self.ws, midway),
+            midway if _ceiling() >= midway else _free())
 
     def test_nonsense_falls_back_rather_than_raising(self):
         self.assertEqual(
-            limits.resolve_seconds("dracena.kernel_idle", self.ws, "later"), 3600)
+            limits.resolve_seconds(DIAL, self.ws, "later"), _free())
 
     def test_with_a_ledger_the_grant_is_the_cap(self):
         # The billed shape, which this host cannot reach for real: a paid grant
         # binds below the ceiling, so a workspace cannot use time nobody bought.
+        granted = _free() * 2
         with mock.patch.object(limits, "_has_ledger", return_value=True), \
-             mock.patch("toto.quota.times.effective_seconds", return_value=7200):
-            low, high = limits.allowed_range("dracena.kernel_idle", self.ws)
-            self.assertEqual((low, high), (3600, 7200))
+             mock.patch("toto.quota.times.effective_seconds", return_value=granted):
+            low, high = limits.allowed_range(DIAL, self.ws)
+            self.assertEqual((low, high), (_free(), granted))
             self.assertEqual(
-                limits.resolve_seconds("dracena.kernel_idle", self.ws, 604800), 7200)
+                limits.resolve_seconds(DIAL, self.ws, 10 ** 9), granted)
 
     def test_a_tightened_bound_applies_without_a_re_save(self):
-        # Clamped on the way OUT too: a grant that lapses takes effect at once.
-        self.ws.settings = {"dracena": {"idle_seconds": 604800}}
-        with mock.patch.object(limits, "_has_ledger", return_value=True), \
-             mock.patch("toto.quota.times.effective_seconds", return_value=3600):
-            from toto.dracena import workspace_settings
+        """Clamped on the way OUT too: a grant that lapses takes effect at once.
 
-            self.assertEqual(workspace_settings.idle_seconds(self.ws), 3600)
+        Read through `resolve_seconds` rather than through a lab's own
+        accessor. It went through `workspace_settings.idle_seconds` until
+        2026-09-10, which is how it came to be testing a dial that was about to
+        be deleted; the rule being pinned is `limits.py`'s, and asking
+        `limits.py` directly is what keeps it that way.
+        """
+        with mock.patch.object(limits, "_has_ledger", return_value=True), \
+             mock.patch("toto.quota.times.effective_seconds",
+                        return_value=_free()):
+            self.assertEqual(
+                limits.resolve_seconds(DIAL, self.ws, 10 ** 9), _free())
+
+
+class EnvFieldTests(AmbrosiaTestCase):
+    """The ENV kind's guarantees, tested against a field this test declares.
+
+    MOVED HERE FROM the settings endpoint on 2026-09-10. They used to post
+    `{"settings": {"env": …}}` at dracena, which declared an `env` field so a
+    kernel could be handed extra variables. That field is deleted — a Run's
+    environment is assembled by the manager from a fixed allowlist — and NO
+    installed lab declares an ENV field today.
+
+    The cleaning code is not deleted, and these tests are why it must not rot:
+    the NUL-byte refusal in particular is a guard against a deployed-host-only
+    500 (postgres jsonb cannot hold a NUL; the sqlite test database takes it
+    happily). Declaring the field locally keeps that proven without pretending
+    a lab offers one.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.ws = self.make_workspace(name="Enved", kind="python")
+        self.fields = (settings_spec.Field(
+            key="env", kind=settings_spec.ENV, label="Environment",
+            default=dict),)
+
+    def _clean(self, value):
+        return settings_spec.clean(self.fields, {"env": value},
+                                   workspace=self.ws)
+
+    def test_a_bad_variable_name_is_refused(self):
+        from django.core.exceptions import ValidationError
+
+        with self.assertRaises(ValidationError) as caught:
+            self._clean({"NOT A NAME": "1"})
+        self.assertIn("env", caught.exception.message_dict)
+
+    def test_a_null_byte_in_a_value_is_refused(self):
+        # postgres jsonb cannot store a NUL, so without this guard a deployed
+        # host answers 500 from the database where the sqlite test database
+        # accepts it silently — the worst kind of environment-only failure.
+        from django.core.exceptions import ValidationError
+
+        with self.assertRaises(ValidationError) as caught:
+            self._clean({"TOKEN": "a\x00b"})
+        self.assertIn("env", caught.exception.message_dict)
+
+    def test_a_good_mapping_round_trips(self):
+        self.assertEqual(self._clean({"API_HOST": "example.test"}),
+                         {"env": {"API_HOST": "example.test"}})
+
+    def test_no_installed_lab_offers_one(self):
+        """Why the tests above declare their own field.
+
+        If this goes red, a lab started accepting caller-supplied environment
+        variables again — which for a capsule means the manager's allowlist is
+        no longer the only source. Worth a look before deleting this.
+        """
+        from toto.ambrosia import registry
+
+        for kind, app in registry._BY_KIND.items():
+            with self.subTest(kind=kind):
+                kinds = {f.kind for f in app.settings_fields()}
+                self.assertNotIn(settings_spec.ENV, kinds,
+                                 f"the {app.namespace} lab declares an ENV field")
 
 
 class SettingsSpecTests(AmbrosiaTestCase):
@@ -247,23 +366,30 @@ class SettingsSpecTests(AmbrosiaTestCase):
         self.ws = self.make_workspace(name="Spec", kind="python")
 
     def test_effective_fills_in_every_declared_field(self):
+        """Every DECLARED field, whatever a lab happens to declare.
+
+        It named `idle_seconds` and `inline_plots` until 2026-09-10 and both
+        are deleted, so the assertion is now written against the declaration
+        itself. That is also the better test: the claim `effective` makes is
+        "no declared key is missing", not "these three keys exist".
+        """
         from toto.dracena import workspace_settings
 
-        values = settings_spec.effective(
-            workspace_settings.fields(), {}, workspace=self.ws)
+        fields = workspace_settings.fields()
+        values = settings_spec.effective(fields, {}, workspace=self.ws)
+        self.assertEqual(set(values), {f.key for f in fields})
         self.assertIn("exec_timeout", values)
-        self.assertIn("idle_seconds", values)
-        self.assertIs(values["inline_plots"], True)
 
     def test_describe_carries_the_bounds_the_panel_renders(self):
         from toto.dracena import workspace_settings
 
         described = {f["key"]: f for f in settings_spec.describe(
             workspace_settings.fields(), workspace=self.ws)}
-        self.assertEqual(described["idle_seconds"]["min"], 3600)
-        self.assertEqual(described["idle_seconds"]["max"], _ceiling())
-        self.assertTrue(described["env"]["needsExecute"])
-        self.assertTrue(described["inline_plots"]["restartHint"])
+        self.assertEqual(described["exec_timeout"]["min"],
+                         workspace_settings.EXEC_TIMEOUT_MIN)
+        self.assertEqual(described["exec_timeout"]["max"],
+                         workspace_settings.EXEC_TIMEOUT_MAX)
+        self.assertTrue(described["exec_timeout"]["needsExecute"])
 
 
 class SettingsRoomTests(AmbrosiaTestCase):

@@ -11,8 +11,15 @@ one CANNOT be honestly asserted that is said out loud rather than faked:
   TODO with no taxes.py. A test asserting "the charge is zero" would pass
   against an engine that never charges and prove nothing; asserting the pool is
   free proves the thing that actually matters.
-* **A real runtime** is faked at the same seam every other dracena test fakes.
-  What is not faked: the manifest, the digests, the release, and the staging.
+* **A kept home** is contributed by a FAKE LAB registered for this test, not by
+  dracena. That is not convenience: since 2026-09-10 **no installed lab keeps a
+  home at all**, so exercising this through a real one would mean exercising
+  nothing. See `NoLabKeepsAHomeTests` below, which pins that fact so it is a
+  decision rather than a silence.
+
+  What is faked is only the lab hook. What is NOT faked: the packing, the
+  digest, the size cap, the tamper refusal, the release and the staging — every
+  guarantee this module actually makes.
 """
 
 from __future__ import annotations
@@ -28,17 +35,17 @@ from toto.ambrosia.tests.base import AmbrosiaTestCase
 from toto.anastasia import services as capsule_services
 from toto.anastasia.limits import Limits
 from toto.anastasia.models import ComputeLease
-from toto.dracena.tests.fakes import POOL, FakeKernelBackend
+from toto.dracena.tests.fakes import POOL, FakeRunBackend
 
 
 @override_settings(
     ANASTASIA_POOL=POOL,
-    ANASTASIA_RUNTIME_BACKEND="toto.dracena.tests.fakes.FakeKernelBackend",
+    ANASTASIA_RUNTIME_BACKEND="toto.dracena.tests.fakes.FakeRunBackend",
 )
 class HibernationTestCase(AmbrosiaTestCase):
     def setUp(self):
         super().setUp()
-        FakeKernelBackend.reset()
+        FakeRunBackend.reset()
         self.ws = self.make_workspace(name="Py", kind=WorkspaceKind.PYTHON)
 
     def give_a_capsule(self, *, permanent_home=False, name="py"):
@@ -48,37 +55,70 @@ class HibernationTestCase(AmbrosiaTestCase):
         capsule_services.mount(lease=lease, actor=self.owner)
         return lease
 
-    def start_kernel_on(self, lease):
-        """A live session with a REAL Execution row behind it.
+    def lab_that_keeps(self, home_files):
+        """Install a lab whose snapshot contributes `home_files`, for this test.
 
-        `start_runtime` is mocked — there is no Docker here — but the row it
-        would have created is not, because `snapshot` looks the execution up to
-        collect from it. Mocking that away too would have made the hybrid tests
-        pass without exercising the path they exist for.
+        WorkspaceApp is a frozen dataclass, so a hook is swapped by replacing
+        the registry entry rather than by patching an attribute — the same
+        move PartialSnapshotTests makes.
+
+        Called `start_kernel_on(lease)` until 2026-09-10, when it created a real
+        Execution row and started dracena's kernel against a mocked
+        `jobs.start_runtime`. There is no kernel, no `start_runtime` and no
+        long-lived runtime to collect from. What the hybrid tests are actually
+        about — pack, digest, cap, refuse, stage — never needed one; it needed
+        a lab that hands over some bytes, which is what this is.
         """
-        from toto.anastasia.models import Execution
-        from toto.dracena import kernel
+        from toto.ambrosia import registry
 
-        execution = Execution.objects.create(
-            lease=lease, operation="start_python_runtime", family="python",
-            cpu_millicores=1000, ram_mb=1024, scratch_mb=512, pids=128,
-            timeout_seconds=120, requested_by=self.owner)
-        with mock.patch("toto.anastasia.jobs.start_runtime") as start:
-            start.return_value = {"ready": {"ip": "10.0.0.9"},
-                                  "execution": execution}
-            kernel.start(self.ws, capsule_uuid=lease.uuid, user=self.owner)
-        return execution
+        app = registry.for_kind(WorkspaceKind.PYTHON)
+        self.addCleanup(registry._BY_KIND.__setitem__, WorkspaceKind.PYTHON, app)
+
+        def _snapshot(workspace, *, permanent_home=False):
+            # The permanent_home gate is the LAB'S to honour — the base passes
+            # the flag and trusts the answer — so the fake honours it too.
+            snapshot = {"runtime": {"image": "anastasia-python"}}
+            if permanent_home:
+                # KEYS ARRIVE WITHOUT THE `home/` PREFIX. `staged_home` puts it
+                # back (`f"{HOME_NAME}/{name}"`), so a lab that leaves it on
+                # produces `home/home/.gitconfig` on the way out. The real hook
+                # stripped it — `name[len("home/"):]` — because it read out of
+                # a container's `/out/home`; the caller here passes the names as
+                # they appear on disk, so the fake strips the same way.
+                snapshot["home_files"] = {
+                    name[len(f"{hibernation.HOME_NAME}/"):]: body
+                    for name, body in home_files.items()}
+            return snapshot
+
+        registry._BY_KIND[WorkspaceKind.PYTHON] = registry.WorkspaceApp(
+            namespace=app.namespace, kind=app.kind,
+            extra_context=app.extra_context, extra_urls=app.extra_urls,
+            teardown=app.teardown, main_id_for=app.main_id_for,
+            settings_fields=app.settings_fields,
+            settings_template=app.settings_template,
+            room_panels=app.room_panels,
+            snapshot=_snapshot, restore=app.restore)
 
 
 class ManifestHibernationTests(HibernationTestCase):
 
     def test_hibernating_writes_down_what_it_is(self):
+        """The BASE's half of the manifest, which is now the whole of it.
+
+        This also asserted `manifest["runtime"]["image"]` until 2026-09-10 —
+        the lab's own half, recording the image to rebuild on. Dracena
+        registers no snapshot hook any more, so no lab contributes anything
+        here and the key is absent. Asserted as an absence rather than
+        deleted: a manifest that silently regrew a lab section would mean a
+        long-lived runtime came back without anyone deciding it should.
+        """
         self.give_a_capsule()
         manifest = hibernation.hibernate(self.ws, user=self.owner)
         self.assertEqual(manifest["kind"], WorkspaceKind.PYTHON)
+        self.assertEqual(manifest["namespace"], "dracena")
         self.assertEqual(manifest["depth"], "manifest")
-        # The lab's own half: what to rebuild ON.
-        self.assertEqual(manifest["runtime"]["image"], "anastasia-python")
+        self.assertNotIn("runtime", manifest)
+        self.assertNotIn("error", manifest)
         self.assertTrue(hibernation.is_hibernated(self.ws))
 
     def test_it_is_idempotent(self):
@@ -151,11 +191,9 @@ class HybridHibernationTests(HibernationTestCase):
             "home/.gitconfig": b"[user]\\n\\tname = Ada\\n"}
 
     def _hibernate_with_home(self, files=None):
+        self.lab_that_keeps(self.HOME if files is None else files)
         lease = self.give_a_capsule(permanent_home=True)
-        self.start_kernel_on(lease)
-        with mock.patch("toto.anastasia.jobs.collect_runtime",
-                        return_value=(self.HOME if files is None else files)):
-            return lease, hibernation.hibernate(self.ws, user=self.owner)
+        return lease, hibernation.hibernate(self.ws, user=self.owner)
 
     def test_a_permanent_home_capsule_keeps_the_home(self):
         _lease, manifest = self._hibernate_with_home()
@@ -183,12 +221,10 @@ class HybridHibernationTests(HibernationTestCase):
         pinned = self.give_a_capsule(permanent_home=True, name="second")
         self.assertLess(older.created_at, pinned.created_at)
 
+        self.lab_that_keeps(self.HOME)
         with mock.patch.object(capsules_module, "preferred",
                                return_value=str(pinned.uuid)):
-            self.start_kernel_on(pinned)
-            with mock.patch("toto.anastasia.jobs.collect_runtime",
-                            return_value=self.HOME):
-                manifest = hibernation.hibernate(self.ws, user=self.owner)
+            manifest = hibernation.hibernate(self.ws, user=self.owner)
 
         self.assertEqual(manifest["depth"], "hybrid",
                          "the pinned Capsule keeps a home; reading the older "
@@ -202,14 +238,19 @@ class HybridHibernationTests(HibernationTestCase):
             "this one")
 
     def test_an_ordinary_capsule_keeps_no_home_even_if_one_exists(self):
-        """The choice is the Capsule's, made when it was reserved."""
-        lease = self.give_a_capsule(permanent_home=False)
-        self.start_kernel_on(lease)
-        with mock.patch("toto.anastasia.jobs.collect_runtime",
-                        return_value=self.HOME) as collect:
-            manifest = hibernation.hibernate(self.ws, user=self.owner)
-        collect.assert_not_called()
+        """The choice is the Capsule's, made when it was reserved.
+
+        The base passes `permanent_home` to the lab and takes its word for it,
+        so this pins BOTH halves of that contract: the flag arrives false, and
+        nothing is kept when it does.
+        """
+        self.lab_that_keeps(self.HOME)
+        self.give_a_capsule(permanent_home=False)
+        manifest = hibernation.hibernate(self.ws, user=self.owner)
+        self.assertFalse(manifest["permanent_home"])
         self.assertEqual(manifest["depth"], "manifest")
+        record = WorkspaceHibernation.objects.get(workspace=self.ws)
+        self.assertFalse(record.home_digest)
 
     def test_the_kept_home_is_staged_back_exactly(self):
         """Exact restoration: the same bytes, under the same names."""
@@ -217,20 +258,24 @@ class HybridHibernationTests(HibernationTestCase):
         staged = hibernation.staged_home(self.ws)
         self.assertEqual(staged, self.HOME)
 
-    def test_a_kernel_start_stages_the_kept_home(self):
-        """How it actually reaches the runtime."""
-        from toto.dracena import kernel
+    def test_the_kept_home_survives_a_wake_and_is_still_offered(self):
+        """WHAT IT NO LONGER DOES, said plainly.
 
+        This asserted that `kernel.start` staged the kept home into the
+        runtime's inputs with `persistent_home=True`. Both are deleted: there
+        is no kernel start, and `staged_home()` has no production caller at
+        all since 2026-09-10 — a Run is a fresh process and puts nothing back.
+
+        What is still true and still worth pinning is that waking does not
+        DESTROY what was kept: the bytes verify and `staged_home` still hands
+        them over. That is what a future consumer — antaresia, or a per-run
+        home carried through `inputs=` — would build on, and it is the reason
+        the blob is not deleted on wake.
+        """
         self._hibernate_with_home()
-        lease = self.give_a_capsule(permanent_home=True, name="py2")
-        with mock.patch("toto.anastasia.jobs.start_runtime") as start:
-            start.return_value = {"ready": {"ip": "10.0.0.9"},
-                                  "execution": mock.Mock(uuid=lease.uuid)}
-            hibernation.rehydrate(self.ws, user=self.owner)
-            kernel.start(self.ws, capsule_uuid=lease.uuid, user=self.owner)
-        _args, kwargs = start.call_args
-        self.assertIn("home/.gitconfig", kwargs["inputs"])
-        self.assertTrue(kwargs["params"]["persistent_home"])
+        hibernation.rehydrate(self.ws, user=self.owner)
+        self.assertFalse(hibernation.is_hibernated(self.ws))
+        self.assertEqual(hibernation.staged_home(self.ws), self.HOME)
 
     def test_an_oversized_home_is_reported_rather_than_silently_dropped(self):
         huge = {"home/big.bin": b"x" * 2048}
@@ -249,11 +294,9 @@ class TamperingTests(HibernationTestCase):
     """A home is executable state — shell profiles, a pip --user tree."""
 
     def _sleep_with_home(self):
-        lease = self.give_a_capsule(permanent_home=True)
-        self.start_kernel_on(lease)
-        with mock.patch("toto.anastasia.jobs.collect_runtime",
-                        return_value={"home/.bashrc": b"echo hello\\n"}):
-            hibernation.hibernate(self.ws, user=self.owner)
+        self.lab_that_keeps({"home/.bashrc": b"echo hello\\n"})
+        self.give_a_capsule(permanent_home=True)
+        hibernation.hibernate(self.ws, user=self.owner)
         return WorkspaceHibernation.objects.get(workspace=self.ws)
 
     def test_a_flipped_byte_refuses_the_restore(self):
@@ -266,8 +309,12 @@ class TamperingTests(HibernationTestCase):
         self.assertIn("does not match", str(caught.exception))
 
     def test_a_tampered_home_is_never_staged_either(self):
-        """The check is on every path, not only on an explicit wake — this one
-        runs at every kernel start."""
+        """The check is on every path, not only on an explicit wake.
+
+        `staged_home` is the second door. It has no production caller today
+        (it was `kernel.start`'s), so this is the test keeping the refusal
+        honest until one returns — which is exactly when a missing check would
+        cost something."""
         record = self._sleep_with_home()
         record.home_digest = "0" * 64
         record.save(update_fields=["home_digest"])
@@ -321,13 +368,16 @@ class MissingBaseTests(HibernationTestCase):
         state (shell profiles, a `pip --user` tree), so restoring bytes that do
         not match what was stored is the failure worth refusing.
         """
-        lease = self.give_a_capsule(permanent_home=True)
-        self.start_kernel_on(lease)
+        self.lab_that_keeps({"home/.bashrc": b"echo hello\n"})
+        self.give_a_capsule(permanent_home=True)
         hibernation.hibernate(self.ws, user=self.owner)
 
         record = hibernation.record_for(self.ws)
-        if not record.home_digest:
-            self.skipTest("nothing was kept, so there is nothing to corrupt")
+        # No skipTest guard since 2026-09-10. It read "nothing was kept, so
+        # there is nothing to corrupt" and was honest while a real kernel
+        # decided whether a home existed — but a test that can decline to run
+        # is one that stops running. The fake lab always keeps one.
+        self.assertTrue(record.home_digest)
         record.home_digest = "b" * 64        # not the bytes that were stored
         record.save(update_fields=["home_digest"])
 
@@ -377,6 +427,54 @@ class PartialSnapshotTests(HibernationTestCase):
         self.assertIn("error", manifest)
         # And the compute still went away, which is the part that costs money.
         self.assertEqual(capsule_services.booked().cpu_millicores, 0)
+
+
+class NoLabKeepsAHomeTests(HibernationTestCase):
+    """THE PRODUCT'S ACTUAL STATE since 2026-09-10, pinned so it stays a choice.
+
+    Hybrid hibernation is unreachable: it needs a lab to hand over
+    `home_files`, and neither installed lab does. Dracena stopped when its
+    kernel went — a Run is a fresh process, so there is no live output area to
+    read a $HOME out of — and texlab never did.
+
+    The MACHINERY is deliberately kept: pack, digest, the size cap, the tamper
+    refusal and `staged_home` are all still here and still tested above through
+    a fake lab. What is gone is a producer. That distinction is the whole point
+    of this class — "unused" and "deleted" are different states, and a reader
+    finding `permanent_home` on a lease deserves to be told which one this is.
+
+    IF THIS GOES RED because a lab started keeping a home again: that is not a
+    bug, it is a decision someone made. Check it was deliberate, then delete
+    this class and say so in the manifest tests instead.
+    """
+
+    def test_no_installed_lab_contributes_home_files(self):
+        from toto.ambrosia import registry
+
+        for kind, app in registry._BY_KIND.items():
+            with self.subTest(kind=kind):
+                self.assertIsNone(
+                    app.snapshot,
+                    f"the {app.namespace} lab registered a snapshot hook; if it "
+                    f"keeps a home, hybrid hibernation is live again and this "
+                    f"class is out of date")
+
+    def test_so_a_permanent_home_capsule_still_hibernates_to_a_manifest(self):
+        """The user-visible consequence: reserving `permanent_home` changes
+        nothing today. It is recorded in the manifest and keeps no files."""
+        self.give_a_capsule(permanent_home=True)
+        manifest = hibernation.hibernate(self.ws, user=self.owner)
+        self.assertTrue(manifest["permanent_home"])
+        self.assertEqual(manifest["depth"], "manifest")
+        self.assertEqual(hibernation.staged_home(self.ws), {})
+
+    def test_and_it_wakes_without_complaining(self):
+        """Nothing kept means nothing to verify — a wake must not refuse over
+        the absence of a home it was never given."""
+        self.give_a_capsule(permanent_home=True)
+        hibernation.hibernate(self.ws, user=self.owner)
+        hibernation.rehydrate(self.ws, user=self.owner)
+        self.assertFalse(hibernation.is_hibernated(self.ws))
 
 
 class ConcurrencyTests(HibernationTestCase):
@@ -435,13 +533,12 @@ class EndpointTests(HibernationTestCase):
         survives. The endpoint contract is what this test is for: a refusal is
         409 and a sentence, never a traceback.
         """
-        lease = self.give_a_capsule(permanent_home=True)
-        self.start_kernel_on(lease)
+        self.lab_that_keeps({"home/.bashrc": b"echo hello\n"})
+        self.give_a_capsule(permanent_home=True)
         self.client.post(self._url("workspace_hibernate"))
 
         record = hibernation.record_for(self.ws)
-        if not record.home_digest:
-            self.skipTest("nothing was kept, so there is nothing to corrupt")
+        self.assertTrue(record.home_digest)
         record.home_digest = "b" * 64
         record.save(update_fields=["home_digest"])
 

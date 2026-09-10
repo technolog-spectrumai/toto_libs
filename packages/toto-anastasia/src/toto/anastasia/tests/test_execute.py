@@ -7,7 +7,7 @@ from unittest import mock
 from django.core.exceptions import ValidationError
 from django.test import override_settings
 
-from toto.anastasia import choices, execute, families, services
+from toto.anastasia import choices, execute, families, jobs, services
 from toto.anastasia.limits import Limits
 from toto.anastasia.models import Execution
 
@@ -393,3 +393,55 @@ class UnobservableKillTests(AnastasiaTestCase):
         execution = self._finish_with(oom_killed=False, oom_observable=False,
                                       exit_code=0)
         self.assertNotIn("cannot see whether", execution.error or "")
+
+
+class NoLongLivedRuntimeTests(AnastasiaTestCase):
+    """`jobs` can submit-and-wait. It CANNOT start something and walk away.
+
+    Three public functions were deleted on 2026-09-10 — `start_runtime`,
+    `collect_runtime`, `stop_runtime` — along with the private `_stop` they
+    shared. Their only caller was dracena's Jupyter kernel, and there is no
+    kernel: every Run is a job that writes its output and exits.
+
+    ASSERTED AS AN ABSENCE, which is a thing worth doing carefully because an
+    absence assertion is the kind that silently inverts. This one cannot: it
+    names the functions, so it goes red the moment one is defined again, and it
+    is red for the right reason. What it guards is the campaign's own subject —
+    a container that outlives the request that made it is exactly what capsules
+    exist to bound — so bringing one back should cost a review, not an import.
+    """
+
+    GONE = ("start_runtime", "collect_runtime", "stop_runtime")
+
+    def test_the_runtime_api_is_gone(self):
+        for name in self.GONE:
+            with self.subTest(function=name):
+                self.assertFalse(
+                    hasattr(jobs, name),
+                    f"jobs.{name} is back. A long-lived runner is a decision, "
+                    f"not a helper — say so where it is reintroduced")
+
+    def test_run_is_the_whole_of_the_api(self):
+        """`run` submits and WAITS, so a caller never holds a live container.
+
+        Asserted on the SHAPE rather than by running a job: `jobs.run` polls
+        `execution_status`, which the shared `FakeRuntimeBackend` does not
+        implement — running one here would be testing the fake. What a real run
+        returns is covered by SubmitTests and ClosureTests above; what this
+        pins is that the module offers no OTHER way in.
+        """
+        import inspect
+
+        self.assertTrue(callable(jobs.run))
+        # Every public name in `jobs`, so a fourth runtime helper cannot slip
+        # in beside the three that were deleted.
+        public = {name for name, value in vars(jobs).items()
+                  if not name.startswith("_") and inspect.isfunction(value)
+                  and value.__module__ == jobs.__name__}
+        self.assertEqual(
+            public,
+            {"run", "tar_of", "files_from", "require_capsule",
+             "usable_capsules", "capsule_options",
+             # The pre-rename aliases, kept for pull-only callers. See the
+             # rename notes in this module — they are not new API.
+             "require_gear", "gear_options"})

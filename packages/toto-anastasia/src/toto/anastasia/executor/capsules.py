@@ -56,8 +56,7 @@ class CapsuleError(Exception):
 
 class CapsuleManager:
     def __init__(self, *, staging_root: str = DEFAULT_STAGING_ROOT,
-                 slice_driver=None, docker=None, generation: str = "",
-                 kernel_network: str = ""):
+                 slice_driver=None, docker=None, generation: str = ""):
         self.staging_root = staging_root
         self.slices = slice_driver if slice_driver is not None else slices.detect_driver()
         self.docker = docker if docker is not None else docker_driver.DockerClient()
@@ -82,10 +81,6 @@ class CapsuleManager:
         #: against is not the one answering now", which is the only way a Capsule
         #: row can know it needs re-adopting after a manager restart.
         self.generation = generation or uuid_module.uuid4().hex[:16]
-        #: The ONE network any runner may join, and only the kernel family
-        #: does. Empty where the operator configured none, and that must mean
-        #: "no network" rather than a fallback to something else.
-        self.kernel_network = kernel_network
 
     # -- paths -------------------------------------------------------------
 
@@ -243,17 +238,20 @@ class CapsuleManager:
             LABEL_OPERATION: op.name,
             LABEL_DEADLINE: str(deadline),
         }
-        # TWO postures now, and the ordering trap that used to live here is
-        # gone with the third. Assembled from the family's own declaration —
-        # never from anything the caller sent, which is why `build_run_args`
-        # takes a network rather than deciding one.
+        # ONE POSTURE. No runner of any family gets a network — the driver
+        # turns None into `--network none`.
         #
-        # The egress branch stood FIRST and shadowed this one, so the
-        # python-connected family — which declared both — never got the kernel
-        # network at all and reached its ZMQ ports over the egress network
-        # instead. Both egress families are deleted (2026-09-10), so there is
-        # one link left: the Capsule's internal network, for the kernel.
-        network = self.kernel_network or None if fam.kernel_link else None
+        # There were three, and the ordering between them was a real defect:
+        # the egress branch stood first and shadowed the kernel branch, so the
+        # python-connected family, which declared both, reached its ZMQ ports
+        # over the EGRESS network. Egress went with the package installer and
+        # the kernel link went with the kernel (2026-09-10). Nothing to order,
+        # and nothing to get wrong.
+        #
+        # `docker.create` still takes a network, and deliberately: that
+        # parameter is how `--network none` is emitted at all, and it is the
+        # seam a future posture would arrive through. It must arrive as a
+        # FAMILY declaration, never as something a caller sends.
         try:
             parent = self.slices.cgroup_parent(capsule)
         except Exception:  # noqa: BLE001
@@ -263,7 +261,7 @@ class CapsuleManager:
             family=fam, limits=limits, name=f"anastasia-{execution}",
             cgroup_parent=parent, input_dir=input_dir, output_dir=output_dir,
             env={"ANASTASIA_OPERATION": op.name}, labels=labels,
-            argv=runners.build_argv(op, params), network=network)
+            argv=runners.build_argv(op, params), network=None)
         self.docker.start(container)
 
         return {"container": container, "deadline": deadline}

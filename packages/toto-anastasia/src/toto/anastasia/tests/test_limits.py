@@ -131,15 +131,28 @@ class CatalogueTests(SimpleTestCase):
                 with self.assertRaises(families.ParamError):
                     param.clean(bad)
 
-    def test_only_the_python_runtime_gets_a_network(self):
-        """ONE link, one family, and no second posture to order against.
+    def test_no_family_can_ask_for_a_network(self):
+        """ZERO postures. Every runner of every family is `--network none`.
 
-        `kernel_link` (renamed from `needs_internal_network` on 2026-09-10) puts
-        a runner on the Capsule's internal network so the session owner can reach
-        the kernel's ports. That network reaches no database and no broker.
+        There were two fields and they are both gone: `needs_egress` (a package
+        install reaching an index) and `kernel_link` (the python family joining
+        the Capsule's internal network so the web tier could reach a long-lived
+        kernel's ZMQ ports). Neither job exists any more.
+
+        Asserted as the ABSENCE OF THE FIELDS rather than as "no family sets
+        them to True", because that is the failure this guards. A field left on
+        the dataclass and set False everywhere is one somebody flips back on
+        for a plausible-sounding reason, and `hasattr` goes red the moment one
+        reappears — where a truthiness check would quietly pass.
         """
-        networked = {k for k, f in families.FAMILIES.items() if f.kernel_link}
-        self.assertEqual(networked, {"python"})
+        for key, fam in families.FAMILIES.items():
+            with self.subTest(family=key):
+                for gone in ("kernel_link", "needs_internal_network"):
+                    self.assertFalse(
+                        hasattr(fam, gone),
+                        f"{key} declares {gone} again — a runner that can be "
+                        f"reached, or reach out, is a new posture and needs a "
+                        f"decision, not a default")
 
     def test_nothing_can_reach_the_internet(self):
         """The one posture that reached off this machine is GONE.

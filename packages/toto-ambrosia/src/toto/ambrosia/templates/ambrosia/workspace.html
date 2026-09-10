@@ -75,7 +75,7 @@
         </span>
       {% endif %}
     {% elif can_execute %}
-      <button type="button" @click="runFile()" :disabled="!activeTab || !kernelReady"
+      <button type="button" @click="runFile()" :disabled="!activeTab || !canRun"
               title="{% trans "Run file" %}" aria-label="{% trans "Run file" %}"
               :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
               class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-30">
@@ -87,25 +87,24 @@
         {% include "steven/_ai.html" with surface=config_data.stevenSurface %}
       {% endif %}
 
-      <span class="mx-1 hidden h-6 w-px opacity-20 sm:inline-block" :class="darkMode ? 'bg-text-main-dark' : 'bg-text-main-light'"></span>
+      {% comment %}NO KERNEL CONTROLS since 2026-09-10.
 
-      <span class="inline-flex items-center gap-2 text-xs opacity-70">
-        <span class="h-2 w-2 rounded-full"
-              :class="kernelReady ? 'bg-green-500' : (kernelBusy ? 'bg-amber-500' : 'bg-gray-400')"></span>
-        <span class="hidden sm:inline" x-text="kernelLabel"></span>
+      A status pip, a label ("kernel ready" / "starting…" / "kernel died"), and
+      Restart and Stop buttons stood here. All four described a long-lived
+      interpreter, and there is not one: each Run is a fresh process in the
+      Capsule that exits when it is done. The routes they called
+      (`dracena:kernel_action`, `dracena:kernel_status`) are deleted, so leaving
+      the buttons would mean two controls that 404 and a pip that never turns
+      green.
+
+      Said in ONE SENTENCE below rather than in a tooltip, because it changes
+      what people can do: a name bound in one Run is gone in the next.
+
+      The pre-removal version of this file is kept whole at
+      zenobia/limbo/workspace_ui/ for the enigma port.{% endcomment %}
+      <span class="hidden text-xs opacity-55 lg:inline">
+        {% trans "Each Run starts fresh — variables do not carry over." %}
       </span>
-      <button type="button" @click="kernelAction('restart')"
-              title="{% trans "Restart the kernel" %}" aria-label="{% trans "Restart the kernel" %}"
-              class="text-xs opacity-70 hover:opacity-100">
-        <i class="fa-solid fa-rotate-right sm:hidden"></i>
-        <span class="hidden underline sm:inline">{% trans "Restart" %}</span>
-      </button>
-      <button type="button" @click="kernelAction('stop')"
-              title="{% trans "Stop the kernel" %}" aria-label="{% trans "Stop the kernel" %}"
-              class="text-xs opacity-70 hover:opacity-100">
-        <i class="fa-solid fa-stop sm:hidden"></i>
-        <span class="hidden underline sm:inline">{% trans "Stop" %}</span>
-      </button>
     {% endif %}
 
     <span class="flex-1"></span>

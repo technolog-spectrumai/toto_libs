@@ -130,13 +130,34 @@ class TierHardeningTests(SimpleTestCase):
                 argv = _argv(drivers_build(tier))
                 self.assertEqual(argv[argv.index("--network") + 1], "none")
 
-    def test_the_kernel_family_gets_one_network_on_any_tier(self):
+    def test_the_python_family_gets_no_network_either(self):
+        """The LAST family that had one, checked by name.
+
+        Until 2026-09-10 python was the exception: it joined the Capsule's
+        internal network so the web tier could reach its kernel. Nothing sets a
+        network any more, so this is the same assertion as the batch test —
+        kept separate and named because "python is special" is the belief this
+        has to keep disproving, and a subTest buried in a loop over four
+        families would not say so.
+        """
+        for tier in sorted(docker_driver.DRIVERS):
+            with self.subTest(tier=tier):
+                argv = _argv(drivers_build(tier), family=PYTHON)
+                self.assertEqual(argv[argv.index("--network") + 1], "none")
+
+    def test_the_driver_still_knows_how_to_join_a_network(self):
+        """The SEAM survives the posture, and that is deliberate.
+
+        `network=` is how `--network none` is emitted at all, so it cannot go;
+        this pins that it still works when something passes a name, so a future
+        posture arrives at a tested parameter rather than a dead one. Nothing
+        in the product passes a name today — `CapsuleManager` hard-codes None.
+        """
         for tier in sorted(docker_driver.DRIVERS):
             with self.subTest(tier=tier):
                 argv = _argv(drivers_build(tier), family=PYTHON,
-                             network="zenobia_capsules")
-                self.assertEqual(argv[argv.index("--network") + 1],
-                                 "zenobia_capsules")
+                             network="somewhere")
+                self.assertEqual(argv[argv.index("--network") + 1], "somewhere")
 
     def test_a_forbidden_variable_is_refused_on_any_tier(self):
         """The refusal lives in the shared half, so it cannot be a tier that

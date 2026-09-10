@@ -1,14 +1,31 @@
 # toto.ambrosia
 
+> **READ THIS FIRST — much of this file describes version 1.46 and is history,
+> not documentation.** It was written when ambrosia was a host portion of the
+> **placidia** host, when the Python app was called `toto.antaresia`, and when
+> running code meant a Jupyter kernel started as a child of the Django web
+> worker. Placidia was dismantled, antaresia became `toto.dracena`, the kernel
+> moved into a Compute Capsule in 1.50, and on **2026-09-10 the kernel was
+> deleted entirely**.
+>
+> Corrected in place where a section made a claim that is now FALSE — the
+> Security section in particular, which said "the word sandbox does not appear
+> anywhere in it" and listed the credentials a workspace could reach. Sections
+> describing the 1.46 arrangement are marked as history rather than rewritten,
+> because rewriting drift that predates the current campaign is a separate job
+> and half-rewritten documentation is worse than clearly-dated documentation.
+> **Where this file and `portal/anastasia.md` disagree, anastasia.md is right**
+> — it is a declared living document and is updated with every structural
+> change.
+
 The shared workspace BASE: a file tree over a vault bucket, tabbed ACE editors,
 and the room UI. Since the 1.46 split ambrosia owns no runtime of its own — the
 language apps plug into it through `registry.WorkspaceApp` from their
-`AppConfig.ready()`: `toto.antaresia` brings the Python side (a Jupyter kernel
-that remembers what you did last time), `toto.texlab` the LaTeX side
+`AppConfig.ready()`: `toto.dracena` brings the Python side (one Run is one job
+in a Capsule; nothing is kept between Runs), `toto.texlab` the LaTeX side
 (whole-bucket compiles on the worker). The dependency is one-way — specialised
-app → base, never the reverse. All three are host portions of the **placidia**
-host (they moved there from zenobia in 8/2026, with the rest of the
-binary-heavy tier).
+app → base, never the reverse. Both language apps are host portions of
+**zenobia**; ambrosia itself became a wheel on 2026-09-01.
 
 ## Purpose
 
@@ -69,8 +86,13 @@ on a duplicate — so each app's `checks.py` turns a stale-wheel shadow into a
   a walk in Python. It is the scope for the tree and for every id lookup.
 - **`Workspace.main_file`** — which `.tex` compiles, for a LaTeX workspace.
   `SET_NULL`, so deleting the main file does not delete the project.
-- **`KernelSession`** — one live interpreter: `connection_info`, `pid`, `status`,
-  `execution_count`, `last_used_at`. A LaTeX workspace never has one.
+- ~~**`KernelSession`**~~ — **deleted 2026-09-10** (`dracena` migration
+  `0005_drop_kernel_session`). It held one live interpreter's
+  `connection_info`, `status`, `execution_count` and `last_used_at`. There is
+  no live interpreter: a Run is one job in a Capsule that writes its output and
+  exits, so there is no session to be live, no connection info to address and
+  no `last_used_at` for a reaper to sweep. It was dracena's model, never
+  ambrosia's — listed here because this file predates the split.
 - **`LatexRun`** — one compilation: `status`, `log`, `error`, `passes`, the
   `pdf` it produced (`SET_NULL`), the artifact names, `task_id` and
   `workflow_run_id`. The row exists before a worker touches it, so the browser
@@ -258,6 +280,18 @@ never the compile.
 
 ## The interpreter
 
+> **HISTORY — none of this section is true since 2026-09-10.** There is no
+> kernel, no `jupyter_client` on the execution path, no connection info, no
+> liveness check and no reaper. `toto.dracena.scripts.run` submits one job:
+> `anastasia-run-python` executes a staged `main.py` inside the user's Compute
+> Capsule and exits. What that costs is written down at the top of
+> `toto/dracena/scripts.py` and in `portal/anastasia.md` — chiefly that a name
+> bound in one Run is gone in the next, and that inline plots went with
+> Jupyter's `display_data` messages.
+>
+> Kept as a record because the limits it states honestly are the reasons the
+> arrangement was replaced.
+
 `jupyter_client` starts a real IPython kernel as a child process, one per
 workspace. There is no ZeroMQ hop and no `kernel_server` container:
 `mandragora`'s server stays retired.
@@ -319,12 +353,27 @@ read/write handlers use the ACE selection API directly and were unaffected.
 
 ## Security
 
-**This is trusted-operator code, by decision, and the word "sandbox" does not
-appear anywhere in it.** A kernel is a plain Python process running as the
-server: the ORM, `SECRET_KEY`, the database credentials and the media volume are
-all reachable from a workspace. Nothing is contained.
+**THE PARAGRAPH THAT STOOD HERE WAS TRUE IN 1.46 AND IS NOW FALSE.** It read:
+"This is trusted-operator code, by decision, and the word *sandbox* does not
+appear anywhere in it. A kernel is a plain Python process running as the
+server: the ORM, `SECRET_KEY`, the database credentials and the media volume
+are all reachable from a workspace. Nothing is contained."
 
-So execution is gated separately from editing. `AMBROSIA_EXECUTION_ACCESS`
+It is quoted rather than deleted because it is the exact reason the Capsule
+work happened, and because a document that silently drops an old claim leaves
+the people who read it still believing it.
+
+**What is true now.** Workspace code runs in a Compute Capsule: a disposable
+runner with no database, no credentials, no application secret key, no Docker
+socket, a read-only root filesystem, `--cap-drop=ALL`, a hard memory ceiling,
+tmpfs scratch and — since 2026-09-10, with no exception for any family —
+`--network none`. On the Kata tier it runs behind its own guest kernel, proved
+by a runner reporting 6.18.35 against a host at 7.0.0-31-generic. The runner is
+destroyed when the job ends.
+
+Execution is still gated separately from editing, and that gate is still worth
+having: it bounds who can spend the deployment's CPU, which is a different
+question from what the code can reach. `AMBROSIA_EXECUTION_ACCESS`
 defaults to `"staff"`; `"superuser"` and `"authenticated"` are the other values,
 and the last is only sane on a single-tenant host. Owning a workspace lets you
 edit it; running code in it is a grant.
@@ -340,9 +389,13 @@ plainly rather than calling it sandboxed.
 cd zenobia/zenobia && BUILD_AMBROSIA=1 BUILD_EDITOR=1 BUILD_WORKFLOWS=1 \
   DJANGO_SETTINGS_MODULE=zenobia.settings python manage.py test \
   toto.ambrosia.tests.test_workspace toto.ambrosia.tests.test_views \
-  toto.ambrosia.tests.test_latex toto.ambrosia.tests.test_dispatch \
-  toto.ambrosia.tests.test_kernel
+  toto.ambrosia.tests.test_settings toto.ambrosia.tests.test_capsules \
+  toto.ambrosia.tests.test_hibernation
 ```
+
+`test_latex`, `test_dispatch` and `test_kernel` are not in this package: the
+first two moved to `toto.texlab` with the LaTeX app, and `test_kernel` was
+deleted on 2026-09-10 with the kernel it tested.
 
 `toto` is a PEP 420 namespace package, so the modules are named explicitly —
 `manage.py test toto.ambrosia` discovers nothing. They are listed one by one in
@@ -354,10 +407,16 @@ themselves where there is no toolchain; everything else runs everywhere.
 | Setting | Default | What it does |
 |---|---|---|
 | `AMBROSIA_EXECUTION_ACCESS` | `"staff"` | Who may run code |
-| `AMBROSIA_EXEC_TIMEOUT` | `30` | Seconds before a cell is interrupted |
-| `AMBROSIA_KERNEL_STARTUP_TIMEOUT` | `60` | Seconds to wait for a kernel |
-| `AMBROSIA_KERNEL_IDLE_SECONDS` | `3600` | What the reaper considers idle |
-| `AMBROSIA_KERNEL_DIR` | tempdir | Where connection files are written |
+| `AMBROSIA_EXEC_TIMEOUT` | `30` | Seconds before a Run is stopped |
+
+The three `AMBROSIA_KERNEL_*` settings that stood here —
+`AMBROSIA_KERNEL_STARTUP_TIMEOUT`, `AMBROSIA_KERNEL_IDLE_SECONDS` and
+`AMBROSIA_KERNEL_DIR` — are **gone with the kernel** (2026-09-10). So are the
+per-workspace settings that shadowed them: `idle_seconds`, `startup_timeout`,
+`inline_plots` and `env`. A workspace configures two things now, the Capsule it
+runs in and the run timeout, and `settings_spec.clean` REFUSES a retired key by
+name rather than ignoring it — a typo'd setting that reads as saved and does
+nothing is the worst outcome available.
 
 ## Dependencies
 
