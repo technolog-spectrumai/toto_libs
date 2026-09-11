@@ -49,7 +49,7 @@ import stat
 import time
 import uuid as uuid_module
 
-from . import staging
+from . import staging, storage
 
 #: How many entries one listing returns before saying it stopped, and how
 #: long it may walk. A capsule can hold a dependency tree; a desk cannot
@@ -379,8 +379,52 @@ def read_one(root: str, relative, *, max_bytes: int) -> bytes:
         _close_all(fds)
 
 
+def area_bytes(root: str) -> tuple[int, bool]:
+    """How much the files area holds, and whether that number is the whole.
+
+    `storage.measure`'s walk, so the two numbers the desk can see — the
+    storage tile and the refusal — never disagree. Incomplete means the area
+    has more entries than the walk's ceiling or took longer than its time
+    budget, and either is itself a sign the area is out of hand.
+    """
+    if not root or not os.path.isdir(root):
+        return 0, True
+    measured = storage.measure(root)
+    return measured["bytes"], measured["complete"]
+
+
+def check_area_budget(root: str, adding: int, max_area_bytes: int | None,
+                      *, who: str = "the files area") -> None:
+    """Refuse when ``adding`` bytes would take the area past its budget.
+
+    THE ONE TOTAL BOUND THE AREA HAS. Each file is bounded by `max_bytes`,
+    each runner's writes by its cgroup, but the area outlives both an
+    execution and an unmount, so nothing bounded the SUM — and the staging
+    root is a tmpfs shared by every capsule on the host. A soft check: the
+    measurement is a walk and a runner can write between it and the put.
+    That is fine for a budget; it would not be fine for a security boundary,
+    and this is not one.
+
+    An area too large to measure is treated as over budget rather than
+    unknowable, because "unknowable" would be the one answer that lets it
+    grow further.
+    """
+    if max_area_bytes is None:
+        return
+    held, complete = area_bytes(root)
+    if not complete:
+        raise FilesError(
+            f"{who} holds more than can be measured; delete something "
+            "before adding to it")
+    if held + adding > max_area_bytes:
+        raise FilesError(
+            f"{who} holds {_budget_phrase(held)} and this would add "
+            f"{_budget_phrase(adding)}, over the "
+            f"{_budget_phrase(max_area_bytes)} area budget")
+
+
 def write_one(root: str, relative, data, *, max_bytes: int,
-              replace: bool = False) -> dict:
+              replace: bool = False, max_area_bytes: int | None = None) -> dict:
     """Put one file in place, atomically, and only where the name says.
 
     Written to a temporary name in the SAME directory and moved into place in
@@ -401,6 +445,10 @@ def write_one(root: str, relative, data, *, max_bytes: int,
         raise FilesError(
             f"{name!r} is {_budget_phrase(size)}, over the "
             f"{_budget_phrase(max_bytes)} transfer budget")
+    # A replace frees what it replaces, but counting on that would need a
+    # second stat and the budget is soft anyway: the simpler rule is that
+    # the area must have room for the whole file beside what it holds.
+    check_area_budget(root, size, max_area_bytes)
 
     fds, leaf = _descend(root, name, create=True)
     parent = fds[-1]

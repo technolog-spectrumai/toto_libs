@@ -58,6 +58,14 @@ DEFAULT_OUTPUT_BUDGET = 256 * 1024 * 1024
 #: envelope, so the ceiling here must stay under three quarters of that one.
 DEFAULT_FILE_BUDGET = 256 * 1024 * 1024
 
+#: The most a capsule's files area may hold, in total. Checked at BOTH doors:
+#: the desk's put refuses to add past it, and an execution refuses to START
+#: while the area is over it — a runner cannot be stopped from writing, but
+#: it can be stopped from running again until a person deletes something.
+#: The staging root is a tmpfs every capsule on the host shares, and a soft
+#: total bound is what stands between one capsule and everybody's RAM.
+DEFAULT_AREA_BUDGET = 1024 * 1024 * 1024
+
 LABEL_DEADLINE = "anastasia.deadline"
 LABEL_OPERATION = "anastasia.operation"
 
@@ -385,7 +393,8 @@ class CapsuleManager:
     def file_put(self, capsule, name, data, *, replace: bool = False) -> dict:
         return files_mod.write_one(self.files_root(capsule), name, data,
                                    max_bytes=DEFAULT_FILE_BUDGET,
-                                   replace=replace)
+                                   replace=replace,
+                                   max_area_bytes=DEFAULT_AREA_BUDGET)
 
     def file_delete(self, capsule, name) -> dict:
         return files_mod.delete_one(self.files_root(capsule), name)
@@ -421,6 +430,17 @@ class CapsuleManager:
             images.verify(self.docker, fam.key, fam.image)
         except images.ImageMismatch as exc:
             raise CapsuleError(str(exc)) from exc
+
+        # The files area is bound into this runner writable, and a previous
+        # runner may have filled it. Refused here — before anything is staged
+        # — rather than at the runner's write, which nothing can refuse.
+        try:
+            files_mod.check_area_budget(self.files_root(capsule), 0,
+                                        DEFAULT_AREA_BUDGET)
+        except files_mod.FilesError as exc:
+            raise CapsuleError(
+                f"{exc}; this Capsule's files area is over its budget and "
+                "no job will start until something is deleted from it") from exc
 
         work = self.exec_dir(capsule, execution)
         input_dir = os.path.join(work, "in")

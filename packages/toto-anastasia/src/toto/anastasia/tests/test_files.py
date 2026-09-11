@@ -519,6 +519,41 @@ class FilesAreaTests(SimpleTestCase):
             files.read_one(gone, "a.txt", max_bytes=BUDGET)
 
 
+    # -- the area budget -----------------------------------------------------
+
+    def test_the_area_budget_bounds_the_sum_and_not_only_the_file(self):
+        """Each file under the file budget, and together over the area's.
+        A recon of 9.7 found that nothing bounded the total of an area that
+        outlives every execution, on a tmpfs every capsule shares."""
+        files.write_one(self.root, "a.bin", b"x" * 60, max_bytes=BUDGET,
+                        max_area_bytes=100)
+        with self.assertRaises(files.FilesError) as caught:
+            files.write_one(self.root, "b.bin", b"y" * 50, max_bytes=BUDGET,
+                            max_area_bytes=100)
+        self.assertIn("area budget", str(caught.exception))
+        self.assertFalse(os.path.exists(os.path.join(self.root, "b.bin")))
+        self.assertEqual(sorted(os.listdir(self.root)), ["a.bin"],
+                         "a refused write must leave no temp file either")
+        # Under the line, fine; and with no area budget, unbounded.
+        files.write_one(self.root, "c.bin", b"z" * 40, max_bytes=BUDGET,
+                        max_area_bytes=100)
+        files.write_one(self.root, "d.bin", b"w" * 500, max_bytes=BUDGET)
+
+    def test_an_area_too_large_to_measure_counts_as_over_budget(self):
+        """'Unknowable' would be the one answer that lets it keep growing."""
+        _plant(self.root, "a.txt")
+        with mock.patch.object(files.storage, "measure",
+                               return_value={"bytes": 0, "complete": False}):
+            with self.assertRaises(files.FilesError) as caught:
+                files.write_one(self.root, "b.txt", b"x", max_bytes=BUDGET,
+                                max_area_bytes=10 ** 9)
+        self.assertIn("more than can be measured", str(caught.exception))
+
+    def test_a_missing_area_holds_nothing(self):
+        self.assertEqual(files.area_bytes(os.path.join(self.root, "nope")),
+                         (0, True))
+
+
 class ManagerFilesTests(SimpleTestCase):
     """The lifetime rule and the argv, over a fake Docker."""
 
@@ -592,6 +627,29 @@ class ManagerFilesTests(SimpleTestCase):
         for purge in (False, False, True, True):
             with self.subTest(purge=purge):
                 self.manager.unmount(self.capsule, purge=purge)
+
+    def test_the_manager_puts_under_the_area_budget_and_no_job_starts_over_it(self):
+        """Both doors. The desk's put is refused past the budget; a runner's
+        writes cannot be, so the next execution is refused instead — until a
+        person deletes something."""
+        self.manager.mount(self.capsule, self.limits)
+        with mock.patch.object(capsules, "DEFAULT_AREA_BUDGET", 100):
+            self.manager.file_put(self.capsule, "a.bin", b"x" * 80)
+            with self.assertRaises(files.FilesError) as caught:
+                self.manager.file_put(self.capsule, "b.bin", b"y" * 30)
+            self.assertIn("area budget", str(caught.exception))
+            # A runner fills the area past the line: nothing refused THAT.
+            _plant(self.manager.files_root(self.capsule), "runner.bin",
+                   b"r" * 200)
+            with self.assertRaises(capsules.CapsuleError) as caught:
+                self._start()
+            self.assertIn("over its budget", str(caught.exception))
+            self.assertEqual(self.docker.created_args, [],
+                             "no runner may have been created")
+            # Deleting brings it back under, and the next job starts.
+            self.manager.file_delete(self.capsule, "runner.bin")
+            self._start()
+            self.assertEqual(len(self.docker.created_args), 1)
 
     def test_a_job_carries_the_files_mount_right_after_out(self):
         self.manager.mount(self.capsule, self.limits)
