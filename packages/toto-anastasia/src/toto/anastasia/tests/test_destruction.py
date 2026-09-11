@@ -36,7 +36,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.test import TransactionTestCase, override_settings
 
-from toto.anastasia import choices, execute, jobs, services
+from toto.anastasia import choices, execute, jobs, runtime, services, transfer
 from toto.anastasia.limits import Limits
 from toto.anastasia.executor import capsules, protocol, service
 from toto.anastasia.executor import drivers
@@ -163,6 +163,25 @@ class DestructiveIsolationTests(TransactionTestCase):
         second = self._render(lease, b"<html><body>Second</body></html>")
         self.assertEqual(second["execution"].status, choices.SUCCESS)
 
+        # 1b. The FILES AREA, both directions, so the invariant covers the one
+        # place in a capsule that outlives a job. A vault file copied in; a
+        # file written in the area (as a runner would) copied out to a bucket.
+        # Until 2026-09-11 nothing in this test touched `files/`, and the
+        # sentence at the top was untested for it.
+        backend = runtime.get_backend()
+        transfer.to_capsule(lease=lease, vault_file=durable["file"],
+                            name="in/thesis.txt")
+        backend.capsule_file_write(lease, "out/result.txt",
+                                   b"made inside the capsule\n")
+        listed = [r["name"] for r in backend.capsule_files(lease)["files"]]
+        self.assertIn("in/thesis.txt", listed)
+        self.assertIn("out/result.txt", listed)
+        copied_out = transfer.to_bucket(
+            lease=lease, name="out/result.txt", bucket=durable["bucket"],
+            actor=self.user, title="result.txt")
+        files_area = self.manager.files_root(lease.uuid)
+        self.assertTrue(os.path.isdir(files_area))
+
         executions_before = Execution.objects.count()
         events_before = CapsuleEvent.objects.count()
         self.assertGreaterEqual(executions_before, 2)
@@ -193,6 +212,14 @@ class DestructiveIsolationTests(TransactionTestCase):
         with kept.file.open("rb") as handle:
             self.assertEqual(handle.read(), durable["body"],
                              "the vault's BYTES must survive, not just its row")
+        # What was copied OUT of the capsule is vault data now, and survives
+        # the capsule's files area being destroyed under it; what was copied
+        # IN died with the area, and the original it was copied from did not.
+        out = VaultFile.objects.get(pk=copied_out.pk)
+        with out.file.open("rb") as handle:
+            self.assertEqual(handle.read(), b"made inside the capsule\n")
+        self.assertEqual(out.bucket_id, durable["bucket"].pk)
+        self.assertFalse(os.path.exists(files_area))
 
         # The booking survived: capacity a user reserved is not compute.
         lease.refresh_from_db()
