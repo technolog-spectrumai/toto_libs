@@ -112,6 +112,22 @@ class MountTests(AnastasiaTestCase):
         self.assertIn(("unmount", str(self.lease.uuid)),
                       FakeRuntimeBackend.calls)
 
+    def test_only_a_release_purges_the_files_area(self):
+        """The lifetime rule: the files area outlives every unmount but the
+        one that ends the reservation. Until 2026-09-11 `release` did not say
+        so, and a released Capsule's files lingered until the sweeper found
+        the orphaned tree."""
+        FakeRuntimeBackend.files[str(self.lease.uuid)] = {"kept.txt": b"x"}
+        services.mount(lease=self.lease)
+        services.unmount(lease=self.lease)
+        self.assertNotIn(("purge", str(self.lease.uuid)),
+                         FakeRuntimeBackend.calls)
+        self.assertIn("kept.txt", FakeRuntimeBackend.files[str(self.lease.uuid)])
+        services.release(lease=self.lease)
+        self.assertIn(("purge", str(self.lease.uuid)),
+                      FakeRuntimeBackend.calls)
+        self.assertNotIn(str(self.lease.uuid), FakeRuntimeBackend.files)
+
 
 class DerivedStateTests(AnastasiaTestCase):
     def setUp(self):

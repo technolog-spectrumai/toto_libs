@@ -205,7 +205,7 @@ def release(*, lease: ComputeLease, reason: str = "", actor=None) -> ComputeLeas
         return lease
 
     try:
-        unmount(lease=lease, actor=actor, reason="lease released")
+        unmount(lease=lease, actor=actor, reason="lease released", purge=True)
     except Exception:  # noqa: BLE001 — a stuck runtime must not strand a lease
         log.exception("anastasia: unmount failed while releasing %s", lease.uuid)
 
@@ -281,17 +281,23 @@ def mount(*, lease: ComputeLease, actor=None) -> CapsuleRuntime:
     return runtime
 
 
-def unmount(*, lease: ComputeLease, actor=None, reason: str = "") -> CapsuleRuntime:
+def unmount(*, lease: ComputeLease, actor=None, reason: str = "",
+            purge: bool = False) -> CapsuleRuntime:
     """Take the Capsule down. Idempotent, and never raises on an absent runtime.
 
     Live executions are marked KILLED here rather than left RUNNING: their
     containers are gone with the slice, and a row that still claims to be
     running is the one outcome a caller polling it cannot recover from.
+
+    ``purge`` removes the files area as well. An ordinary unmount keeps it —
+    that is the area's whole point — so only `release` passes it, and a
+    released reservation leaves nothing on the host for the sweeper to find
+    later.
     """
     runtime = runtime_for(lease)
     backend = get_backend()
     try:
-        result = backend.unmount(lease)
+        result = backend.unmount(lease, purge=purge)
     except Exception as exc:  # noqa: BLE001 — teardown must not be blockable
         log.exception("anastasia: backend unmount failed for %s", lease.uuid)
         result = {"error": str(exc)}

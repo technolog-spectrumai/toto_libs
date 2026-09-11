@@ -97,8 +97,12 @@ class FakeRuntimeBackend:
             raise RuntimeUnavailable("the fake manager is down")
         return {"manager_generation": type(self).generation}
 
-    def unmount(self, lease):
+    def unmount(self, lease, *, purge: bool = False):
         type(self).calls.append(("unmount", str(lease.uuid)))
+        if purge:
+            # The lifetime rule, seen from the fake: a purge takes the area.
+            type(self).calls.append(("purge", str(lease.uuid)))
+            type(self).files.pop(str(lease.uuid), None)
         return {"unmounted": True, "runners_destroyed": 2}
 
     def status(self, lease):

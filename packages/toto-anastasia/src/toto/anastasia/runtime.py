@@ -36,10 +36,14 @@ class RuntimeBackend:
         """Create the Capsule's bounded environment. Returns a status mapping."""
         raise NotImplementedError
 
-    def unmount(self, lease) -> dict:
+    def unmount(self, lease, *, purge: bool = False) -> dict:
         """Destroy every runner and the environment. MUST be idempotent —
         unmounting an already-unmounted Capsule is an ordinary outcome, not an
-        error, because that is exactly what reconciliation does."""
+        error, because that is exactly what reconciliation does.
+
+        ``purge`` takes the files area too. Only the unmount that ENDS the
+        reservation says so — see `services.release` — because the area is
+        kept across every other unmount on purpose."""
         raise NotImplementedError
 
     def status(self, lease) -> dict:
@@ -90,7 +94,7 @@ class NullRuntimeBackend(RuntimeBackend):
             "ANASTASIA_RUNTIME_BACKEND, and start the anastasia-executord "
             "service on the host.")
 
-    def unmount(self, lease):
+    def unmount(self, lease, *, purge: bool = False):
         return {"unmounted": True, "runners_destroyed": 0}
 
     def status(self, lease):
