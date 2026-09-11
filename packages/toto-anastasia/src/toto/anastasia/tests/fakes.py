@@ -94,6 +94,21 @@ class FakeDocker:
     def logs(self, cid, tail=200):
         return (self.containers.get(cid) or {}).get("logs", "")
 
+    def logs_since(self, cid, offset=0):
+        """On the contract since 2026-09-11 (see `drivers.Driver`), so the fake
+        owes it for the same reason it owes `labels`: a manager driven through
+        `execution_logs` must not pass the suite over a method nothing here
+        implements. The arithmetic itself is tested against the real driver in
+        test_logs; this only has to be shaped right."""
+        raw = self.logs(cid).encode("utf-8")
+        try:
+            offset = max(0, int(offset))
+        except (TypeError, ValueError):
+            offset = 0
+        chunk = raw[offset:]
+        return {"text": chunk.decode("utf-8", "replace"),
+                "offset": offset + len(chunk), "complete": True}
+
     def kill(self, cid):
         self.killed.append(cid)
         if cid in self.containers:

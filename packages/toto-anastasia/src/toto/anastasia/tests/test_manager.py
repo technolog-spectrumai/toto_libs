@@ -87,15 +87,21 @@ class MountTests(ManagerTestCase):
         self.assertIn("bookkeeping only", result["detail"])
         self.assertTrue(os.path.isdir(self.manager.capsule_dir(self.capsule)))
 
-    def test_unmounting_destroys_runners_ceiling_and_files(self):
+    def test_unmounting_destroys_runners_ceiling_and_scratch(self):
+        """Runners, the slice and exec/ go. The files area STAYS — since
+        2026-09-11 it lives as long as the reservation, and only a purge
+        (release) takes it; test_files holds both halves of that rule."""
         self.mount()
         self.start()
         self.start()
         result = self.manager.unmount(self.capsule)
         self.assertEqual(result["runners_destroyed"], 2)
         self.assertIn(self.capsule, self.slices.destroyed)
-        self.assertFalse(os.path.exists(self.manager.capsule_dir(self.capsule)))
+        self.assertFalse(os.path.exists(self.manager.exec_root(self.capsule)))
+        self.assertTrue(os.path.isdir(self.manager.files_root(self.capsule)))
         self.assertEqual(self.docker.list_managed(capsule=self.capsule), [])
+        self.manager.unmount(self.capsule, purge=True)
+        self.assertFalse(os.path.exists(self.manager.capsule_dir(self.capsule)))
 
     def test_unmount_is_idempotent(self):
         self.mount()

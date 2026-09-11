@@ -198,6 +198,16 @@ class Driver:
     def logs(self, container: str, tail: int = 200) -> str:
         raise NotImplementedError
 
+    def logs_since(self, container: str, offset: int = 0) -> dict:
+        """A slice of the log from ``offset``: ``{"text", "offset", "complete"}``.
+
+        Part of the contract since 2026-09-11 because `capsules.execution_logs`
+        calls it unguarded. It was implemented by the Docker drivers and by
+        nothing else, so a third runtime satisfied every method written down
+        here and still made the progress console a 500.
+        """
+        raise NotImplementedError
+
     def kill(self, container: str) -> None:
         raise NotImplementedError
 

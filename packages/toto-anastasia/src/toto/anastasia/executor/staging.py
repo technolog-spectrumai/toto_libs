@@ -56,44 +56,64 @@ class StagingError(Exception):
     """An archive that will not be unpacked, and why."""
 
 
-def safe_member_name(name: str) -> str:
+def safe_member_name(name: str, *, subject: str = "archive member",
+                     where: str = "the staging directory") -> str:
     """The relative path this member may occupy, or raise.
 
     Normalises first and rejects afterwards: ``a/./../../b`` only reveals
     itself as an escape once normalised.
+
+    ``subject`` and ``where`` only change the SENTENCE. Since 2026-09-11 the
+    same rule judges a name the app sends to a capsule's files area (see
+    ``files.py``), and "archive member escapes the staging directory" is a
+    baffling thing to tell somebody who typed a file name into a desk. One
+    rule with two voices, rather than two rules that can disagree.
     """
     if not name or len(name) > MAX_NAME_LENGTH:
-        raise StagingError(f"archive member has an unusable name: {name[:80]!r}")
+        raise StagingError(f"{subject} has an unusable name: {name[:80]!r}")
     if "\x00" in name:
         # Unreachable from a real tar — the format NUL-terminates names, so a
         # member written as "a\0b" arrives as "a". Kept because this function is
         # the one place a path is judged, and it should not depend on WHERE the
-        # name came from to be correct.
-        raise StagingError("archive member name contains a NUL byte")
+        # name came from to be correct — and a JSON body, unlike a tar, CAN
+        # carry one.
+        raise StagingError(f"{subject} name contains a NUL byte")
 
     cleaned = name.replace("\\", "/")
     if cleaned.startswith("/") or (len(cleaned) > 1 and cleaned[1] == ":"):
-        raise StagingError(f"archive member is an absolute path: {name!r}")
+        raise StagingError(f"{subject} is an absolute path: {name!r}")
 
     normalised = os.path.normpath(cleaned)
     if normalised in (".", "..") or normalised.startswith("../"):
-        raise StagingError(f"archive member escapes the staging directory: {name!r}")
+        raise StagingError(f"{subject} escapes {where}: {name!r}")
     return normalised
 
 
-def _resolved_within(root: str, relative: str) -> str:
+def resolved_within(root: str, relative: str, *,
+                    subject: str = "archive member",
+                    where: str = "staging") -> str:
     """Join and prove containment on the RESOLVED path.
 
     ``os.path.realpath`` rather than ``abspath``: if an earlier member managed
     to create a symlink, abspath would happily report a contained path that
     resolves outside. We refuse symlink members entirely, so this is
     defence in depth — which is exactly where it belongs.
+
+    Public since 2026-09-11 because ``files.py`` proves the same containment
+    over a directory runners write to. A second copy of a containment check is
+    a second place for ``startswith(root)`` to forget the separator and let
+    ``/staging-evil`` pass as inside ``/staging``.
     """
     root_real = os.path.realpath(root)
     target = os.path.realpath(os.path.join(root_real, relative))
     if target != root_real and not target.startswith(root_real + os.sep):
-        raise StagingError(f"archive member would land outside staging: {relative!r}")
+        raise StagingError(f"{subject} would land outside {where}: {relative!r}")
     return target
+
+
+#: The pre-promotion name. Kept so nothing that imported it breaks; new code
+#: uses the public one.
+_resolved_within = resolved_within
 
 
 def unpack(data: bytes, destination: str, *, max_bytes: int,
@@ -131,7 +151,7 @@ def unpack(data: bytes, destination: str, *, max_bytes: int,
                     f"archive member {member.name!r} is not a file or directory")
 
             relative = safe_member_name(member.name)
-            target = _resolved_within(destination, relative)
+            target = resolved_within(destination, relative)
 
             if member.isdir():
                 os.makedirs(target, exist_ok=True)

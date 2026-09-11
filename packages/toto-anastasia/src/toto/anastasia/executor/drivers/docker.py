@@ -114,7 +114,8 @@ class DockerClient(Driver):
                        output_dir: str, env: dict | None,
                        labels: dict, argv: list[str],
                        network: str | None = None,
-                       dns: str | None = None) -> list[str]:
+                       dns: str | None = None,
+                       files_dir: str | None = None) -> list[str]:
         """Every flag a runner gets. Assembled, never accepted.
 
         Read this as the security model in one place:
@@ -138,6 +139,10 @@ class DockerClient(Driver):
         * ``--rm=false`` — the container is removed EXPLICITLY after its exit
           state has been read. ``--rm`` would delete the evidence (exit code,
           OOMKilled) before anyone could look at it.
+        * ``/files`` — the capsule's durable area, writable, and ONLY when the
+          caller has one to give. Optional so a raw runner (the isolation
+          probes, the integration suite) still gets exactly the two mounts it
+          always did; the manager passes it for every job.
         """
         args = ["create"]
         # WHICH ISOLATION. Absent, the daemon uses its default (runc) and the
@@ -170,8 +175,14 @@ class DockerClient(Driver):
             f"/scratch:rw,noexec,nosuid,nodev,size={limits.scratch_mb}m,mode=1777",
             "--mount", f"type=bind,source={input_dir},target=/in,readonly",
             "--mount", f"type=bind,source={output_dir},target=/out",
-            "--workdir", "/scratch",
         ]
+        if files_dir:
+            # Right after /out, because that is where a reader of `docker
+            # inspect` expects the writable mounts to stand together. Not
+            # read-only: a job's whole reason to have /files is to leave
+            # something there for the next job, or for a person.
+            args += ["--mount", f"type=bind,source={files_dir},target=/files"]
+        args += ["--workdir", "/scratch"]
         args += ["--network", network or "none"]
         # NAME RESOLUTION, only ever pointed somewhere dead.
         #

@@ -39,6 +39,17 @@ log = logging.getLogger("toto.anastasia.executor_backend")
 DEFAULT_TIMEOUT = 60
 
 
+class FilesRefused(Exception):
+    """The executor would not do that with that file, and said why.
+
+    Distinct from ``RuntimeUnavailable`` because the two need different
+    handling: a refusal ("that name escapes the files area", "already
+    exists") is the caller's to show the user and move on from, while an
+    unavailable executor is nobody's fault at the desk. Carries the executor's
+    own sentence, which is written for a person.
+    """
+
+
 class UnixHTTPConnection(http.client.HTTPConnection):
     """An ordinary HTTP connection whose socket happens to be a file.
 
@@ -74,7 +85,19 @@ class ExecutorRuntimeBackend(RuntimeBackend):
     name = "executor"
 
     def _call(self, method: str, path: str, payload: dict | None = None,
-              *, timeout: int = DEFAULT_TIMEOUT) -> dict:
+              *, timeout: int = DEFAULT_TIMEOUT,
+              refusal: type[Exception] | None = None) -> dict:
+        """One signed request. ``refusal`` is the exception a 4xx becomes.
+
+        Every non-2xx used to be ``RuntimeUnavailable``, and for the verbs
+        that existed that was honest enough: a 409 on a job start IS the
+        runtime declining. A file transfer is different — "there is no file
+        named that" is an answer, not an outage, and reporting it as one
+        would tell a user the executor is down when they mistyped a name.
+        So a caller that can act on a refusal names the type; 401 is still
+        an operator problem and 5xx is still unavailability, whatever is
+        passed.
+        """
         socket_path = conf.executor_socket()
         if not socket_path:
             raise RuntimeUnavailable(
@@ -109,6 +132,8 @@ class ExecutorRuntimeBackend(RuntimeBackend):
                         "This host and the compute executor are not configured "
                         "with the same secret, so it refused the request. An "
                         "administrator needs to look at it.")
+                if refusal is not None and response.status < 500:
+                    raise refusal(detail)
                 raise RuntimeUnavailable(detail)
             return json.loads(raw)
         except FileNotFoundError as exc:
@@ -148,13 +173,24 @@ class ExecutorRuntimeBackend(RuntimeBackend):
                           {"limits": lease.limits.as_dict(),
                            "egress": bool(getattr(lease, "egress", False))})
 
-    def unmount(self, lease) -> dict:
+    def unmount(self, lease, *, purge: bool = False) -> dict:
+        """Tear the runtime down; take the files too only on ``purge``.
+
+        ``purge`` is the lifetime rule from `executor/capsules.py` seen from
+        this side: the files area survives every unmount but the one that
+        ends the reservation, and release is the only caller that says so.
+        Sent explicitly rather than defaulted on the executor, so a reader of
+        the wire sees the decision.
+        """
         try:
-            return self._call("POST", f"/capsules/{lease.uuid}/unmount")
+            return self._call("POST", f"/capsules/{lease.uuid}/unmount",
+                              {"purge": bool(purge)})
         except RuntimeUnavailable:
             # Teardown must never be blockable by an absent executor: with
             # the executor gone, so are its containers, and refusing here would
-            # strand the lease. Reconciliation cleans up if it comes back.
+            # strand the lease. Reconciliation cleans up if it comes back —
+            # including, for a purge, the files: the sweeper removes the whole
+            # directory of any capsule the app no longer lists.
             log.warning("anastasia: unmounting %s with no executor answering",
                         lease.uuid)
             return {"unmounted": True, "runners_destroyed": 0,
@@ -179,6 +215,45 @@ class ExecutorRuntimeBackend(RuntimeBackend):
                               timeout=30)
         except RuntimeUnavailable:
             return {}
+
+    # -- the files area ------------------------------------------------------
+    #
+    # Beyond the RuntimeBackend contract, like the operator verbs below: the
+    # null backend has no files area and must not have to pretend to one.
+    # Bytes go base64 in the JSON body both ways, like a job's payload and its
+    # output tar; the NAME goes in the body too, never in the path, because
+    # the executor signs and routes on the path with the query string already
+    # stripped.
+
+    def capsule_files(self, lease) -> dict:
+        """The listing. ``{}`` when the runtime cannot answer, like `storage`:
+        a listing is information the page shows, not a precondition for it,
+        and an empty dict — rather than an empty list — is how the page tells
+        "nothing there" from "nobody answered"."""
+        try:
+            return self._call("GET", f"/capsules/{lease.uuid}/files",
+                              timeout=30)
+        except RuntimeUnavailable:
+            return {}
+
+    def capsule_file_read(self, lease, name: str) -> bytes:
+        """One file's bytes. Raises `FilesRefused` with the executor's sentence
+        when the name is refused or absent, `RuntimeUnavailable` when nobody
+        answered. The same timeout as `collect`: bytes are moving."""
+        result = self._call("POST", f"/capsules/{lease.uuid}/files/get",
+                            {"name": name}, timeout=120, refusal=FilesRefused)
+        return base64.b64decode(result.get("data_b64") or "")
+
+    def capsule_file_write(self, lease, name: str, data: bytes,
+                           replace: bool = False) -> dict:
+        return self._call("POST", f"/capsules/{lease.uuid}/files/put",
+                          {"name": name, "replace": bool(replace),
+                           "data_b64": base64.b64encode(data).decode("ascii")},
+                          timeout=120, refusal=FilesRefused)
+
+    def capsule_file_delete(self, lease, name: str) -> dict:
+        return self._call("POST", f"/capsules/{lease.uuid}/files/delete",
+                          {"name": name}, refusal=FilesRefused)
 
     def start_execution(self, execution, *, params, payload) -> dict:
         body = {

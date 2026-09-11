@@ -1,9 +1,16 @@
 """The executor's HTTP surface: a handful of verbs, all signed, over AF_UNIX.
 
-``http.server`` rather than a framework. The API is eleven routes with no
+``http.server`` rather than a framework. The API is twenty-two routes with no
 templates, no sessions, no ORM and no static files; a framework would be more
 code to audit than the thing it serves, and this process is the one that can
 run other people's code.
+
+NOTHING THAT MATTERS TRAVELS IN THE URL BEYOND THE ROUTE. ``_handle`` strips
+the query string before the signature is checked and before the route is
+matched, so a query parameter is unauthenticated input by construction — a
+file name, an offset, a flag, all arrive in the signed JSON body or not at
+all. The four ``/files`` routes are where this would be most tempting to
+forget, and the reason they take the name in the body.
 
 A UNIX SOCKET, not a TCP port, since 2026-09-10. The socket is a filesystem
 object under /run/anastasia that only root and the ``anastasia`` group can
@@ -57,6 +64,15 @@ ROUTES = [
     # Separate from status because it costs a filesystem walk: status is
     # polled every few seconds, this is asked for.
     ("GET", re.compile(rf"^/capsules/({_UUID})/storage$"), "capsule_storage"),
+    # The files area — see `executor/files.py`. The NAME is in the signed
+    # body, never in the path: a path segment would have to survive URL
+    # escaping, the route regex and the signature all agreeing on one
+    # spelling, and a query string is stripped before any of that.
+    ("GET", re.compile(rf"^/capsules/({_UUID})/files$"), "capsule_files"),
+    ("POST", re.compile(rf"^/capsules/({_UUID})/files/get$"), "capsule_file_get"),
+    ("POST", re.compile(rf"^/capsules/({_UUID})/files/put$"), "capsule_file_put"),
+    ("POST", re.compile(rf"^/capsules/({_UUID})/files/delete$"),
+     "capsule_file_delete"),
     ("POST", re.compile(r"^/jobs$"), "start_execution"),
     ("GET", re.compile(rf"^/jobs/({_UUID})$"), "execution_status"),
     ("GET", re.compile(rf"^/jobs/({_UUID})/out$"), "execution_output"),
@@ -118,7 +134,11 @@ class Api:
                                  egress=want_egress)
 
     def unmount(self, capsule, payload):
-        return 200, self._locked(self.manager.unmount, capsule)
+        # `bool(...)` for the same reason `mount` does it to `egress`: this
+        # flag deletes a person's files, and a truthy string from a JSON body
+        # must not be what decides that.
+        purge = bool(payload.get("purge", False))
+        return 200, self._locked(self.manager.unmount, capsule, purge=purge)
 
     def capsule_status(self, capsule, payload):
         return 200, self.manager.status(capsule)
@@ -126,6 +146,53 @@ class Api:
     def capsule_storage(self, capsule, payload):
         """Bytes and file counts. Never a name — see `executor/storage.py`."""
         return 200, self.manager.storage(capsule)
+
+    # -- the files area ------------------------------------------------------
+    #
+    # A refused name is a `FilesError`, which is a `ValueError`, which the
+    # handler already answers with 400 and the executor's own sentence. No
+    # new except clause, on purpose: a fifth status mapping is a fifth thing
+    # to keep in step, and "the caller named something it may not" is exactly
+    # what 400 already means here.
+
+    @staticmethod
+    def _name_from(payload) -> str:
+        name = payload.get("name")
+        if not isinstance(name, str) or not name:
+            raise ValueError('a file name is required, as "name" in the body')
+        return name
+
+    def capsule_files(self, capsule, payload):
+        """The listing. Not locked: it reads, and a put racing it is atomic."""
+        return 200, self.manager.files(capsule)
+
+    def capsule_file_get(self, capsule, payload):
+        """One file's bytes, base64 in the body like /jobs/<id>/out.
+
+        A POST rather than a GET for a read, because the name travels in the
+        body and a GET with a body is the kind of request a proxy or a client
+        library drops on the floor — the executor is on a unix socket today,
+        and this route should not stop working the day it is not.
+        """
+        name = self._name_from(payload)
+        blob = self.manager.file_get(capsule, name)
+        return 200, {"name": name, "bytes": len(blob),
+                     "data_b64": base64.b64encode(blob).decode("ascii")}
+
+    def capsule_file_put(self, capsule, payload):
+        name = self._name_from(payload)
+        blob = payload.get("data_b64") or ""
+        try:
+            body = base64.b64decode(blob, validate=True) if blob else b""
+        except (ValueError, TypeError):
+            return 400, {"error": "data_b64 is not valid base64"}
+        replace = bool(payload.get("replace", False))
+        return 200, self._locked(self.manager.file_put, capsule, name, body,
+                                 replace=replace)
+
+    def capsule_file_delete(self, capsule, payload):
+        name = self._name_from(payload)
+        return 200, self._locked(self.manager.file_delete, capsule, name)
 
     def start_execution(self, payload):
         # Draining means "no NEW work", and a job is new work even inside a
@@ -170,12 +237,13 @@ class Api:
                      "bytes": len(blob)}
 
     def execution_logs(self, execution, payload):
-        """A slice from `offset`. Junk in the query string is not a 500.
+        """A slice from `offset`. Junk in the body is not a 500.
 
-        The offset reaches here as a string off an HTTP query — it can be
-        "abc", empty or absent — and the driver already tolerates all three by
-        starting from zero. Passed through rather than parsed here, so there
-        is one rule and not two that can disagree.
+        The offset arrives in the SIGNED JSON BODY — never the query string,
+        which `_handle` strips before signing — and a client can still send
+        "abc", null or nothing. The driver tolerates all three by starting
+        from zero. Passed through rather than parsed here, so there is one
+        rule and not two that can disagree.
         """
         capsule = str(payload.get("capsule") or "")
         return 200, self.manager.execution_logs(

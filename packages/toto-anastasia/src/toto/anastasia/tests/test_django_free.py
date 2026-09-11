@@ -37,6 +37,7 @@ DJANGO_FREE = (
     "toto.anastasia.executor",
     "toto.anastasia.executor.protocol",
     "toto.anastasia.executor.staging",
+    "toto.anastasia.executor.files",
     "toto.anastasia.executor.slices",
     "toto.anastasia.executor.drivers",
     "toto.anastasia.executor.drivers.docker",

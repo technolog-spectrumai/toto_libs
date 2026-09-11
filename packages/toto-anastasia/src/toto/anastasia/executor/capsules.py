@@ -32,6 +32,7 @@ from ..families import operation as operation_for
 from ..limits import Limits
 from . import egress as egress_mod
 from . import network as network_mod
+from . import files as files_mod
 from . import images, netfilter, runners, slices, staging
 from . import storage
 from .drivers import LABEL_CAPSULE, LABEL_EXEC, docker as docker_driver
@@ -47,6 +48,15 @@ DEFAULT_STAGING_ROOT = "/var/lib/anastasia/staging"
 #: fill the manager's volume.
 DEFAULT_INPUT_BUDGET = 256 * 1024 * 1024
 DEFAULT_OUTPUT_BUDGET = 256 * 1024 * 1024
+
+#: How big one file moved between a bucket and the files area may be, either
+#: way. The same number as the two above and deliberately not the same NAME:
+#: a transfer is a third channel with its own reasons to move — it is one
+#: file, not a tar of many — and a knob that shares a name with another knob
+#: cannot be turned alone. Bounded by `service.MAX_BODY_BYTES` (512 MB): the
+#: bytes travel base64-encoded in a JSON body, which is 4/3 of this plus the
+#: envelope, so the ceiling here must stay under three quarters of that one.
+DEFAULT_FILE_BUDGET = 256 * 1024 * 1024
 
 LABEL_DEADLINE = "anastasia.deadline"
 LABEL_OPERATION = "anastasia.operation"
@@ -123,8 +133,29 @@ class CapsuleManager:
     def capsule_dir(self, capsule) -> str:
         return os.path.join(self.capsules_root, str(capsule))
 
+    def exec_root(self, capsule) -> str:
+        return os.path.join(self.capsule_dir(capsule), "exec")
+
     def exec_dir(self, capsule, execution) -> str:
-        return os.path.join(self.capsule_dir(capsule), "exec", str(execution))
+        return os.path.join(self.exec_root(capsule), str(execution))
+
+    def files_root(self, capsule) -> str:
+        """The capsule's durable area — see `files.py` and the lifetime rule
+        on `unmount`. Bound into every runner at /files."""
+        return os.path.join(self.capsule_dir(capsule), "files")
+
+    def _prepare_areas(self, capsule) -> None:
+        """Both areas, present and usable, whether this is a first mount or a
+        remount over a kept files area. Idempotent by construction."""
+        os.makedirs(self.exec_root(capsule), exist_ok=True)
+        os.makedirs(self.files_root(capsule), exist_ok=True)
+        # The runner runs as nobody, exactly as it does for /out, and a files
+        # area it could read but not write would be half a feature: a job
+        # could consume what a person put there and never leave a result.
+        # World-writable rather than chowned to 65534, because the executor
+        # writes here too (as root) and a chown would make every file the
+        # app stages a file a runner may then not replace.
+        os.chmod(self.files_root(capsule), 0o777)
 
     # -- mounting ----------------------------------------------------------
 
@@ -199,7 +230,7 @@ class CapsuleManager:
                 "give it any: no egress proxy is configured, or its packet "
                 "filter could not be established. Mount it without egress, or "
                 "fix the host.")
-        os.makedirs(self.capsule_dir(capsule), exist_ok=True)
+        self._prepare_areas(capsule)
         if egress:
             self._egress_capsules.add(str(capsule))
         else:
@@ -235,13 +266,37 @@ class CapsuleManager:
             "detail": detail,
         }
 
-    def unmount(self, capsule) -> dict:
-        """Destroy every runner, the cgroup and the staging area.
+    def unmount(self, capsule, *, purge: bool = False) -> dict:
+        """Destroy every runner, the cgroup and the scratch — and, only when
+        asked, the files.
 
         Order matters: containers first (so the cgroup can actually be
-        released), then the slice, then the files. Every step tolerates its
-        subject already being gone, because reconciliation calls this
+        released), then the slice, then the directories. Every step tolerates
+        its subject already being gone, because reconciliation calls this
         speculatively and a half-unmounted Capsule must be finishable.
+
+        THE LIFETIME RULE. A capsule directory holds two areas with two
+        lifetimes:
+
+        * ``exec/`` lives as long as the MOUNT. It is scratch — an execution's
+          staged input and collected output — and unmount removes it whole,
+          as it always has.
+        * ``files/`` lives as long as the RESERVATION. It is where a person
+          puts a file into the capsule and where a job leaves one for the
+          next job or for that person, and an unmount is not the end of a
+          reservation: the app unmounts on a reconcile, on an operator's
+          say-so and on an executor restart, none of which is the user
+          deciding they are finished. If those took the files, "your
+          reservation is untouched" — the sentence every unmount path
+          promises — would be false in the way that matters most.
+
+        So ``purge`` is the ONLY thing that removes ``files/``, and the app
+        passes it from exactly one place: release, where the reservation
+        itself ends. Nothing on the executor side decides that a reservation
+        is over, because the executor does not know what a reservation is —
+        the one exception is `reconcile.sweep_staging`, which removes the
+        whole directory of a capsule the app no longer LISTS, which is a
+        released lease by definition.
         """
         destroyed = 0
         for row in self.docker.list_managed(capsule=str(capsule)):
@@ -253,9 +308,13 @@ class CapsuleManager:
         except Exception:  # noqa: BLE001
             log.exception("anastasia: could not stop the slice for %s", capsule)
 
-        shutil.rmtree(self.capsule_dir(capsule), ignore_errors=True)
+        if purge:
+            shutil.rmtree(self.capsule_dir(capsule), ignore_errors=True)
+        else:
+            shutil.rmtree(self.exec_root(capsule), ignore_errors=True)
         self.network.forget(capsule)
-        return {"unmounted": True, "runners_destroyed": destroyed}
+        return {"unmounted": True, "runners_destroyed": destroyed,
+                "purged": bool(purge)}
 
     def storage(self, capsule) -> dict:
         """How much disk this capsule holds. COUNTS ONLY — see `storage.py`.
@@ -264,7 +323,15 @@ class CapsuleManager:
         `status` is polled every few seconds by an open desk. A caller that
         wants the numbers asks for them.
         """
-        return storage.measure(self.capsule_dir(capsule))
+        whole = storage.measure(self.capsule_dir(capsule))
+        # PER AREA as well as in total, so the desk can say WHICH is growing:
+        # scratch a job forgot to clean up and files a person keeps adding
+        # look identical in one number and need different advice. The names
+        # are the manager's own two, spelled here and never read off the
+        # disk — that is the seam `storage.by_area` keeps.
+        whole["areas"] = storage.by_area(self.capsule_dir(capsule),
+                                         ("exec", "files"))
+        return whole
 
     def status(self, capsule) -> dict:
         rows = self.docker.list_managed(capsule=str(capsule))
@@ -289,11 +356,38 @@ class CapsuleManager:
                 sample.update(moved)
         return {
             "manager_generation": self.generation,
-            "mounted": os.path.isdir(self.capsule_dir(capsule)),
+            # The SCRATCH root, not the capsule directory: since the files
+            # area outlives an unmount (see `unmount`), the capsule directory
+            # exists for an unmounted capsule too, and the app reads a False
+            # here as "the manager no longer holds this Capsule".
+            "mounted": os.path.isdir(self.exec_root(capsule)),
             "slice_enforced": self.slices.enforced,
             "tier": self.docker.name,
             "sample": sample,
         }
+
+    # -- the files area ----------------------------------------------------
+    #
+    # Four verbs and no more, each a thin call into `files.py` with the
+    # capsule's root and the one budget. The manager adds nothing but the
+    # path, and that is the point: a name never reaches the filesystem
+    # except through that module's rule.
+
+    def files(self, capsule) -> dict:
+        """What the files area holds. Names, sizes, and whether that is all."""
+        return files_mod.listing(self.files_root(capsule))
+
+    def file_get(self, capsule, name) -> bytes:
+        return files_mod.read_one(self.files_root(capsule), name,
+                                  max_bytes=DEFAULT_FILE_BUDGET)
+
+    def file_put(self, capsule, name, data, *, replace: bool = False) -> dict:
+        return files_mod.write_one(self.files_root(capsule), name, data,
+                                   max_bytes=DEFAULT_FILE_BUDGET,
+                                   replace=replace)
+
+    def file_delete(self, capsule, name) -> dict:
+        return files_mod.delete_one(self.files_root(capsule), name)
 
     # -- executing ---------------------------------------------------------
 
@@ -384,11 +478,17 @@ class CapsuleManager:
         except Exception:  # noqa: BLE001
             parent = None
 
+        # Every job gets the files area. Prepared here as well as at mount,
+        # because a job may follow an executor restart that adopted the
+        # capsule without a mount — and a bind of a missing source makes
+        # Docker CREATE it, as root, 0755, which the runner could not write.
+        self._prepare_areas(capsule)
         container = self.docker.create(
             family=fam, limits=limits, name=f"anastasia-{execution}",
             cgroup_parent=parent, input_dir=input_dir, output_dir=output_dir,
             env=run_env, labels=labels,
-            argv=runners.build_argv(op, params), network=network, dns=dns)
+            argv=runners.build_argv(op, params), network=network, dns=dns,
+            files_dir=self.files_root(capsule))
         self.docker.start(container)
 
         return {"container": container, "deadline": deadline}
