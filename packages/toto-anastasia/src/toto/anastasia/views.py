@@ -31,7 +31,7 @@ from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
 
-from . import choices, conf, families, samples as samples_mod, services
+from . import choices, conf, families, samples as samples_mod, services, transfer
 from .limits import Limits, LimitsError
 from .models import ComputeLease, Execution, CapsuleRuntime
 from .runtime import RuntimeUnavailable, get_backend
@@ -102,6 +102,8 @@ def index(request):
         "pool_rows": _pool_rows(report),
         "capsules": capsules,
         "runtime_configured": bool(conf.executor_socket()),
+        "files_supported": _files_supported(),
+        **_vault_choices(request.user),
         "egress_offered": egress_offered,
         "max_capsules": conf.max_capsules_per_user(),
         "lease_days": conf.lease_days(),
@@ -109,6 +111,52 @@ def index(request):
         "poll_urls_json": json.dumps(poll_urls),
         "stale_seconds": conf.sample_stale_seconds(),
     }, request))
+
+
+#: How many files the vault picker draws. `build_file_tree`'s own default,
+#: named here because the page SAYS the number when it truncates — a tree that
+#: silently stopped at 500 reads as "these are all your files".
+VAULT_PICKER_LIMIT = 500
+
+#: How many files one copy may move. The desk loops over the checked set, and
+#: each file is a read and a write through the executor: an unbounded loop
+#: would hold a worker for as long as somebody cared to tick boxes. Twenty-five
+#: is well past what anyone picks by hand and well short of a request that
+#: times out.
+MAX_FILES_PER_TRANSFER = 25
+
+
+def _files_supported() -> bool:
+    return getattr(get_backend(), "capsule_files", None) is not None
+
+
+def _vault_choices(user) -> dict:
+    """What the copy-in picker offers: the person's own files, as a tree.
+
+    `toto.vault.filetree.build_file_tree` with `vault/_file_tree.html` — the
+    same bucket → folder → file picker the vault, OCR and the antivirus panel
+    draw, rather than a fourth shape for the same act. Rows carry the file's
+    **id**, which is what that partial's checkbox mode offers; the bearer API
+    takes a `key` because a client outside this database has no id to use, and
+    the desk has one.
+
+    `include_public=False`: this copies a file INTO somebody's Capsule, which
+    is an act on the file, not a read of it. Readable and mine are different
+    questions and this is the second one.
+    """
+    from toto.vault.filetree import accessible_files, build_file_tree
+    from toto.vault.models import Bucket
+
+    mine = accessible_files(user, include_public=False).filter(owner=user)
+    return {
+        "vault_tree": build_file_tree(user, queryset=mine,
+                                      limit=VAULT_PICKER_LIMIT),
+        "vault_files_truncated": mine.count() > VAULT_PICKER_LIMIT,
+        "vault_picker_limit": VAULT_PICKER_LIMIT,
+        "max_files_per_transfer": MAX_FILES_PER_TRANSFER,
+        "buckets": list(Bucket.objects.filter(owner=user)
+                        .order_by("name").values("name", "slug")),
+    }
 
 
 #: (field, label, unit) for the pool strip. A list rather than four template
@@ -235,6 +283,208 @@ def samples(request, uuid):
         # A junk window is 24 hours, not a 500. The caller is a chart.
         hours = 24
     return JsonResponse(samples_mod.series(lease, hours=hours))
+
+
+# --------------------------------------------------------------------------- #
+# The files area, from the desk                                                #
+# --------------------------------------------------------------------------- #
+#
+# The page's door onto what `api.py` exposes to a bearer token. The listing is
+# JSON the card fetches when its Files section is opened; the three writes are
+# ordinary forms that redirect back to the card with a sentence. Nothing here
+# decides anything the API does not: a name is judged by the executor, a
+# vault file is looked up owner-filtered, and the copy out is metered by
+# `transfer.to_bucket` — the same function, so the same price.
+
+def _back_to_files(lease):
+    """Back to the card, with its Files section open (the template reads the
+    hash), so a person sees the result where they asked for it."""
+    return redirect(reverse("anastasia:index") + f"#files-{lease.uuid}")
+
+
+def _files_sentence(exc) -> str:
+    """A refusal as one sentence. Three sources, one shape:
+    `TransferRefused` (this side), `FilesRefused` (the executor's own words)
+    and `RuntimeUnavailable` (nobody's fault, and must not read as the
+    person's mistake)."""
+    message = "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc)
+    if isinstance(exc, RuntimeUnavailable):
+        return _("the compute runtime is not answering (%(detail)s)") % {
+            "detail": message}
+    return message
+
+
+def _files_error(request, lease, exc):
+    messages.error(request, _files_sentence(exc))
+    return _back_to_files(lease)
+
+
+@login_required
+def files(request, uuid):
+    """The listing the card's Files section fetches. Owner-only JSON.
+
+    `supported: false` when this deployment's runtime has no files area, and
+    `complete: false` when the runtime did not answer or the walk stopped
+    early — the card says which, rather than showing an empty area for a
+    Capsule that is merely unreachable.
+    """
+    lease = _own_lease(request, uuid)
+    lister = getattr(get_backend(), "capsule_files", None)
+    if lister is None:
+        return JsonResponse({"files": [], "complete": False, "supported": False})
+    listing = lister(lease) or {}
+    return JsonResponse({
+        "files": listing.get("files", []),
+        "complete": bool(listing.get("complete", False)),
+        "supported": True,
+    })
+
+
+def _checked(request, field: str) -> list:
+    """The checked set, bounded and deduplicated, order kept.
+
+    Bounded HERE rather than in the template: the limit is what the server
+    will do, and a form that can be re-posted by hand must be refused by the
+    thing that acts, not by the thing that renders.
+    """
+    seen, out = set(), []
+    for raw in request.POST.getlist(field):
+        value = (raw or "").strip()
+        if value and value not in seen:
+            seen.add(value)
+            out.append(value)
+    return out[:MAX_FILES_PER_TRANSFER]
+
+
+def _report(request, done: list, refused: list, sentence):
+    """One success line naming the count, one error line naming each refusal.
+
+    PER FILE, because a batch that reports only "3 of 5 copied" leaves the
+    person to work out which two — and the two are exactly the ones they need
+    to know about.
+    """
+    if done:
+        messages.success(request, sentence(done))
+    for name, why in refused:
+        messages.error(request, _("%(name)s: %(why)s")
+                       % {"name": name, "why": why})
+
+
+@login_required
+@require_POST
+def file_from_vault(request, uuid):
+    """Copy checked Vault files into the Capsule. Unmetered.
+
+    A loop over the checked set rather than one file per request: the picker
+    is a tree of checkboxes, and a person who ticked four boxes means four
+    copies. Each is still judged on its own — `transfer.to_capsule` per file,
+    the executor's name rule per name — so one refusal stops that file and
+    nothing else.
+    """
+    from toto.vault.models import VaultFile
+
+    from .executor_backend import FilesRefused
+
+    lease = _own_lease(request, uuid)
+    ids = _checked(request, "file")
+    if not ids:
+        messages.error(request, _("Pick at least one file to copy in."))
+        return _back_to_files(lease)
+
+    # Owner-filtered in the QUERY: somebody else's file and no file at all are
+    # the same absence, as `_own_lease` makes them for a Capsule. A picked id
+    # that is not the caller's simply is not in this map.
+    wanted = {str(f.pk): f for f in
+              VaultFile.objects.filter(owner=request.user, pk__in=[
+                  i for i in ids if i.isdigit()])}
+    replace = bool(request.POST.get("replace"))
+    # A name is only meaningful for ONE file: giving four files one name would
+    # write four files over each other.
+    name = (request.POST.get("name") or "").strip() if len(ids) == 1 else ""
+
+    done, refused = [], []
+    for picked in ids:
+        vault_file = wanted.get(picked)
+        if vault_file is None:
+            refused.append((picked, _("no such file")))
+            continue
+        try:
+            transfer.to_capsule(lease=lease, vault_file=vault_file, name=name,
+                                actor=request.user, replace=replace)
+        except (transfer.TransferRefused, FilesRefused,
+                RuntimeUnavailable) as exc:
+            refused.append((vault_file.title, _files_sentence(exc)))
+        else:
+            done.append(vault_file.title)
+
+    _report(request, done, refused, lambda names: _(
+        "Copied into the Capsule: %(names)s.") % {"names": ", ".join(names)})
+    return _back_to_files(lease)
+
+
+@login_required
+@require_POST
+def file_to_vault(request, uuid):
+    """Copy checked Capsule files into one of the person's buckets.
+
+    METERED AND SCANNED like an upload — `transfer.to_bucket` is the one
+    function that does it, for this door and the API's. Each file is charged
+    on its own, so a refusal part way through leaves the copies already made
+    paid for and the rest not made.
+    """
+    from toto.vault.models import Bucket
+
+    from .executor_backend import FilesRefused
+
+    lease = _own_lease(request, uuid)
+    names = _checked(request, "name")
+    if not names:
+        messages.error(request, _("Pick at least one file to copy out."))
+        return _back_to_files(lease)
+    bucket = get_object_or_404(
+        Bucket, owner=request.user,
+        slug=(request.POST.get("bucket") or "").strip())
+    title = (request.POST.get("title") or "").strip() if len(names) == 1 else ""
+
+    done, refused = [], []
+    for name in names:
+        try:
+            vault_file = transfer.to_bucket(
+                lease=lease, name=name, bucket=bucket, actor=request.user,
+                title=title)
+        except (transfer.TransferRefused, FilesRefused,
+                RuntimeUnavailable) as exc:
+            refused.append((name, _files_sentence(exc)))
+        else:
+            done.append(vault_file.title)
+
+    _report(request, done, refused, lambda titles: _(
+        "Copied into “%(bucket)s”: %(names)s.")
+        % {"bucket": bucket.name, "names": ", ".join(titles)})
+    return _back_to_files(lease)
+
+
+@login_required
+@require_POST
+def file_delete(request, uuid):
+    from .executor_backend import FilesRefused
+
+    lease = _own_lease(request, uuid)
+    name = (request.POST.get("name") or "").strip()
+    if not name:
+        messages.error(request, _("Name the file to delete."))
+        return _back_to_files(lease)
+    try:
+        get_backend().capsule_file_delete(lease, name)
+    except (FilesRefused, RuntimeUnavailable) as exc:
+        return _files_error(request, lease, exc)
+    except AttributeError:
+        messages.error(request, _(
+            "This deployment's runtime cannot hold files in a Capsule."))
+        return _back_to_files(lease)
+    messages.success(request, _("%(name)s is deleted from the Capsule.")
+                     % {"name": name})
+    return _back_to_files(lease)
 
 
 @login_required

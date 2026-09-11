@@ -21,6 +21,16 @@ urlpatterns = [
     # The retained series behind the card's charts. A GET, owner-only, and
     # counts only — see `views.samples`.
     path("<uuid:uuid>/samples/", views.samples, name="samples"),
+    # The files area, from the desk: one listing the card fetches and three
+    # POSTs. Each is a thin door onto the same request-free functions the
+    # bearer API uses (`transfer.to_capsule`, `transfer.to_bucket`), so a
+    # copy costs the same whichever door it came through.
+    path("<uuid:uuid>/files/", views.files, name="files"),
+    path("<uuid:uuid>/files/from-vault/", views.file_from_vault,
+         name="file_from_vault"),
+    path("<uuid:uuid>/files/to-vault/", views.file_to_vault,
+         name="file_to_vault"),
+    path("<uuid:uuid>/files/delete/", views.file_delete, name="file_delete"),
     # API tokens. Above the operator block and below the capsule verbs,
     # because that is the order a person meets them: reserve a capsule, then
     # mint a token so a desktop client can use it.

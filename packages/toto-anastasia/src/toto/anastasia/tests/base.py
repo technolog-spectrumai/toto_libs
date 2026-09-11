@@ -192,7 +192,13 @@ class FakeRuntimeBackend:
     def capsule_files(self, lease):
         type(self).calls.append(("files", str(lease.uuid)))
         area = self._area(lease)
-        return {"files": [{"name": n, "size": len(b), "type": "file"}
+        # THE REAL SHAPE, key for key — `executor/files.py:listing` returns
+        # name/size/modified/is_dir, and a fake with a key of its own ("type")
+        # let a template read `entry.is_dir` off every row as undefined and
+        # still pass. A fake may simplify what it stores; it may not invent a
+        # different answer.
+        return {"files": [{"name": n, "size": len(b), "modified": 0,
+                           "is_dir": False}
                           for n, b in sorted(area.items())],
                 "complete": True}
 

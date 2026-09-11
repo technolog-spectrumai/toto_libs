@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import override_settings
@@ -13,7 +14,7 @@ from toto.anastasia import choices, services
 from toto.anastasia.models import ComputeLease
 from toto.anastasia.samples import CapsuleSample
 
-from .base import RUNNABLE, SMALL, AnastasiaTestCase
+from .base import RUNNABLE, SMALL, AnastasiaTestCase, FakeRuntimeBackend
 
 
 #: DIRS beats APP_DIRS, so the stub base wins even on a host that ships the
@@ -418,3 +419,282 @@ class MovedRouteTests(AnastasiaTestCase):
         response = self.client.get("/gears/?name=thesis")
         self.assertEqual(response.status_code, 301)
         self.assertIn("name=thesis", response["Location"])
+
+
+class FilesDeskTests(DeskTestCase):
+    """The Files section: picking files, and the two directions.
+
+    The same acts `test_transfer.py` proves through the bearer API, from the
+    page — because they are the same functions (`transfer.to_capsule`,
+    `transfer.to_bucket`), and what is under test here is the door: what the
+    card offers, what a checked set does, and how a refusal reads.
+    """
+
+    def setUp(self):
+        super().setUp()
+        # Copying OUT writes real vault bytes, and the deployed MEDIA_ROOT is
+        # a root-owned bind mount. Each test gets its own directory and takes
+        # it away afterwards — test_transfer's fixture, for its reason.
+        import shutil
+        import tempfile
+
+        media = tempfile.mkdtemp(prefix="anastasia-desk-files-")
+        override = override_settings(MEDIA_ROOT=media)
+        override.enable()
+        self.addCleanup(override.disable)
+        self.addCleanup(shutil.rmtree, media, ignore_errors=True)
+
+        from toto.vault.models import Bucket
+
+        self.lease = services.reserve(owner=self.user, name="lab", limits=SMALL)
+        services.mount(lease=self.lease, actor=self.user)
+        self.bucket = Bucket.objects.create(name="Papers", slug="papers",
+                                            owner=self.user,
+                                            storage_backend="local")
+
+    # -- fixtures ----------------------------------------------------------
+
+    def _vault_file(self, title="thesis.txt", body=b"seven years", owner=None):
+        from django.core.files.base import ContentFile
+
+        from toto.vault.models import VaultFile
+
+        vf = VaultFile(owner=owner or self.user, title=title, bucket=self.bucket,
+                       file_type="text", key=title.replace(".", "-"))
+        vf.file.save(title, ContentFile(body), save=False)
+        vf.save()
+        return vf
+
+    def _area(self, **files):
+        FakeRuntimeBackend.files[str(self.lease.uuid)] = dict(files)
+
+    def _url(self, name, lease=None):
+        return reverse(f"anastasia:{name}", args=[(lease or self.lease).uuid])
+
+    def _messages(self, response):
+        from django.contrib.messages import get_messages
+
+        return [str(m) for m in get_messages(response.wsgi_request)]
+
+    # -- what the card offers ----------------------------------------------
+
+    def test_a_mounted_card_offers_the_files_section(self):
+        response = self.client.get(reverse("anastasia:index"))
+        self.assertContains(response, "Files")
+        self.assertContains(response, self._url("files"))
+        self.assertTrue(response.context["files_supported"])
+
+    def test_an_unmounted_capsule_offers_no_files_section(self):
+        """The area exists between mounts; READING it needs the executor, and
+        a section that could only refuse is worse than no section."""
+        services.unmount(lease=self.lease, actor=self.user)
+        response = self.client.get(reverse("anastasia:index"))
+        self.assertNotContains(response, self._url("files"))
+
+    def test_the_vault_picker_is_drawn_once_for_the_page(self):
+        """Not once per Capsule. The tree is every file the person owns, and
+        a second Capsule must not double the page."""
+        self._vault_file()
+        services.mount(lease=services.reserve(owner=self.user, name="two",
+                                              limits=SMALL), actor=self.user)
+        response = self.client.get(reverse("anastasia:index"))
+        body = response.content.decode()
+        self.assertEqual(len(response.context["capsules"]), 2)
+        self.assertEqual(body.count('name="file"'), 1)
+
+    def test_a_runtime_with_no_files_area_offers_nothing(self):
+        class NoFiles(FakeRuntimeBackend):
+            capsule_files = None
+
+        with mock.patch("toto.anastasia.views.get_backend",
+                        return_value=NoFiles()):
+            response = self.client.get(reverse("anastasia:index"))
+        self.assertFalse(response.context["files_supported"])
+
+    # -- the listing -------------------------------------------------------
+
+    def test_the_listing_is_owner_only_json(self):
+        self._area(**{"out/result.csv": b"a,b\n"})
+        body = self.client.get(self._url("files")).json()
+        self.assertEqual([f["name"] for f in body["files"]], ["out/result.csv"])
+        self.assertTrue(body["complete"])
+        self.assertTrue(body["supported"])
+
+    def test_somebody_elses_listing_is_a_404(self):
+        theirs = services.reserve(owner=self.other, name="theirs", limits=SMALL)
+        self.assertEqual(
+            self.client.get(self._url("files", theirs)).status_code, 404)
+
+    def test_an_unanswerable_listing_says_incomplete_rather_than_empty(self):
+        """"Nobody answered" and "it is empty" are different claims and only
+        one of them is safe to act on."""
+        class Silent(FakeRuntimeBackend):
+            def capsule_files(self, lease):
+                return {}
+
+        with mock.patch("toto.anastasia.views.get_backend",
+                        return_value=Silent()):
+            body = self.client.get(self._url("files")).json()
+        self.assertEqual(body["files"], [])
+        self.assertFalse(body["complete"])
+
+    # -- in from the vault -------------------------------------------------
+
+    def test_the_checked_vault_files_are_copied_in(self):
+        first, second = self._vault_file(), self._vault_file("notes.txt", b"n")
+        response = self.client.post(self._url("file_from_vault"),
+                                    {"file": [first.pk, second.pk]})
+        self.assertEqual(response.status_code, 302)
+        area = FakeRuntimeBackend.files[str(self.lease.uuid)]
+        self.assertEqual(area, {"thesis.txt": b"seven years",
+                                "notes.txt": b"n"})
+
+    def test_copying_in_is_not_metered(self):
+        """Nothing durable is created: the bytes land in capacity the person
+        already reserved and already holds, and they die with it."""
+        from toto.vault.models import VaultUsageEvent
+
+        vf = self._vault_file()
+        before = VaultUsageEvent.objects.count()
+        self.client.post(self._url("file_from_vault"), {"file": [vf.pk]})
+        self.assertEqual(VaultUsageEvent.objects.count(), before)
+
+    def test_somebody_elses_file_is_refused_by_name_and_the_rest_copied(self):
+        mine = self._vault_file()
+        theirs = self._vault_file("secret.txt", b"theirs", owner=self.other)
+        response = self.client.post(self._url("file_from_vault"),
+                                    {"file": [mine.pk, theirs.pk]})
+        area = FakeRuntimeBackend.files[str(self.lease.uuid)]
+        self.assertEqual(list(area), ["thesis.txt"])
+        said = " ".join(self._messages(response))
+        self.assertIn("no such file", said)
+        # And the refusal never confirms the file exists, only that this
+        # person cannot name it.
+        self.assertNotIn("secret", said)
+
+    def test_a_name_is_only_honoured_for_a_single_file(self):
+        """One name for four files would write four files over each other."""
+        one, two = self._vault_file(), self._vault_file("notes.txt", b"n")
+        self.client.post(self._url("file_from_vault"),
+                         {"file": [one.pk], "name": "in/data.txt"})
+        self.assertIn("in/data.txt", FakeRuntimeBackend.files[str(self.lease.uuid)])
+        self._area()
+        self.client.post(self._url("file_from_vault"),
+                         {"file": [one.pk, two.pk], "name": "in/data.txt"})
+        self.assertEqual(sorted(FakeRuntimeBackend.files[str(self.lease.uuid)]),
+                         ["notes.txt", "thesis.txt"])
+
+    def test_more_than_the_limit_is_bounded_by_the_server(self):
+        """The template caps nothing a re-post could not lift; the thing that
+        acts is what must refuse."""
+        from toto.anastasia import views
+
+        files = [self._vault_file(f"f{i}.txt", b"x") for i in range(6)]
+        with mock.patch.object(views, "MAX_FILES_PER_TRANSFER", 3):
+            self.client.post(self._url("file_from_vault"),
+                             {"file": [f.pk for f in files]})
+        self.assertEqual(len(FakeRuntimeBackend.files[str(self.lease.uuid)]), 3)
+
+    def test_picking_nothing_is_a_sentence_not_a_500(self):
+        response = self.client.post(self._url("file_from_vault"), {})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("at least one", " ".join(self._messages(response)))
+
+    # -- out to a bucket ---------------------------------------------------
+
+    def test_the_checked_capsule_files_become_vault_files(self):
+        from toto.vault.models import VaultFile
+
+        self._area(**{"result.csv": b"a,b\n", "log.txt": b"ok\n"})
+        response = self.client.post(
+            self._url("file_to_vault"),
+            {"name": ["result.csv", "log.txt"], "bucket": self.bucket.slug})
+        self.assertEqual(response.status_code, 302)
+        titles = sorted(VaultFile.objects.filter(owner=self.user)
+                        .values_list("title", flat=True))
+        self.assertEqual(titles, ["log.txt", "result.csv"])
+
+    def test_copying_out_is_metered_like_an_upload(self):
+        """The same function the API calls, so the same price — this is the
+        third door onto durable storage and must not be the cheap one."""
+        from toto.vault.models import VaultUsageEvent
+
+        self._area(**{"result.csv": b"a,b\n"})
+        before = VaultUsageEvent.objects.count()
+        self.client.post(self._url("file_to_vault"),
+                         {"name": ["result.csv"], "bucket": self.bucket.slug})
+        self.assertGreater(VaultUsageEvent.objects.count(), before)
+
+    def test_a_title_is_only_honoured_for_a_single_file(self):
+        from toto.vault.models import VaultFile
+
+        self._area(**{"a.txt": b"a", "b.txt": b"b"})
+        self.client.post(self._url("file_to_vault"),
+                         {"name": ["a.txt", "b.txt"], "bucket": self.bucket.slug,
+                          "title": "One title"})
+        self.assertEqual(
+            sorted(VaultFile.objects.values_list("title", flat=True)),
+            ["a.txt", "b.txt"])
+
+    def test_somebody_elses_bucket_is_a_404(self):
+        from toto.vault.models import Bucket
+
+        theirs = Bucket.objects.create(name="Theirs", slug="theirs",
+                                       owner=self.other, storage_backend="local")
+        self._area(**{"a.txt": b"a"})
+        response = self.client.post(self._url("file_to_vault"),
+                                    {"name": ["a.txt"], "bucket": theirs.slug})
+        self.assertEqual(response.status_code, 404)
+
+    def test_one_refusal_names_that_file_and_the_others_still_copy(self):
+        from toto.vault.models import VaultFile
+
+        self._area(**{"good.txt": b"g", "bad.txt": b"b"})
+        FakeRuntimeBackend.refuse_files = {"bad.txt"}
+        response = self.client.post(
+            self._url("file_to_vault"),
+            {"name": ["good.txt", "bad.txt"], "bucket": self.bucket.slug})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(list(VaultFile.objects.values_list("title", flat=True)),
+                         ["good.txt"])
+        said = " ".join(self._messages(response))
+        self.assertIn("bad.txt", said)
+
+    def test_an_unreachable_runtime_reads_as_the_runtimes_fault(self):
+        """Not the person's mistake, and the sentence must say so."""
+        from toto.anastasia.runtime import RuntimeUnavailable
+
+        class Down(FakeRuntimeBackend):
+            def capsule_file_read(self, lease, name):
+                raise RuntimeUnavailable("the fake manager is down")
+
+        self._area(**{"a.txt": b"a"})
+        with mock.patch("toto.anastasia.runtime.get_backend",
+                        return_value=Down()):
+            response = self.client.post(
+                self._url("file_to_vault"),
+                {"name": ["a.txt"], "bucket": self.bucket.slug})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("runtime is not answering",
+                      " ".join(self._messages(response)))
+
+    # -- deleting ----------------------------------------------------------
+
+    def test_delete_removes_one_file(self):
+        self._area(**{"a.txt": b"a", "b.txt": b"b"})
+        response = self.client.post(self._url("file_delete"), {"name": "a.txt"})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(list(FakeRuntimeBackend.files[str(self.lease.uuid)]),
+                         ["b.txt"])
+
+    def test_deleting_what_is_not_there_is_a_sentence(self):
+        self._area()
+        response = self.client.post(self._url("file_delete"), {"name": "gone"})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("gone", " ".join(self._messages(response)))
+
+    def test_every_verb_refuses_a_get(self):
+        for name in ("file_from_vault", "file_to_vault", "file_delete"):
+            with self.subTest(name=name):
+                self.assertEqual(self.client.get(self._url(name)).status_code,
+                                 405)
