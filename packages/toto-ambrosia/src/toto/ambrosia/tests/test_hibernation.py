@@ -279,10 +279,74 @@ class HybridHibernationTests(HibernationTestCase):
 
     def test_an_oversized_home_is_reported_rather_than_silently_dropped(self):
         huge = {"home/big.bin": b"x" * 2048}
-        with mock.patch.object(hibernation, "MAX_HOME_BYTES", 10):
+        with mock.patch.object(hibernation, "MAX_HOME_RAW_BYTES", 10):
             _lease, manifest = self._hibernate_with_home(huge)
         self.assertIn("home_skipped", manifest)
         self.assertEqual(manifest["depth"], "manifest")
+
+    def test_a_home_that_gzips_small_is_still_refused_on_its_RAW_size(self):
+        """THE TEST THIS CLASS WAS MISSING (2026-09-11).
+
+        The ceiling used to check the GZIPPED blob, and the restore path
+        enforces its budget on UNCOMPRESSED bytes — `staging.unpack` counts
+        real bytes written, member by member. So a compressible home passed
+        the check and then failed at every wake-up: kept, and never staged
+        back, which is the exact failure the ceiling's own comment says it
+        exists to prevent.
+
+        Measured before the fix: twenty ordinary csv files, 286 MB of text,
+        gzip to a 0.7 MB blob — 411:1. This is that case in miniature, and it
+        is checked by planting a blob-only ceiling that the archive passes
+        comfortably.
+        """
+        compressible = {"home/data.csv": b"0,1,2,3,4,5,6,7,8,9\n" * 20_000}
+        raw = len(compressible["home/data.csv"])
+        packed = len(hibernation.pack(compressible))
+        self.assertLess(packed * 20, raw, "the fixture must actually compress")
+
+        # A raw ceiling this home exceeds, and a blob ceiling it does not.
+        with mock.patch.object(hibernation, "MAX_HOME_RAW_BYTES", raw // 2), \
+             mock.patch.object(hibernation, "MAX_HOME_BYTES", raw):
+            _lease, manifest = self._hibernate_with_home(compressible)
+        self.assertIn("home_skipped", manifest)
+        self.assertEqual(manifest["depth"], "manifest")
+        self.assertIn("staged back", manifest["home_skipped"])
+
+    def test_the_skip_sentence_is_not_nonsense_at_the_boundary(self):
+        """Integer MB rendered "the home directory was 64 MB, above the 64 MB
+        limit" for anything between 64.0 and 65.0 — a sentence that reads as a
+        bug rather than as a limit. The same failure `executor/staging.py`
+        documents in `_budget_phrase`."""
+        ceiling = 64 * 1024 * 1024
+        just_over = {"home/big.bin": b"x" * (ceiling + 400_000)}
+        with mock.patch.object(hibernation, "MAX_HOME_RAW_BYTES", ceiling):
+            _lease, manifest = self._hibernate_with_home(just_over)
+        sentence = manifest["home_skipped"]
+        self.assertIn("64.4 MB", sentence)
+        self.assertIn("64.0 MB", sentence)
+        self.assertNotIn("was 64 MB, above the 64 MB", sentence)
+
+    def test_the_ceiling_is_what_can_actually_be_staged_back(self):
+        """DERIVED, NOT TYPED. The ceiling exists because the manager caps an
+        input, so a number written here independently would go stale the day
+        that cap moved — and the failure would be silent, in the form of homes
+        kept and never restorable. 64 MB was also simply too small for an
+        installed environment, which is what todo 9.5 is about."""
+        from toto.anastasia.executor.capsules import DEFAULT_INPUT_BUDGET
+
+        self.assertEqual(hibernation.MAX_HOME_RAW_BYTES, DEFAULT_INPUT_BUDGET)
+        self.assertGreater(hibernation.MAX_HOME_RAW_BYTES, 64 * 1024 * 1024,
+                           "an installed environment does not fit in 64 MB")
+
+    def test_a_home_within_the_ceiling_is_kept_whole(self):
+        """The other half: the cap must not be so eager that an ordinary home
+        is skipped. What is kept must also come back byte for byte."""
+        home = {"home/.bashrc": b"echo hello\n",
+                "home/.config/tool.ini": b"[a]\nb=c\n"}
+        _lease, manifest = self._hibernate_with_home(home)
+        self.assertNotIn("home_skipped", manifest)
+        self.assertEqual(manifest["depth"], "hybrid")
+        self.assertEqual(hibernation.staged_home(self.ws), home)
 
     def test_a_runtime_that_wrote_no_home_is_not_an_error(self):
         _lease, manifest = self._hibernate_with_home({})

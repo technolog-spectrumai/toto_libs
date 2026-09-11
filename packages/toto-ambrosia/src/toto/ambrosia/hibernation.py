@@ -65,13 +65,71 @@ from . import registry
 
 log = logging.getLogger("toto.ambrosia")
 
-#: What a collected home may weigh. The manager caps an input at 256 MB, so a
-#: home above this could be kept and never staged back — refused while somebody
-#: is watching, rather than at every start afterwards.
-MAX_HOME_BYTES = 64 * 1024 * 1024
+#: TWO CEILINGS, BECAUSE THERE ARE TWO SIZES, and conflating them is how a
+#: home that passes the check becomes one that can never be restored.
+#:
+#: `MAX_HOME_BYTES` bounds the GZIPPED BLOB — what is stored, transferred and
+#: held in memory here. `MAX_HOME_RAW_BYTES` bounds the UNCOMPRESSED TOTAL,
+#: which is what the manager's staging budget actually measures: it enforces
+#: `max_bytes` while unpacking, member by member, on real bytes written.
+#:
+#: MEASURED 2026-09-11: twenty ordinary csv files, 286 MB of text, gzip to a
+#: 0.7 MB blob — 411:1. That passed the old 64 MB check comfortably and then
+#: exceeded the 256 MB staging budget at every single wake-up. Which is
+#: precisely the failure this ceiling was written to prevent: "kept and never
+#: staged back — refused while somebody is watching, rather than at every
+#: start afterwards". Checking only the compressed size was checking the one
+#: number the restore path does not look at.
+#:
+#: RAISED FROM 64 MB, and derived rather than typed: an installed environment
+#: does not fit in 64 MB, and the honest maximum is what can be staged back.
+#: `_staging_budget` reads the manager's own constant so the two cannot drift
+#: — a number copied here would be a number that goes stale silently.
+#:
+#: WHY IT DOES NOT GO HIGHER. `pack` builds the whole archive in a BytesIO and
+#: `unpack` reads the whole blob back the same way, so the web process holds
+#: several full copies of a home while it works. Raising this past the staging
+#: budget would need a streaming path, not a bigger number — that is the real
+#: cost of a bigger home, and it is why this is a derivation and not a knob.
+def _staging_budget() -> int:
+    """The manager's input budget, or a safe default when it is not installed.
+
+    Read at call time rather than imported at module scope: ambrosia must load
+    on a host that does not build anastasia, which is what the `is_installed`
+    guard in `_lease_for` already exists for.
+    """
+    try:
+        from toto.anastasia.executor.capsules import DEFAULT_INPUT_BUDGET
+    except Exception:  # noqa: BLE001 — no manager here; keep the old ceiling
+        return 64 * 1024 * 1024
+    return DEFAULT_INPUT_BUDGET
+
+
+MAX_HOME_RAW_BYTES = _staging_budget()
+
+#: The stored blob's own ceiling. Equal to the raw budget rather than smaller:
+#: gzip never expands by more than a hair, so a blob at this size implies a
+#: raw total that already failed the check above.
+MAX_HOME_BYTES = MAX_HOME_RAW_BYTES
 
 #: Where a home is collected from and staged to, in the runner's own terms.
 HOME_NAME = "home"
+
+
+def _size_phrase(size: int) -> str:
+    """A size in a unit that is not misleading at the boundary.
+
+    "the home directory was 64 MB, above the 64 MB limit" is what integer MB
+    produces for anything between 64.0 and 65.0 MB, and it reads as a bug
+    rather than as a limit. The same failure `executor/staging.py` documents
+    in `_budget_phrase`; re-implemented rather than imported because that lives
+    in a package ambrosia does not depend on.
+    """
+    if size >= 1024 * 1024:
+        return f"{size / (1024 * 1024):.1f} MB"
+    if size >= 1024:
+        return f"{size // 1024} KB"
+    return f"{size} bytes"
 
 
 class HibernationError(Exception):
@@ -245,14 +303,27 @@ def hibernate(workspace, *, user=None, release_lease: bool = True) -> dict:
         except Exception:  # noqa: BLE001
             log.exception("ambrosia: could not release %s", lease.uuid)
 
-    blob = pack(home_files)
-    if len(blob) > MAX_HOME_BYTES:
+    # THE RAW TOTAL FIRST, and before packing rather than after: it is the
+    # number the restore path enforces, and gzipping 20 GB to discover it was
+    # too big costs the whole compression for an answer already available.
+    raw_bytes = sum(len(body) for body in home_files.values()
+                    if isinstance(body, bytes))
+    blob = b""
+    if raw_bytes > MAX_HOME_RAW_BYTES:
         # Kept as a fact in the manifest rather than silently dropped: coming
         # back to a smaller home with no explanation is worse than being told.
         snapshot["home_skipped"] = (
-            f"the home directory was {len(blob) // (1024 * 1024)} MB, "
-            f"above the {MAX_HOME_BYTES // (1024 * 1024)} MB limit")
-        blob = b""
+            f"the home directory held {_size_phrase(raw_bytes)} of files, "
+            f"above the {_size_phrase(MAX_HOME_RAW_BYTES)} that can be staged "
+            "back into a Capsule. It was not kept — everything else was.")
+    else:
+        blob = pack(home_files)
+        if len(blob) > MAX_HOME_BYTES:
+            snapshot["home_skipped"] = (
+                f"the packed home was {_size_phrase(len(blob))}, above the "
+                f"{_size_phrase(MAX_HOME_BYTES)} limit. It was not kept — "
+                "everything else was.")
+            blob = b""
 
     manifest = {
         "kind": workspace.kind,
