@@ -30,6 +30,25 @@ urlpatterns = [
     # reason the comment below gives.
     path("capsules/<uuid:uuid>/installs", api.install_collection,
          name="install_collection"),
+    # The files area. Six fixed segments, every one above the catch-all — and
+    # `files` itself is exactly the kind of word `<str:action>` would swallow.
+    # The file NAME travels in the body for all of them, never in the path:
+    # a name is a path, with slashes and dots and unicode in it, and a URL is
+    # the wrong place to carry one.
+    path("capsules/<uuid:uuid>/files", api.capsule_file_list,
+         name="capsule_file_list"),
+    path("capsules/<uuid:uuid>/files/get", api.capsule_file_get,
+         name="capsule_file_get"),
+    path("capsules/<uuid:uuid>/files/put", api.capsule_file_put,
+         name="capsule_file_put"),
+    path("capsules/<uuid:uuid>/files/delete", api.capsule_file_delete,
+         name="capsule_file_delete"),
+    # The two Vault directions. Bytes never pass through the client: the
+    # server has both ends.
+    path("capsules/<uuid:uuid>/files/from-vault", api.capsule_file_from_vault,
+         name="capsule_file_from_vault"),
+    path("capsules/<uuid:uuid>/files/to-vault", api.capsule_file_to_vault,
+         name="capsule_file_to_vault"),
     # LAST, because `<str:action>` matches anything — including "storage" and
     # "jobs". Django takes the first pattern that matches, so a catch-all
     # placed above its siblings silently swallows them: /storage came back 405

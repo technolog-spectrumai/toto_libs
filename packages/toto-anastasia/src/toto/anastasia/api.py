@@ -30,7 +30,7 @@ from django.http import Http404, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
-from . import choices, execute, install, jobs, runtime, services
+from . import choices, execute, install, jobs, runtime, services, transfer
 from .limits import Limits, LimitsError
 from .models import ComputeLease, Execution, InstallRun
 from .tokens import CapsuleToken
@@ -493,3 +493,233 @@ def job_output(request, owner, uuid):
         "files": {name: base64.b64encode(body).decode("ascii")
                   for name, body in sorted(files.items())},
     })
+
+
+# --------------------------------------------------------------------------- #
+# The files area                                                               #
+# --------------------------------------------------------------------------- #
+# A capsule's one KEPT area (a tmpfs: it outlives jobs and unmounts, not a
+# reboot or a release — `executor/files.py`), and the only way bytes reach it
+# outside a job.
+# `executor/files.py` holds the threat model and every refusal; everything here
+# is exposure, ownership and the two vault directions.
+#
+# THE NAME TRAVELS IN THE BODY, not the path, for all four verbs including the
+# reads. A file name is a path — it has slashes, dots and unicode in it — and
+# putting one in a URL means a name that is legal in the files area but not in
+# a URL, or worse one that is legal in both and means different things. The
+# executor's own routes made the same choice for the same reason.
+
+#: What one transfer may carry, matching the executor's own file budget. A
+#: ceiling here as well as there because this process decodes base64 into
+#: memory before the executor ever sees it — the far side's budget does not
+#: protect the web tier.
+MAX_TRANSFER_BYTES = 64 * 1024 * 1024
+
+
+def _files_backend():
+    """The runtime, or a refusal naming what this deployment cannot do."""
+    backend = runtime.get_backend()
+    if getattr(backend, "capsule_files", None) is None:
+        return None, _error(
+            "this deployment's runtime cannot hold files in a Capsule",
+            code="unsupported", status=501)
+    return backend, None
+
+
+def _name_from(payload) -> str:
+    name = (payload.get("name") or "").strip()
+    return name
+
+
+@require_GET
+@token_required
+def capsule_file_list(request, owner, uuid):
+    """Every file in the capsule's files area.
+
+    NOT `storage`, and the two must not be merged. `executor/storage.py`
+    returns counts and byte totals and never a filename — its tests forbid it
+    from opening a file — because what is inside a capsule is not the
+    operator's business. This endpoint returns NAMES, and it is the owner
+    asking about their own capsule, which is a different question with a
+    different answer.
+    """
+    lease = _own_lease(owner, uuid)
+    backend, refusal = _files_backend()
+    if refusal is not None:
+        return refusal
+    listing = backend.capsule_files(lease) or {}
+    return JsonResponse({
+        "uuid": str(lease.uuid),
+        "files": listing.get("files", []),
+        # False when the walk stopped early. A listing that silently truncated
+        # reads as "this is everything", which is how somebody concludes a file
+        # was lost.
+        "complete": bool(listing.get("complete", False)),
+    })
+
+
+@require_POST
+@token_required
+def capsule_file_get(request, owner, uuid):
+    """One file's bytes, base64, the same shape `job_output` uses."""
+    import base64
+
+    lease = _own_lease(owner, uuid)
+    backend, refusal = _files_backend()
+    if refusal is not None:
+        return refusal
+    name = _name_from(_body(request))
+    if not name:
+        return _error("name the file to read", code="no_name")
+    try:
+        data = backend.capsule_file_read(lease, name)
+    except Exception as exc:                     # noqa: BLE001
+        return _files_refusal(exc)
+    return JsonResponse({"name": name, "bytes": len(data),
+                         "data_b64": base64.b64encode(data).decode("ascii")})
+
+
+@require_POST
+@token_required
+def capsule_file_put(request, owner, uuid):
+    """Put one file in the files area, from base64 in the body."""
+    import base64
+    import binascii
+
+    lease = _own_lease(owner, uuid)
+    backend, refusal = _files_backend()
+    if refusal is not None:
+        return refusal
+    payload = _body(request)
+    name = _name_from(payload)
+    if not name:
+        return _error("name the file to write", code="no_name")
+    try:
+        data = base64.b64decode(payload.get("data_b64") or "", validate=True)
+    except (binascii.Error, ValueError):
+        return _error("the file content must be base64", code="bad_content")
+    if len(data) > MAX_TRANSFER_BYTES:
+        return _error(
+            f"that file is over the "
+            f"{MAX_TRANSFER_BYTES // (1024 * 1024)} MB transfer limit",
+            code="too_large", status=413)
+    try:
+        result = backend.capsule_file_write(
+            lease, name, data, replace=bool(payload.get("replace")))
+    except Exception as exc:                     # noqa: BLE001
+        return _files_refusal(exc)
+    return JsonResponse({**result, "bytes": len(data)}, status=201)
+
+
+@require_POST
+@token_required
+def capsule_file_delete(request, owner, uuid):
+    lease = _own_lease(owner, uuid)
+    backend, refusal = _files_backend()
+    if refusal is not None:
+        return refusal
+    name = _name_from(_body(request))
+    if not name:
+        return _error("name the file to delete", code="no_name")
+    try:
+        return JsonResponse(backend.capsule_file_delete(lease, name))
+    except Exception as exc:                     # noqa: BLE001
+        return _files_refusal(exc)
+
+
+# --------------------------------------------------------------------------- #
+# The two vault directions                                                     #
+# --------------------------------------------------------------------------- #
+
+@require_POST
+@token_required
+def capsule_file_from_vault(request, owner, uuid):
+    """Copy a file the caller owns in the Vault into the capsule.
+
+    Bytes never pass through the client. A desktop app that had to download a
+    file and upload it again would move it twice over the network and hold it
+    in a webview's memory in between; the server already has both ends.
+    """
+    from toto.vault.models import VaultFile
+
+    lease = _own_lease(owner, uuid)
+    payload = _body(request)
+    key = (payload.get("key") or "").strip()
+    if not key:
+        return _error("name the Vault file to copy, by key", code="no_key")
+    # OWNER-FILTERED IN THE QUERY, so somebody else's file is indistinguishable
+    # from one that does not exist — the rule `_own_lease` follows.
+    vault_file = VaultFile.objects.filter(owner=owner, key=key).first()
+    if vault_file is None:
+        raise Http404("no such file")
+    try:
+        result = transfer.to_capsule(
+            lease=lease, vault_file=vault_file,
+            name=(payload.get("name") or "").strip(),
+            actor=owner, replace=bool(payload.get("replace")))
+    except transfer.TransferRefused as exc:
+        return _refusal(exc)
+    except Exception as exc:                     # noqa: BLE001
+        return _files_refusal(exc)
+    return JsonResponse(result, status=201)
+
+
+@require_POST
+@token_required
+def capsule_file_to_vault(request, owner, uuid):
+    """Copy a file out of the capsule into one of the caller's buckets.
+
+    METERED AND SCANNED, exactly as an upload is — see `transfer.to_bucket`.
+    These bytes were written by a runner, which is the one door where the
+    antivirus pass is not a formality.
+    """
+    from toto.vault.models import Bucket
+
+    lease = _own_lease(owner, uuid)
+    payload = _body(request)
+    name = _name_from(payload)
+    if not name:
+        return _error("name the file to copy out", code="no_name")
+
+    bucket_slug = (payload.get("bucket") or "").strip()
+    if not bucket_slug:
+        return _error("name the bucket to copy into", code="no_bucket")
+    bucket = Bucket.objects.filter(owner=owner, slug=bucket_slug).first()
+    if bucket is None:
+        raise Http404("no such bucket")
+
+    try:
+        vault_file = transfer.to_bucket(
+            lease=lease, name=name, bucket=bucket, actor=owner,
+            title=(payload.get("title") or "").strip())
+    except transfer.TransferRefused as exc:
+        return _refusal(exc)
+    except Exception as exc:                     # noqa: BLE001
+        return _files_refusal(exc)
+    return JsonResponse({
+        "key": vault_file.key,
+        "title": vault_file.title,
+        "file_type": vault_file.file_type,
+        "size": vault_file.file_size_bytes,
+        "bucket": bucket.slug,
+    }, status=201)
+
+
+def _files_refusal(exc):
+    """The executor's own sentence, or an honest 503.
+
+    `FilesRefused` carries what the executor said — "that name escapes the
+    files area", "already exists" — and the caller can act on it.
+    `RuntimeUnavailable` is nobody's fault and must not read as the user's
+    mistake.
+    """
+    from .executor_backend import FilesRefused
+    from .runtime import RuntimeUnavailable
+
+    if isinstance(exc, FilesRefused):
+        return _error(str(exc), code="file_refused", status=409)
+    if isinstance(exc, RuntimeUnavailable):
+        return _error(f"the runtime could not be reached ({exc})",
+                      code="runtime_unavailable", status=503)
+    raise exc

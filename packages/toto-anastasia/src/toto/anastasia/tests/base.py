@@ -65,6 +65,14 @@ class FakeRuntimeBackend:
     #: Flip to make the log reader unreachable — the shape a real runtime
     #: takes when the executor is down, which must degrade rather than 500.
     fail_logs = False
+    #: The files area, per capsule uuid: {uuid: {name: bytes}}. In memory, so
+    #: a transfer test can put a file in one end and read it out of the other
+    #: without a directory on disk — the real area's path rules are
+    #: `executor/files.py`'s and are tested there against a real filesystem.
+    files: dict = {}
+    #: Names the fake refuses, so a test can see a refusal travel up to the
+    #: API without needing a real traversal attempt.
+    refuse_files: set = set()
     #: What `execution_status` answers. None means "still running"; a dict is
     #: returned as the settled state — `{"found": True, "running": False,
     #: "exit_code": 0}` is a clean finish. Set by a test that wants a watched
@@ -78,6 +86,8 @@ class FakeRuntimeBackend:
         cls.fail_start = False
         cls.log_text = ""
         cls.fail_logs = False
+        cls.files = {}
+        cls.refuse_files = set()
         cls.settled = None
 
     def mount(self, lease):
@@ -158,6 +168,61 @@ class FakeRuntimeBackend:
         type(self).log_text = ""
         type(self).fail_logs = True
         return {"finished": True}
+
+    # -- the files area -----------------------------------------------------
+    #
+    # The same four verbs the real backend has, over a dict. What is NOT
+    # modelled: the path rules — `safe_name`, the fd walk, links. Those live in
+    # `executor/files.py` and are tested against a real filesystem in
+    # test_files; a fake that re-implemented them would be a second rule.
+
+    def _area(self, lease):
+        return type(self).files.setdefault(str(lease.uuid), {})
+
+    def _refuse(self, name):
+        from toto.anastasia.executor_backend import FilesRefused
+
+        if name in type(self).refuse_files:
+            raise FilesRefused(f"{name!r} is refused by the fake")
+
+    def capsule_files(self, lease):
+        type(self).calls.append(("files", str(lease.uuid)))
+        area = self._area(lease)
+        return {"files": [{"name": n, "size": len(b), "type": "file"}
+                          for n, b in sorted(area.items())],
+                "complete": True}
+
+    def capsule_file_read(self, lease, name):
+        from toto.anastasia.executor_backend import FilesRefused
+
+        type(self).calls.append(("file_read", str(lease.uuid), name))
+        self._refuse(name)
+        area = self._area(lease)
+        if name not in area:
+            raise FilesRefused(f"there is no file named {name!r}")
+        return area[name]
+
+    def capsule_file_write(self, lease, name, data, replace=False):
+        from toto.anastasia.executor_backend import FilesRefused
+
+        type(self).calls.append(("file_write", str(lease.uuid), name, replace))
+        self._refuse(name)
+        area = self._area(lease)
+        if name in area and not replace:
+            raise FilesRefused(f"{name!r} already exists")
+        area[name] = bytes(data)
+        return {"name": name, "bytes": len(data), "replaced": name in area}
+
+    def capsule_file_delete(self, lease, name):
+        from toto.anastasia.executor_backend import FilesRefused
+
+        type(self).calls.append(("file_delete", str(lease.uuid), name))
+        self._refuse(name)
+        area = self._area(lease)
+        if name not in area:
+            raise FilesRefused(f"there is no file named {name!r}")
+        del area[name]
+        return {"name": name, "deleted": True}
 
     def describe(self):
         return {"backend": "fake", "name": "fake"}
