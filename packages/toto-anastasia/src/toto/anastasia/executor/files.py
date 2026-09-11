@@ -5,9 +5,15 @@ and ``/out`` exist for one execution and are removed when it finishes; the
 runner's ``/scratch`` is a tmpfs that dies with the container. Until
 2026-09-11 that was the whole story, and it meant a person could not put a
 file INTO a capsule except as the input of a job, or get one OUT except as
-that job's result. ``files/`` is the durable area: bound into every runner at
+that job's result. ``files/`` is the KEPT area: bound into every runner at
 ``/files``, read and written one name at a time from Zenobia, and kept for as
 long as the reservation — the lifetime rule is written up in ``capsules.py``.
+
+KEPT, NOT DURABLE. The staging root is a sized tmpfs (`deploy.py:
+anastasia_staging_mount_unit`), so this area outlives a job and an unmount and
+does not outlive a host reboot or a release. The Vault is where a file lives;
+this is where a copy of it works. `transfer.py` moves one file either way,
+and the desk says so beside the area rather than calling it storage.
 
 THE SAME THREAT MODEL AS ``staging.py``, restated because the two directions
 here look less hostile than a tar stream and are not:
@@ -72,19 +78,68 @@ class FilesError(ValueError):
     """
 
 
+#: Characters a files-area name may not contain, beyond what `staging` refuses.
+#:
+#: A BACKSLASH, because `staging.safe_member_name` folds it to a slash — right
+#: for a tar written on Windows, wrong here: a runner can create a file
+#: literally named ``a\b.txt``, the listing would report it, and reading it
+#: back would open ``a/b.txt`` instead. Listing and reading must agree on
+#: what a name means or a decoy file can be shown while another's bytes are
+#: copied into the user's bucket under its name. (Found 2026-09-11, proven
+#: empirically before the fix.)
+#:
+#: CONTROL CHARACTERS, because a name reaches the vault as a title and a
+#: newline in a title makes ``FileResponse`` raise on every download of it;
+#: and because a bidi override spoofs an extension in every UI that renders
+#: the name. Neither is a file anyone typed.
+_REFUSED_CHARS = frozenset("\\") | frozenset(chr(c) for c in range(32)) | {"\x7f"} \
+    | frozenset("\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069")
+
+
 def safe_name(relative) -> str:
     """The relative POSIX path a caller may name, or raise.
 
     `staging.safe_member_name` is the rule — normalise, then refuse NUL,
     absolute paths, drive letters and anything that resolves above the root.
-    Only the sentence differs.
+    Only the sentence differs. On top of it, the files area refuses what a
+    tar member is allowed: see `_REFUSED_CHARS`.
     """
     if not isinstance(relative, str):
         raise FilesError("a file name must be a string")
     try:
-        return staging.safe_member_name(relative, subject=_SUBJECT, where=_WHERE)
+        cleaned = staging.safe_member_name(relative, subject=_SUBJECT, where=_WHERE)
     except staging.StagingError as exc:
         raise FilesError(str(exc)) from None
+    # Judged on the ORIGINAL, after staging: staging has already folded the
+    # backslash away by now, and its NUL sentence is the better one.
+    bad = sorted(set(relative) & _REFUSED_CHARS)
+    if bad:
+        raise FilesError(
+            f"{relative[:80]!r} contains a character a file name may not "
+            f"({', '.join(repr(c) for c in bad[:3])})")
+    return cleaned
+
+
+def listable(name: str) -> bool:
+    """Whether a name a RUNNER wrote may be shown to the desk at all.
+
+    THE RULE: a name is listable only if reading it back would open the same
+    file — ``safe_name(name) == name``. Anything else is a name the desk would
+    show and could not act on, or worse, one it would act on differently.
+
+    Also refused: a name that is not valid UTF-8 (it arrives from the
+    filesystem surrogate-escaped and raises the first time it is rendered or
+    written to the database), and a name `safe_name` would normalise — a
+    listing must never show ``./x`` beside ``x``.
+    """
+    try:
+        name.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    try:
+        return safe_name(name) == name
+    except FilesError:
+        return False
 
 
 # -- descending safely ------------------------------------------------------
@@ -181,68 +236,97 @@ def listing(root: str, *, max_entries: int = DEFAULT_MAX_ENTRIES,
             budget_seconds: float = DEFAULT_BUDGET_SECONDS) -> dict:
     """Every file and directory under ``root``, sorted, and whether that is all.
 
-    Symlinks are neither followed nor listed. A runner's link is something
-    `read_one` refuses and `write_one` will not write through, so listing it
-    would offer the desk a name it can do nothing with — and following it
-    would let a link to ``/`` list the host.
+    BY DESCRIPTOR, like every other verb here. The first version walked by
+    PATH — ``islink(current)`` and then ``scandir(current)`` — which is the
+    exact check-then-open race the module docstring says this module refuses:
+    a runner that swaps a directory for a symlink between the two gets the
+    host's directory names, sizes and mtimes listed into the desk, as root.
+    Each subdirectory is now opened under its parent's descriptor with
+    ``O_NOFOLLOW|O_DIRECTORY``, and ``scandir`` is given the descriptor, so a
+    link can only ever fail to open.
+
+    Symlinks are neither followed nor listed, and neither is any name that
+    `listable` refuses: the desk is only ever shown a name it can hand straight
+    back to `read_one` and get the same file.
 
     ``complete`` is not decoration, for the reason `storage.measure` gives: a
     listing that silently stopped early reads as "this is everything".
     """
     if not root or not os.path.isdir(root):
         return {"files": [], "complete": True}
-    root_real = os.path.realpath(root)
+    try:
+        root_fd = _open_root(root)
+    except FilesError:
+        return {"files": [], "complete": False}
+
     started = time.monotonic()
     rows: list[dict] = []
     complete = True
-    stack = [root_real]
+    # (fd, relative path of that directory). The root's relative path is "".
+    stack: list[tuple[int, str]] = [(root_fd, "")]
 
-    while stack and complete:
-        current = stack.pop()
-        # RE-PROVEN PER DIRECTORY, not once at the top. A directory pushed as
-        # a real directory may be a symlink by the time it is popped — a
-        # runner is writing this tree while we read it — and `scandir` on a
-        # path follows it.
-        if os.path.islink(current):
-            continue
-        try:
-            staging.resolved_within(root_real, os.path.relpath(current, root_real),
-                                    subject=_SUBJECT, where=_WHERE)
-        except staging.StagingError:
-            continue
-        try:
-            with os.scandir(current) as entries:
-                for entry in entries:
-                    if len(rows) >= max_entries:
-                        complete = False
-                        break
-                    if time.monotonic() - started > budget_seconds:
-                        complete = False
-                        break
-                    if entry.is_symlink():
-                        continue
-                    try:
-                        info = entry.stat(follow_symlinks=False)
-                    except OSError:
-                        # Vanished mid-walk. Normal in a live capsule.
-                        continue
-                    relative = os.path.relpath(entry.path, root_real)
-                    relative = relative.replace(os.sep, "/")
-                    if stat.S_ISDIR(info.st_mode):
-                        rows.append({"name": relative, "size": 0,
-                                     "modified": int(info.st_mtime),
-                                     "is_dir": True})
-                        stack.append(entry.path)
-                    elif stat.S_ISREG(info.st_mode):
-                        rows.append({"name": relative, "size": info.st_size,
-                                     "modified": int(info.st_mtime),
-                                     "is_dir": False})
-                    # A socket, a FIFO, a device: not a file anyone can move,
-                    # and not named — the desk would only offer to read it.
-        except OSError:
-            # An unreadable directory is a fact about permissions, not a
-            # reason to report the rest of the tree as absent.
-            complete = False
+    try:
+        while stack and complete:
+            dir_fd, prefix = stack.pop()
+            try:
+                # `scandir` on a DESCRIPTOR: entries are relative to it, and
+                # nothing on this path is ever a string the kernel resolves
+                # from the root. `entry.path` is meaningless here and unused.
+                with os.scandir(dir_fd) as entries:
+                    for entry in entries:
+                        if len(rows) >= max_entries:
+                            complete = False
+                            break
+                        if time.monotonic() - started > budget_seconds:
+                            complete = False
+                            break
+                        if entry.is_symlink():
+                            continue
+                        relative = f"{prefix}/{entry.name}" if prefix else entry.name
+                        if not listable(relative):
+                            # A backslash, a control character, non-UTF-8: a
+                            # name the desk could not act on, or would act on
+                            # wrongly. Not shown — and not counted as
+                            # incomplete, because it is not a file anyone can
+                            # move.
+                            continue
+                        try:
+                            info = entry.stat(follow_symlinks=False)
+                        except OSError:
+                            # Vanished mid-walk. Normal in a live capsule.
+                            continue
+                        if stat.S_ISDIR(info.st_mode):
+                            rows.append({"name": relative, "size": 0,
+                                         "modified": int(info.st_mtime),
+                                         "is_dir": True})
+                            try:
+                                child = os.open(entry.name, _DIR_FLAGS,
+                                                dir_fd=dir_fd)
+                            except OSError:
+                                # Became a link, or vanished, since `stat`.
+                                # Listed as a directory — that is what it
+                                # was — and not descended.
+                                continue
+                            stack.append((child, relative))
+                        elif stat.S_ISREG(info.st_mode):
+                            rows.append({"name": relative, "size": info.st_size,
+                                         "modified": int(info.st_mtime),
+                                         "is_dir": False})
+                        # A socket, a FIFO, a device: not a file anyone can
+                        # move, and not named — the desk would only offer to
+                        # read it.
+            except OSError:
+                # An unreadable directory is a fact about permissions, not a
+                # reason to report the rest of the tree as absent.
+                complete = False
+            finally:
+                if dir_fd != root_fd:
+                    os.close(dir_fd)
+    finally:
+        for fd, _ in stack:
+            if fd != root_fd:
+                os.close(fd)
+        os.close(root_fd)
 
     rows.sort(key=lambda row: row["name"])
     return {"files": rows, "complete": complete}

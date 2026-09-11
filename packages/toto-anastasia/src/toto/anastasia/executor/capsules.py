@@ -140,8 +140,9 @@ class CapsuleManager:
         return os.path.join(self.exec_root(capsule), str(execution))
 
     def files_root(self, capsule) -> str:
-        """The capsule's durable area — see `files.py` and the lifetime rule
-        on `unmount`. Bound into every runner at /files."""
+        """The capsule's kept area — see `files.py` for why it is "kept" and
+        not "durable", and the lifetime rule on `unmount`. Bound into every
+        runner at /files."""
         return os.path.join(self.capsule_dir(capsule), "files")
 
     def _prepare_areas(self, capsule) -> None:

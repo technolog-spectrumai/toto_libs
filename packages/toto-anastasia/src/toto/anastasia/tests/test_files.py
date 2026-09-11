@@ -217,6 +217,183 @@ class FilesAreaTests(SimpleTestCase):
         self.assertNotIn("secret", repr(listed))
         self.assertNotIn("etc", names)
 
+    # -- the listing walks by descriptor -------------------------------------
+    #
+    # The first listing walked by PATH: `islink(path)` and then `scandir(path)`.
+    # Between those two calls a runner can swap the directory for a symlink,
+    # and the second call would then enumerate the host's directory as root.
+    # A recon of 9.7 found it (2026-09-11); these three tests are the fix's
+    # contract, not a re-run of the race.
+
+    def test_listing_never_hands_the_kernel_a_path_string(self):
+        """Every `scandir` and every `open` the listing makes is relative to
+        a descriptor it already holds. A path string anywhere is the race
+        back, whatever the rest of the code looks like."""
+        _plant(self.root, "a/b/c.txt")
+        _plant(self.root, "d.txt")
+        scandir_args, open_args = [], []
+        real_scandir, real_open = os.scandir, os.open
+
+        def spy_scandir(arg=".", *rest):
+            scandir_args.append(arg)
+            return real_scandir(arg, *rest)
+
+        def spy_open(path, flags, mode=0o777, *, dir_fd=None):
+            open_args.append((path, dir_fd))
+            return real_open(path, flags, mode, dir_fd=dir_fd)
+
+        with mock.patch.object(os, "scandir", spy_scandir), \
+                mock.patch.object(os, "open", spy_open), \
+                mock.patch.object(os.path, "islink",
+                                  side_effect=AssertionError("islink(path)")):
+            listed = files.listing(self.root)
+
+        self.assertEqual([r["name"] for r in listed["files"]],
+                         ["a", "a/b", "a/b/c.txt", "d.txt"])
+        self.assertTrue(scandir_args, "the spy saw nothing; the test is vacuous")
+        for arg in scandir_args:
+            self.assertIsInstance(arg, int, f"scandir({arg!r}) — a path string")
+        # The root is the one path the manager owns and may name; everything
+        # under it is opened by a bare component beside a `dir_fd`.
+        subordinate = [(p, fd) for p, fd in open_args if fd is not None]
+        self.assertEqual(len(subordinate), 2, open_args)      # a, then a/b
+        for path, _ in subordinate:
+            self.assertNotIn("/", path)
+
+    def test_a_directory_swapped_for_a_link_mid_listing_is_not_descended(self):
+        """The race, played deterministically: the runner swaps `d` for a link
+        to the host at the exact moment the walker has decided `d` is a
+        directory and goes to open it. `O_NOFOLLOW|O_DIRECTORY` refuses the
+        open; the listing shows `d` (which is what it was) and nothing the
+        link points at."""
+        _plant(self.root, "d/inner.txt")
+        _plant(self.root, "z.txt")
+        parked = os.path.join(os.path.dirname(self.root), "parked")
+        real_open = os.open
+        swapped = []
+
+        def racing_open(path, flags, mode=0o777, *, dir_fd=None):
+            if path == "d" and dir_fd is not None and not swapped:
+                os.rename(os.path.join(self.root, "d"), parked)
+                os.symlink(self.outside, os.path.join(self.root, "d"))
+                swapped.append(True)
+            return real_open(path, flags, mode, dir_fd=dir_fd)
+
+        with mock.patch.object(os, "open", racing_open):
+            listed = files.listing(self.root)
+
+        self.assertTrue(swapped, "the swap never fired; the test is vacuous")
+        names = [r["name"] for r in listed["files"]]
+        self.assertEqual(names, ["d", "z.txt"])
+        self.assertNotIn("secret", repr(listed))
+        self.assertTrue(listed["complete"])
+        self._outside_untouched()
+
+    def test_listing_and_reading_agree_on_every_name(self):
+        """THE INJECTIVITY RULE. For every name the listing shows, reading
+        that exact string returns the file the listing described — never a
+        different file the name happens to normalise to."""
+        planted = {
+            "plain.txt": b"1",
+            "a/b.txt": b"2",
+            "with space.txt": b"3",
+            "dots.in.name.tar.gz": b"4",
+            "unicode-ż.txt": b"5",
+            "deep/er/still.txt": b"6",
+        }
+        for name, data in planted.items():
+            _plant(self.root, name, data)
+        listed = files.listing(self.root)["files"]
+        seen = {}
+        for row in listed:
+            if row["is_dir"]:
+                continue
+            seen[row["name"]] = files.read_one(self.root, row["name"],
+                                               max_bytes=BUDGET)
+            self.assertEqual(row["size"], len(seen[row["name"]]))
+        self.assertEqual(seen, planted)
+
+    # -- names a runner can make and the desk must never see ----------------
+
+    def test_a_backslash_name_is_refused_and_never_listed(self):
+        """`staging.safe_member_name` folds `\\` to `/`, which is right for a
+        tar written on Windows and wrong here: a runner can create a file
+        LITERALLY named `a\\b.txt`. Before the fix the listing showed it and
+        `read_one` of that name opened `a/b.txt` — a decoy shown, another
+        file's bytes copied into the user's bucket under its name."""
+        _plant(self.root, "a\\b.txt", b"decoy")
+        _plant(self.root, "a/b.txt", b"the real a/b.txt")
+
+        names = [r["name"] for r in files.listing(self.root)["files"]]
+        self.assertEqual(names, ["a", "a/b.txt"])
+
+        for verb, call in (
+            ("read", lambda: files.read_one(self.root, "a\\b.txt",
+                                            max_bytes=BUDGET)),
+            ("write", lambda: files.write_one(self.root, "a\\b.txt", b"x",
+                                              max_bytes=BUDGET, replace=True)),
+            ("delete", lambda: files.delete_one(self.root, "a\\b.txt")),
+        ):
+            with self.subTest(verb=verb):
+                with self.assertRaises(files.FilesError) as caught:
+                    call()
+                self.assertIn("character", str(caught.exception))
+        # Neither file was touched by the refusals.
+        with open(os.path.join(self.root, "a", "b.txt"), "rb") as handle:
+            self.assertEqual(handle.read(), b"the real a/b.txt")
+        with open(os.path.join(self.root, "a\\b.txt"), "rb") as handle:
+            self.assertEqual(handle.read(), b"decoy")
+
+    def test_control_and_bidi_characters_are_refused_and_never_listed(self):
+        """A newline in a name reaches the vault as a title and breaks every
+        download of it; a right-to-left override makes `evil\u202etxt.exe`
+        render as `evilexe.txt` in any UI. Neither is a name a person typed."""
+        bad = ["line\nbreak.txt", "tab\tbed.txt", "bidi\u202etxt.exe",
+               "bell\x07.txt", "del\x7f.txt"]
+        for name in bad:
+            _plant(self.root, name, b"x")
+        _plant(self.root, "fine.txt", b"y")
+
+        names = [r["name"] for r in files.listing(self.root)["files"]]
+        self.assertEqual(names, ["fine.txt"])
+        for name in bad:
+            with self.subTest(name=name):
+                with self.assertRaises(files.FilesError) as caught:
+                    files.read_one(self.root, name, max_bytes=BUDGET)
+                self.assertIn("character", str(caught.exception))
+                with self.assertRaises(files.FilesError):
+                    files.write_one(self.root, name, b"x", max_bytes=BUDGET,
+                                    replace=True)
+
+    def test_a_name_that_is_not_utf8_is_never_listed(self):
+        """The filesystem hands it over surrogate-escaped; the first JSON
+        encoder or database column it meets raises. Not shown."""
+        raw = os.path.join(self.root.encode(), b"bad\xff.txt")
+        with open(raw, "wb") as handle:
+            handle.write(b"x")
+        _plant(self.root, "good.txt", b"y")
+        listed = files.listing(self.root)
+        self.assertEqual([r["name"] for r in listed["files"]], ["good.txt"])
+        # And the result survives the wire, which is the point.
+        json.dumps(listed).encode("utf-8")
+
+    def test_a_name_that_would_normalise_is_never_listed(self):
+        """`listable` demands `safe_name(name) == name`, so a name the rule
+        would rewrite is refused even when it is harmless — a listing must
+        never offer `./x` beside `x`. Checked at the function, because no
+        real directory entry can carry a `./`."""
+        self.assertTrue(files.listable("a/b.txt"))
+        for name in ("./x", "a//b", "a/./b", "a/", "", ".", "a\\b", "x\n"):
+            self.assertFalse(files.listable(name), name)
+
+    def test_only_regular_files_and_directories_are_listed(self):
+        """A FIFO is not a file anyone can move, and offering it to `read_one`
+        would block the executor on a runner's whim."""
+        os.mkfifo(os.path.join(self.root, "pipe"))
+        _plant(self.root, "a.txt")
+        names = [r["name"] for r in files.listing(self.root)["files"]]
+        self.assertEqual(names, ["a.txt"])
+
     # -- overwriting ---------------------------------------------------------
 
     def test_overwrite_without_replace_is_refused_and_keeps_the_original(self):
@@ -578,6 +755,8 @@ class FilesRouteTests(ServiceTestCase):
             ("put", {"name": "/etc/passwd", "data_b64": "eA=="}, "absolute"),
             ("delete", {"name": "a/../../x"}, "escapes"),
             ("get", {"name": "a\x00b"}, "NUL"),
+            ("get", {"name": "a\\b.txt"}, "character"),
+            ("put", {"name": "line\nbreak.txt", "data_b64": "eA=="}, "character"),
             ("get", {"name": 5}, "name"),
             ("get", {}, "name"),
             ("put", {"name": "a.txt", "data_b64": "not base64!"}, "base64"),
