@@ -1,50 +1,72 @@
 {% extends "oya/base.html" %}
-{% load i18n static %}
+{% load i18n %}
 
-{% comment %}The Compute Capsules desk.
+{% comment %}The Compute Capsules desk: the list.
 
-Two ideas the page has to carry, or it is just a form:
+What the page has to carry, or it is just a form:
 
   * capacity is RESERVED, and reserved capacity is spent whether or not it is
-    being used. So the pool is shown above the form rather than behind a
+    being used. So the pool is shown above the list rather than behind a
     refusal — "reserve" is a choice made against a number.
   * a reading has an AGE. Alpine polls each mounted Capsule, and when the runtime
     stops answering the card says how long ago it last did instead of leaving a
-    stale number looking current. That is the same rule the lifecycle status
-    page follows, for the same reason.
+    stale number looking current.
+  * RESERVE IS A MODAL, and a refused reservation reopens it holding what was
+    typed (the view re-renders with `open_modal`). Everything a Capsule does
+    beyond a glance lives in its own view, one tab per concern.
 {% endcomment %}
 
 {% block title %}{% trans "Compute Capsules" %} – {{ platform.site_name }}{% endblock %}
 
-{% block start_script %}
-{{ block.super }}
-{% comment %}Chart.js for the per-Capsule history, vendored locally like every
-other chart on the platform. Loaded in the head so `Chart` exists before the
-desk's own script defines `drawHistory`.{% endcomment %}
-<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
-{% endblock %}
-
 {% block content %}
-<div x-data="capsuleDesk()" x-init="init()"
+{% comment %}Every other app adds this rule; this desk used `x-cloak` for months
+without it, so its modals drew themselves until Alpine started.{% endcomment %}
+<style>[x-cloak]{display:none!important}</style>
+<div x-data="capsuleList()" x-init="init()" @keydown.escape.window="modal = ''"
      :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
      class="min-h-screen px-4 py-8 transition-colors duration-300">
   <div class="mx-auto max-w-5xl space-y-6">
 
     <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
+      <div class="min-w-0">
         <h1 class="text-2xl font-extrabold">{% trans "Compute Capsules" %}</h1>
         <p class="mt-1 text-sm opacity-70">
           {% trans "Reserve capacity, mount it, and pick it when you start heavy work. Reserved capacity is yours until you release it — mounted or not." %}
         </p>
       </div>
-      {% comment %}The only door to the token page. Without a link here the API
-      is reachable in principle and undiscoverable in practice, which is the
-      state it shipped in.{% endcomment %}
-      <a href="{% url 'anastasia:tokens' %}"
-         class="shrink-0 rounded-lg border border-current/30 px-3 py-2 text-sm font-semibold transition hover:opacity-85">
-        <i class="fa-solid fa-key mr-1"></i>{% trans "API tokens" %}
-      </a>
+      <div class="flex shrink-0 flex-wrap items-center gap-2">
+        {% comment %}The only door to the token page. Without a link here the
+        API is reachable in principle and undiscoverable in practice, which is
+        the state it shipped in.{% endcomment %}
+        <a href="{% url 'anastasia:tokens' %}"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-85">
+          <i class="fa-solid fa-key mr-1"></i>{% trans "API tokens" %}
+        </a>
+        {% comment %}!! on the disabled bind is not needed here — the value is
+        a server-rendered literal — but the attribute is written by the
+        template, not bound, precisely so it cannot be stamped by accident.{% endcomment %}
+        <button type="button" data-testid="reserve-button"
+                {% if not can_reserve %}disabled{% endif %}
+                @click="modal = 'reserve'"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="rounded-lg px-4 py-2 text-sm font-bold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+          <i class="fa-solid fa-plus mr-1"></i>{% trans "Reserve a Capsule" %}
+        </button>
+      </div>
     </div>
+
+    {% comment %}A GREY BUTTON SAYS WHY. Hidden or silent, "I cannot reserve"
+    becomes a hunt.{% endcomment %}
+    {% if not pool.configured %}
+      <p class="text-sm opacity-70" data-testid="reserve-why">
+        {% trans "This platform has no compute pool configured, so nothing can be reserved yet." %}
+      </p>
+    {% elif held >= max_capsules %}
+      <p class="text-sm opacity-70" data-testid="reserve-why">
+        {% blocktrans %}You are holding {{ held }} Capsules, which is the limit here. Release one to reserve another.{% endblocktrans %}
+      </p>
+    {% endif %}
 
     {% if not runtime_configured %}
       <div class="rounded-lg border border-amber-500/50 bg-amber-500/10 p-4 text-sm">
@@ -54,496 +76,106 @@ desk's own script defines `drawHistory`.{% endcomment %}
     {% endif %}
 
     {# ---------------------------------------------------------------- pool #}
+    {% if pool.configured %}
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-lg border p-5">
       <h2 class="text-sm font-bold uppercase tracking-wide opacity-70">{% trans "The pool" %}</h2>
-      {% if pool.configured %}
-        <div class="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {% for row in pool_rows %}
-            <div>
-              <p class="text-xs opacity-60">{{ row.label }}</p>
-              <p class="text-lg font-bold">{{ row.available }}<span class="text-xs font-normal opacity-60"> / {{ row.total }}</span></p>
-            </div>
-          {% endfor %}
-        </div>
-        <p class="mt-3 text-xs opacity-60">
-          {% blocktrans count capsules=pool.capsules_open %}{{ capsules }} Capsule reserved across this platform.{% plural %}{{ capsules }} Capsules reserved across this platform.{% endblocktrans %}
-        </p>
-      {% else %}
-        <p class="mt-2 text-sm opacity-70">
-          {% trans "This platform has no compute pool configured, so nothing can be reserved yet." %}
-        </p>
-      {% endif %}
-    </div>
-
-    {# ------------------------------------------------------------- reserve #}
-    {% if pool.configured and held < max_capsules %}
-    <form method="post" action="{% url 'anastasia:reserve' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="rounded-lg border p-5">
-      {% csrf_token %}
-      <h2 class="text-sm font-bold uppercase tracking-wide opacity-70">{% trans "Reserve a Capsule" %}</h2>
-      <div class="mt-3 grid gap-3 sm:grid-cols-5">
-        <label class="text-xs sm:col-span-1">{% trans "Name" %}
-          <input name="name" required maxlength="60" placeholder="{% trans 'thesis' %}"
-                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-                 class="mt-1 w-full rounded border px-2 py-1 text-sm">
-        </label>
-        <label class="text-xs">{% trans "CPU (mCPU)" %}
-          <input name="cpu_millicores" type="number" min="100" step="100" value="1000"
-                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-                 class="mt-1 w-full rounded border px-2 py-1 text-sm">
-        </label>
-        <label class="text-xs">{% trans "RAM (MB)" %}
-          <input name="ram_mb" type="number" min="128" step="128" value="1024"
-                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-                 class="mt-1 w-full rounded border px-2 py-1 text-sm">
-        </label>
-        <label class="text-xs">{% trans "Scratch (MB)" %}
-          <input name="scratch_mb" type="number" min="64" step="64" value="512"
-                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-                 class="mt-1 w-full rounded border px-2 py-1 text-sm">
-        </label>
-        <label class="text-xs">{% trans "Processes" %}
-          <input name="pids" type="number" min="32" step="32" value="128"
-                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-                 class="mt-1 w-full rounded border px-2 py-1 text-sm">
-        </label>
+      <div class="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {% for row in pool_rows %}
+          <div>
+            <p class="text-xs opacity-60">{{ row.label }}</p>
+            <p class="text-lg font-bold">{{ row.available }}<span class="text-xs font-normal opacity-60"> / {{ row.total }}</span></p>
+          </div>
+        {% endfor %}
       </div>
-      <p class="mt-2 text-xs opacity-60">
-        {% blocktrans %}Scratch is memory-backed, so a Capsule holds RAM + scratch while it is mounted. Reservations last {{ lease_days }} days.{% endblocktrans %}
+      <p class="mt-3 text-xs opacity-60">
+        {% blocktrans count capsules=pool.capsules_open %}{{ capsules }} Capsule reserved across this platform.{% plural %}{{ capsules }} Capsules reserved across this platform.{% endblocktrans %}
       </p>
-      {% comment %}
-        Only where the host actually runs the proxy. A checkbox whose only
-        possible outcome is a refused mount is worse than no checkbox.
-      {% endcomment %}
-      {% if egress_offered %}
-      <label class="mt-3 flex items-start gap-2 text-sm">
-        <input name="egress" type="checkbox" class="mt-0.5" />
-        <span>
-          {% trans "Let jobs in this Capsule reach the internet" %}
-          <span class="block text-xs opacity-60">
-            {% comment %}
-              States the limit in the same breath as the offer: a person who
-              reads only the label must not come away thinking they reserved
-              unrestricted internet.
-            {% endcomment %}
-            {% trans "Through this platform's filtering proxy, and only to the destinations your administrator allows. Everything else is refused." %}
-          </span>
-        </span>
-      </label>
-      {% endif %}
-      <button type="submit"
-              class="mt-3 rounded bg-accent-1 px-4 py-1.5 text-sm font-semibold text-white hover:opacity-90">
-        {% trans "Reserve" %}
-      </button>
-    </form>
-    {% elif pool.configured %}
-      <p class="text-sm opacity-70">
-        {% blocktrans %}You are holding {{ held }} Capsules, which is the limit here. Release one to reserve another.{% endblocktrans %}
-      </p>
+    </div>
     {% endif %}
 
     {# --------------------------------------------------------------- capsules #}
-    {% for capsule in capsules %}
+    {% if capsules %}
+    <div class="grid gap-4 md:grid-cols-2">
+      {% for capsule in capsules %}
+        <a href="{{ capsule.url }}" data-capsule-card="{{ capsule.uuid }}"
+           x-data="{ uuid: '{{ capsule.uuid }}' }"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="group flex flex-col gap-3 rounded-lg border p-5 shadow-md transition hover:-translate-y-0.5 hover:shadow-lg">
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="min-w-0 truncate text-lg font-bold">{{ capsule.name }}</h2>
+            <span class="shrink-0 rounded px-2 py-0.5 text-xs font-semibold"
+                  :class="chipClass(live[uuid] ? live[uuid].state : '{{ capsule.state }}')"
+                  x-text="stateLabel(live[uuid] ? live[uuid].state : '{{ capsule.state }}')"></span>
+          </div>
+
+          <p class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs opacity-70">
+            {% comment %}An ICON from the whitelisted boolean, never the tier
+            string — see the isolation sentences in capsule_base.html.{% endcomment %}
+            {% if capsule.isolates_kernel %}
+              <span title="{% trans 'Work here runs in a virtual machine with its own kernel.' %}"><i class="fa-solid fa-shield-halved mr-1"></i>{% trans "Virtual machine" %}</span>
+            {% elif capsule.tier %}
+              <span title="{% trans "Work here runs in a throwaway container that shares this machine's kernel." %}"><i class="fa-solid fa-box mr-1"></i>{% trans "Container" %}</span>
+            {% endif %}
+            {% if capsule.egress %}
+              <span title="{% trans 'Jobs may reach allowed destinations through the filtering proxy.' %}"><i class="fa-solid fa-globe mr-1"></i>{% trans "Filtered internet" %}</span>
+            {% endif %}
+          </p>
+
+          <p class="text-sm">
+            {{ capsule.reserved.cpu_millicores }} <span class="text-xs opacity-60">mCPU</span> ·
+            {{ capsule.reserved.ram_mb }} <span class="text-xs opacity-60">{% trans "MB RAM" %}</span> ·
+            {{ capsule.reserved.scratch_mb }} <span class="text-xs opacity-60">{% trans "MB scratch" %}</span> ·
+            {{ capsule.reserved.pids }} <span class="text-xs opacity-60">{% trans "processes" %}</span>
+          </p>
+
+          {% comment %}Live usage, and how old the reading is. A number with no
+             age is a number that can quietly stop being true.{% endcomment %}
+          <template x-if="live[uuid] && live[uuid].usage">
+            <div class="text-sm opacity-80">
+              <p>
+                <span x-text="(live[uuid].usage.ram_mb_used ?? '–') + ' MB'"></span> ·
+                <span x-text="(live[uuid].usage.pids_used ?? '–') + ' {% trans "processes" %}'"></span> ·
+                <span x-text="(live[uuid].executions_running ?? 0) + ' {% trans "running" %}'"></span>
+              </p>
+              <p class="mt-1 text-xs" :class="stale(live[uuid]) ? 'text-amber-500' : 'opacity-50'"
+                 x-text="ageSentence(live[uuid])"></p>
+            </div>
+          </template>
+
+          {% if capsule.detail %}
+            <p class="text-xs text-amber-500">{{ capsule.detail }}</p>
+          {% endif %}
+
+          <span class="mt-auto text-xs font-semibold opacity-60 group-hover:opacity-100">
+            {% trans "Open" %} <i class="fa-solid fa-arrow-right ml-1"></i>
+          </span>
+        </a>
+      {% endfor %}
+    </div>
+    {% elif pool.configured %}
       <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="rounded-lg border p-5"
-           x-data="{ uuid: '{{ capsule.uuid }}', egress: {{ capsule.egress|yesno:"true,false" }} }">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <h3 class="text-lg font-bold">{{ capsule.name }}</h3>
-          <span class="rounded px-2 py-0.5 text-xs font-semibold"
-                :class="chipClass(live[uuid] ? live[uuid].state : '{{ capsule.state }}')"
-                x-text="stateLabel(live[uuid] ? live[uuid].state : '{{ capsule.state }}')"></span>
-        </div>
-
-        {% if capsule.detail %}
-          <p class="mt-1 text-xs text-amber-500">{{ capsule.detail }}</p>
-        {% endif %}
-
-        {% comment %}
-          SAYS THE LIMIT, NEVER JUST "INTERNET". The same rule the tier chips
-          below follow: a person reading this must not come away believing
-          they have unrestricted access. A Capsule without it says nothing at
-          all — the absence of internet is the ordinary case here.
-        {% endcomment %}
-        {% if capsule.egress %}
-          <p class="mt-1 text-xs opacity-70">
-            {% trans "Jobs may reach allowed destinations through the filtering proxy." %}
-          </p>
-        {% endif %}
-
-        {% comment %}
-          WHICH ISOLATION this Capsule gives, in THREE SEPARATE SENTENCES rather
-          than one with the tier interpolated into it. A single
-          "your code runs in {{ tier }}" is how a container comes to be
-          described as a virtual machine the day somebody adds a tier.
-
-          The branch is on a BOOLEAN the service computed from a whitelist, so
-          an unknown or blank tier — an old row, a newer executor — lands on
-          the WEAKEST sentence. Understating what a sandbox does is a much
-          smaller wrong than promising isolation it does not have.
-        {% endcomment %}
-        {% if capsule.isolates_kernel %}
-          <p class="mt-1 text-xs opacity-60">
-            <i class="fa-solid fa-shield-halved mr-1"></i>
-            {% trans "Work here runs in a virtual machine with its own kernel." %}
-          </p>
-        {% elif capsule.tier %}
-          <p class="mt-1 text-xs opacity-60">
-            <i class="fa-solid fa-box mr-1"></i>
-            {% trans "Work here runs in a throwaway container that shares this machine's kernel." %}
-          </p>
-        {% endif %}
-
-        <div class="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          <div><p class="text-xs opacity-60">{% trans "CPU" %}</p>
-               <p>{{ capsule.reserved.cpu_millicores }} <span class="text-xs opacity-60">mCPU</span></p></div>
-          <div><p class="text-xs opacity-60">{% trans "RAM" %}</p>
-               <p>{{ capsule.reserved.ram_mb }} <span class="text-xs opacity-60">MB</span></p></div>
-          <div><p class="text-xs opacity-60">{% trans "Scratch" %}</p>
-               <p>{{ capsule.reserved.scratch_mb }} <span class="text-xs opacity-60">MB</span></p></div>
-          <div><p class="text-xs opacity-60">{% trans "Processes" %}</p>
-               <p>{{ capsule.reserved.pids }}</p></div>
-        </div>
-
-        {% comment %}Live usage, and how old the reading is. A number with no
-           age is a number that can quietly stop being true.{% endcomment %}
-        <template x-if="live[uuid] && live[uuid].usage">
-          <div class="mt-3 border-t pt-3 text-sm opacity-80">
-            <p class="text-xs opacity-60">{% trans "In use now" %}</p>
-            <p>
-              <span x-text="(live[uuid].usage.ram_mb_used ?? '–') + ' MB'"></span> ·
-              <span x-text="(live[uuid].usage.pids_used ?? '–') + ' {% trans "processes" %}'"></span> ·
-              <span x-text="(live[uuid].executions_running ?? 0) + ' {% trans "running" %}'"></span>
-            </p>
-            <p class="mt-1 text-xs" :class="stale(live[uuid]) ? 'text-amber-500' : 'opacity-50'"
-               x-text="ageSentence(live[uuid])"></p>
-          </div>
-        </template>
-
-        {% comment %}
-          HISTORY, drawn on demand. Closed by default so opening the desk does
-          not fetch thirty days for every Capsule a person holds; the first
-          open fetches, and the window buttons refetch.
-
-          Three rules the charts keep, all inherited from `samples.py`:
-
-          * NULL IS A GAP. `spanGaps: false` — a reading the runtime could not
-            take is a hole in the line, not a dip to zero.
-          * A MEASURE NOBODY MEASURED IS A SENTENCE, not a flat line. The
-            series says `measured: false` and the card says why.
-          * INTERNET IS NAMED BY DIRECTION AND CLAIM. "Downloaded" and
-            "Uploaded", bytes on the Capsule's own NIC — and a Capsule
-            without internet access says so rather than drawing zero.
-        {% endcomment %}
-        <details class="mt-3 border-t pt-3"
-                 @toggle="if ($event.target.open && !history[uuid]) loadHistory(uuid, '{% url 'anastasia:samples' capsule.uuid %}', 24)">
-          <summary class="cursor-pointer text-xs font-bold uppercase tracking-wide opacity-70">
-            {% trans "History" %}
-          </summary>
-          <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
-            <template x-for="h in [24, 168, 720]" :key="h">
-              <button type="button"
-                      class="rounded border border-current/30 px-2 py-0.5"
-                      :class="(history[uuid] && history[uuid].hours === h) ? 'font-bold opacity-100' : 'opacity-60'"
-                      @click="loadHistory(uuid, '{% url 'anastasia:samples' capsule.uuid %}', h)"
-                      x-text="{24: '{% trans "24 h" %}', 168: '{% trans "7 days" %}', 720: '{% trans "30 days" %}'}[h]"></button>
-            </template>
-            <span class="opacity-50" x-show="history[uuid] && history[uuid].newest"
-                  x-text="history[uuid] ? '{% trans "Last reading" %} ' + new Date(history[uuid].newest).toLocaleString() : ''"></span>
-          </div>
-          <template x-if="history[uuid] && history[uuid].points === 0">
-            <p class="mt-2 text-xs opacity-60">{% trans "No readings in this window. Readings are taken while the Capsule is mounted, about every five minutes." %}</p>
-          </template>
-          <template x-if="history[uuid] && history[uuid].points > 0">
-            <div class="mt-3 grid gap-4 sm:grid-cols-2">
-              <template x-for="m in history[uuid].measures" :key="m.key">
-                <div>
-                  <p class="text-xs opacity-60" x-text="m.label + (m.measured ? ' (' + displayUnit(m) + ')' : '')"></p>
-                  <template x-if="m.measured">
-                    <div class="relative h-40 w-full">
-                      <canvas :id="'hist-' + uuid + '-' + m.key"></canvas>
-                    </div>
-                  </template>
-                  <template x-if="!m.measured && m.key.startsWith('net_') && !egress">
-                    <p class="text-xs opacity-50">{% trans "This Capsule has no internet access, so there is nothing to measure." %}</p>
-                  </template>
-                  <template x-if="!m.measured && !(m.key.startsWith('net_') && !egress)">
-                    <p class="text-xs opacity-50">{% trans "Not measured in this window." %}</p>
-                  </template>
-                </div>
-              </template>
-            </div>
-          </template>
-        </details>
-
-        {% comment %}
-          FILES. The one place in a capsule a person can put a file or take one
-          out without running a job.
-
-          Closed by default and fetched on open, like History: a listing costs
-          the executor a walk of the area, and a desk with five Capsules on it
-          must not do five of them on every page load.
-
-          KEPT, NOT DURABLE, and the sentence says so where somebody would
-          otherwise assume otherwise. The area is a tmpfs: it survives a job
-          and an unmount, and it does not survive a reboot or a release. The
-          Vault is where a file lives; this is where a copy of it works.
-
-          Only for a MOUNTED Capsule. The files area exists between mounts,
-          but reading it needs the executor, and offering the section for an
-          unmounted Capsule would mean a refusal where a person expected a
-          list.
-        {% endcomment %}
-        {% if files_supported and capsule.state != 'unmounted' and capsule.state != 'dead' %}
-        <details class="mt-3 border-t pt-3" :id="'files-' + uuid"
-                 x-data="{ copyOut: false }"
-                 @toggle="if ($event.target.open && !files[uuid]) loadFiles(uuid, '{% url 'anastasia:files' capsule.uuid %}')">
-          <summary class="cursor-pointer text-xs font-bold uppercase tracking-wide opacity-70">
-            {% trans "Files" %}
-          </summary>
-
-          <p class="mt-2 text-xs opacity-60">
-            {% trans "Files here survive a job and an unmount. They are held in memory on the server, so they do not survive a reboot or releasing the Capsule — keep anything you want to keep in the Vault." %}
-          </p>
-
-          <template x-if="files[uuid] && !files[uuid].supported">
-            <p class="mt-2 text-xs text-amber-500">
-              {% trans "This deployment's runtime cannot hold files in a Capsule." %}
-            </p>
-          </template>
-          <template x-if="files[uuid] && files[uuid].supported && !files[uuid].complete">
-            <p class="mt-2 text-xs text-amber-500">
-              {% trans "This list may be incomplete — the runtime did not finish answering." %}
-            </p>
-          </template>
-
-          {# ------------------------------------------------- what is there #}
-          {% comment %}The Capsule's own files, as a tree with checkboxes —
-          the vault picker's shape (bucket → folder → file), so picking files
-          looks the same wherever a person does it on this platform. The
-          grouping is done in the browser because the executor returns flat
-          relative names and inventing a tree server-side would be a second
-          idea of what a folder is.{% endcomment %}
-          <template x-if="files[uuid] && files[uuid].files.length">
-            <div class="mt-3">
-              <template x-for="group in grouped(uuid)" :key="group.dir">
-                <div x-data="{ open: true }">
-                  <button type="button" @click="open = !open"
-                          x-show="group.dir"
-                          class="flex w-full items-center gap-1.5 rounded px-1 py-1 text-xs opacity-55 hover:opacity-100">
-                    <i class="fa-solid w-3 text-[10px]"
-                       :class="open ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
-                    <i class="fa-solid fa-folder opacity-50"></i>
-                    <span x-text="group.dir"></span>
-                  </button>
-                  <div x-show="open" class="border-l pl-3"
-                       :class="[darkMode ? 'border-accent-1/20' : 'border-accent-2/20',
-                                group.dir ? 'ml-2' : 'border-transparent pl-0']">
-                    <template x-for="entry in group.files" :key="entry.name">
-                      <div class="flex flex-wrap items-center gap-2 rounded px-1 py-1 text-sm">
-                        <label class="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
-                          <input type="checkbox" class="rounded border"
-                                 :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-                                 :value="entry.name" x-model="picked[uuid]">
-                          <i class="fa-regular fa-file w-3 shrink-0 text-xs opacity-30"></i>
-                          <span class="min-w-0 flex-1 truncate font-mono text-xs"
-                                x-text="entry.leaf"></span>
-                        </label>
-                        <span class="shrink-0 text-xs opacity-40"
-                              x-text="humanBytes(entry.size)"></span>
-                        <form method="post" class="shrink-0"
-                              action="{% url 'anastasia:file_delete' capsule.uuid %}"
-                              onsubmit="return confirm('{% trans "Delete this file from the Capsule?" %}');">
-                          {% csrf_token %}
-                          <input type="hidden" name="name" :value="entry.name">
-                          <button class="text-xs text-red-500 underline opacity-70"
-                                  aria-label="{% trans 'Delete' %}">
-                            <i class="fa-solid fa-trash"></i></button>
-                        </form>
-                      </div>
-                    </template>
-                  </div>
-                </div>
-              </template>
-            </div>
-          </template>
-          <template x-if="files[uuid] && files[uuid].supported && !files[uuid].files.length">
-            <p class="mt-3 text-xs opacity-60">{% trans "Nothing here yet." %}</p>
-          </template>
-
-          {# ------------------------------------------------- the two actions #}
-          <div class="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
-            {% if buckets %}
-            {% comment %}!! on the disabled bind: an undefined dotted
-            expression binds to "" and a boolean attribute is STAMPED by "",
-            not removed — every button would be born disabled.{% endcomment %}
-            <button type="button"
-                    :disabled="!!(!picked[uuid] || !picked[uuid].length)"
-                    @click="copyOut = true"
-                    class="rounded bg-accent-1 px-3 py-1 text-sm font-semibold text-white disabled:opacity-50">
-              <i class="fa-solid fa-arrow-up-from-bracket mr-1"></i>
-              <span x-text="countLabel(picked[uuid])"></span>
-            </button>
-            {% endif %}
-            {% if vault_tree %}
-            <button type="button"
-                    @click="openVault('{{ capsule.uuid }}', '{{ capsule.name|escapejs }}', '{% url 'anastasia:file_from_vault' capsule.uuid %}')"
-                    class="rounded border px-3 py-1 text-sm font-semibold">
-              <i class="fa-solid fa-arrow-down-to-bracket mr-1"></i>
-              {% trans "Copy files in from the Vault" %}
-            </button>
-            {% endif %}
-          </div>
-
-          {# --------------------------------------------- out to a bucket #}
-          {% if buckets %}
-          <form method="post" action="{% url 'anastasia:file_to_vault' capsule.uuid %}"
-                class="mt-3 rounded-lg border p-3" x-show="copyOut" x-cloak
-                :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
-            {% csrf_token %}
-            <template x-for="name in (picked[uuid] || [])" :key="name">
-              <input type="hidden" name="name" :value="name">
-            </template>
-            <p class="text-xs font-semibold" x-text="countLabel(picked[uuid])"></p>
-            {% comment %}SAYS WHAT IT COSTS, before the button and not on an
-            invoice. This is the same door as an upload and is charged and
-            scanned the same way — `transfer.to_bucket` is literally the same
-            function the API calls.{% endcomment %}
-            <p class="mt-1 text-xs opacity-60">
-              {% trans "This stores the files in your Vault, and is charged and virus-scanned exactly like uploading them." %}
-            </p>
-            <div class="mt-2 flex flex-wrap items-end gap-2">
-              <label class="text-xs">{% trans "Bucket" %}
-                <select name="bucket" required
-                        :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-                        class="mt-1 block rounded border px-2 py-1 text-sm">
-                  {% for bucket in buckets %}
-                    <option value="{{ bucket.slug }}">{{ bucket.name }}</option>
-                  {% endfor %}
-                </select>
-              </label>
-              {% comment %}A title names ONE file. Four files under one title
-              would be four rows a person cannot tell apart, so the field is
-              offered only when exactly one is picked.{% endcomment %}
-              <label class="text-xs" x-show="picked[uuid] && picked[uuid].length === 1">
-                {% trans "Title (optional)" %}
-                <input name="title" maxlength="255"
-                       :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-                       class="mt-1 block rounded border px-2 py-1 text-sm">
-              </label>
-              <button class="rounded bg-accent-1 px-3 py-1 text-sm font-semibold text-white">
-                {% trans "Copy to Vault" %}</button>
-              <button type="button" class="text-xs underline opacity-70"
-                      @click="copyOut = false">{% trans "Cancel" %}</button>
-            </div>
-          </form>
-          {% endif %}
-        </details>
-        {% endif %}
-
-        <div class="mt-4 flex flex-wrap gap-2">
-          {% if capsule.state == 'unmounted' or capsule.state == 'dead' %}
-            <form method="post" action="{% url 'anastasia:mount' capsule.uuid %}">{% csrf_token %}
-              <button class="rounded bg-accent-1 px-3 py-1 text-sm font-semibold text-white">
-                {% trans "Mount" %}</button></form>
-          {% else %}
-            <form method="post" action="{% url 'anastasia:unmount' capsule.uuid %}">{% csrf_token %}
-              <button class="rounded border px-3 py-1 text-sm font-semibold">
-                {% trans "Unmount" %}</button></form>
-          {% endif %}
-          <form method="post" action="{% url 'anastasia:release' capsule.uuid %}"
-                onsubmit="return confirm('{% trans "Release this Capsule? Its capacity goes back to the pool and anything running in it stops." %}');">
-            {% csrf_token %}
-            <button class="rounded border border-red-500/50 px-3 py-1 text-sm font-semibold text-red-500">
-              {% trans "Release" %}</button></form>
-        </div>
-
+           class="rounded-xl border border-dashed p-12 text-center shadow-sm">
+        <i class="fa-solid fa-cube text-3xl opacity-20"></i>
+        <p class="mt-4 text-sm font-semibold opacity-55">{% trans "You have no Compute Capsules yet." %}</p>
       </div>
-    {% empty %}
-      {% if pool.configured %}
-        <p class="text-sm opacity-70">{% trans "You have no Compute Capsules yet." %}</p>
-      {% endif %}
-    {% endfor %}
+    {% endif %}
   </div>
 
-  {% comment %}THE VAULT PICKER, ONCE FOR THE PAGE.
-
-    Rendered outside the cards and not inside each of them: the tree is every
-    file the person owns, and drawing it again per Capsule would put the same
-    hundreds of rows on the page as many times as they hold Capsules. The card
-    that opened it supplies the form's action, which is the only thing about
-    it that is per-Capsule.
-
-    `vault/_file_tree.html` is the platform's picker — the same partial the
-    vault, OCR and the antivirus panel use — in checkbox mode. Rows carry the
-    file's id, which is what that partial offers; the bearer API takes a key
-    because a client outside this database has no id, and the desk has one.
-  {% endcomment %}
-  {% if vault_tree %}
-  <div x-show="vaultFor" x-cloak
-       class="fixed inset-0 z-[9200] flex items-center justify-center p-4">
-    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="vaultFor = ''"></div>
-    <form method="post" :action="vaultAction"
-          :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
-          class="relative z-10 flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border shadow-2xl">
-      {% csrf_token %}
-      <div class="border-b border-current/10 p-5 pb-3">
-        <h2 class="flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-arrow-down-to-bracket"></i>
-          <span x-text="'{% trans "Copy files into" %} ' + vaultName"></span>
-        </h2>
-        <p class="mt-1 text-sm opacity-70">
-          {% blocktrans %}The checked files are copied into the Capsule, keeping their names. Copying in costs nothing — you already hold this Capsule's capacity. At most {{ max_files_per_transfer }} at a time.{% endblocktrans %}
-        </p>
-      </div>
-      <div class="min-h-0 flex-1 overflow-y-auto p-5 py-3">
-        {% include "vault/_file_tree.html" with tree=vault_tree tree_input_name="file" tree_value_field="id" %}
-        {% if vault_files_truncated %}
-          {% comment %}A truncated picker that said nothing would read as
-          "these are all your files".{% endcomment %}
-          <p class="mt-2 text-xs opacity-60">
-            {% blocktrans %}Your {{ vault_picker_limit }} most recent files are listed here.{% endblocktrans %}
-          </p>
-        {% endif %}
-      </div>
-      <div class="flex flex-wrap items-center gap-3 border-t border-current/10 p-5 pt-3">
-        <label class="flex items-center gap-1 text-xs">
-          <input type="checkbox" name="replace"> {% trans "Replace files of the same name" %}
-        </label>
-        <span class="flex-1"></span>
-        <button type="button" class="text-sm underline opacity-70"
-                @click="vaultFor = ''">{% trans "Cancel" %}</button>
-        <button class="rounded bg-accent-1 px-4 py-1.5 text-sm font-semibold text-white">
-          {% trans "Copy in" %}</button>
-      </div>
-    </form>
-  </div>
+  {% if can_reserve %}
+    {% include "anastasia/_reserve_modal.html" %}
   {% endif %}
 </div>
 
 <script>
-function capsuleDesk() {
+function capsuleList() {
   return {
     live: {},
-    // The retained series per Capsule, fetched when its History is opened.
-    history: {},
-    // The files area per Capsule, fetched when its Files section is opened.
-    files: {},
-    // The checked set per Capsule: {uuid: [name, ...]}. Named here rather
-    // than in each card's own x-data so a card can re-render its list
-    // without losing what was ticked.
-    picked: {},
-    // Which Capsule the vault picker is open for, its name for the heading,
-    // and where its form posts. One modal, many cards.
-    vaultFor: '',
-    vaultName: '',
-    vaultAction: '',
-    // Chart.js instances by canvas id, so a refetch replaces rather than
-    // stacks — a second `new Chart` on a canvas that has one is an error.
-    charts: {},
-    // Only mounted Capsules are polled: an unmounted one has nothing to report and
-    // asking would wake the runtime for no reason.
+    // A refused reservation re-renders this page with the modal open; the
+    // value is a server-written literal, "reserve" or empty.
+    modal: '{{ open_modal|escapejs }}',
+    // Only mounted Capsules are polled: an unmounted one has nothing to report
+    // and asking would wake the runtime for no reason.
     urls: {{ poll_urls_json|safe }},
     init() { this.tick(); setInterval(() => this.tick(), 5000); },
     async tick() {
@@ -552,96 +184,6 @@ function capsuleDesk() {
           const response = await fetch(url, {headers: {'Accept': 'application/json'}});
           if (response.ok) { this.live[uuid] = await response.json(); }
         } catch (e) { /* a failed poll leaves the last reading and its age */ }
-      }
-    },
-    async loadFiles(uuid, url) {
-      try {
-        const response = await fetch(url, {headers: {'Accept': 'application/json'}});
-        if (!response.ok) return;
-        this.files[uuid] = await response.json();
-        // Ticks on files that are no longer there would be posted and
-        // refused one by one; drop them when the list is refetched.
-        const present = new Set(this.files[uuid].files.map(f => f.name));
-        this.picked[uuid] = (this.picked[uuid] || []).filter(n => present.has(n));
-      } catch (e) { /* an unanswered fetch leaves the section empty, not wrong */ }
-    },
-    openVault(uuid, name, action) {
-      this.vaultFor = uuid; this.vaultName = name; this.vaultAction = action;
-    },
-    // The flat names the executor returns, grouped by directory. "" is the
-    // area's own root and is drawn without a heading, exactly as the vault
-    // picker draws a bucket's root.
-    grouped(uuid) {
-      const rows = (this.files[uuid] ? this.files[uuid].files : [])
-        .filter(f => !f.is_dir);
-      const dirs = new Map();
-      for (const row of rows) {
-        const cut = row.name.lastIndexOf('/');
-        const dir = cut < 0 ? '' : row.name.slice(0, cut);
-        const leaf = cut < 0 ? row.name : row.name.slice(cut + 1);
-        if (!dirs.has(dir)) dirs.set(dir, []);
-        dirs.get(dir).push({...row, leaf});
-      }
-      return [...dirs.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1)
-        .map(([dir, files]) => ({dir, files}));
-    },
-    countLabel(names) {
-      const n = (names || []).length;
-      if (!n) return "{% trans 'Copy to Vault' %}";
-      return "{% trans 'Copy to Vault' %} (" + n + ")";
-    },
-    // Sizes the way a person reads them. The server sends bytes because that
-    // is what it measured; rounding is a presentation decision and belongs
-    // here.
-    humanBytes(n) {
-      if (n === null || n === undefined) return '';
-      if (n < 1024) return n + ' B';
-      if (n < 1048576) return (n / 1024).toFixed(1) + ' kB';
-      return (n / 1048576).toFixed(1) + ' MB';
-    },
-    async loadHistory(uuid, url, hours) {
-      try {
-        const response = await fetch(url + '?hours=' + hours, {headers: {'Accept': 'application/json'}});
-        if (!response.ok) return;
-        this.history[uuid] = await response.json();
-        // The canvases exist only after Alpine has rendered the new series.
-        this.$nextTick(() => this.drawHistory(uuid));
-      } catch (e) { /* a failed fetch leaves whatever was drawn */ }
-    },
-    // Bytes are drawn in MB so the axis is readable; the label says so. A
-    // percentage and a MB figure are left as they are.
-    displayUnit(m) { return m.unit === 'bytes' ? 'MB' : m.unit; },
-    drawHistory(uuid) {
-      const series = this.history[uuid];
-      if (!series || typeof Chart === 'undefined') return;
-      const labels = series.taken_at.map(t => new Date(t).toLocaleString());
-      for (const m of series.measures) {
-        if (!m.measured) continue;
-        const id = 'hist-' + uuid + '-' + m.key;
-        const canvas = document.getElementById(id);
-        if (!canvas) continue;
-        if (this.charts[id]) { this.charts[id].destroy(); }
-        // NULL STAYS NULL. `v == null ? null : ...` — a conversion that
-        // multiplied null would produce 0, and 0 is a floor, not a gap.
-        const values = m.values.map(v => v == null ? null : (m.unit === 'bytes' ? v / 1048576 : v));
-        this.charts[id] = new Chart(canvas.getContext('2d'), {
-          type: 'line',
-          data: {labels, datasets: [{
-            label: m.label, data: values,
-            borderColor: 'rgb(56, 189, 248)', backgroundColor: 'rgba(56, 189, 248, 0.15)',
-            fill: true, pointRadius: 2, tension: 0.2,
-            // THE RULE. A gap is a gap.
-            spanGaps: false,
-          }]},
-          options: {
-            responsive: true, maintainAspectRatio: false, animation: false,
-            plugins: {legend: {display: false}},
-            scales: {
-              x: {ticks: {maxTicksLimit: 6, color: 'rgba(128,128,128,0.8)'}, grid: {color: 'rgba(128,128,128,0.15)'}},
-              y: {beginAtZero: true, ticks: {color: 'rgba(128,128,128,0.8)'}, grid: {color: 'rgba(128,128,128,0.15)'}},
-            },
-          },
-        });
       }
     },
     stale(capsule) { return (capsule.sample_age_seconds ?? 0) > {{ stale_seconds }}; },

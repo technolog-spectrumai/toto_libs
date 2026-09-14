@@ -1,0 +1,124 @@
+{% extends "anastasia/capsule_base.html" %}
+{% load i18n %}
+
+{% comment %}INFORMATION — what the Capsule is NOW.
+
+What it holds, what it is using, when the reservation ends, and how much disk
+each area takes. Past behaviour — readings over time, events, jobs — is the
+History tab's.
+{% endcomment %}
+
+{% block capsule_content %}
+<div class="grid gap-4 md:grid-cols-2" x-data="capsuleInformation()" x-init="load()">
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5">
+    <h2 class="text-sm font-bold uppercase tracking-wide opacity-70">{% trans "Reserved" %}</h2>
+    <div class="mt-3 grid grid-cols-2 gap-3 text-sm">
+      <div><p class="text-xs opacity-60">{% trans "CPU" %}</p>
+           <p class="text-lg font-bold">{{ capsule.reserved.cpu_millicores }} <span class="text-xs font-normal opacity-60">mCPU</span></p></div>
+      <div><p class="text-xs opacity-60">{% trans "RAM" %}</p>
+           <p class="text-lg font-bold">{{ capsule.reserved.ram_mb }} <span class="text-xs font-normal opacity-60">MB</span></p></div>
+      <div><p class="text-xs opacity-60">{% trans "Scratch" %}</p>
+           <p class="text-lg font-bold">{{ capsule.reserved.scratch_mb }} <span class="text-xs font-normal opacity-60">MB</span></p></div>
+      <div><p class="text-xs opacity-60">{% trans "Processes" %}</p>
+           <p class="text-lg font-bold">{{ capsule.reserved.pids }}</p></div>
+    </div>
+    <p class="mt-3 text-xs opacity-60">
+      {% trans "Scratch is memory-backed, so a mounted Capsule holds RAM + scratch." %}
+    </p>
+  </div>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5">
+    <h2 class="text-sm font-bold uppercase tracking-wide opacity-70">{% trans "In use now" %}</h2>
+    {% if mounted %}
+      {% comment %}The age travels with the number. A reading with no age is a
+      reading that can quietly stop being true.{% endcomment %}
+      <template x-if="live && live.usage">
+        <div class="mt-3 space-y-2 text-sm">
+          <p><span class="text-lg font-bold" x-text="live.usage.ram_mb_used ?? '–'"></span> <span class="text-xs opacity-60">{% trans "MB RAM" %}</span></p>
+          <p><span class="text-lg font-bold" x-text="live.usage.pids_used ?? '–'"></span> <span class="text-xs opacity-60">{% trans "processes" %}</span></p>
+          <p><span class="text-lg font-bold" x-text="live.executions_running ?? 0"></span> <span class="text-xs opacity-60">{% trans "jobs running" %}</span></p>
+          <p class="text-xs" :class="stale(live) ? 'text-amber-500' : 'opacity-50'" x-text="ageSentence(live)"></p>
+        </div>
+      </template>
+      <template x-if="!(live && live.usage)">
+        <p class="mt-3 text-sm opacity-60">{% trans "No reading yet." %}</p>
+      </template>
+    {% else %}
+      <p class="mt-3 text-sm opacity-60">{% trans "This Capsule is not mounted, so nothing is running and nothing is measured. Its capacity is still reserved." %}</p>
+    {% endif %}
+  </div>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5">
+    <h2 class="text-sm font-bold uppercase tracking-wide opacity-70">{% trans "Reservation" %}</h2>
+    <dl class="mt-3 grid grid-cols-[auto,1fr] gap-x-4 gap-y-2 text-sm">
+      <dt class="opacity-60">{% trans "Reserved on" %}</dt>
+      <dd data-testid="reserved-on">{{ lease.created_at|date:"DATETIME_FORMAT" }}</dd>
+      <dt class="opacity-60">{% trans "Ends on" %}</dt>
+      <dd data-testid="expires-on">{{ capsule.expires_at|date:"DATETIME_FORMAT" }}</dd>
+      <dt class="opacity-60">{% trans "Internet" %}</dt>
+      <dd>{% if capsule.egress %}{% trans "Filtered, through the proxy" %}{% else %}{% trans "None" %}{% endif %}</dd>
+      {% if runtime.mounted_at and mounted %}
+        <dt class="opacity-60">{% trans "Mounted since" %}</dt>
+        <dd>{{ runtime.mounted_at|date:"DATETIME_FORMAT" }}</dd>
+      {% endif %}
+      <dt class="opacity-60">{% trans "Jobs running" %}</dt>
+      <dd>{{ capsule.executions_running }}</dd>
+    </dl>
+    <p class="mt-3 text-xs opacity-60">
+      {% trans "When the reservation ends its capacity returns to the pool and its files are deleted." %}
+    </p>
+  </div>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5">
+    <h2 class="text-sm font-bold uppercase tracking-wide opacity-70">{% trans "Disk" %}</h2>
+    {% if not storage_url %}
+      <p class="mt-3 text-sm opacity-60">{% trans "This deployment's runtime does not report disk use." %}</p>
+    {% elif not mounted %}
+      <p class="mt-3 text-sm opacity-60">{% trans "Mount this Capsule to measure its disk use." %}</p>
+    {% else %}
+      <template x-if="storage === null">
+        <p class="mt-3 text-sm opacity-60">{% trans "Measuring…" %}</p>
+      </template>
+      <template x-if="storage && storage.areas">
+        <div class="mt-3 space-y-2 text-sm">
+          <p><span class="font-bold" x-text="humanBytes(storage.areas.files ? storage.areas.files.bytes : 0)"></span>
+             <span class="text-xs opacity-60">{% trans "in Files — kept between jobs" %}</span></p>
+          <p><span class="font-bold" x-text="humanBytes(storage.areas.exec ? storage.areas.exec.bytes : 0)"></span>
+             <span class="text-xs opacity-60">{% trans "in job scratch — gone when each job ends" %}</span></p>
+        </div>
+      </template>
+      {% comment %}"We could not measure" and "it is empty" are different
+      claims, and only one of them is safe to act on.{% endcomment %}
+      <template x-if="storage && !storage.complete">
+        <p class="mt-2 text-xs text-amber-500">{% trans "This measurement is incomplete — the runtime did not finish counting." %}</p>
+      </template>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block capsule_script %}
+<script>
+function capsuleInformation() {
+  return {
+    // Null while unasked; the executor walks the tree to answer, so this is
+    // asked once per visit and never polled.
+    storage: null,
+    storageUrl: '{{ storage_url|escapejs }}',
+    poll: {{ mounted|yesno:"true,false" }},
+    async load() {
+      if (!this.storageUrl || !this.poll) return;
+      try {
+        const response = await fetch(this.storageUrl, {headers: {'Accept': 'application/json'}});
+        if (response.ok) { this.storage = await response.json(); }
+      } catch (e) { /* an unanswered measurement stays "Measuring…" */ }
+    },
+  };
+}
+</script>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% load i18n %}
+{% comment %}The Capsule view's tab strip. `oya/_tools_tabs.html`'s markup: an
+underline, accent on the active tab, one link per tab built by
+`views._capsule_context` from `CAPSULE_TABS`.{% endcomment %}
+<nav class="flex flex-wrap gap-1 border-b"
+     :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'"
+     aria-label="{% trans 'Capsule' %}">
+  {% for tab in tabs %}
+    <a href="{{ tab.url }}" data-tab="{{ tab.slug }}" {% if tab.active %}aria-current="page"{% endif %}
+       class="-mb-px inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition
+              {% if tab.active %}border-accent-2 text-accent-2{% else %}border-transparent opacity-70 hover:opacity-100{% endif %}"
+       {% if tab.active %}x-bind:class="darkMode ? 'border-accent-1 text-accent-1' : 'border-accent-2 text-accent-2'"{% endif %}>
+      <i class="{{ tab.icon }}" aria-hidden="true"></i>{{ tab.label }}</a>
+  {% endfor %}
+</nav>

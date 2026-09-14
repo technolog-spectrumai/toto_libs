@@ -1,0 +1,166 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% comment %}One Capsule: the header every tab shares, its verbs, and the tab strip.
+
+The tabs are separate URLs rendered by the server (`views.CAPSULE_TABS`), the
+platform's idiom: a reload keeps its place, a message lands on the tab that
+produced it, and each tab loads only what it draws. A tab fills
+`capsule_content`, and `capsule_script` for its own Alpine factory — inline and
+never deferred, because a deferred script can never define an x-data factory in
+time (the monorepo's AlpineFactoryLoadOrderTests pins why).
+
+The verbs carry a hidden `tab`, so Mount pressed on Files comes back to Files.
+{% endcomment %}
+
+{% block title %}{{ capsule.name }} – {% trans "Compute Capsules" %} – {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+{{ block.super }}
+{% block capsule_head %}{% endblock %}
+{% endblock %}
+
+{% block content %}
+<style>[x-cloak]{display:none!important}</style>
+<div x-data="capsuleView()" x-init="init()"
+     :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+     class="min-h-screen px-4 py-8 transition-colors duration-300">
+  <div class="mx-auto max-w-6xl space-y-5">
+
+    <a href="{% url 'anastasia:index' %}"
+       class="inline-flex items-center gap-1.5 text-sm opacity-60 transition hover:opacity-100">
+      <i class="fa-solid fa-arrow-left text-xs"></i>{% trans "Compute Capsules" %}
+    </a>
+
+    <header class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div class="min-w-0 space-y-1">
+        <div class="flex flex-wrap items-center gap-3">
+          <h1 class="min-w-0 truncate text-2xl font-extrabold">{{ capsule.name }}</h1>
+          <span class="rounded px-2 py-0.5 text-xs font-semibold" data-testid="state-chip"
+                :class="chipClass(state())" x-text="stateLabel(state())"></span>
+        </div>
+
+        {% if capsule.detail %}
+          <p class="text-xs text-amber-500">{{ capsule.detail }}</p>
+        {% endif %}
+
+        {% comment %}
+          WHICH ISOLATION this Capsule gives, in SEPARATE SENTENCES rather than
+          one with the tier interpolated into it. A single "your code runs in
+          {{ tier }}" is how a container comes to be described as a virtual
+          machine the day somebody adds a tier. The branch is on a BOOLEAN the
+          service computed from a whitelist, so an unknown or blank tier lands
+          on the weakest sentence.
+        {% endcomment %}
+        {% if capsule.isolates_kernel %}
+          <p class="text-xs opacity-60">
+            <i class="fa-solid fa-shield-halved mr-1"></i>{% trans "Work here runs in a virtual machine with its own kernel." %}
+          </p>
+        {% elif capsule.tier %}
+          <p class="text-xs opacity-60">
+            <i class="fa-solid fa-box mr-1"></i>{% trans "Work here runs in a throwaway container that shares this machine's kernel." %}
+          </p>
+        {% endif %}
+        {% comment %}SAYS THE LIMIT, NEVER JUST "INTERNET". A Capsule without it
+        says nothing: the absence of internet is the ordinary case.{% endcomment %}
+        {% if capsule.egress %}
+          <p class="text-xs opacity-60">
+            <i class="fa-solid fa-globe mr-1"></i>{% trans "Jobs may reach allowed destinations through the filtering proxy." %}
+          </p>
+        {% endif %}
+      </div>
+
+      <div class="flex shrink-0 flex-wrap items-center gap-2">
+        {% if mounted %}
+          <form method="post" action="{% url 'anastasia:unmount' capsule.uuid %}">{% csrf_token %}
+            <input type="hidden" name="tab" value="{{ active_tab }}">
+            <button :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="rounded-lg border px-3 py-2 text-sm font-semibold transition">
+              <i class="fa-solid fa-eject mr-1"></i>{% trans "Unmount" %}</button>
+          </form>
+        {% else %}
+          <form method="post" action="{% url 'anastasia:mount' capsule.uuid %}">{% csrf_token %}
+            <input type="hidden" name="tab" value="{{ active_tab }}">
+            <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="rounded-lg px-3 py-2 text-sm font-bold transition hover:opacity-90">
+              <i class="fa-solid fa-play mr-1"></i>{% trans "Mount" %}</button>
+          </form>
+        {% endif %}
+        <form method="post" action="{% url 'anastasia:release' capsule.uuid %}"
+              onsubmit="return confirm('{% trans "Release this Capsule? Its capacity goes back to the pool, anything running in it stops, and its files are deleted." %}');">
+          {% csrf_token %}
+          <button class="rounded-lg border border-red-500/50 px-3 py-2 text-sm font-semibold text-red-500 transition hover:bg-red-500/10">
+            <i class="fa-solid fa-trash mr-1"></i>{% trans "Release" %}</button>
+        </form>
+      </div>
+    </header>
+
+    {% include "anastasia/_capsule_tabs.html" %}
+
+    <section>
+      {% block capsule_content %}{% endblock %}
+    </section>
+  </div>
+</div>
+
+<script>
+function capsuleView() {
+  return {
+    // The live report, polled while mounted. Null until the first answer:
+    // the header draws the server's state until then, never a guess.
+    live: null,
+    statusUrl: '{{ status_url|escapejs }}',
+    poll: {{ mounted|yesno:"true,false" }},
+    init() {
+      if (!this.poll) return;
+      this.tick();
+      setInterval(() => this.tick(), 5000);
+    },
+    async tick() {
+      try {
+        const response = await fetch(this.statusUrl, {headers: {'Accept': 'application/json'}});
+        if (response.ok) { this.live = await response.json(); }
+      } catch (e) { /* a failed poll leaves the last reading and its age */ }
+    },
+    state() { return this.live ? this.live.state : '{{ capsule.state|escapejs }}'; },
+    // Sizes the way a person reads them. The server sends bytes because that
+    // is what it measured; rounding is a presentation decision.
+    humanBytes(n) {
+      if (n === null || n === undefined || n === '') return '';
+      if (n < 1024) return n + ' B';
+      if (n < 1048576) return (n / 1024).toFixed(1) + ' kB';
+      if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
+      return (n / 1073741824).toFixed(2) + ' GB';
+    },
+    stale(capsule) { return (capsule.sample_age_seconds ?? 0) > {{ stale_seconds }}; },
+    ageSentence(capsule) {
+      const age = capsule.sample_age_seconds;
+      if (age === null || age === undefined) return "{% trans 'No reading yet.' %}";
+      if (age < 30) return "{% trans 'Updated just now.' %}";
+      const minutes = Math.round(age / 60);
+      if (this.stale(capsule)) {
+        return "{% trans 'No reading for' %} " + minutes + " {% trans 'minutes — the runtime is not answering.' %}";
+      }
+      return "{% trans 'Updated' %} " + minutes + " {% trans 'min ago.' %}";
+    },
+    stateLabel(state) {
+      return {
+        ready: "{% trans 'Ready' %}", busy: "{% trans 'Busy' %}",
+        degraded: "{% trans 'Degraded' %}", dead: "{% trans 'Dead' %}",
+        unmounted: "{% trans 'Not mounted' %}"
+      }[state] || state;
+    },
+    chipClass(state) {
+      return {
+        ready: 'bg-emerald-500/20 text-emerald-500',
+        busy: 'bg-sky-500/20 text-sky-500',
+        degraded: 'bg-amber-500/20 text-amber-500',
+        dead: 'bg-red-500/20 text-red-500',
+        unmounted: 'bg-gray-500/20 opacity-70'
+      }[state] || 'bg-gray-500/20';
+    },
+  };
+}
+</script>
+{% block capsule_script %}{% endblock %}
+{% endblock %}

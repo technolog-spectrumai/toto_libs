@@ -1,0 +1,720 @@
+{% extends "anastasia/capsule_base.html" %}
+{% load i18n %}
+
+{% comment %}FILES — the Capsule's kept area, drawn the way the Vault draws a bucket.
+
+THE VAULT'S LOOK, COPIED. `vault/public_file_list.html` has no partial to
+include and toto-base is pull-only, so the search box, the sort and date
+controls, the tree/grid switch, the folder and file rows and the grid cards are
+reproduced class for class, and `tests/test_views.py` pins the class strings in
+BOTH templates so a change on the Vault's side is noticed here. The rows arrive
+in the Vault's own shape (`views._vault_rows`), so the browser code is the
+Vault's too.
+
+WHAT IS LEFT OUT, and why: the bucket selector, storage tabs, metrics, the
+antivirus shield and scan tick (nothing in a Capsule is scanned until it leaves
+— see Copy to Vault), encryption, open-in-editor, tools, play and zip. Each is a
+Vault concept or a plugin keyed on a Vault row. Rename, move and new folder are
+out because the executor has no verb for them: its four verbs are deliberately
+all there is (`executor/files.py`).
+
+WHAT IS ADDED: checkboxes and Copy to Vault (metered and scanned like an
+upload, and the modal says so), Copy in from the Vault (free), Upload from this
+computer (free, bounded by the area budget), and the gauge — this area is
+KEPT, NOT DURABLE, and the sentence beside it says what that means.
+{% endcomment %}
+
+{% block capsule_content %}
+{% if not files_supported %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border border-dashed p-12 text-center shadow-sm" data-testid="files-unsupported">
+    <i class="fa-solid fa-folder-open text-3xl opacity-20"></i>
+    <p class="mt-4 text-sm font-semibold opacity-55">{% trans "This deployment's runtime cannot hold files in a Capsule." %}</p>
+  </div>
+{% elif not mounted %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border border-dashed p-12 text-center shadow-sm" data-testid="files-unmounted">
+    <i class="fa-solid fa-folder-closed text-3xl opacity-20"></i>
+    <p class="mt-4 text-sm font-semibold opacity-55">{% trans "Mount this Capsule to see its files." %}</p>
+    <p class="mt-1 text-xs opacity-50">{% trans "Its files are kept while it is unmounted; reading them needs it mounted." %}</p>
+  </div>
+{% else %}
+{{ items|json_script:"capsule-files-items" }}
+<div x-data="capsuleFiles()" x-init="init()" class="space-y-3" data-testid="files-browser">
+
+  {# ------------------------------------------------- what this area is #}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="flex flex-col gap-3 rounded-xl border px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between">
+    <p class="max-w-2xl opacity-70">
+      {% trans "Files here survive a job and an unmount. They are held in memory on the server, so they do not survive a reboot or releasing the Capsule — keep anything you want to keep in the Vault." %}
+    </p>
+    {% if area_budget %}
+    <div class="w-full shrink-0 sm:w-56" data-testid="files-gauge">
+      <div class="mb-1 flex justify-between">
+        <span class="font-semibold">{{ held_bytes|filesizeformat }}</span>
+        <span class="opacity-60">{% blocktrans with budget=area_budget|filesizeformat %}of {{ budget }}{% endblocktrans %}</span>
+      </div>
+      <div :class="darkMode ? 'bg-white/10' : 'bg-black/10'" class="h-2 overflow-hidden rounded-full">
+        <div :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+             class="h-full rounded-full {% if held_percent >= 90 %}!bg-amber-500{% endif %}"
+             style="width: {{ held_percent }}%"></div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if not answered %}
+    <p class="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-500" data-testid="files-unanswered">
+      {% trans "The compute runtime did not answer, so these files cannot be listed right now. Nothing has been lost — try again in a moment." %}
+    </p>
+  {% elif not complete %}
+    <p class="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-500" data-testid="files-incomplete">
+      {% trans "This list may be incomplete — the runtime stopped counting before it reached the end." %}
+    </p>
+  {% endif %}
+
+  {# ------------------------------------------------- search (the Vault's) #}
+  <div x-show="items.length > 0">
+    <div class="relative">
+      <div class="pointer-events-none absolute inset-y-0 left-3 flex items-center">
+        <i class="fa-solid fa-magnifying-glass text-xs opacity-40"></i>
+      </div>
+      <input x-ref="searchInput" x-model="search" type="search" name="capsule_file_filter"
+             autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"
+             placeholder="{% trans "Search files… (use * or ? for wildcards, e.g. *.csv)" %}"
+             @keydown.escape.stop="search = ''"
+             :class="darkMode
+               ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark placeholder:text-text-main-dark/40'
+               : 'bg-bubble-bg-light border-accent-2 text-text-main-light placeholder:text-text-main-light/40'"
+             class="w-full rounded-xl border py-2.5 pl-9 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-current/20 transition">
+      <button type="button" x-show="search" @click="search = ''"
+              class="absolute inset-y-0 right-3 flex items-center opacity-40 hover:opacity-70 transition-opacity">
+        <i class="fa-solid fa-xmark text-xs"></i>
+      </button>
+    </div>
+    <div x-show="search.trim()" class="mt-1.5 flex items-center gap-1.5 px-1 text-xs opacity-55">
+      <template x-if="_matchingIds !== null && _matchCount > 0">
+        <span><span class="font-semibold" x-text="_matchCount"></span> {% trans "file(s) found" %}</span>
+      </template>
+      <template x-if="_matchingIds !== null && _matchCount === 0">
+        <span>{% trans "No files match your search." %}</span>
+      </template>
+    </div>
+  </div>
+
+  {# ------------------------------------ sort, date, view toggle, actions #}
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+    <div x-show="items.length > 0" class="flex items-center gap-1.5">
+      <span class="opacity-45 font-semibold uppercase tracking-wide shrink-0">
+        <i class="fa-solid fa-arrow-up-wide-short mr-1"></i>{% trans "Sort" %}
+      </span>
+      <select x-model="sortMode"
+              :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+              class="rounded-lg border px-2 py-1 text-xs focus:outline-none cursor-pointer">
+        <option value="name_asc">{% trans "Name A–Z" %}</option>
+        <option value="name_desc">{% trans "Name Z–A" %}</option>
+        <option value="date_desc">{% trans "Date (newest)" %}</option>
+        <option value="date_asc">{% trans "Date (oldest)" %}</option>
+      </select>
+    </div>
+    <div x-show="items.length > 0" class="flex items-center gap-1.5">
+      <span class="opacity-45 font-semibold uppercase tracking-wide shrink-0">
+        <i class="fa-solid fa-calendar-days mr-1"></i>{% trans "Modified" %}
+      </span>
+      <select x-model="dateFilter"
+              :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+              class="rounded-lg border px-2 py-1 text-xs focus:outline-none cursor-pointer">
+        <option value="">{% trans "Any time" %}</option>
+        <option value="today">{% trans "Today" %}</option>
+        <option value="week">{% trans "This week" %}</option>
+        <option value="month">{% trans "This month" %}</option>
+      </select>
+    </div>
+
+    <div class="ml-auto flex flex-wrap items-center gap-2">
+      <button type="button" @click="openUpload('')"
+              :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
+              class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition">
+        <i class="fa-solid fa-upload"></i>{% trans "Upload" %}
+      </button>
+      {% if vault_tree %}
+      <button type="button" @click="openVault('')"
+              :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
+              class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition">
+        <i class="fa-solid fa-file-import"></i>{% trans "Copy in from the Vault" %}
+      </button>
+      {% endif %}
+      {% if buckets %}
+      {% comment %}!! on the disabled bind: an undefined dotted expression binds
+      to "" and a boolean attribute is STAMPED by "", not removed.{% endcomment %}
+      <button type="button" @click="copyOutModal = true" :disabled="!!(picked.length === 0)"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40">
+        <i class="fa-solid fa-file-export"></i>
+        <span>{% trans "Copy to Vault" %}</span><span x-show="picked.length" x-text="'(' + picked.length + ')'"></span>
+      </button>
+      {% endif %}
+
+      <div x-show="items.length > 0" class="flex rounded-lg overflow-hidden border"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <button type="button" @click="setViewMode('tree')"
+                :class="viewMode === 'tree'
+                  ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                  : 'opacity-50 hover:opacity-100'"
+                class="px-3 py-1.5 text-xs font-semibold transition flex items-center gap-1.5">
+          <i class="fa-solid fa-list"></i> {% trans "Tree" %}
+        </button>
+        <button type="button" @click="setViewMode('grid')"
+                :class="viewMode === 'grid'
+                  ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                  : 'opacity-50 hover:opacity-100'"
+                class="px-3 py-1.5 text-xs font-semibold transition flex items-center gap-1.5">
+          <i class="fa-solid fa-table-cells"></i> {% trans "Grid" %}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {# ------------------------------------------------------------ empty #}
+  <template x-if="items.length === 0">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border border-dashed p-12 text-center shadow-sm">
+      <i class="fa-solid fa-folder-open text-3xl opacity-20"></i>
+      <p class="mt-4 text-sm font-semibold opacity-55">{% trans "Nothing here yet. Upload a file or copy one in from the Vault." %}</p>
+    </div>
+  </template>
+
+  {# ------------------------------------------------------------- tree #}
+  <template x-if="items.length > 0 && viewMode === 'tree'">
+    <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="overflow-hidden rounded-xl border shadow-sm">
+      <template x-for="item in displayItems" :key="`${item.t}-${item.id}`">
+        <div x-show="isVisible(item)">
+
+          <template x-if="item.t === 'dir'">
+            <div @click="toggle(item.id)"
+                 :style="`padding-left: calc(${item.depth} * 1.5rem + 0.75rem)`"
+                 :class="darkMode
+                   ? 'border-b border-accent-1/40 hover:bg-bubble-bg-dark'
+                   : 'border-b border-accent-2/40 hover:bg-bubble-bg-light'"
+                 class="flex items-center gap-2 cursor-pointer py-3 pr-4 transition-colors duration-150 select-none">
+              <i class="fa-solid fa-chevron-right w-3 shrink-0 text-xs opacity-40 transition-transform duration-200"
+                 :class="isOpen(item.id) ? 'rotate-90' : ''"></i>
+              <i class="fa-solid shrink-0"
+                 :class="[isOpen(item.id) ? 'fa-folder-open' : 'fa-folder', darkMode ? 'text-accent-dark' : 'text-accent-light']"></i>
+              <span class="font-semibold text-sm truncate min-w-0" x-text="item.name"></span>
+              <span class="flex items-center gap-2 text-xs opacity-40 ml-1 shrink-0">
+                <span x-show="item.n_dirs > 0" x-text="item.n_dirs + ' ' + (item.n_dirs === 1 ? '{% trans "dir" %}' : '{% trans "dirs" %}')"></span>
+                <span x-show="item.n_dirs > 0 && item.n_files > 0" class="opacity-60">·</span>
+                <span x-show="item.n_files > 0" x-text="item.n_files + ' ' + (item.n_files === 1 ? '{% trans "file" %}' : '{% trans "files" %}')"></span>
+              </span>
+              <div class="ml-auto flex items-center gap-1 shrink-0">
+                {% if vault_tree %}
+                <button type="button" @click.stop="openVault(item.path)"
+                        :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-accent-dark/15' : 'border-accent-2 text-text-main-light hover:bg-accent-light/15'"
+                        class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition">
+                  <i class="fa-solid fa-file-import text-xs"></i>
+                  <span class="hidden sm:inline">{% trans "Copy in" %}</span>
+                </button>
+                {% endif %}
+                <button type="button" @click.stop="openUpload(item.path)"
+                        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition hover:opacity-85">
+                  <i class="fa-solid fa-upload text-xs"></i>
+                  <span class="hidden sm:inline">{% trans "Upload" %}</span>
+                </button>
+              </div>
+            </div>
+          </template>
+
+          <template x-if="item.t === 'file'">
+            <div :style="`padding-left: calc(${item.depth} * 1.5rem + 0.75rem)`"
+                 :class="darkMode
+                   ? 'border-b border-accent-1/20 hover:bg-bubble-bg-dark/50'
+                   : 'border-b border-accent-2/20 hover:bg-bubble-bg-light/50'"
+                 class="group flex items-center gap-3 py-2.5 pr-4 text-sm transition-colors duration-150">
+              <input type="checkbox" class="shrink-0 rounded border" :value="item.path" x-model="picked"
+                     :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                     :aria-label="'{% trans "Select" %} ' + item.title">
+              <i class="fa-regular fa-file w-3 shrink-0 text-xs opacity-30"></i>
+              <span class="font-medium truncate flex-1 min-w-0" x-text="item.title" :title="item.path"></span>
+              <span x-show="item.ext" class="shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold uppercase"
+                    :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+                    x-text="item.ext"></span>
+              <span class="hidden sm:block text-xs opacity-50 shrink-0" x-text="humanBytes(item.size)"></span>
+              <span class="hidden md:block text-xs opacity-50 shrink-0" x-text="item.modified"></span>
+              <a :href="downloadHref(item)" @click.stop
+                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                 class="inline-flex items-center gap-1 text-xs font-semibold hover:underline underline-offset-2 shrink-0"
+                 :title="'{% trans "Download" %} ' + item.title">
+                <i class="fa-solid fa-download"></i>
+              </a>
+              {% comment %}Hidden until hover on a wide screen, as the Vault does
+              — but always visible on a phone, which has no hover.{% endcomment %}
+              <button type="button" x-show="item.viewable" @click.stop="openImage(item)"
+                      :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
+                      class="shrink-0 rounded-md p-1 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity duration-150"
+                      :title="'{% trans "View" %} ' + item.title">
+                <i class="fa-solid fa-expand text-xs"></i>
+              </button>
+              <button type="button" @click.stop="openDelete(item)"
+                      class="shrink-0 rounded-md p-1 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity duration-150 text-red-500 hover:bg-red-500/10"
+                      :title="'{% trans "Delete" %} ' + item.title">
+                <i class="fa-solid fa-trash text-xs"></i>
+              </button>
+            </div>
+          </template>
+
+        </div>
+      </template>
+    </div>
+  </template>
+
+  {# ------------------------------------------------------------- grid #}
+  <template x-if="items.length > 0 && viewMode === 'grid'">
+    <div>
+      <template x-if="gridFiles.length === 0">
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-xl border border-dashed p-12 text-center shadow-sm">
+          <i class="fa-solid fa-folder-open text-3xl opacity-20"></i>
+          <p class="mt-4 text-sm font-semibold opacity-55">{% trans "No files match your filters." %}</p>
+        </div>
+      </template>
+      <template x-if="gridFiles.length > 0">
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          <template x-for="item in gridFiles" :key="`grid-${item.id}`">
+            <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+                 class="group relative flex flex-col gap-2 rounded-xl border p-3 shadow-sm transition hover:shadow-md">
+              <input type="checkbox" class="absolute left-2 top-2 rounded border" :value="item.path" x-model="picked"
+                     :aria-label="'{% trans "Select" %} ' + item.title">
+              <div class="flex items-center justify-center h-12 opacity-70">
+                <i class="fa-solid text-3xl" :class="[fileTypeIcon(item.file_type), fileTypeColor(item.file_type)]"></i>
+              </div>
+              <p class="truncate text-xs font-semibold" :title="item.path" x-text="item.title"></p>
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span x-show="item.ext" class="rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide opacity-60"
+                      :class="darkMode ? 'border-accent-1' : 'border-accent-2'" x-text="item.ext"></span>
+                <span class="text-xs opacity-40" x-text="humanBytes(item.size)"></span>
+              </div>
+              <div class="mt-auto flex flex-wrap gap-1">
+                <a :href="downloadHref(item)"
+                   :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
+                   class="rounded-lg border px-2 py-1 text-xs transition" title="{% trans "Download" %}">
+                  <i class="fa-solid fa-download"></i>
+                </a>
+                <button type="button" x-show="item.viewable" @click.stop="openImage(item)"
+                        :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
+                        class="rounded-lg border px-2 py-1 text-xs transition" title="{% trans "View image" %}">
+                  <i class="fa-solid fa-expand"></i>
+                </button>
+                <button type="button" @click.stop="openDelete(item)"
+                        class="rounded-lg border border-red-400/30 px-2 py-1 text-xs text-red-400 hover:opacity-80 transition" title="{% trans "Delete" %}">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
+  </template>
+
+  {# --------------------------------------------------------- delete modal #}
+  <div x-show="deleteModal" x-cloak x-transition.opacity @keydown.escape.window="deleteModal = false"
+       class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="deleteModal = false"></div>
+    <form method="post" action="{% url 'anastasia:file_delete' capsule.uuid %}"
+          :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+          class="relative z-10 w-full max-w-sm rounded-2xl border p-6 shadow-2xl space-y-5" @click.stop>
+      {% csrf_token %}
+      <input type="hidden" name="name" :value="deleteName">
+      <h2 class="flex items-center gap-2 text-base font-bold text-red-500">
+        <i class="fa-solid fa-triangle-exclamation text-sm"></i>{% trans "Delete file" %}
+      </h2>
+      <p class="truncate rounded-lg px-3 py-2 text-sm font-mono opacity-60"
+         :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" x-text="deleteName"></p>
+      <p class="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500 font-medium">
+        <i class="fa-solid fa-circle-exclamation mr-1.5"></i>{% trans "This deletes the file from the Capsule and cannot be undone. A copy in the Vault is not affected." %}
+      </p>
+      <div class="flex gap-3">
+        <button class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition bg-red-500 text-white hover:opacity-90">{% trans "Delete permanently" %}</button>
+        <button type="button" @click="deleteModal = false"
+                :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">{% trans "Cancel" %}</button>
+      </div>
+    </form>
+  </div>
+
+  {# ----------------------------------------------------- copy out modal #}
+  {% if buckets %}
+  <div x-show="copyOutModal" x-cloak x-transition.opacity @keydown.escape.window="copyOutModal = false"
+       class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="copyOutModal = false"></div>
+    <form method="post" action="{% url 'anastasia:file_to_vault' capsule.uuid %}"
+          :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+          class="relative z-10 flex max-h-[85vh] w-full max-w-md flex-col rounded-2xl border p-6 shadow-2xl space-y-4" @click.stop>
+      {% csrf_token %}
+      <template x-for="name in picked" :key="name">
+        <input type="hidden" name="name" :value="name">
+      </template>
+      <h2 class="flex items-center gap-2 text-base font-bold">
+        <i class="fa-solid fa-file-export text-sm"></i>
+        <span>{% trans "Copy to Vault" %}</span><span x-text="'(' + picked.length + ')'"></span>
+      </h2>
+      <ul class="max-h-40 space-y-1 overflow-y-auto rounded-lg px-3 py-2 text-xs font-mono opacity-70"
+          :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'">
+        <template x-for="name in picked" :key="'copy-' + name"><li class="truncate" x-text="name"></li></template>
+      </ul>
+      {% comment %}SAYS WHAT IT COSTS, before the button and not on an invoice.
+      `transfer.to_bucket` is the same function the upload door's sequence is
+      checked against.{% endcomment %}
+      <p class="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs">
+        <i class="fa-solid fa-coins mr-1.5"></i>{% trans "This stores the files in your Vault, and is charged and virus-scanned exactly like uploading them." %}
+      </p>
+      <label class="block text-xs font-semibold">{% trans "Bucket" %}
+        <select name="bucket" required
+                :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                class="mt-1 block w-full rounded-xl border px-3 py-2.5 text-sm font-normal">
+          {% for bucket in buckets %}<option value="{{ bucket.slug }}">{{ bucket.name }}</option>{% endfor %}
+        </select>
+      </label>
+      {% comment %}A title names ONE file. Four files under one title would be
+      four rows a person cannot tell apart.{% endcomment %}
+      <label class="block text-xs font-semibold" x-show="picked.length === 1">{% trans "Title (optional)" %}
+        <input name="title" maxlength="255"
+               :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="mt-1 block w-full rounded-xl border px-3 py-2.5 text-sm font-normal">
+      </label>
+      <div class="flex gap-3">
+        <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition hover:opacity-90">{% trans "Copy to Vault" %}</button>
+        <button type="button" @click="copyOutModal = false"
+                :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">{% trans "Cancel" %}</button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+
+  {# ------------------------------------------------ copy in modal (Vault) #}
+  {% comment %}`vault/_file_tree.html` is the platform's picker — the partial the
+  Vault, OCR and the antivirus panel use — in checkbox mode, drawn ONCE for the
+  tab. Rows carry the file's id; the bearer API takes a key because a client
+  outside this database has no id, and the desk has one.{% endcomment %}
+  {% if vault_tree %}
+  <div x-show="vaultModal" x-cloak x-transition.opacity @keydown.escape.window="vaultModal = false"
+       class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="vaultModal = false"></div>
+    <form method="post" action="{% url 'anastasia:file_from_vault' capsule.uuid %}"
+          :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+          class="relative z-10 flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border shadow-2xl" @click.stop>
+      {% csrf_token %}
+      <input type="hidden" name="folder" :value="vaultFolder">
+      <div class="border-b border-current/10 p-5 pb-3">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-file-import"></i>{% trans "Copy files in from the Vault" %}
+        </h2>
+        <p class="mt-1 text-sm opacity-70">
+          <span x-show="vaultFolder">{% trans "Into" %} <span class="font-mono" x-text="vaultFolder"></span>. </span>
+          {% blocktrans %}Copying in costs nothing — you already hold this Capsule's capacity. At most {{ max_files_per_transfer }} at a time.{% endblocktrans %}
+        </p>
+      </div>
+      <div class="min-h-0 flex-1 overflow-y-auto p-5 py-3">
+        {% include "vault/_file_tree.html" with tree=vault_tree tree_input_name="file" tree_value_field="id" %}
+        {% if vault_files_truncated %}
+          {% comment %}A truncated picker that said nothing would read as "these
+          are all your files".{% endcomment %}
+          <p class="mt-2 text-xs opacity-60">{% blocktrans %}Your {{ vault_picker_limit }} most recent files are listed here.{% endblocktrans %}</p>
+        {% endif %}
+      </div>
+      <div class="flex flex-wrap items-center gap-3 border-t border-current/10 p-5 pt-3">
+        <label class="flex items-center gap-1 text-xs"><input type="checkbox" name="replace"> {% trans "Replace files of the same name" %}</label>
+        <span class="flex-1"></span>
+        <button type="button" class="text-sm underline opacity-70" @click="vaultModal = false">{% trans "Cancel" %}</button>
+        <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="rounded-xl px-4 py-2 text-sm font-bold">{% trans "Copy in" %}</button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+
+  {# --------------------------------------------------------- upload modal #}
+  <div x-show="uploadModal" x-cloak x-transition.opacity @keydown.escape.window="uploadModal = false"
+       class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="uploadModal = false"></div>
+    <form method="post" enctype="multipart/form-data" action="{% url 'anastasia:file_upload' capsule.uuid %}"
+          :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+          class="relative z-10 w-full max-w-md rounded-2xl border p-6 shadow-2xl space-y-4" @click.stop>
+      {% csrf_token %}
+      <h2 class="flex items-center gap-2 text-base font-bold">
+        <i class="fa-solid fa-upload text-sm"></i>{% trans "Upload into the Capsule" %}
+      </h2>
+      <label class="block text-xs font-semibold">{% trans "Folder" %}
+        <input name="folder" list="capsule-folders" x-model="uploadFolder"
+               placeholder="{% trans 'the top of the files area' %}"
+               :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="mt-1 block w-full rounded-xl border px-3 py-2.5 text-sm font-mono font-normal">
+        <datalist id="capsule-folders">{% for folder in folders %}<option value="{{ folder }}">{% endfor %}</datalist>
+        <span class="mt-1 block text-xs font-normal opacity-60">{% trans "A folder that does not exist yet is made." %}</span>
+      </label>
+      {% comment %}The drop zone fills the real file input, and the form posts
+      normally: no second upload path in JavaScript, and the same refusals
+      reach the page whichever way the files were chosen.{% endcomment %}
+      <label @dragover.prevent="dragging = true" @dragleave.prevent="dragging = false"
+             @drop.prevent="handleDrop($event)"
+             :class="[darkMode ? 'border-accent-1' : 'border-accent-2', dragging ? 'opacity-100' : 'opacity-80']"
+             class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 text-center text-sm transition">
+        <i class="fa-solid fa-cloud-arrow-up text-2xl opacity-50"></i>
+        <span>{% trans "Drop files here, or click to choose" %}</span>
+        <span class="text-xs opacity-60">{% blocktrans with limit=max_upload_bytes|filesizeformat %}Up to {{ max_files_per_transfer }} files, {{ limit }} each.{% endblocktrans %}</span>
+        <input x-ref="uploadInput" type="file" name="files" multiple class="sr-only" @change="handlePick($event)">
+      </label>
+      <ul x-show="uploadNames.length" class="max-h-32 space-y-1 overflow-y-auto text-xs font-mono opacity-70">
+        <template x-for="name in uploadNames" :key="'up-' + name"><li class="truncate" x-text="name"></li></template>
+      </ul>
+      <label class="flex items-center gap-2 text-xs"><input type="checkbox" name="replace"> {% trans "Replace files of the same name" %}</label>
+      <div class="flex gap-3">
+        <button :disabled="!!(uploadNames.length === 0)"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">{% trans "Upload" %}</button>
+        <button type="button" @click="uploadModal = false"
+                :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">{% trans "Cancel" %}</button>
+      </div>
+    </form>
+  </div>
+
+  {# ---------------------------------------------------------- image view #}
+  <div x-show="imageModal" x-cloak x-transition.opacity @keydown.escape.window="imageModal = false"
+       class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" @click="imageModal = false">
+    <div class="relative" @click.stop>
+      <img :src="imageUrl" :alt="imageTitle" class="max-h-[88vh] max-w-[95vw] rounded-lg shadow-2xl">
+      <p class="mt-2 text-center text-xs text-white/70" x-text="imageTitle"></p>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block capsule_script %}
+{% if files_supported and mounted %}
+<script>
+function capsuleFiles() {
+  const raw = document.getElementById('capsule-files-items');
+  const items = raw ? JSON.parse(raw.textContent) : [];
+  const dirMap = {};
+  for (const item of items) {
+    if (item.t === 'dir') dirMap[item.id] = item;
+  }
+  const downloadBase = "{% url 'anastasia:file_download' capsule.uuid %}";
+  let storedView = 'tree';
+  try { storedView = localStorage.getItem('capsule_files_view_mode') || 'tree'; } catch (e) { /* storage refused */ }
+  return {
+    items,
+    dirMap,
+    openDirs: {},
+    search: '',
+    _matchingIds: null,
+    _visibleAncestorIds: null,
+    viewMode: storedView,
+    sortMode: 'name_asc',
+    dateFilter: '',
+    // The checked set: paths inside the area.
+    picked: [],
+    deleteModal: false,
+    deleteName: '',
+    copyOutModal: false,
+    vaultModal: false,
+    vaultFolder: '',
+    uploadModal: false,
+    uploadFolder: '',
+    uploadNames: [],
+    dragging: false,
+    imageModal: false,
+    imageUrl: '',
+    imageTitle: '',
+
+    init() { this.$watch('search', () => this._updateSearch()); },
+
+    setViewMode(mode) {
+      this.viewMode = mode;
+      try { localStorage.setItem('capsule_files_view_mode', mode); } catch (e) { /* storage refused */ }
+    },
+    // The Vault's icon and colour maps, for the Vault's types.
+    fileTypeIcon(ft) {
+      const map = { pdf:'fa-file-pdf', image:'fa-image', audio:'fa-music', video:'fa-film',
+        text:'fa-file-lines', json:'fa-code', yaml:'fa-code', csv:'fa-table',
+        html:'fa-file-code', xml:'fa-file-code', svg:'fa-object-group',
+        latex:'fa-file-lines', bib:'fa-book', python:'fa-file-code', zip:'fa-file-zipper' };
+      return map[ft] || 'fa-file';
+    },
+    fileTypeColor(ft) {
+      const map = { pdf:'text-red-400', image:'text-pink-400', audio:'text-purple-400',
+        video:'text-orange-400', text:'text-blue-400', json:'text-green-400',
+        yaml:'text-green-400', csv:'text-teal-400', html:'text-amber-400', python:'text-sky-400' };
+      return map[ft] || 'text-gray-400';
+    },
+    get gridFiles() {
+      return this.displayItems.filter(item => item.t === 'file' && this.isVisible(item));
+    },
+
+    // -- search: the Vault's scoring and globbing, on the file's name ------
+    _scoreMatch(q, title) {
+      const t = (title || '').toLowerCase();
+      if (t === q) return 100;
+      if (t.startsWith(q)) return 90;
+      if (t.includes(q)) return 70;
+      const words = q.split(/[\s\-_\.]+/).filter(w => w.length > 0);
+      if (words.length > 1 && words.every(w => t.includes(w))) return 55;
+      if (q.length >= 2) {
+        let qi = 0;
+        for (let ci = 0; ci < t.length && qi < q.length; ci++) {
+          if (t[ci] === q[qi]) qi++;
+        }
+        if (qi === q.length) return 30;
+      }
+      return 0;
+    },
+    _globToRegExp(glob) {
+      const escaped = glob
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '.*')
+        .replace(/\?/g, '.');
+      return new RegExp('^' + escaped + '$', 'i');
+    },
+    _updateSearch() {
+      const q = this.search.trim().toLowerCase();
+      if (!q) { this._matchingIds = null; this._visibleAncestorIds = null; return; }
+      const globRe = (q.includes('*') || q.includes('?')) ? this._globToRegExp(q) : null;
+      const matched = {};
+      for (const item of this.items) {
+        if (item.t !== 'file') continue;
+        const ok = globRe
+          ? globRe.test((item.title || '').toLowerCase())
+          : this._scoreMatch(q, item.title) > 0;
+        if (ok) matched[item.id] = true;
+      }
+      const ancestors = {};
+      for (const item of this.items) {
+        if (item.t === 'file' && matched[item.id]) {
+          let pid = item.pid;
+          while (pid !== null && pid !== undefined) {
+            if (ancestors[pid]) break;
+            ancestors[pid] = true;
+            const dir = this.dirMap[pid];
+            pid = dir ? dir.pid : null;
+          }
+        }
+      }
+      this._matchingIds = matched;
+      this._visibleAncestorIds = ancestors;
+    },
+    get _matchCount() {
+      return this._matchingIds ? Object.keys(this._matchingIds).length : 0;
+    },
+
+    // -- sort and date filter: the Vault's, on `modified` --------------------
+    get displayItems() {
+      const cutoff = this.dateFilter === 'today'
+        ? new Date().toISOString().slice(0, 10)
+        : this.dateFilter === 'week'
+        ? new Date(Date.now() - 7*24*3600*1000).toISOString().slice(0, 10)
+        : this.dateFilter === 'month'
+        ? new Date(Date.now() - 30*24*3600*1000).toISOString().slice(0, 10)
+        : null;
+      const [field, dir] = this.sortMode.split('_');
+      const mult = dir === 'asc' ? 1 : -1;
+      const filesByPid = {};
+      for (const item of this.items) {
+        if (item.t !== 'file') continue;
+        // An unknown date is never "recent": filtered out when a window is set.
+        if (cutoff && !(item.modified && item.modified >= cutoff)) continue;
+        const k = String(item.pid ?? '');
+        (filesByPid[k] = filesByPid[k] || []).push(item);
+      }
+      for (const k in filesByPid) {
+        filesByPid[k].sort((a, b) => {
+          if (field === 'date')
+            return (a.modified < b.modified ? -1 : a.modified > b.modified ? 1 : 0) * mult;
+          return a.title.toLowerCase().localeCompare(b.title.toLowerCase()) * mult;
+        });
+      }
+      const result = [];
+      const insertedPids = new Set();
+      for (const item of this.items) {
+        if (item.t === 'dir') {
+          result.push(item);
+        } else {
+          const k = String(item.pid ?? '');
+          if (!insertedPids.has(k)) {
+            insertedPids.add(k);
+            result.push(...(filesByPid[k] || []));
+          }
+        }
+      }
+      return result;
+    },
+
+    // -- the tree ------------------------------------------------------------
+    toggle(id) {
+      if (this.openDirs[id]) {
+        this.openDirs[id] = false;
+        this.closeDescendants(id);
+      } else {
+        this.openDirs[id] = true;
+      }
+    },
+    closeDescendants(dirId) {
+      for (const item of this.items) {
+        if (item.t === 'dir' && item.pid === dirId) {
+          this.openDirs[item.id] = false;
+          this.closeDescendants(item.id);
+        }
+      }
+    },
+    isVisible(item) {
+      if (this._matchingIds !== null) {
+        return item.t === 'file'
+          ? !!this._matchingIds[item.id]
+          : !!(this._visibleAncestorIds && this._visibleAncestorIds[item.id]);
+      }
+      if (item.pid === null || item.pid === undefined) return true;
+      if (!this.openDirs[item.pid]) return false;
+      const parent = this.dirMap[item.pid];
+      if (!parent) return true;
+      return this.isVisible(parent);
+    },
+    isOpen(id) { return !!this.openDirs[id]; },
+
+    // -- the actions -----------------------------------------------------------
+    // The name goes in a QUERY value, which Django decodes to exactly this
+    // string — never into the path (see views.file_download).
+    downloadHref(item) { return downloadBase + '?name=' + encodeURIComponent(item.path); },
+    openImage(item) {
+      this.imageUrl = this.downloadHref(item) + '&view=1';
+      this.imageTitle = item.path;
+      this.imageModal = true;
+    },
+    openDelete(item) { this.deleteName = item.path; this.deleteModal = true; },
+    openVault(folder) { this.vaultFolder = folder || ''; this.vaultModal = true; },
+    openUpload(folder) {
+      this.uploadFolder = folder || '';
+      this.uploadNames = [];
+      if (this.$refs.uploadInput) this.$refs.uploadInput.value = '';
+      this.uploadModal = true;
+    },
+    handlePick(event) {
+      this.uploadNames = Array.from(event.target.files || []).map(f => f.name);
+    },
+    handleDrop(event) {
+      this.dragging = false;
+      const files = event.dataTransfer ? event.dataTransfer.files : null;
+      if (!files || !files.length || !this.$refs.uploadInput) return;
+      this.$refs.uploadInput.files = files;
+      this.uploadNames = Array.from(files).map(f => f.name);
+    },
+  };
+}
+</script>
+{% endif %}
+{% endblock %}

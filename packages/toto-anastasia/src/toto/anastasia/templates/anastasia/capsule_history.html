@@ -1,0 +1,188 @@
+{% extends "anastasia/capsule_base.html" %}
+{% load i18n static %}
+
+{% comment %}HISTORY — what the Capsule DID: its readings, its events, its jobs.
+
+Three rules the charts keep, all inherited from `samples.py`:
+
+  * NULL IS A GAP. `spanGaps: false` — a reading the runtime could not take is
+    a hole in the line, not a dip to zero.
+  * A MEASURE NOBODY MEASURED IS A SENTENCE, not a flat line. The series says
+    `measured: false` and the tab says why.
+  * INTERNET IS NAMED BY DIRECTION AND CLAIM. "Downloaded" and "Uploaded",
+    bytes on the Capsule's own NIC — and a Capsule without internet access
+    says so rather than drawing zero.
+{% endcomment %}
+
+{% block capsule_head %}
+{% comment %}Chart.js, vendored locally like every other chart on the
+platform, in the head so `Chart` exists before `drawHistory` runs.{% endcomment %}
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+{% endblock %}
+
+{% block capsule_content %}
+<div class="space-y-6" x-data="capsuleHistory()" x-init="load(24)">
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 class="text-sm font-bold uppercase tracking-wide opacity-70">{% trans "Readings" %}</h2>
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <template x-for="h in [24, 168, 720]" :key="h">
+          <button type="button"
+                  :class="[darkMode ? 'border-accent-1' : 'border-accent-2', (series && series.hours === h) ? 'font-bold opacity-100' : 'opacity-60']"
+                  class="rounded-lg border px-2 py-1"
+                  @click="load(h)"
+                  x-text="{24: '{% trans "24 h" %}', 168: '{% trans "7 days" %}', 720: '{% trans "30 days" %}'}[h]"></button>
+        </template>
+        <span class="opacity-50" x-show="series && series.newest"
+              x-text="series ? '{% trans "Last reading" %} ' + new Date(series.newest).toLocaleString() : ''"></span>
+      </div>
+    </div>
+    <template x-if="series && series.points === 0">
+      <p class="mt-3 text-sm opacity-60">{% trans "No readings in this window. Readings are taken while the Capsule is mounted, about every five minutes." %}</p>
+    </template>
+    <template x-if="series && series.points > 0">
+      <div class="mt-4 grid gap-5 sm:grid-cols-2">
+        <template x-for="m in series.measures" :key="m.key">
+          <div>
+            <p class="text-xs opacity-60" x-text="m.label + (m.measured ? ' (' + displayUnit(m) + ')' : '')"></p>
+            <template x-if="m.measured">
+              <div class="relative h-44 w-full">
+                <canvas :id="'hist-' + m.key"></canvas>
+              </div>
+            </template>
+            <template x-if="!m.measured && m.key.startsWith('net_') && !egress">
+              <p class="text-xs opacity-50">{% trans "This Capsule has no internet access, so there is nothing to measure." %}</p>
+            </template>
+            <template x-if="!m.measured && !(m.key.startsWith('net_') && !egress)">
+              <p class="text-xs opacity-50">{% trans "Not measured in this window." %}</p>
+            </template>
+          </div>
+        </template>
+      </div>
+    </template>
+  </div>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5">
+    <h2 class="text-sm font-bold uppercase tracking-wide opacity-70">{% trans "Events" %}</h2>
+    {% if events %}
+      <div class="mt-3 overflow-x-auto">
+        <table class="w-full text-left text-sm" data-testid="events">
+          <thead class="text-xs uppercase opacity-60">
+            <tr><th class="py-1 pr-4">{% trans "When" %}</th><th class="py-1 pr-4">{% trans "What" %}</th><th class="py-1 pr-4">{% trans "State" %}</th><th class="py-1 pr-4">{% trans "By" %}</th><th class="py-1">{% trans "Why" %}</th></tr>
+          </thead>
+          <tbody>
+            {% for row in events %}
+              <tr class="border-t border-current/10" data-event="{{ row.event.kind }}">
+                <td class="whitespace-nowrap py-1.5 pr-4 text-xs opacity-70">{{ row.event.created_at|date:"SHORT_DATETIME_FORMAT" }}</td>
+                <td class="py-1.5 pr-4 font-semibold">{{ row.event.get_kind_display }}{% if not row.event.accepted %} <span class="text-xs font-normal text-red-500">{% trans "refused" %}{% if row.event.refusal_code %} ({{ row.event.refusal_code }}){% endif %}</span>{% endif %}</td>
+                <td class="whitespace-nowrap py-1.5 pr-4 text-xs opacity-70">{% if row.event.from_state or row.event.to_state %}{{ row.event.from_state|default:"–" }} → {{ row.event.to_state|default:"–" }}{% endif %}</td>
+                <td class="py-1.5 pr-4 text-xs opacity-70">{{ row.event.actor.username|default:"" }}</td>
+                <td class="py-1.5 text-xs opacity-70">{{ row.reason }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if events|length >= history_rows %}
+        <p class="mt-2 text-xs opacity-60">{% blocktrans %}The newest {{ history_rows }} are shown.{% endblocktrans %}</p>
+      {% endif %}
+    {% else %}
+      <p class="mt-3 text-sm opacity-60">{% trans "Nothing has happened to this Capsule yet." %}</p>
+    {% endif %}
+  </div>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5">
+    <h2 class="text-sm font-bold uppercase tracking-wide opacity-70">{% trans "Jobs" %}</h2>
+    {% if jobs %}
+      <div class="mt-3 overflow-x-auto">
+        <table class="w-full text-left text-sm" data-testid="jobs">
+          <thead class="text-xs uppercase opacity-60">
+            <tr><th class="py-1 pr-4">{% trans "Started" %}</th><th class="py-1 pr-4">{% trans "Job" %}</th><th class="py-1 pr-4">{% trans "Result" %}</th><th class="py-1 pr-4">{% trans "Took" %}</th><th class="py-1">{% trans "Error" %}</th></tr>
+          </thead>
+          <tbody>
+            {% for row in jobs %}
+              <tr class="border-t border-current/10" data-job="{{ row.execution.uuid }}">
+                <td class="whitespace-nowrap py-1.5 pr-4 text-xs opacity-70">{{ row.execution.created_at|date:"SHORT_DATETIME_FORMAT" }}</td>
+                <td class="py-1.5 pr-4 font-mono text-xs">{{ row.execution.operation }}</td>
+                <td class="py-1.5 pr-4 text-xs">{{ row.execution.get_status_display }}{% if row.execution.exit_code is not None %} ({{ row.execution.exit_code }}){% endif %}</td>
+                <td class="whitespace-nowrap py-1.5 pr-4 text-xs opacity-70">{% if row.seconds is not None %}{{ row.seconds }} s{% endif %}</td>
+                <td class="py-1.5 text-xs opacity-70">{{ row.execution.error|truncatechars:160 }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if jobs|length >= history_rows %}
+        <p class="mt-2 text-xs opacity-60">{% blocktrans %}The newest {{ history_rows }} are shown.{% endblocktrans %}</p>
+      {% endif %}
+    {% else %}
+      <p class="mt-3 text-sm opacity-60">{% trans "No job has run in this Capsule yet." %}</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block capsule_script %}
+<script>
+function capsuleHistory() {
+  return {
+    series: null,
+    // A reversed path — a uuid and slashes, nothing a quote could break — so
+    // it is written as it is and a person reading the source can find it.
+    samplesUrl: '{{ samples_url }}',
+    egress: {{ capsule.egress|yesno:"true,false" }},
+    // Chart.js instances by canvas id, so a refetch replaces rather than
+    // stacks — a second `new Chart` on a canvas that has one is an error.
+    charts: {},
+    async load(hours) {
+      try {
+        const response = await fetch(this.samplesUrl + '?hours=' + hours, {headers: {'Accept': 'application/json'}});
+        if (!response.ok) return;
+        this.series = await response.json();
+        // The canvases exist only after Alpine has rendered the new series.
+        this.$nextTick(() => this.draw());
+      } catch (e) { /* a failed fetch leaves whatever was drawn */ }
+    },
+    // Bytes are drawn in MB so the axis is readable; the label says so.
+    displayUnit(m) { return m.unit === 'bytes' ? 'MB' : m.unit; },
+    draw() {
+      const series = this.series;
+      if (!series || typeof Chart === 'undefined') return;
+      const labels = series.taken_at.map(t => new Date(t).toLocaleString());
+      for (const m of series.measures) {
+        if (!m.measured) continue;
+        const id = 'hist-' + m.key;
+        const canvas = document.getElementById(id);
+        if (!canvas) continue;
+        if (this.charts[id]) { this.charts[id].destroy(); }
+        // NULL STAYS NULL. `v == null ? null : ...` — a conversion that
+        // multiplied null would produce 0, and 0 is a floor, not a gap.
+        const values = m.values.map(v => v == null ? null : (m.unit === 'bytes' ? v / 1048576 : v));
+        this.charts[id] = new Chart(canvas.getContext('2d'), {
+          type: 'line',
+          data: {labels, datasets: [{
+            label: m.label, data: values,
+            borderColor: 'rgb(56, 189, 248)', backgroundColor: 'rgba(56, 189, 248, 0.15)',
+            fill: true, pointRadius: 2, tension: 0.2,
+            // THE RULE. A gap is a gap.
+            spanGaps: false,
+          }]},
+          options: {
+            responsive: true, maintainAspectRatio: false, animation: false,
+            plugins: {legend: {display: false}},
+            scales: {
+              x: {ticks: {maxTicksLimit: 6, color: 'rgba(128,128,128,0.8)'}, grid: {color: 'rgba(128,128,128,0.15)'}},
+              y: {beginAtZero: true, ticks: {color: 'rgba(128,128,128,0.8)'}, grid: {color: 'rgba(128,128,128,0.15)'}},
+            },
+          },
+        });
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

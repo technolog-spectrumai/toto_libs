@@ -14,18 +14,30 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("reserve/", views.reserve, name="reserve"),
     path("pool/", views.pool, name="pool"),
+    # The Capsule view: one URL per tab, the platform's tab idiom. The bare
+    # uuid is Information, because that is what "open this Capsule" means.
+    path("<uuid:uuid>/", views.capsule, name="capsule"),
+    path("<uuid:uuid>/history/", views.capsule_history, name="capsule_history"),
+    path("<uuid:uuid>/files/", views.capsule_files, name="capsule_files"),
+    # The verbs. Each redirects back to the tab it was pressed on.
     path("<uuid:uuid>/mount/", views.mount, name="mount"),
     path("<uuid:uuid>/unmount/", views.unmount, name="unmount"),
     path("<uuid:uuid>/release/", views.release, name="release"),
+    # What the pages poll or fetch. GETs, owner-only.
     path("<uuid:uuid>/status/", views.status, name="status"),
-    # The retained series behind the card's charts. A GET, owner-only, and
-    # counts only — see `views.samples`.
+    # The retained series behind the History charts. Counts only — see
+    # `views.samples`.
     path("<uuid:uuid>/samples/", views.samples, name="samples"),
-    # The files area, from the desk: one listing the card fetches and three
-    # POSTs. Each is a thin door onto the same request-free functions the
-    # bearer API uses (`transfer.to_capsule`, `transfer.to_bucket`), so a
-    # copy costs the same whichever door it came through.
-    path("<uuid:uuid>/files/", views.files, name="files"),
+    path("<uuid:uuid>/storage/", views.storage, name="storage"),
+    # The files area. The Files TAB owns `files/`; the raw JSON listing moved
+    # to `files/list/` on 2026-09-14. Every write is a thin door onto the same
+    # request-free functions the bearer API uses (`transfer.to_capsule`,
+    # `transfer.to_bucket`), so a copy costs the same whichever door it came
+    # through.
+    path("<uuid:uuid>/files/list/", views.files_list, name="files_list"),
+    path("<uuid:uuid>/files/download/", views.file_download,
+         name="file_download"),
+    path("<uuid:uuid>/files/upload/", views.file_upload, name="file_upload"),
     path("<uuid:uuid>/files/from-vault/", views.file_from_vault,
          name="file_from_vault"),
     path("<uuid:uuid>/files/to-vault/", views.file_to_vault,

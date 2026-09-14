@@ -1,9 +1,15 @@
 """The Compute Capsules desk: reserve, mount, watch, unmount.
 
-One page and a handful of POST targets. The shape follows the platform's
-convention — a page that renders derived state, JSON endpoints the page polls,
-and every write re-checking permission server-side so a hand-posted form is
-still refused.
+A LIST AND A VIEW. `index` is the person's Capsules as cards, with the pool
+above them and Reserve behind a modal; each card opens the Capsule's own view,
+one URL per tab (Information, History, Files), the way every tab strip on the
+platform works — a reload keeps its place and a POST's message lands on the tab
+that produced it. It was one long page until 2026-09-14, and every section it
+grew (history, files) made the next Capsule further away.
+
+The shape otherwise follows the platform's convention — pages that render
+derived state, JSON endpoints the pages poll, and every write re-checking
+permission server-side so a hand-posted form is still refused.
 
 **The shared secret never leaves this process.** The browser talks to Zenobia;
 Zenobia signs and talks to the manager. That is the whole reason
@@ -17,23 +23,28 @@ shared resource and there is no borrowing.
 
 from __future__ import annotations
 
+import io
+import itertools
 import json
 import logging
+import os
+from datetime import datetime, timezone as dt_timezone
 
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.contrib import messages
-from django.http import Http404, JsonResponse
+from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.translation import gettext as _
-from django.views.decorators.http import require_POST
+from django.utils.translation import gettext_lazy
+from django.views.decorators.http import require_GET, require_POST
 
 from toto.ui import PageProcessor
 
 from . import choices, conf, families, samples as samples_mod, services, transfer
 from .limits import Limits, LimitsError
-from .models import ComputeLease, Execution, CapsuleRuntime
+from .models import CapsuleEvent, ComputeLease, Execution, CapsuleRuntime
 from .runtime import RuntimeUnavailable, get_backend
 
 log = logging.getLogger("toto.anastasia.views")
@@ -53,33 +64,76 @@ def _own_lease(request, uuid) -> ComputeLease:
     return get_object_or_404(ComputeLease, uuid=uuid, owner=request.user)
 
 
-def _refusal(request, exc, lease=None):
+def _own_open_lease(request, uuid) -> ComputeLease:
+    """`_own_lease`, and still reserved.
+
+    The Capsule VIEW is for capacity somebody holds. A released reservation
+    is not in the list, cannot be mounted and has no files area, so its tabs
+    would be a page of refusals; it is a 404 like any Capsule this person
+    does not hold. The verbs keep `_own_lease` — releasing twice is an
+    ordinary outcome, not a missing page.
+    """
+    return get_object_or_404(ComputeLease.objects.open(), uuid=uuid,
+                             owner=request.user)
+
+
+#: The Capsule view's tabs: (slug, label, icon, url name). ONE URL PER TAB,
+#: rendered by the server — the idiom of every tab strip on the platform
+#: (antivirus, vault, forum rooms, company). Lazy labels, because this tuple
+#: is built at import, in whatever language the process started in.
+CAPSULE_TABS = (
+    ("information", gettext_lazy("Information"), "fa-solid fa-circle-info",
+     "anastasia:capsule"),
+    ("history", gettext_lazy("History"), "fa-solid fa-chart-line",
+     "anastasia:capsule_history"),
+    ("files", gettext_lazy("Files"), "fa-solid fa-folder-tree",
+     "anastasia:capsule_files"),
+)
+_TAB_URLS = {slug: url for slug, _label, _icon, url in CAPSULE_TABS}
+
+
+def _tab_from(request) -> str:
+    """Which tab a verb was pressed on. Validated against the tab list, so a
+    hand-posted value can only ever choose among real pages."""
+    tab = (request.POST.get("tab") or "").strip()
+    return tab if tab in _TAB_URLS else "information"
+
+
+def _back(lease, tab: str = "information"):
+    """Back to the tab the person was on, where the message belongs."""
+    return redirect(reverse(_TAB_URLS.get(tab, "anastasia:capsule"),
+                            args=[lease.uuid]))
+
+
+def _refusal(request, exc, lease=None, tab: str = "information"):
     """One refusal, rendered the way the caller asked for it."""
     message = "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc)
     code = getattr(exc, "refusal_code", "")
     if request.headers.get("Accept", "").startswith("application/json"):
         return JsonResponse({"error": message, "code": code}, status=409)
-    from django.contrib import messages as django_messages
-
-    django_messages.error(request, message)
+    messages.error(request, message)
+    if lease is not None:
+        return _back(lease, tab)
     return redirect("anastasia:index")
 
 
-@login_required
-def index(request):
-    """Everything a person needs to decide whether to reserve.
+#: What the reserve modal starts with. The same numbers the form always
+#: offered; a refusal re-renders the modal with what was TYPED instead.
+RESERVE_DEFAULTS = {"name": "", "cpu_millicores": 1000, "ram_mb": 1024,
+                    "scratch_mb": 512, "pids": 128, "egress": False}
 
-    The pool report is shown to everyone, not just staff: "reserve" is a choice
-    made against a number, and hiding the number turns a refusal into a
-    mystery.
-    """
+
+def _index_context(request, **extra) -> dict:
+    """Everything the list page draws. Shared by `index` and by a refused
+    `reserve`, which re-renders this page with its modal open."""
     leases = list(ComputeLease.objects.open()
                   .filter(owner=request.user).select_related("runtime"))
     capsules = [services.capsule_report(lease) for lease in leases]
+    for capsule in capsules:
+        capsule["url"] = reverse("anastasia:capsule", args=[capsule["uuid"]])
     report = services.pool_report()
-    # Whether to offer the checkbox at all. A host that does not run the proxy
-    # must not show a control whose only outcome is a refused mount.
-    egress_offered = conf.egress_offered()
+    held = len(leases)
+    max_capsules = conf.max_capsules_per_user()
 
     # Only MOUNTED capsules are polled. An unmounted one has nothing to report,
     # and asking would wake the manager once every five seconds for nothing.
@@ -87,7 +141,38 @@ def index(request):
         capsule["uuid"]: reverse("anastasia:status", args=[capsule["uuid"]])
         for capsule in capsules if capsule["state"] in choices.MOUNTED
     }
+    return {
+        "pool": report,
+        "pool_rows": _pool_rows(report),
+        "capsules": capsules,
+        "runtime_configured": bool(conf.executor_socket()),
+        # Whether to offer the checkbox at all. A host that does not run the
+        # proxy must not show a control whose only outcome is a refused mount.
+        "egress_offered": conf.egress_offered(),
+        "max_capsules": max_capsules,
+        "lease_days": conf.lease_days(),
+        "held": held,
+        # The button is disabled WITH A SENTENCE when this is false, never
+        # hidden: a person looking for Reserve must find out why it is grey.
+        "can_reserve": bool(report.get("configured")) and held < max_capsules,
+        "poll_urls_json": json.dumps(poll_urls),
+        "stale_seconds": conf.sample_stale_seconds(),
+        "open_modal": "",
+        "reserve": dict(RESERVE_DEFAULTS),
+        "reserve_error": "",
+        **extra,
+    }
 
+
+@login_required
+def index(request):
+    """Everything a person needs to decide whether to reserve, and the door
+    into each Capsule they hold.
+
+    The pool report is shown to everyone, not just staff: "reserve" is a choice
+    made against a number, and hiding the number turns a refusal into a
+    mystery.
+    """
     # PageProcessor, like every other page on the platform. It is not
     # decoration: oya/base.html builds the Tailwind palette from
     # `theme.theme.colors`, and with no theme in the context that expression
@@ -97,20 +182,8 @@ def index(request):
     # rendered the Reserve button as white text on a background that was never
     # applied: present, clickable, invisible. base.html warns about exactly
     # this in the comment above that `colors:` line.
-    return render(request, "anastasia/index.html", PageProcessor().decorate({
-        "pool": report,
-        "pool_rows": _pool_rows(report),
-        "capsules": capsules,
-        "runtime_configured": bool(conf.executor_socket()),
-        "files_supported": _files_supported(),
-        **_vault_choices(request.user),
-        "egress_offered": egress_offered,
-        "max_capsules": conf.max_capsules_per_user(),
-        "lease_days": conf.lease_days(),
-        "held": len(leases),
-        "poll_urls_json": json.dumps(poll_urls),
-        "stale_seconds": conf.sample_stale_seconds(),
-    }, request))
+    return render(request, "anastasia/index.html",
+                  PageProcessor().decorate(_index_context(request), request))
 
 
 #: How many files the vault picker draws. `build_file_tree`'s own default,
@@ -183,6 +256,31 @@ def _pool_rows(report: dict) -> list:
 @login_required
 @require_POST
 def reserve(request):
+    """Book a Capsule from the modal.
+
+    A REFUSAL RE-RENDERS THE LIST WITH THE MODAL OPEN, holding what was typed
+    and the sentence that refused it — `company/_modal.html`'s shape. The
+    redirect-and-toast this replaced threw away five numbers and a name, and
+    the toast hid itself after six seconds, so the person was left with an
+    empty form and a message they may not have read.
+    """
+    typed = {
+        "name": (request.POST.get("name") or "")[:60],
+        "cpu_millicores": request.POST.get("cpu_millicores", ""),
+        "ram_mb": request.POST.get("ram_mb", ""),
+        "scratch_mb": request.POST.get("scratch_mb", ""),
+        "pids": request.POST.get("pids", ""),
+        "egress": bool(request.POST.get("egress")),
+    }
+
+    def refuse(exc):
+        if request.headers.get("Accept", "").startswith("application/json"):
+            return _refusal(request, exc)
+        message = "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc)
+        return render(request, "anastasia/index.html", PageProcessor().decorate(
+            _index_context(request, open_modal="reserve", reserve=typed,
+                           reserve_error=message), request))
+
     try:
         limits = Limits.from_mapping({
             "cpu_millicores": int(request.POST.get("cpu_millicores") or 0),
@@ -191,7 +289,7 @@ def reserve(request):
             "pids": int(request.POST.get("pids") or 0),
         })
     except (TypeError, ValueError, LimitsError) as exc:
-        return _refusal(request, ValidationError(
+        return refuse(ValidationError(
             _("Those capacity numbers are not whole numbers: %(detail)s")
             % {"detail": exc}))
 
@@ -205,25 +303,24 @@ def reserve(request):
             # the form cannot set anything else on the lease.
             egress=bool(request.POST.get("egress")))
     except ValidationError as exc:
-        return _refusal(request, exc)
+        return refuse(exc)
 
-    from django.contrib import messages as django_messages
-
-    django_messages.success(request, _(
+    messages.success(request, _(
         "“%(name)s” is reserved. Mount it when you want to use it — the "
         "capacity is yours either way.") % {"name": lease.name})
-    return redirect("anastasia:index")
+    return redirect("anastasia:capsule", uuid=lease.uuid)
 
 
 @login_required
 @require_POST
 def mount(request, uuid):
     lease = _own_lease(request, uuid)
+    tab = _tab_from(request)
     try:
         services.mount(lease=lease, actor=request.user)
     except ValidationError as exc:
-        return _refusal(request, exc, lease)
-    return redirect("anastasia:index")
+        return _refusal(request, exc, lease, tab)
+    return _back(lease, tab)
 
 
 @login_required
@@ -231,21 +328,116 @@ def mount(request, uuid):
 def unmount(request, uuid):
     lease = _own_lease(request, uuid)
     services.unmount(lease=lease, actor=request.user, reason="unmounted by owner")
-    return redirect("anastasia:index")
+    return _back(lease, _tab_from(request))
 
 
 @login_required
 @require_POST
 def release(request, uuid):
-    """Give the capacity back for good. Unmounts on the way out."""
+    """Give the capacity back for good. Unmounts on the way out.
+
+    Back to the LIST, not to a tab: a released Capsule has no view (see
+    `_own_open_lease`), and the list is where its absence is the news.
+    """
     lease = _own_lease(request, uuid)
     services.release(lease=lease, reason="released by owner", actor=request.user)
-    from django.contrib import messages as django_messages
-
-    django_messages.success(request, _(
+    messages.success(request, _(
         "“%(name)s” is released and its capacity is back in the pool.")
         % {"name": lease.name})
     return redirect("anastasia:index")
+
+
+# --------------------------------------------------------------------------- #
+# The Capsule view                                                             #
+# --------------------------------------------------------------------------- #
+
+#: How many events and jobs the History tab lists. The newest, and the page
+#: says so: a list that silently stopped would read as the whole history.
+HISTORY_ROWS = 50
+
+
+def _capsule_context(request, lease, active_tab: str, **extra) -> dict:
+    """What every tab draws: the header, its verbs, and the strip."""
+    report = services.capsule_report(lease)
+    mounted = report["state"] in choices.MOUNTED
+    return {
+        "lease": lease,
+        "capsule": report,
+        "mounted": mounted,
+        "active_tab": active_tab,
+        "tabs": [
+            {"slug": slug, "label": label, "icon": icon, "active": slug == active_tab,
+             "url": reverse(url, args=[lease.uuid])}
+            for slug, label, icon, url in CAPSULE_TABS
+        ],
+        "status_url": reverse("anastasia:status", args=[lease.uuid]),
+        "stale_seconds": conf.sample_stale_seconds(),
+        "runtime_configured": bool(conf.executor_socket()),
+        **extra,
+    }
+
+
+def _render_tab(request, template: str, context: dict):
+    return render(request, template, PageProcessor().decorate(context, request))
+
+
+@login_required
+def capsule(request, uuid):
+    """INFORMATION — what the Capsule is now.
+
+    `created_at` and `expires_at` had never been drawn: the desk said a
+    reservation lasts N days and never said when this one ends.
+    """
+    lease = _own_open_lease(request, uuid)
+    storage_supported = getattr(get_backend(), "storage", None) is not None
+    return _render_tab(request, "anastasia/capsule_information.html",
+                       _capsule_context(
+                           request, lease, "information",
+                           runtime=services.runtime_for(lease),
+                           storage_url=(reverse("anastasia:storage",
+                                                args=[lease.uuid])
+                                        if storage_supported else "")))
+
+
+@login_required
+def capsule_history(request, uuid):
+    """HISTORY — what the Capsule did: its readings, its events, its jobs."""
+    lease = _own_open_lease(request, uuid)
+    events = (CapsuleEvent.objects.filter(lease=lease)
+              .select_related("actor").order_by("-created_at", "-pk")
+              [:HISTORY_ROWS])
+    jobs_rows = []
+    for execution in (Execution.objects.filter(lease=lease)
+                      .order_by("-created_at", "-pk")[:HISTORY_ROWS]):
+        seconds = None
+        if execution.started_at and execution.finished_at:
+            seconds = round((execution.finished_at
+                             - execution.started_at).total_seconds())
+        jobs_rows.append({"execution": execution, "seconds": seconds})
+    return _render_tab(request, "anastasia/capsule_history.html",
+                       _capsule_context(
+                           request, lease, "history",
+                           samples_url=reverse("anastasia:samples",
+                                               args=[lease.uuid]),
+                           events=[{"event": event,
+                                    "reason": (event.detail or {}).get("reason", "")}
+                                   for event in events],
+                           jobs=jobs_rows,
+                           history_rows=HISTORY_ROWS))
+
+
+@login_required
+def storage(request, uuid):
+    """How much disk the Capsule holds, per area. COUNTS ONLY — the boundary
+    `executor/storage.py` draws. The Information tab asks once on load, not
+    on every poll: the answer costs the executor a walk."""
+    lease = _own_lease(request, uuid)
+    reading = getattr(get_backend(), "storage", None)
+    if reading is None:
+        return JsonResponse({"supported": False, "complete": False})
+    body = reading(lease) or {}
+    return JsonResponse({**body, "supported": True,
+                         "complete": bool(body.get("complete", False))})
 
 
 @login_required
@@ -289,17 +481,178 @@ def samples(request, uuid):
 # The files area, from the desk                                                #
 # --------------------------------------------------------------------------- #
 #
-# The page's door onto what `api.py` exposes to a bearer token. The listing is
-# JSON the card fetches when its Files section is opened; the three writes are
-# ordinary forms that redirect back to the card with a sentence. Nothing here
-# decides anything the API does not: a name is judged by the executor, a
-# vault file is looked up owner-filtered, and the copy out is metered by
-# `transfer.to_bucket` — the same function, so the same price.
+# The Files tab is the page's door onto what `api.py` exposes to a bearer
+# token. It draws the area the way the Vault draws a bucket — the same rows,
+# the same search, sort and tree/grid switch, copied from
+# `vault/public_file_list.html` because toto-base is pull-only and has no
+# partial to include — with the Vault's buttons that mean nothing in a Capsule
+# left out and the two transfers added. Every write is an ordinary form that
+# redirects back to the tab with a sentence. Nothing here decides anything the
+# API does not: a name is judged by the executor, a vault file is looked up
+# owner-filtered, and the copy out is metered by `transfer.to_bucket` — the
+# same function, so the same price.
+
+#: The most one uploaded file may carry. The API's `MAX_TRANSFER_BYTES`, for
+#: the API's reason: this process holds the bytes before the executor sees
+#: them, and the executor's own budget does not protect the web tier. A test
+#: pins the two equal.
+MAX_UPLOAD_BYTES = 64 * 1024 * 1024
+
+#: Extension -> the Vault's type vocabulary, so the Files tab draws the same
+#: icon a Vault row would. Presentation only: the executor never learns a type.
+_FILE_TYPES = {
+    "pdf": "pdf", "png": "image", "jpg": "image", "jpeg": "image",
+    "gif": "image", "webp": "image", "bmp": "image", "svg": "svg",
+    "mp3": "audio", "wav": "audio", "ogg": "audio", "flac": "audio",
+    "mp4": "video", "mkv": "video", "webm": "video", "mov": "video",
+    "txt": "text", "md": "text", "log": "text", "rst": "text",
+    "json": "json", "yaml": "yaml", "yml": "yaml", "csv": "csv",
+    "html": "html", "htm": "html", "xml": "xml",
+    "tex": "latex", "sty": "latex", "cls": "latex", "bib": "bib",
+    "py": "python", "ipynb": "json",
+    "zip": "zip", "gz": "zip", "tgz": "zip", "tar": "zip", "whl": "zip",
+}
+
+#: What may be shown INLINE, and as what. Raster images only: an SVG or an
+#: HTML file served inline from this origin is a script served from this
+#: origin, written by a runner. Everything else is an attachment.
+_INLINE_IMAGES = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                  "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp"}
+
 
 def _back_to_files(lease):
-    """Back to the card, with its Files section open (the template reads the
-    hash), so a person sees the result where they asked for it."""
-    return redirect(reverse("anastasia:index") + f"#files-{lease.uuid}")
+    """Back to the Files tab, where the person asked for it."""
+    return _back(lease, "files")
+
+
+def _extension(leaf: str) -> str:
+    return leaf.rpartition(".")[2].lower() if "." in leaf else ""
+
+
+def _file_row(entry: dict, depth: int, pid, row_id: int) -> dict:
+    name = entry["name"]
+    leaf = name.rpartition("/")[2]
+    ext = _extension(leaf)
+    try:
+        stamp = int(entry.get("modified") or 0)
+    except (TypeError, ValueError):
+        stamp = 0
+    return {
+        "t": "file", "id": row_id, "pid": pid, "depth": depth,
+        "title": leaf, "path": name,
+        "size": int(entry.get("size") or 0),
+        "ext": ext, "file_type": _FILE_TYPES.get(ext, "file"),
+        # The Vault's date filter compares ISO date strings, so this is one.
+        # Empty for a file the executor could not stat — "unknown", never 1970.
+        "modified": (datetime.fromtimestamp(stamp, tz=dt_timezone.utc)
+                     .date().isoformat() if stamp else ""),
+        "viewable": ext in _INLINE_IMAGES,
+    }
+
+
+def _vault_rows(entries) -> list:
+    """The executor's flat listing, as the Vault's depth-first rows.
+
+    THE VAULT'S SHAPE, BUILT HERE rather than a second tree idea in the
+    browser: a pre-ordered list where every row carries its depth and its
+    parent's id, each folder followed by its subfolders and then its own
+    files, the area's root files last (`vault/views.py:_build_flat_items`).
+    The browser code copied from the Vault then works unchanged.
+
+    Folders the listing did not name are made from their files' paths, so a
+    file never hangs from a parent that does not exist; an empty folder the
+    listing did name is a row with nothing under it. Ids come from ONE
+    counter, so a folder and a file never share one — the collision that once
+    highlighted a folder when a file was opened.
+    """
+    counter = itertools.count(1)
+    dirs: dict = {}
+    children: dict = {}
+    files_under: dict = {}
+
+    def ensure(path: str) -> None:
+        if not path or path in dirs:
+            return
+        parent = path.rpartition("/")[0]
+        ensure(parent)
+        dirs[path] = next(counter)
+        children.setdefault(parent, []).append(path)
+
+    for entry in entries or ():
+        name = (entry or {}).get("name") or ""
+        if not name:
+            continue
+        if entry.get("is_dir"):
+            ensure(name)
+        else:
+            parent = name.rpartition("/")[0]
+            ensure(parent)
+            files_under.setdefault(parent, []).append(entry)
+
+    rows: list = []
+
+    def emit(path: str, depth: int, pid) -> None:
+        for sub in sorted(children.get(path, ())):
+            rows.append({
+                "t": "dir", "id": dirs[sub], "pid": pid, "depth": depth,
+                "name": sub.rpartition("/")[2], "path": sub,
+                "n_dirs": len(children.get(sub, ())),
+                "n_files": len(files_under.get(sub, ())),
+            })
+            emit(sub, depth + 1, dirs[sub])
+        for entry in sorted(files_under.get(path, ()), key=lambda e: e["name"]):
+            rows.append(_file_row(entry, depth, pid, next(counter)))
+
+    emit("", 0, None)
+    return rows
+
+
+def _area_budget():
+    """The executor's total bound on a files area, for the gauge — or None.
+
+    Read from the executor's own constant rather than restated, so the gauge
+    cannot promise a number the executor does not enforce. The import is
+    lazy and forgiving: the gauge is information, not a precondition.
+    """
+    try:
+        from .executor.capsules import DEFAULT_AREA_BUDGET
+    except Exception:  # noqa: BLE001
+        return None
+    return DEFAULT_AREA_BUDGET
+
+
+@login_required
+def capsule_files(request, uuid):
+    """FILES — the Capsule's kept area, drawn like a Vault bucket.
+
+    Listed only while MOUNTED: the area exists between mounts, but reading it
+    needs the executor, and a tab that could only refuse would be worse than
+    one that says to mount first.
+    """
+    lease = _own_open_lease(request, uuid)
+    context = _capsule_context(request, lease, "files")
+    backend = get_backend()
+    supported = getattr(backend, "capsule_files", None) is not None
+    listing = {}
+    if supported and context["mounted"]:
+        listing = backend.capsule_files(lease) or {}
+    rows = _vault_rows(listing.get("files", []))
+    held = sum(row["size"] for row in rows if row["t"] == "file")
+    budget = _area_budget()
+    context.update({
+        "files_supported": supported,
+        # An empty dict is "nobody answered", which is not "nothing there".
+        "answered": bool(listing),
+        "complete": bool(listing.get("complete", False)),
+        "items": rows,
+        "folders": [row["path"] for row in rows if row["t"] == "dir"],
+        "held_bytes": held,
+        "area_budget": budget,
+        "held_percent": min(100, round(held * 100 / budget)) if budget else 0,
+        "max_upload_bytes": MAX_UPLOAD_BYTES,
+        **_vault_choices(request.user),
+    })
+    return _render_tab(request, "anastasia/capsule_files.html", context)
 
 
 def _files_sentence(exc) -> str:
@@ -320,13 +673,12 @@ def _files_error(request, lease, exc):
 
 
 @login_required
-def files(request, uuid):
-    """The listing the card's Files section fetches. Owner-only JSON.
+def files_list(request, uuid):
+    """The raw listing, as owner-only JSON.
 
     `supported: false` when this deployment's runtime has no files area, and
     `complete: false` when the runtime did not answer or the walk stopped
-    early — the card says which, rather than showing an empty area for a
-    Capsule that is merely unreachable.
+    early — "nobody answered" and "it is empty" are different claims.
     """
     lease = _own_lease(request, uuid)
     lister = getattr(get_backend(), "capsule_files", None)
@@ -338,6 +690,112 @@ def files(request, uuid):
         "complete": bool(listing.get("complete", False)),
         "supported": True,
     })
+
+
+@login_required
+@require_GET
+def file_download(request, uuid):
+    """One file's bytes, as an attachment — or inline, for a raster image.
+
+    THE NAME IS IN THE QUERY STRING HERE, and that is not the API's rule
+    broken. The API keeps names out of the PATH, where a name legal in the
+    area can be illegal or mean something else; a query value is decoded by
+    Django to exactly the string that was encoded, and a browser can only
+    follow a link or fill an `<img src>` with a GET.
+
+    INLINE ONLY FOR RASTER IMAGES (`_INLINE_IMAGES`). These bytes were
+    written by a runner; served inline from this origin, an SVG or an HTML
+    file is script running as this site. Everything else is
+    `application/octet-stream` as an attachment, with `nosniff` so the
+    browser cannot decide otherwise, and a sandboxing CSP for anyone who
+    navigates to the URL directly.
+    """
+    from .executor_backend import FilesRefused
+
+    lease = _own_lease(request, uuid)
+    name = (request.GET.get("name") or "").strip()
+    reader = getattr(get_backend(), "capsule_file_read", None)
+    if not name or reader is None:
+        raise Http404("no such file")
+    try:
+        data = reader(lease, name)
+    except (FilesRefused, RuntimeUnavailable) as exc:
+        return _files_error(request, lease, exc)
+
+    leaf = name.rpartition("/")[2] or "file"
+    inline_type = _INLINE_IMAGES.get(_extension(leaf))
+    inline = request.GET.get("view") == "1" and inline_type is not None
+    response = FileResponse(
+        io.BytesIO(data), as_attachment=not inline, filename=leaf,
+        content_type=inline_type if inline else "application/octet-stream")
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Content-Security-Policy"] = "sandbox; default-src 'none'"
+    return response
+
+
+@login_required
+@require_POST
+def file_upload(request, uuid):
+    """Put files from this computer into a folder of the Capsule.
+
+    The one way into a Capsule that is not a copy from the Vault, and for the
+    same reason the Vault has a gateway: a file on a laptop should not have
+    to be uploaded to durable storage first just to be worked on. NOT METERED,
+    like a copy in: nothing durable is created, and the area is capacity the
+    person already holds (and bounded — the executor refuses a write past the
+    area budget with its own sentence).
+
+    Per file, like the transfers: one refusal names that file and stops
+    nothing else.
+    """
+    from .executor_backend import FilesRefused
+
+    lease = _own_lease(request, uuid)
+    writer = getattr(get_backend(), "capsule_file_write", None)
+    if writer is None:
+        messages.error(request, _(
+            "This deployment's runtime cannot hold files in a Capsule."))
+        return _back_to_files(lease)
+
+    uploads = request.FILES.getlist("files")
+    if not uploads:
+        messages.error(request, _("Pick at least one file to upload."))
+        return _back_to_files(lease)
+    folder = (request.POST.get("folder") or "").strip().strip("/")
+    replace = bool(request.POST.get("replace"))
+
+    done, refused = [], []
+    for index, upload in enumerate(uploads):
+        # The browser sends a bare name; a few old ones sent a Windows path.
+        # This is the upload's own filename, cleaned before it becomes a name
+        # in the area — the area's rule (no backslashes at all) is the
+        # executor's, and it still applies to what comes out of here.
+        leaf = os.path.basename((upload.name or "").replace("\\", "/"))
+        label = leaf or _("a file with no name")
+        if index >= MAX_FILES_PER_TRANSFER:
+            refused.append((label, _("more than %(n)s files at once")
+                            % {"n": MAX_FILES_PER_TRANSFER}))
+            continue
+        if not leaf:
+            refused.append((label, _("it has no name")))
+            continue
+        if upload.size > MAX_UPLOAD_BYTES:
+            # Refused on the size the browser declared, BEFORE reading: the
+            # point of the limit is that these bytes never sit in this process.
+            refused.append((leaf, _("over the %(mb)s MB upload limit")
+                            % {"mb": MAX_UPLOAD_BYTES // (1024 * 1024)}))
+            continue
+        name = f"{folder}/{leaf}" if folder else leaf
+        try:
+            writer(lease, name, upload.read(), replace=replace)
+        except (FilesRefused, RuntimeUnavailable) as exc:
+            refused.append((name, _files_sentence(exc)))
+        else:
+            done.append(name)
+
+    _report(request, done, refused, lambda names: _(
+        "Uploaded into the Capsule: %(names)s.") % {"names": ", ".join(names)})
+    return _back_to_files(lease)
 
 
 def _checked(request, field: str) -> list:
@@ -401,6 +859,9 @@ def file_from_vault(request, uuid):
     # A name is only meaningful for ONE file: giving four files one name would
     # write four files over each other.
     name = (request.POST.get("name") or "").strip() if len(ids) == 1 else ""
+    # A FOLDER is meaningful for any number: each file keeps its title and
+    # lands under it — the folder a person pressed "Copy in" on.
+    folder = (request.POST.get("folder") or "").strip().strip("/")
 
     done, refused = [], []
     for picked in ids:
@@ -408,8 +869,9 @@ def file_from_vault(request, uuid):
         if vault_file is None:
             refused.append((picked, _("no such file")))
             continue
+        target = name or (f"{folder}/{vault_file.title}" if folder else "")
         try:
-            transfer.to_capsule(lease=lease, vault_file=vault_file, name=name,
+            transfer.to_capsule(lease=lease, vault_file=vault_file, name=target,
                                 actor=request.user, replace=replace)
         except (transfer.TransferRefused, FilesRefused,
                 RuntimeUnavailable) as exc:

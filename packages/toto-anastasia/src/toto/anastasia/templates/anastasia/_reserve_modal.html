@@ -1,0 +1,100 @@
+{% load i18n %}
+{% comment %}Reserve a Capsule, in a modal.
+
+`company/_modal.html`'s shape: the list page owns `modal`, and a refused POST
+re-renders the page with `open_modal = "reserve"`, so this opens again holding
+what was TYPED and the sentence that refused it. The redirect-and-toast it
+replaced lost five numbers and a name.
+
+The pool's free capacity is repeated inside: the modal covers the strip that
+says it, and "reserve" is a choice made against that number.
+{% endcomment %}
+<div x-show="modal === 'reserve'" x-cloak x-transition.opacity
+     class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     role="dialog" aria-modal="true" aria-labelledby="reserve-title">
+  <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="modal = ''"></div>
+  <form method="post" action="{% url 'anastasia:reserve' %}"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+        class="relative z-10 flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border shadow-2xl">
+    {% csrf_token %}
+    <div class="flex items-center justify-between gap-4 border-b border-current/15 px-5 py-4">
+      <h2 id="reserve-title" class="text-lg font-bold">{% trans "Reserve a Capsule" %}</h2>
+      <button type="button" @click="modal = ''" class="inline-flex h-9 w-9 items-center justify-center rounded"
+              aria-label="{% trans 'Close' %}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+    </div>
+
+    <div class="min-h-0 flex-1 space-y-4 overflow-auto p-5">
+      {% if reserve_error %}
+        <p class="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-500"
+           role="alert" data-testid="reserve-error">{{ reserve_error }}</p>
+      {% endif %}
+
+      <p class="text-xs opacity-60">
+        {% trans "Available now:" %}
+        {% for row in pool_rows %}{{ row.label }} {{ row.available }}{% if not forloop.last %} · {% endif %}{% endfor %}
+      </p>
+
+      <label class="block text-sm font-semibold">{% trans "Name" %}
+        <input name="name" required maxlength="60" value="{{ reserve.name }}"
+               placeholder="{% trans 'thesis' %}"
+               :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+               class="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm font-normal">
+        <span class="mt-1 block text-xs font-normal opacity-60">
+          {% trans "How you will pick it when you start heavy work." %}
+        </span>
+      </label>
+
+      <div class="grid gap-3 sm:grid-cols-4">
+        <label class="block text-xs font-semibold">{% trans "CPU (mCPU)" %}
+          <input name="cpu_millicores" type="number" min="100" step="100" value="{{ reserve.cpu_millicores }}"
+                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="mt-1 w-full rounded-xl border px-3 py-2 text-sm font-normal">
+        </label>
+        <label class="block text-xs font-semibold">{% trans "RAM (MB)" %}
+          <input name="ram_mb" type="number" min="128" step="128" value="{{ reserve.ram_mb }}"
+                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="mt-1 w-full rounded-xl border px-3 py-2 text-sm font-normal">
+        </label>
+        <label class="block text-xs font-semibold">{% trans "Scratch (MB)" %}
+          <input name="scratch_mb" type="number" min="64" step="64" value="{{ reserve.scratch_mb }}"
+                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="mt-1 w-full rounded-xl border px-3 py-2 text-sm font-normal">
+        </label>
+        <label class="block text-xs font-semibold">{% trans "Processes" %}
+          <input name="pids" type="number" min="32" step="32" value="{{ reserve.pids }}"
+                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="mt-1 w-full rounded-xl border px-3 py-2 text-sm font-normal">
+        </label>
+      </div>
+      <p class="text-xs opacity-60">
+        {% blocktrans %}Scratch is memory-backed, so a Capsule holds RAM + scratch while it is mounted. Reservations last {{ lease_days }} days.{% endblocktrans %}
+      </p>
+
+      {% comment %}Only where the host actually runs the proxy. A checkbox whose
+      only possible outcome is a refused mount is worse than no checkbox. And
+      it is asked HERE, once: it is a property of the reservation, and the Env
+      tab's installs depend on it.{% endcomment %}
+      {% if egress_offered %}
+      <label class="flex items-start gap-2 text-sm">
+        <input name="egress" type="checkbox" class="mt-0.5" {% if reserve.egress %}checked{% endif %} />
+        <span>
+          {% trans "Let jobs in this Capsule reach the internet" %}
+          <span class="block text-xs opacity-60">
+            {% comment %}States the limit in the same breath as the offer: a
+            person who reads only the label must not come away thinking they
+            reserved unrestricted internet.{% endcomment %}
+            {% trans "Through this platform's filtering proxy, and only to the destinations your administrator allows. Everything else is refused. Installing packages needs this, and it cannot be changed after reserving." %}
+          </span>
+        </span>
+      </label>
+      {% endif %}
+    </div>
+
+    <div class="flex justify-end gap-2 border-t border-current/15 px-5 py-4">
+      <button type="button" @click="modal = ''" class="rounded border px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="rounded px-4 py-2 text-sm font-bold">{% trans "Reserve" %}</button>
+    </div>
+  </form>
+</div>
