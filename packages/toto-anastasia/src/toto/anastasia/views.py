@@ -44,7 +44,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from toto.ui import PageProcessor
 
-from . import choices, conf, families, install, samples as samples_mod, services, transfer
+from . import choices, conf, families, install, panes, samples as samples_mod, services, transfer
 from .limits import Limits, LimitsError
 from .models import CapsuleEvent, ComputeLease, Execution, CapsuleRuntime, InstallRun
 from .runtime import RuntimeUnavailable, get_backend
@@ -190,50 +190,17 @@ def index(request):
                   PageProcessor().decorate(_index_context(request), request))
 
 
-#: How many files the vault picker draws. `build_file_tree`'s own default,
-#: named here because the page SAYS the number when it truncates — a tree that
-#: silently stopped at 500 reads as "these are all your files".
-VAULT_PICKER_LIMIT = 500
-
-#: How many files one copy may move. The desk loops over the checked set, and
-#: each file is a read and a write through the executor: an unbounded loop
-#: would hold a worker for as long as somebody cared to tick boxes. Twenty-five
-#: is well past what anyone picks by hand and well short of a request that
-#: times out.
+#: How many files one upload may carry. The view loops over them inside one
+#: request, each a write through the executor: an unbounded loop would hold a
+#: worker for as long as somebody cared to pick files. Twenty-five is well past
+#: what anyone picks by hand and well short of a request that times out.
+#: Transfers with the Vault need no such cap — they are one file per request
+#: (`desk_transfer.py`).
 MAX_FILES_PER_TRANSFER = 25
 
 
 def _files_supported() -> bool:
     return getattr(get_backend(), "capsule_files", None) is not None
-
-
-def _vault_choices(user) -> dict:
-    """What the copy-in picker offers: the person's own files, as a tree.
-
-    `toto.vault.filetree.build_file_tree` with `vault/_file_tree.html` — the
-    same bucket → folder → file picker the vault, OCR and the antivirus panel
-    draw, rather than a fourth shape for the same act. Rows carry the file's
-    **id**, which is what that partial's checkbox mode offers; the bearer API
-    takes a `key` because a client outside this database has no id to use, and
-    the desk has one.
-
-    `include_public=False`: this copies a file INTO somebody's Capsule, which
-    is an act on the file, not a read of it. Readable and mine are different
-    questions and this is the second one.
-    """
-    from toto.vault.filetree import accessible_files, build_file_tree
-    from toto.vault.models import Bucket
-
-    mine = accessible_files(user, include_public=False).filter(owner=user)
-    return {
-        "vault_tree": build_file_tree(user, queryset=mine,
-                                      limit=VAULT_PICKER_LIMIT),
-        "vault_files_truncated": mine.count() > VAULT_PICKER_LIMIT,
-        "vault_picker_limit": VAULT_PICKER_LIMIT,
-        "max_files_per_transfer": MAX_FILES_PER_TRANSFER,
-        "buckets": list(Bucket.objects.filter(owner=user)
-                        .order_by("name").values("name", "slug")),
-    }
 
 
 #: (field, label, unit) for the pool strip. A list rather than four template
@@ -706,9 +673,11 @@ def take_reading(request, uuid):
 # the same search, sort and tree/grid switch, copied from
 # `vault/public_file_list.html` because toto-base is pull-only and has no
 # partial to include — with the Vault's buttons that mean nothing in a Capsule
-# left out and the two transfers added. Every write is an ordinary form that
-# redirects back to the tab with a sentence. Nothing here decides anything the
-# API does not: a name is judged by the executor, a vault file is looked up
+# left out. Upload and delete are ordinary forms that redirect back to the tab
+# with a sentence. Copying to and from the Vault belongs to the transfer window
+# — the Vault and the Capsule side by side, one file per JSON request
+# (`desk_transfer.py`), so it can show progress. Nothing here decides anything
+# the API does not: a name is judged by the executor, a vault file is looked up
 # owner-filtered, and the copy out is metered by `transfer.to_bucket` — the
 # same function, so the same price.
 
@@ -870,7 +839,12 @@ def capsule_files(request, uuid):
         "area_budget": budget,
         "held_percent": min(100, round(held * 100 / budget)) if budget else 0,
         "max_upload_bytes": MAX_UPLOAD_BYTES,
-        **_vault_choices(request.user),
+        "max_files_per_transfer": MAX_FILES_PER_TRANSFER,
+        # The transfer window's Vault pane — built only when the window is
+        # drawn, because a listing of every file the person owns is not free.
+        "transfer_vault": (panes.vault_pane_rows(request.user)
+                           if supported and context["mounted"]
+                           else {"items": [], "truncated": False, "limit": 0}),
     })
     return _render_tab(request, "anastasia/capsule_files.html", context)
 
@@ -1018,22 +992,6 @@ def file_upload(request, uuid):
     return _back_to_files(lease)
 
 
-def _checked(request, field: str) -> list:
-    """The checked set, bounded and deduplicated, order kept.
-
-    Bounded HERE rather than in the template: the limit is what the server
-    will do, and a form that can be re-posted by hand must be refused by the
-    thing that acts, not by the thing that renders.
-    """
-    seen, out = set(), []
-    for raw in request.POST.getlist(field):
-        value = (raw or "").strip()
-        if value and value not in seen:
-            seen.add(value)
-            out.append(value)
-    return out[:MAX_FILES_PER_TRANSFER]
-
-
 def _report(request, done: list, refused: list, sentence):
     """One success line naming the count, one error line naming each refusal.
 
@@ -1046,104 +1004,6 @@ def _report(request, done: list, refused: list, sentence):
     for name, why in refused:
         messages.error(request, _("%(name)s: %(why)s")
                        % {"name": name, "why": why})
-
-
-@login_required
-@require_POST
-def file_from_vault(request, uuid):
-    """Copy checked Vault files into the Capsule. Unmetered.
-
-    A loop over the checked set rather than one file per request: the picker
-    is a tree of checkboxes, and a person who ticked four boxes means four
-    copies. Each is still judged on its own — `transfer.to_capsule` per file,
-    the executor's name rule per name — so one refusal stops that file and
-    nothing else.
-    """
-    from toto.vault.models import VaultFile
-
-    from .executor_backend import FilesRefused
-
-    lease = _own_lease(request, uuid)
-    ids = _checked(request, "file")
-    if not ids:
-        messages.error(request, _("Pick at least one file to copy in."))
-        return _back_to_files(lease)
-
-    # Owner-filtered in the QUERY: somebody else's file and no file at all are
-    # the same absence, as `_own_lease` makes them for a Capsule. A picked id
-    # that is not the caller's simply is not in this map.
-    wanted = {str(f.pk): f for f in
-              VaultFile.objects.filter(owner=request.user, pk__in=[
-                  i for i in ids if i.isdigit()])}
-    replace = bool(request.POST.get("replace"))
-    # A name is only meaningful for ONE file: giving four files one name would
-    # write four files over each other.
-    name = (request.POST.get("name") or "").strip() if len(ids) == 1 else ""
-    # A FOLDER is meaningful for any number: each file keeps its title and
-    # lands under it — the folder a person pressed "Copy in" on.
-    folder = (request.POST.get("folder") or "").strip().strip("/")
-
-    done, refused = [], []
-    for picked in ids:
-        vault_file = wanted.get(picked)
-        if vault_file is None:
-            refused.append((picked, _("no such file")))
-            continue
-        target = name or (f"{folder}/{vault_file.title}" if folder else "")
-        try:
-            transfer.to_capsule(lease=lease, vault_file=vault_file, name=target,
-                                actor=request.user, replace=replace)
-        except (transfer.TransferRefused, FilesRefused,
-                RuntimeUnavailable) as exc:
-            refused.append((vault_file.title, _files_sentence(exc)))
-        else:
-            done.append(vault_file.title)
-
-    _report(request, done, refused, lambda names: _(
-        "Copied into the Capsule: %(names)s.") % {"names": ", ".join(names)})
-    return _back_to_files(lease)
-
-
-@login_required
-@require_POST
-def file_to_vault(request, uuid):
-    """Copy checked Capsule files into one of the person's buckets.
-
-    METERED AND SCANNED like an upload — `transfer.to_bucket` is the one
-    function that does it, for this door and the API's. Each file is charged
-    on its own, so a refusal part way through leaves the copies already made
-    paid for and the rest not made.
-    """
-    from toto.vault.models import Bucket
-
-    from .executor_backend import FilesRefused
-
-    lease = _own_lease(request, uuid)
-    names = _checked(request, "name")
-    if not names:
-        messages.error(request, _("Pick at least one file to copy out."))
-        return _back_to_files(lease)
-    bucket = get_object_or_404(
-        Bucket, owner=request.user,
-        slug=(request.POST.get("bucket") or "").strip())
-    title = (request.POST.get("title") or "").strip() if len(names) == 1 else ""
-
-    done, refused = [], []
-    for name in names:
-        try:
-            vault_file = transfer.to_bucket(
-                lease=lease, name=name, bucket=bucket, actor=request.user,
-                title=title)
-        except (transfer.TransferRefused, FilesRefused,
-                RuntimeUnavailable) as exc:
-            refused.append((name, _files_sentence(exc)))
-        else:
-            done.append(vault_file.title)
-
-    _report(request, done, refused, lambda titles: _(
-        "Copied into “%(bucket)s”: %(names)s.")
-        % {"bucket": bucket.name, "names": ", ".join(titles)})
-    return _back_to_files(lease)
 
 
 @login_required

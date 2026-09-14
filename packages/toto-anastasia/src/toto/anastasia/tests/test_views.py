@@ -780,17 +780,6 @@ class FilesTabTests(DeskTestCase):
 
     # -- fixtures ----------------------------------------------------------
 
-    def _vault_file(self, title="thesis.txt", body=b"seven years", owner=None):
-        from django.core.files.base import ContentFile
-
-        from toto.vault.models import VaultFile
-
-        vf = VaultFile(owner=owner or self.user, title=title, bucket=self.bucket,
-                       file_type="text", key=title.replace(".", "-"))
-        vf.file.save(title, ContentFile(body), save=False)
-        vf.save()
-        return vf
-
     def _area(self, **files):
         FakeRuntimeBackend.files[str(self.lease.uuid)] = dict(files)
 
@@ -830,11 +819,6 @@ class FilesTabTests(DeskTestCase):
                               "the Vault's markup changed — re-copy it into "
                               "capsule_files.html and update this list")
                 self.assertIn(fragment, page)
-
-    def test_the_vault_picker_is_drawn_once(self):
-        self._vault_file()
-        response = self.client.get(self._url("capsule_files"))
-        self.assertEqual(response.content.decode().count('name="file"'), 1)
 
     def test_an_unmounted_capsule_says_to_mount_and_asks_nobody(self):
         """The area exists between mounts; READING it needs the executor, and
@@ -1003,147 +987,9 @@ class FilesTabTests(DeskTestCase):
         self.assertIn("at least one file to upload",
                       " ".join(self._messages(response)))
 
-    # -- in from the vault ----------------------------------------------------
-
-    def test_the_checked_vault_files_are_copied_in(self):
-        first, second = self._vault_file(), self._vault_file("notes.txt", b"n")
-        response = self.client.post(self._url("file_from_vault"),
-                                    {"file": [first.pk, second.pk]})
-        self._back_to_files(response)
-        self.assertEqual(self._held(), {"thesis.txt": b"seven years",
-                                        "notes.txt": b"n"})
-
-    def test_copying_in_to_a_folder_keeps_each_title(self):
-        first, second = self._vault_file(), self._vault_file("notes.txt", b"n")
-        self.client.post(self._url("file_from_vault"),
-                         {"file": [first.pk, second.pk], "folder": "in/"})
-        self.assertEqual(sorted(self._held()), ["in/notes.txt", "in/thesis.txt"])
-
-    def test_copying_in_is_not_metered(self):
-        """Nothing durable is created: the bytes land in capacity the person
-        already reserved and already holds, and they die with it."""
-        from toto.vault.models import VaultUsageEvent
-
-        vf = self._vault_file()
-        before = VaultUsageEvent.objects.count()
-        self.client.post(self._url("file_from_vault"), {"file": [vf.pk]})
-        self.assertEqual(VaultUsageEvent.objects.count(), before)
-
-    def test_somebody_elses_file_is_refused_and_the_rest_copied(self):
-        mine = self._vault_file()
-        theirs = self._vault_file("secret.txt", b"theirs", owner=self.other)
-        response = self.client.post(self._url("file_from_vault"),
-                                    {"file": [mine.pk, theirs.pk]})
-        self.assertEqual(list(self._held()), ["thesis.txt"])
-        said = " ".join(self._messages(response))
-        self.assertIn("no such file", said)
-        # The refusal never confirms the file exists.
-        self.assertNotIn("secret", said)
-
-    def test_a_name_is_only_honoured_for_a_single_file(self):
-        """One name for four files would write four files over each other."""
-        one, two = self._vault_file(), self._vault_file("notes.txt", b"n")
-        self.client.post(self._url("file_from_vault"),
-                         {"file": [one.pk], "name": "in/data.txt"})
-        self.assertIn("in/data.txt", self._held())
-        self._area()
-        self.client.post(self._url("file_from_vault"),
-                         {"file": [one.pk, two.pk], "name": "in/data.txt"})
-        self.assertEqual(sorted(self._held()), ["notes.txt", "thesis.txt"])
-
-    def test_more_than_the_limit_is_bounded_by_the_server(self):
-        files = [self._vault_file(f"f{i}.txt", b"x") for i in range(6)]
-        with mock.patch.object(views, "MAX_FILES_PER_TRANSFER", 3):
-            self.client.post(self._url("file_from_vault"),
-                             {"file": [f.pk for f in files]})
-        self.assertEqual(len(self._held()), 3)
-
-    def test_picking_nothing_is_a_sentence_not_a_500(self):
-        response = self.client.post(self._url("file_from_vault"), {})
-        self._back_to_files(response)
-        self.assertIn("at least one", " ".join(self._messages(response)))
-
-    # -- out to a bucket --------------------------------------------------------
-
-    def test_the_checked_capsule_files_become_vault_files(self):
-        from toto.vault.models import VaultFile
-
-        self._area(**{"result.csv": b"a,b\n", "log.txt": b"ok\n"})
-        response = self.client.post(
-            self._url("file_to_vault"),
-            {"name": ["result.csv", "log.txt"], "bucket": self.bucket.slug})
-        self._back_to_files(response)
-        titles = sorted(VaultFile.objects.filter(owner=self.user)
-                        .values_list("title", flat=True))
-        self.assertEqual(titles, ["log.txt", "result.csv"])
-
-    def test_copying_out_is_metered_like_an_upload(self):
-        """The same function the API calls, so the same price — this is the
-        third door onto durable storage and must not be the cheap one."""
-        from toto.vault.models import VaultUsageEvent
-
-        self._area(**{"result.csv": b"a,b\n"})
-        before = VaultUsageEvent.objects.count()
-        self.client.post(self._url("file_to_vault"),
-                         {"name": ["result.csv"], "bucket": self.bucket.slug})
-        self.assertGreater(VaultUsageEvent.objects.count(), before)
-
-    def test_the_copy_out_modal_says_what_it_costs(self):
-        self._area(**{"a.txt": b"a"})
-        response = self.client.get(self._url("capsule_files"))
-        self.assertContains(response, "charged and virus-scanned")
-
-    def test_a_title_is_only_honoured_for_a_single_file(self):
-        from toto.vault.models import VaultFile
-
-        self._area(**{"a.txt": b"a", "b.txt": b"b"})
-        self.client.post(self._url("file_to_vault"),
-                         {"name": ["a.txt", "b.txt"], "bucket": self.bucket.slug,
-                          "title": "One title"})
-        self.assertEqual(
-            sorted(VaultFile.objects.values_list("title", flat=True)),
-            ["a.txt", "b.txt"])
-
-    def test_somebody_elses_bucket_is_a_404(self):
-        from toto.vault.models import Bucket
-
-        theirs = Bucket.objects.create(name="Theirs", slug="theirs",
-                                       owner=self.other, storage_backend="local")
-        self._area(**{"a.txt": b"a"})
-        response = self.client.post(self._url("file_to_vault"),
-                                    {"name": ["a.txt"], "bucket": theirs.slug})
-        self.assertEqual(response.status_code, 404)
-
-    def test_one_refusal_names_that_file_and_the_others_still_copy(self):
-        from toto.vault.models import VaultFile
-
-        self._area(**{"good.txt": b"g", "bad.txt": b"b"})
-        FakeRuntimeBackend.refuse_files = {"bad.txt"}
-        response = self.client.post(
-            self._url("file_to_vault"),
-            {"name": ["good.txt", "bad.txt"], "bucket": self.bucket.slug})
-        self._back_to_files(response)
-        self.assertEqual(list(VaultFile.objects.values_list("title", flat=True)),
-                         ["good.txt"])
-        self.assertIn("bad.txt", " ".join(self._messages(response)))
-
-    def test_an_unreachable_runtime_reads_as_the_runtimes_fault(self):
-        """Not the person's mistake, and the sentence must say so."""
-        from toto.anastasia.runtime import RuntimeUnavailable
-
-        class Down(FakeRuntimeBackend):
-            def capsule_file_read(self, lease, name):
-                raise RuntimeUnavailable("the fake manager is down")
-
-        self._area(**{"a.txt": b"a"})
-        with mock.patch("toto.anastasia.runtime.get_backend",
-                        return_value=Down()):
-            response = self.client.post(
-                self._url("file_to_vault"),
-                {"name": ["a.txt"], "bucket": self.bucket.slug})
-        self._back_to_files(response)
-        self.assertIn("runtime is not answering",
-                      " ".join(self._messages(response)))
+    # Copying to and from the Vault is the transfer window's, one file per
+    # JSON request: `test_transfer_window.py` holds those doors to the rules
+    # these tests held the one-way form doors to.
 
     # -- deleting ---------------------------------------------------------------
 
@@ -1160,8 +1006,8 @@ class FilesTabTests(DeskTestCase):
         self.assertIn("gone", " ".join(self._messages(response)))
 
     def test_every_write_refuses_a_get(self):
-        for name in ("file_from_vault", "file_to_vault", "file_delete",
-                     "file_upload"):
+        for name in ("file_delete", "file_upload", "files_copy_in",
+                     "files_copy_out"):
             with self.subTest(name=name):
                 self.assertEqual(self.client.get(self._url(name)).status_code,
                                  405)

@@ -18,10 +18,11 @@ Vault concept or a plugin keyed on a Vault row. Rename, move and new folder are
 out because the executor has no verb for them: its four verbs are deliberately
 all there is (`executor/files.py`).
 
-WHAT IS ADDED: checkboxes and Copy to Vault (metered and scanned like an
-upload, and the modal says so), Copy in from the Vault (free), Upload from this
-computer (free, bounded by the area budget), and the gauge — this area is
-KEPT, NOT DURABLE, and the sentence beside it says what that means.
+WHAT IS ADDED: the transfer window (`_transfer_window.html`) — the Vault and
+this Capsule side by side, copying either way with a progress bar, and saying
+what each direction costs; Upload from this computer (free, bounded by the area
+budget); and the gauge — this area is KEPT, NOT DURABLE, and the sentence beside
+it says what that means.
 {% endcomment %}
 
 {% block capsule_content %}
@@ -137,23 +138,14 @@ KEPT, NOT DURABLE, and the sentence beside it says what that means.
               class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition">
         <i class="fa-solid fa-upload"></i>{% trans "Upload" %}
       </button>
-      {% if vault_tree %}
-      <button type="button" @click="openVault('')"
-              :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
-              class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition">
-        <i class="fa-solid fa-file-import"></i>{% trans "Copy in from the Vault" %}
-      </button>
-      {% endif %}
-      {% if buckets %}
-      {% comment %}!! on the disabled bind: an undefined dotted expression binds
-      to "" and a boolean attribute is STAMPED by "", not removed.{% endcomment %}
-      <button type="button" @click="copyOutModal = true" :disabled="!!(picked.length === 0)"
+      {% comment %}ONE DOOR, BOTH DIRECTIONS: the transfer window, which listens
+      for `open-transfer`.{% endcomment %}
+      <button type="button" data-testid="open-transfer"
+              @click="$dispatch('open-transfer', {folder: ''})"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-              class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40">
-        <i class="fa-solid fa-file-export"></i>
-        <span>{% trans "Copy to Vault" %}</span><span x-show="picked.length" x-text="'(' + picked.length + ')'"></span>
+              class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition hover:opacity-85">
+        <i class="fa-solid fa-right-left"></i>{% trans "Transfer with the Vault" %}
       </button>
-      {% endif %}
 
       <div x-show="items.length > 0" class="flex rounded-lg overflow-hidden border"
            :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
@@ -209,14 +201,13 @@ KEPT, NOT DURABLE, and the sentence beside it says what that means.
                 <span x-show="item.n_files > 0" x-text="item.n_files + ' ' + (item.n_files === 1 ? '{% trans "file" %}' : '{% trans "files" %}')"></span>
               </span>
               <div class="ml-auto flex items-center gap-1 shrink-0">
-                {% if vault_tree %}
-                <button type="button" @click.stop="openVault(item.path)"
+                <button type="button" @click.stop="$dispatch('open-transfer', {folder: item.path})"
                         :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-accent-dark/15' : 'border-accent-2 text-text-main-light hover:bg-accent-light/15'"
-                        class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition">
-                  <i class="fa-solid fa-file-import text-xs"></i>
-                  <span class="hidden sm:inline">{% trans "Copy in" %}</span>
+                        class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition"
+                        title="{% trans 'Transfer with the Vault, into this folder' %}">
+                  <i class="fa-solid fa-right-left text-xs"></i>
+                  <span class="hidden sm:inline">{% trans "Transfer" %}</span>
                 </button>
-                {% endif %}
                 <button type="button" @click.stop="openUpload(item.path)"
                         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                         class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition hover:opacity-85">
@@ -233,9 +224,6 @@ KEPT, NOT DURABLE, and the sentence beside it says what that means.
                    ? 'border-b border-accent-1/20 hover:bg-bubble-bg-dark/50'
                    : 'border-b border-accent-2/20 hover:bg-bubble-bg-light/50'"
                  class="group flex items-center gap-3 py-2.5 pr-4 text-sm transition-colors duration-150">
-              <input type="checkbox" class="shrink-0 rounded border" :value="item.path" x-model="picked"
-                     :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-                     :aria-label="'{% trans "Select" %} ' + item.title">
               <i class="fa-regular fa-file w-3 shrink-0 text-xs opacity-30"></i>
               <span class="font-medium truncate flex-1 min-w-0" x-text="item.title" :title="item.path"></span>
               <span x-show="item.ext" class="shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold uppercase"
@@ -285,8 +273,6 @@ KEPT, NOT DURABLE, and the sentence beside it says what that means.
           <template x-for="item in gridFiles" :key="`grid-${item.id}`">
             <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
                  class="group relative flex flex-col gap-2 rounded-xl border p-3 shadow-sm transition hover:shadow-md">
-              <input type="checkbox" class="absolute left-2 top-2 rounded border" :value="item.path" x-model="picked"
-                     :aria-label="'{% trans "Select" %} ' + item.title">
               <div class="flex items-center justify-center h-12 opacity-70">
                 <i class="fa-solid text-3xl" :class="[fileTypeIcon(item.file_type), fileTypeColor(item.file_type)]"></i>
               </div>
@@ -345,98 +331,8 @@ KEPT, NOT DURABLE, and the sentence beside it says what that means.
     </form>
   </div>
 
-  {# ----------------------------------------------------- copy out modal #}
-  {% if buckets %}
-  <div x-show="copyOutModal" x-cloak x-transition.opacity @keydown.escape.window="copyOutModal = false"
-       class="fixed inset-0 z-50 flex items-center justify-center p-4">
-    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="copyOutModal = false"></div>
-    <form method="post" action="{% url 'anastasia:file_to_vault' capsule.uuid %}"
-          :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
-          class="relative z-10 flex max-h-[85vh] w-full max-w-md flex-col rounded-2xl border p-6 shadow-2xl space-y-4" @click.stop>
-      {% csrf_token %}
-      <template x-for="name in picked" :key="name">
-        <input type="hidden" name="name" :value="name">
-      </template>
-      <h2 class="flex items-center gap-2 text-base font-bold">
-        <i class="fa-solid fa-file-export text-sm"></i>
-        <span>{% trans "Copy to Vault" %}</span><span x-text="'(' + picked.length + ')'"></span>
-      </h2>
-      <ul class="max-h-40 space-y-1 overflow-y-auto rounded-lg px-3 py-2 text-xs font-mono opacity-70"
-          :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'">
-        <template x-for="name in picked" :key="'copy-' + name"><li class="truncate" x-text="name"></li></template>
-      </ul>
-      {% comment %}SAYS WHAT IT COSTS, before the button and not on an invoice.
-      `transfer.to_bucket` is the same function the upload door's sequence is
-      checked against.{% endcomment %}
-      <p class="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs">
-        <i class="fa-solid fa-coins mr-1.5"></i>{% trans "This stores the files in your Vault, and is charged and virus-scanned exactly like uploading them." %}
-      </p>
-      <label class="block text-xs font-semibold">{% trans "Bucket" %}
-        <select name="bucket" required
-                :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-                class="mt-1 block w-full rounded-xl border px-3 py-2.5 text-sm font-normal">
-          {% for bucket in buckets %}<option value="{{ bucket.slug }}">{{ bucket.name }}</option>{% endfor %}
-        </select>
-      </label>
-      {% comment %}A title names ONE file. Four files under one title would be
-      four rows a person cannot tell apart.{% endcomment %}
-      <label class="block text-xs font-semibold" x-show="picked.length === 1">{% trans "Title (optional)" %}
-        <input name="title" maxlength="255"
-               :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-               class="mt-1 block w-full rounded-xl border px-3 py-2.5 text-sm font-normal">
-      </label>
-      <div class="flex gap-3">
-        <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-                class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition hover:opacity-90">{% trans "Copy to Vault" %}</button>
-        <button type="button" @click="copyOutModal = false"
-                :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
-                class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">{% trans "Cancel" %}</button>
-      </div>
-    </form>
-  </div>
-  {% endif %}
-
-  {# ------------------------------------------------ copy in modal (Vault) #}
-  {% comment %}`vault/_file_tree.html` is the platform's picker — the partial the
-  Vault, OCR and the antivirus panel use — in checkbox mode, drawn ONCE for the
-  tab. Rows carry the file's id; the bearer API takes a key because a client
-  outside this database has no id, and the desk has one.{% endcomment %}
-  {% if vault_tree %}
-  <div x-show="vaultModal" x-cloak x-transition.opacity @keydown.escape.window="vaultModal = false"
-       class="fixed inset-0 z-50 flex items-center justify-center p-4">
-    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="vaultModal = false"></div>
-    <form method="post" action="{% url 'anastasia:file_from_vault' capsule.uuid %}"
-          :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
-          class="relative z-10 flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border shadow-2xl" @click.stop>
-      {% csrf_token %}
-      <input type="hidden" name="folder" :value="vaultFolder">
-      <div class="border-b border-current/10 p-5 pb-3">
-        <h2 class="flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-file-import"></i>{% trans "Copy files in from the Vault" %}
-        </h2>
-        <p class="mt-1 text-sm opacity-70">
-          <span x-show="vaultFolder">{% trans "Into" %} <span class="font-mono" x-text="vaultFolder"></span>. </span>
-          {% blocktrans %}Copying in costs nothing — you already hold this Capsule's capacity. At most {{ max_files_per_transfer }} at a time.{% endblocktrans %}
-        </p>
-      </div>
-      <div class="min-h-0 flex-1 overflow-y-auto p-5 py-3">
-        {% include "vault/_file_tree.html" with tree=vault_tree tree_input_name="file" tree_value_field="id" %}
-        {% if vault_files_truncated %}
-          {% comment %}A truncated picker that said nothing would read as "these
-          are all your files".{% endcomment %}
-          <p class="mt-2 text-xs opacity-60">{% blocktrans %}Your {{ vault_picker_limit }} most recent files are listed here.{% endblocktrans %}</p>
-        {% endif %}
-      </div>
-      <div class="flex flex-wrap items-center gap-3 border-t border-current/10 p-5 pt-3">
-        <label class="flex items-center gap-1 text-xs"><input type="checkbox" name="replace"> {% trans "Replace files of the same name" %}</label>
-        <span class="flex-1"></span>
-        <button type="button" class="text-sm underline opacity-70" @click="vaultModal = false">{% trans "Cancel" %}</button>
-        <button :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-                class="rounded-xl px-4 py-2 text-sm font-bold">{% trans "Copy in" %}</button>
-      </div>
-    </form>
-  </div>
-  {% endif %}
+  {# -------------------------------------------------- the transfer window #}
+  {% include "anastasia/_transfer_window.html" %}
 
   {# --------------------------------------------------------- upload modal #}
   <div x-show="uploadModal" x-cloak x-transition.opacity @keydown.escape.window="uploadModal = false"
@@ -519,13 +415,8 @@ function capsuleFiles() {
     viewMode: storedView,
     sortMode: 'name_asc',
     dateFilter: '',
-    // The checked set: paths inside the area.
-    picked: [],
     deleteModal: false,
     deleteName: '',
-    copyOutModal: false,
-    vaultModal: false,
-    vaultFolder: '',
     uploadModal: false,
     uploadFolder: '',
     uploadNames: [],
@@ -696,7 +587,6 @@ function capsuleFiles() {
       this.imageModal = true;
     },
     openDelete(item) { this.deleteName = item.path; this.deleteModal = true; },
-    openVault(folder) { this.vaultFolder = folder || ''; this.vaultModal = true; },
     openUpload(folder) {
       this.uploadFolder = folder || '';
       this.uploadNames = [];

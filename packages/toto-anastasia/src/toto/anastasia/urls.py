@@ -6,7 +6,7 @@ a malformed one should 404 at the router rather than reach a query.
 
 from django.urls import path
 
-from . import views
+from . import desk_transfer, views
 
 app_name = "anastasia"
 
@@ -50,10 +50,14 @@ urlpatterns = [
     path("<uuid:uuid>/files/download/", views.file_download,
          name="file_download"),
     path("<uuid:uuid>/files/upload/", views.file_upload, name="file_upload"),
-    path("<uuid:uuid>/files/from-vault/", views.file_from_vault,
-         name="file_from_vault"),
-    path("<uuid:uuid>/files/to-vault/", views.file_to_vault,
-         name="file_to_vault"),
+    # The transfer window: one file per JSON request, in both directions
+    # (`desk_transfer.py`), and both panes fresh after a batch.
+    path("<uuid:uuid>/files/copy-in/", desk_transfer.copy_in,
+         name="files_copy_in"),
+    path("<uuid:uuid>/files/copy-out/", desk_transfer.copy_out,
+         name="files_copy_out"),
+    path("<uuid:uuid>/files/transfer-rows/", desk_transfer.rows,
+         name="files_transfer_rows"),
     path("<uuid:uuid>/files/delete/", views.file_delete, name="file_delete"),
     # API tokens. Above the operator block and below the capsule verbs,
     # because that is the order a person meets them: reserve a capsule, then

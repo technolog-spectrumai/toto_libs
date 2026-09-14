@@ -1,0 +1,534 @@
+{% load i18n %}
+{% comment %}THE TRANSFER WINDOW — the person's Vault and this Capsule, side by side.
+
+Two panes and two arrows: tick files on either side, choose where they go on the
+other, press the arrow that points there. Side by side from `lg` up; stacked on
+a phone, Vault above and Capsule below, with the arrows turned to point down and
+up — `vault/copy_files.html`'s one breakpoint, for the same reason.
+
+ONE FILE PER REQUEST, ONE AFTER ANOTHER (`desk_transfer.py`), so the bar is real
+progress: it moves when a file is done, and each file lands a line saying what
+happened to it — the antivirus scan modal's shape. A refusal about one file
+stops nothing else; a refusal about the person (quota, funds) or the platform (a
+runtime that stopped answering) stops the batch, because every later file would
+meet it too. "Stop after this file" is always there while it runs.
+
+WHAT EACH DIRECTION COSTS is said in the footer before anything is pressed: into
+the Capsule is free, out of it is charged and virus-scanned exactly like an
+upload.
+
+The rows are the two panes' own shapes (`panes.vault_pane_rows`,
+`views._vault_rows`). Row ids are positional and change on refresh, so what is
+open, ticked and chosen is kept on real keys — bucket, folder and file primary
+keys on the Vault side, paths on the Capsule side — and the rows are KEYED by
+them too: keyed by position, a refresh made Alpine reuse one file's checkbox for
+another, and a charged copy out could take a file drawn unticked.
+
+Opened by an `open-transfer` window event, with `{folder}` to preselect where in
+the Capsule files should land. Lives inside `capsuleView()`, whose `humanBytes`
+it uses.
+{% endcomment %}
+{{ transfer_vault.items|json_script:"transfer-vault-rows" }}
+<div x-data="capsuleTransfer()" x-init="init()"
+     @open-transfer.window="openWith($event.detail)"
+     @keydown.escape.window="if (open && phase !== 'running') close()">
+  {% csrf_token %}
+  <div x-show="open" x-cloak data-testid="transfer-window"
+       class="fixed inset-0 z-[9200] flex items-stretch justify-center sm:items-center sm:p-4"
+       role="dialog" aria-modal="true" aria-labelledby="transfer-title">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"
+         @click="if (phase !== 'running') close()"></div>
+
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 flex h-full w-full flex-col border shadow-2xl sm:h-[92vh] sm:max-w-7xl sm:rounded-2xl">
+
+      {# ------------------------------------------------------------ header #}
+      <div class="flex shrink-0 items-center justify-between gap-3 border-b border-current/10 px-4 py-3 sm:px-5">
+        <h2 id="transfer-title" class="flex items-center gap-2 text-base font-bold sm:text-lg">
+          <i class="fa-solid fa-right-left"></i>{% trans "Transfer between the Vault and this Capsule" %}
+        </h2>
+        <button type="button" @click="close()" :disabled="!!(phase === 'running')"
+                class="inline-flex h-9 w-9 items-center justify-center rounded disabled:opacity-30"
+                aria-label="{% trans 'Close' %}"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      {# -------------------------------------------------------------- body #}
+      <div class="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5 lg:overflow-hidden">
+        <div class="grid grid-cols-1 gap-3 lg:h-full lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+
+          {# ------------------------------------------------------ the Vault #}
+          <section :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                   class="flex min-h-0 flex-col overflow-hidden rounded-xl border shadow-sm" data-pane="vault">
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+                 class="flex shrink-0 flex-wrap items-center gap-2 border-b border-current/10 px-4 py-3">
+              <i class="fa-solid fa-vault"></i>
+              <h3 class="font-bold">{% trans "Vault" %}</h3>
+              <span class="text-xs opacity-60" x-text="vPicked.length + ' {% trans "selected" %}'"></span>
+              <input x-model="vFilter" type="search" autocomplete="off" spellcheck="false"
+                     placeholder="{% trans 'Filter…' %}"
+                     :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+                     class="ml-auto w-32 rounded-lg border px-2 py-1 text-xs focus:outline-none">
+            </div>
+            <p class="shrink-0 border-b border-current/10 px-4 py-1.5 text-xs">
+              <span class="opacity-60">{% trans "Copies from the Capsule go into" %}</span>
+              <span class="font-semibold" :class="vTarget ? '' : 'text-amber-600'"
+                    x-text="vTarget ? vTarget.label : '{% trans "— choose a bucket or folder below" %}'"></span>
+            </p>
+            <div class="min-h-[12rem] max-h-[40vh] overflow-y-auto lg:max-h-none lg:flex-1">
+              <template x-for="row in vRows" :key="row.t === 'file' ? 'vf-' + row.fpk : 'v-' + vKey(row)">
+                <div x-show="vShow(row)">
+                  <template x-if="row.t !== 'file'">
+                    <div :style="`padding-left: calc(${row.depth} * 1.25rem + 0.75rem)`"
+                         :class="[darkMode ? 'border-b border-accent-1/40' : 'border-b border-accent-2/40',
+                                  vIsTarget(row) ? (darkMode ? 'bg-accent-dark/15' : 'bg-accent-light/15') : '']"
+                         class="flex items-center gap-2 py-2.5 pr-3 text-sm transition-colors duration-150 select-none">
+                      <button type="button" @click="vToggle(row)" class="shrink-0"
+                              aria-label="{% trans 'Expand or collapse' %}">
+                        <i class="fa-solid fa-chevron-right w-3 text-xs opacity-40 transition-transform duration-200"
+                           :class="vIsOpen(row) ? 'rotate-90' : ''"></i>
+                      </button>
+                      <button type="button" @click="vChoose(row)"
+                              class="flex min-w-0 flex-1 items-center gap-2 text-left"
+                              :class="row.writable ? 'cursor-pointer' : 'cursor-default'"
+                              :title="row.writable ? '{% trans "Copy files from the Capsule into here" %}' : '{% trans "Files cannot be copied into here: it is remote, or not yours." %}'">
+                        <i class="fa-solid shrink-0"
+                           :class="[row.t === 'bucket' ? 'fa-database' : (vIsOpen(row) ? 'fa-folder-open' : 'fa-folder'),
+                                    darkMode ? 'text-accent-dark' : 'text-accent-light']"></i>
+                        <span class="truncate" :class="row.t === 'bucket' ? 'font-bold' : 'font-semibold'"
+                              x-text="row.name || '{% trans "Without a bucket" %}'"></span>
+                        <span x-show="row.t === 'bucket' && !row.local"
+                              class="shrink-0 rounded-full border px-2 py-0.5 text-[10px] opacity-60">{% trans "remote" %}</span>
+                      </button>
+                      <span x-show="vIsTarget(row)"
+                            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                            class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                        <i class="fa-solid fa-check"></i> {% trans "destination" %}</span>
+                    </div>
+                  </template>
+                  <template x-if="row.t === 'file'">
+                    <label :style="`padding-left: calc(${row.depth} * 1.25rem + 0.75rem)`"
+                           :class="[darkMode ? 'border-b border-accent-1/20' : 'border-b border-accent-2/20',
+                                    row.copyable ? 'cursor-pointer' : 'opacity-50']"
+                           :title="row.copyable ? '' : whyLabel(row.why)"
+                           class="group flex items-center gap-3 py-2 pr-3 text-sm transition-colors duration-150">
+                      <input type="checkbox" class="shrink-0 rounded border"
+                             :value="String(row.fpk)" x-model="vPicked"
+                             :disabled="!!(!row.copyable || phase === 'running')">
+                      <i class="fa-regular fa-file w-3 shrink-0 text-xs opacity-30"></i>
+                      <span class="min-w-0 flex-1 truncate" x-text="row.title"></span>
+                      <span x-show="!row.copyable" class="shrink-0 text-[10px]" x-text="whyLabel(row.why)"></span>
+                      <span class="hidden shrink-0 text-xs opacity-50 sm:block" x-text="humanBytes(row.size)"></span>
+                    </label>
+                  </template>
+                </div>
+              </template>
+              <p x-show="!vRows.length" class="p-6 text-center text-sm opacity-60">{% trans "Your Vault has no buckets or files yet." %}</p>
+              {% if transfer_vault.truncated %}
+                <p class="p-3 text-xs opacity-60">{% blocktrans with limit=transfer_vault.limit %}Only the first {{ limit }} of your files are listed here.{% endblocktrans %}</p>
+              {% endif %}
+            </div>
+          </section>
+
+          {# ----------------------------------------------------- the arrows #}
+          <div class="flex items-center justify-center gap-2 lg:flex-col">
+            <button type="button" @click="copyIn()" data-testid="copy-in"
+                    :disabled="!!(phase === 'running' || !vPicked.length)"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
+              <span>{% trans "Copy to Capsule" %}</span>
+              <i class="fa-solid fa-arrow-down lg:hidden"></i><i class="fa-solid fa-arrow-right hidden lg:inline"></i>
+            </button>
+            <button type="button" @click="copyOut()" data-testid="copy-out"
+                    :disabled="!!(phase === 'running' || !cPicked.length || !vTarget)"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
+              <i class="fa-solid fa-arrow-up lg:hidden"></i><i class="fa-solid fa-arrow-left hidden lg:inline"></i>
+              <span>{% trans "Copy to Vault" %}</span>
+            </button>
+          </div>
+
+          {# ---------------------------------------------------- the Capsule #}
+          <section :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                   class="flex min-h-0 flex-col overflow-hidden rounded-xl border shadow-sm" data-pane="capsule">
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+                 class="flex shrink-0 flex-wrap items-center gap-2 border-b border-current/10 px-4 py-3">
+              <i class="fa-solid fa-cube"></i>
+              <h3 class="font-bold">{{ capsule.name }}</h3>
+              <span class="text-xs opacity-60" x-text="cPicked.length + ' {% trans "selected" %}'"></span>
+              <input x-model="cFilter" type="search" autocomplete="off" spellcheck="false"
+                     placeholder="{% trans 'Filter…' %}"
+                     :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+                     class="ml-auto w-32 rounded-lg border px-2 py-1 text-xs focus:outline-none">
+            </div>
+            <p class="shrink-0 border-b border-current/10 px-4 py-1.5 text-xs">
+              <span class="opacity-60">{% trans "Copies from the Vault go into" %}</span>
+              <span class="font-mono font-semibold" x-text="cTarget || '{% trans "the top of the files area" %}'"></span>
+            </p>
+            <label class="flex shrink-0 cursor-pointer items-center gap-2 border-b border-current/10 px-4 py-1.5 text-xs">
+              <input type="checkbox" x-model="replace" class="rounded border" :disabled="!!(phase === 'running')">
+              <span>{% trans "Replace files of the same name" %}</span>
+            </label>
+            <div class="min-h-[12rem] max-h-[40vh] overflow-y-auto lg:max-h-none lg:flex-1">
+              <div @click="cTarget = ''"
+                   :class="[darkMode ? 'border-b border-accent-1/40' : 'border-b border-accent-2/40',
+                            cTarget === '' ? (darkMode ? 'bg-accent-dark/15' : 'bg-accent-light/15') : '']"
+                   class="flex cursor-pointer items-center gap-2 py-2.5 pl-3 pr-3 text-sm select-none">
+                <i class="fa-solid fa-cube" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+                <span class="flex-1 font-bold">{% trans "Files area" %}</span>
+                <span x-show="cTarget === ''"
+                      :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                      class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                  <i class="fa-solid fa-check"></i> {% trans "destination" %}</span>
+              </div>
+              <template x-for="row in cRows" :key="'c-' + row.t + ':' + row.path">
+                <div x-show="cShow(row)">
+                  <template x-if="row.t === 'dir'">
+                    <div :style="`padding-left: calc(${row.depth + 1} * 1.25rem + 0.75rem)`"
+                         :class="[darkMode ? 'border-b border-accent-1/40' : 'border-b border-accent-2/40',
+                                  cTarget === row.path ? (darkMode ? 'bg-accent-dark/15' : 'bg-accent-light/15') : '']"
+                         class="flex items-center gap-2 py-2.5 pr-3 text-sm transition-colors duration-150 select-none">
+                      <button type="button" @click="cToggle(row)" class="shrink-0"
+                              aria-label="{% trans 'Expand or collapse' %}">
+                        <i class="fa-solid fa-chevron-right w-3 text-xs opacity-40 transition-transform duration-200"
+                           :class="cOpen[row.path] ? 'rotate-90' : ''"></i>
+                      </button>
+                      <button type="button" @click="cChoose(row)" class="flex min-w-0 flex-1 items-center gap-2 text-left">
+                        <i class="fa-solid shrink-0"
+                           :class="[cOpen[row.path] ? 'fa-folder-open' : 'fa-folder', darkMode ? 'text-accent-dark' : 'text-accent-light']"></i>
+                        <span class="truncate font-semibold" x-text="row.name"></span>
+                      </button>
+                      <span x-show="cTarget === row.path"
+                            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                            class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                        <i class="fa-solid fa-check"></i> {% trans "destination" %}</span>
+                    </div>
+                  </template>
+                  <template x-if="row.t === 'file'">
+                    <label :style="`padding-left: calc(${row.depth + 1} * 1.25rem + 0.75rem)`"
+                           :class="darkMode ? 'border-b border-accent-1/20' : 'border-b border-accent-2/20'"
+                           class="group flex cursor-pointer items-center gap-3 py-2 pr-3 text-sm transition-colors duration-150">
+                      <input type="checkbox" class="shrink-0 rounded border"
+                             :value="row.path" x-model="cPicked"
+                             :disabled="!!(phase === 'running')">
+                      <i class="fa-regular fa-file w-3 shrink-0 text-xs opacity-30"></i>
+                      <span class="min-w-0 flex-1 truncate" x-text="row.title" :title="row.path"></span>
+                      <span class="hidden shrink-0 text-xs opacity-50 sm:block" x-text="humanBytes(row.size)"></span>
+                    </label>
+                  </template>
+                </div>
+              </template>
+              <p x-show="!cRows.length" class="p-6 text-center text-sm opacity-60">{% trans "Nothing in this Capsule's files area yet." %}</p>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      {# ------------------------------------------------ progress and costs #}
+      <div class="shrink-0 space-y-2 border-t border-current/10 px-4 py-3 sm:px-5">
+        <div x-show="phase === 'idle'" class="grid gap-1 text-xs opacity-70 sm:grid-cols-2">
+          <p><i class="fa-solid fa-arrow-right-to-bracket mr-1"></i>{% trans "Copying into the Capsule costs nothing — you already hold its capacity." %}</p>
+          <p><i class="fa-solid fa-coins mr-1"></i>{% trans "Copying into the Vault stores the files, and is charged and virus-scanned exactly like uploading them." %}</p>
+        </div>
+
+        <div x-show="phase !== 'idle'" x-cloak class="space-y-2" data-testid="transfer-progress">
+          <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span class="font-semibold" x-text="directionLabel() + (phase === 'done' && skipped ? ' — {% trans "stopped" %}' : '')"></span>
+            <span class="opacity-60" x-text="done + ' / ' + total + (bytesTotal ? ' · ' + humanBytes(bytesDone) + ' / ' + humanBytes(bytesTotal) : '')"></span>
+            <span class="opacity-60" x-text="progressPercent + '%'"></span>
+          </div>
+          <div role="progressbar" :aria-valuenow="progressPercent" aria-valuemin="0" aria-valuemax="100"
+               :class="darkMode ? 'bg-white/10' : 'bg-black/10'" class="h-2 overflow-hidden rounded-full">
+            <div :class="failed && phase === 'done' && failed === total ? 'bg-red-500' : (darkMode ? 'bg-accent-dark' : 'bg-accent-light')"
+                 class="h-full rounded-full transition-all duration-300"
+                 :style="'width:' + progressPercent + '%'"></div>
+          </div>
+          <p x-show="phase === 'running' && current" class="truncate text-xs opacity-70"
+             x-text="'{% trans "Copying" %} ' + current + '…'"></p>
+          <p x-show="phase === 'done'" class="text-xs font-semibold"
+             x-text="copiedCount() + ' {% trans "copied" %}' + (failed ? ', ' + failed + ' {% trans "not copied" %}' : '') + (skipped ? ', ' + skipped + ' {% trans "skipped after the stop" %}' : '')"></p>
+          <ul class="max-h-32 space-y-1 overflow-y-auto text-xs">
+            <template x-for="(outcome, index) in outcomes" :key="index">
+              <li class="flex items-start gap-2">
+                <i class="fa-solid mt-0.5 shrink-0"
+                   :class="outcome.ok ? 'fa-circle-check text-emerald-500' : (outcome.skipped ? 'fa-circle-minus opacity-50' : 'fa-triangle-exclamation text-amber-500')"></i>
+                <span class="min-w-0">
+                  <span class="font-mono font-semibold" x-text="outcome.label"></span>
+                  <span x-show="outcome.message" class="opacity-70" x-text="' — ' + outcome.message"></span>
+                </span>
+              </li>
+            </template>
+          </ul>
+          <div class="flex justify-end gap-2">
+            <button type="button" x-show="phase === 'running'" @click="stopRequested = true"
+                    :disabled="!!stopRequested"
+                    class="rounded-xl border px-3 py-1.5 text-xs font-semibold disabled:opacity-50">
+              {% trans "Stop after this file" %}</button>
+            <button type="button" x-show="phase === 'done'" @click="phase = 'idle'"
+                    class="rounded-xl border px-3 py-1.5 text-xs font-semibold">{% trans "Done" %}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function capsuleTransfer() {
+  function read(id) {
+    const el = document.getElementById(id);
+    if (!el) return [];
+    try { return JSON.parse(el.textContent); } catch (e) { return []; }
+  }
+  return {
+    open: false,
+    vRows: read('transfer-vault-rows'),
+    cRows: read('capsule-files-items'),
+    vById: {}, cById: {},
+    vOpen: {}, cOpen: {},
+    vFilter: '', cFilter: '',
+    vMatch: null, cMatch: null,
+    // Ticked files: Vault primary keys as strings, Capsule paths.
+    vPicked: [], cPicked: [],
+    // Where copies go: {bucket, directory, key, label} on the Vault side; a
+    // path ('' is the top of the area) on the Capsule side.
+    vTarget: null, cTarget: '',
+    phase: 'idle', direction: '',
+    // Copying INTO the Capsule over a file of the same name; off unless asked.
+    replace: false,
+    total: 0, done: 0, failed: 0, skipped: 0, bytesTotal: 0, bytesDone: 0,
+    current: '', outcomes: [], stopRequested: false, changedCapsule: false,
+    urls: {
+      in: "{% url 'anastasia:files_copy_in' capsule.uuid %}",
+      out: "{% url 'anastasia:files_copy_out' capsule.uuid %}",
+      rows: "{% url 'anastasia:files_transfer_rows' capsule.uuid %}",
+    },
+
+    init() {
+      this.index();
+      // Buckets start open: a person looking for a folder should see one.
+      for (const row of this.vRows) if (row.t === 'bucket') this.vOpen[this.vKey(row)] = true;
+      this.$watch('vFilter', () => { this.vMatch = this.match(this.vRows, this.vById, this.vFilter); });
+      this.$watch('cFilter', () => { this.cMatch = this.match(this.cRows, this.cById, this.cFilter); });
+    },
+    index() {
+      this.vById = {}; for (const row of this.vRows) this.vById[row.id] = row;
+      this.cById = {}; for (const row of this.cRows) this.cById[row.id] = row;
+    },
+    openWith(detail) {
+      const folder = (detail && detail.folder) || '';
+      // ALWAYS set, empty included: the toolbar's button means the top of the
+      // area, not wherever a folder row's button last pointed.
+      this.cTarget = folder;
+      if (folder) {
+        for (const row of this.cRows) {
+          if (row.t === 'dir' && (folder === row.path || folder.startsWith(row.path + '/'))) this.cOpen[row.path] = true;
+        }
+      }
+      this.open = true;
+    },
+    close() {
+      if (this.phase === 'running') return;
+      this.open = false;
+      // The Files tab behind this window was drawn before the copies; a copy
+      // into the Capsule is not in it until the page is drawn again.
+      if (this.changedCapsule) window.location.reload();
+    },
+
+    // -- keys, visibility, filtering -----------------------------------------
+    vKey(row) { return row.t === 'bucket' ? 'b' + (row.bpk === null ? 'none' : row.bpk) : 'd' + row.dpk; },
+    match(rows, byId, text) {
+      const q = (text || '').trim().toLowerCase();
+      if (!q) return null;
+      const keep = {};
+      for (const row of rows) {
+        if (row.t !== 'file' || !(row.title || '').toLowerCase().includes(q)) continue;
+        keep[row.id] = true;
+        let pid = row.pid;
+        while (pid !== null && pid !== undefined && !keep[pid]) {
+          keep[pid] = true;
+          const parent = byId[pid];
+          pid = parent ? parent.pid : null;
+        }
+      }
+      return keep;
+    },
+    vShow(row) {
+      if (this.vMatch) return !!this.vMatch[row.id];
+      let pid = row.pid;
+      while (pid !== null && pid !== undefined) {
+        const parent = this.vById[pid];
+        if (!parent || !this.vOpen[this.vKey(parent)]) return false;
+        pid = parent.pid;
+      }
+      return true;
+    },
+    cShow(row) {
+      if (this.cMatch) return !!this.cMatch[row.id];
+      let pid = row.pid;
+      while (pid !== null && pid !== undefined) {
+        const parent = this.cById[pid];
+        if (!parent || !this.cOpen[parent.path]) return false;
+        pid = parent.pid;
+      }
+      return true;
+    },
+    vIsOpen(row) { return !!this.vOpen[this.vKey(row)]; },
+    vToggle(row) { const key = this.vKey(row); this.vOpen[key] = !this.vOpen[key]; },
+    cToggle(row) { this.cOpen[row.path] = !this.cOpen[row.path]; },
+
+    // -- destinations ----------------------------------------------------------
+    bucketOf(row) {
+      let cursor = row;
+      while (cursor && cursor.t !== 'bucket') cursor = this.vById[cursor.pid];
+      return cursor || null;
+    },
+    vChoose(row) {
+      this.vOpen[this.vKey(row)] = true;
+      if (!row.writable) return;
+      const bucket = this.bucketOf(row);
+      if (!bucket) return;
+      this.vTarget = {
+        bucket: bucket.slug,
+        directory: row.t === 'dir' ? row.dpk : '',
+        key: this.vKey(row),
+        label: row.t === 'dir' ? bucket.name + ' / ' + row.path : bucket.name,
+      };
+    },
+    vIsTarget(row) { return !!(this.vTarget && this.vTarget.key === this.vKey(row)); },
+    cChoose(row) { this.cOpen[row.path] = true; this.cTarget = row.path; },
+    whyLabel(why) {
+      return {
+        encrypted: "{% trans 'encrypted in the Vault' %}",
+        remote: "{% trans 'in a remote bucket' %}",
+      }[why] || '';
+    },
+
+    // -- copying -----------------------------------------------------------------
+    get progressPercent() { return this.total ? Math.round((this.done / this.total) * 100) : 0; },
+    copiedCount() { return this.outcomes.filter(o => o.ok).length; },
+    directionLabel() {
+      return this.direction === 'in'
+        ? "{% trans 'Copying into the Capsule' %}"
+        : "{% trans 'Copying into the Vault' %}";
+    },
+    csrf() {
+      const el = this.$root.querySelector('[name=csrfmiddlewaretoken]');
+      return el ? el.value : '';
+    },
+    async copyIn() {
+      const jobs = [];
+      for (const pk of this.vPicked) {
+        const row = this.vRows.find(r => r.t === 'file' && String(r.fpk) === pk);
+        if (!row || !row.copyable) continue;
+        jobs.push({label: row.title, size: row.size,
+                   body: {file: row.fpk, folder: this.cTarget, replace: this.replace ? '1' : ''}});
+      }
+      await this.run('in', this.urls.in, jobs);
+      this.vPicked = [];
+    },
+    async copyOut() {
+      if (!this.vTarget) return;
+      const jobs = [];
+      for (const path of this.cPicked) {
+        const row = this.cRows.find(r => r.t === 'file' && r.path === path);
+        if (!row) continue;
+        jobs.push({label: row.path, size: row.size,
+                   body: {name: row.path, bucket: this.vTarget.bucket, directory: this.vTarget.directory}});
+      }
+      await this.run('out', this.urls.out, jobs);
+      this.cPicked = [];
+    },
+    async run(direction, url, jobs) {
+      if (this.phase === 'running' || !jobs.length) return;
+      this.direction = direction;
+      this.phase = 'running';
+      this.total = jobs.length; this.done = 0; this.failed = 0; this.skipped = 0;
+      this.bytesTotal = jobs.reduce((sum, job) => sum + (job.size || 0), 0);
+      this.bytesDone = 0;
+      this.outcomes = []; this.stopRequested = false;
+      // SEQUENTIAL ON PURPOSE: one file finishes before the next starts, so
+      // the bar is real, and one click never fans out a stampede of executor
+      // round trips.
+      for (const job of jobs) {
+        if (this.stopRequested) {
+          // Counted, so the sentence under the bar cannot read "1 not copied"
+          // when none of ten reached where they were going.
+          this.skipped += 1;
+          this.outcomes.push({label: job.label, ok: false, skipped: true,
+                              message: "{% trans 'not copied — the transfer was stopped' %}"});
+          continue;
+        }
+        this.current = job.label;
+        const outcome = await this.one(url, job);
+        this.outcomes.push(outcome);
+        if (outcome.ok) {
+          this.bytesDone += job.size || 0;
+          if (direction === 'in') this.changedCapsule = true;
+        } else {
+          this.failed += 1;
+          if (outcome.stop) this.stopRequested = true;
+        }
+        this.done += 1;
+      }
+      this.current = '';
+      this.phase = 'done';
+      await this.refresh();
+    },
+    async one(url, job) {
+      const body = new FormData();
+      for (const [key, value] of Object.entries(job.body)) {
+        body.append(key, value === null || value === undefined ? '' : value);
+      }
+      try {
+        const response = await fetch(url, {
+          method: 'POST', credentials: 'same-origin', body,
+          headers: {'Accept': 'application/json', 'X-CSRFToken': this.csrf()},
+        });
+        if (!(response.headers.get('Content-Type') || '').includes('application/json')) {
+          // Not an answer this door gives, and every later file would meet it
+          // too: the Capsule released in another tab (404); the session gone
+          // (a redirect to sign in, or a 401/403 — a refused CSRF token is a
+          // 403); or the server, or a proxy in front of it, failing. A failure
+          // says nothing about whether THIS file landed, so it must not read as
+          // "sign in again" — a retry could make a second, charged copy.
+          const status = response.status;
+          const message = status === 404
+            ? "{% trans 'This Capsule is no longer reserved. Reload the page.' %}"
+            : (response.redirected || status === 401 || status === 403)
+              ? "{% trans 'Your session has expired. Reload the page and try again.' %}"
+              : "{% trans 'The server failed while copying this file. Check where it was going before copying it again.' %}" + ' (HTTP ' + status + ')';
+          return {label: job.label, ok: false, stop: true, message};
+        }
+        const data = await response.json();
+        if (data.ok) return {label: job.label, ok: true, message: ''};
+        return {label: job.label, ok: false, stop: !!data.stop,
+                message: data.error || "{% trans 'refused' %}"};
+      } catch (e) {
+        return {label: job.label, ok: false, stop: true,
+                message: "{% trans 'The page could not reach the server.' %}"};
+      }
+    },
+    async refresh() {
+      try {
+        const response = await fetch(this.urls.rows, {credentials: 'same-origin',
+                                                      headers: {'Accept': 'application/json'}});
+        if (!response.ok) return;
+        const data = await response.json();
+        this.vRows = data.vault.items;
+        if (data.capsule.answered) this.cRows = data.capsule.items;
+        this.index();
+        // A tick on a file that is gone is no tick. Reassigning also makes
+        // every checkbox re-read its state against the new rows.
+        this.vPicked = this.vPicked.filter(pk => this.vRows.some(r => r.t === 'file' && String(r.fpk) === pk));
+        this.cPicked = this.cPicked.filter(path => this.cRows.some(r => r.t === 'file' && r.path === path));
+        this.vMatch = this.match(this.vRows, this.vById, this.vFilter);
+        this.cMatch = this.match(this.cRows, this.cById, this.cFilter);
+        // A destination that no longer exists is no destination.
+        if (this.vTarget && !this.vRows.some(r => r.t !== 'file' && this.vKey(r) === this.vTarget.key)) {
+          this.vTarget = null;
+        }
+      } catch (e) { /* the panes keep what they showed; the outcome list says what happened */ }
+    },
+  };
+}
+</script>

@@ -185,9 +185,12 @@ def to_bucket(*, lease, name: str, bucket, actor, title: str = "",
        half-made row behind". This matters more here than at the upload door:
        these bytes were written by a runner, and a runner may have been
        compromised by the very document it was asked to process;
-    4. **a key unique per OWNER**, not per bucket — the vault's detail,
-       download, delete and move endpoints look up by key alone, and a
-       cross-bucket collision makes those ambiguous;
+    4. **a key unique per OWNER and per BUCKET** — the vault's detail,
+       download, delete and move endpoints look up by key alone, so a key the
+       owner already uses in another bucket makes those ambiguous; and the
+       database allows one key per bucket, where a bucket can hold other
+       people's files (a gateway upload is one), so a key free for the owner
+       can still be taken in the bucket;
     5. **record then charge**, with an idempotency key, after the row exists so
        the charge has something to point at.
     """
@@ -204,6 +207,17 @@ def to_bucket(*, lease, name: str, bucket, actor, title: str = "",
         raise TransferRefused(
             "this deployment's runtime cannot read files from a Capsule",
             code="unsupported")
+
+    # THE DESTINATION FOLDER, judged before a byte is read or a price asked.
+    # This function stores `directory` as it is given, so a folder from
+    # another bucket or another owner would put a file somewhere its owner
+    # never chose. Every door checks it too; it lives here as well so the next
+    # door cannot forget it.
+    if directory is not None and (
+            directory.bucket_id != getattr(bucket, "pk", None)
+            or directory.owner_id != getattr(actor, "pk", None)):
+        raise TransferRefused(
+            "that folder is not one of yours in that bucket", code="bad_folder")
 
     data = reader(lease, name)
     size = len(data)
@@ -239,15 +253,18 @@ def to_bucket(*, lease, name: str, bucket, actor, title: str = "",
                 verdict.as_error().get("error", "That file was refused."),
                 code="infected")
 
-    # -- 4. a key unique per owner -------------------------------------------
+    # -- 4. a key unique per owner, and per bucket ----------------------------
+    from django.core.files.base import ContentFile
+    from django.db import IntegrityError, transaction
+    from django.db.models import Q
+
     base_key = slugify(final_title) or slugify(leaf) or "file"
     key = base_key
     counter = 1
-    while VaultFile.objects.filter(owner=actor, key=key).exists():
+    while VaultFile.objects.filter(Q(owner=actor) | Q(bucket=bucket),
+                                   key=key).exists():
         key = f"{base_key}-{counter}"
         counter += 1
-
-    from django.core.files.base import ContentFile
 
     vault_file = VaultFile(
         owner=actor,
@@ -260,7 +277,19 @@ def to_bucket(*, lease, name: str, bucket, actor, title: str = "",
         directory=directory,
     )
     vault_file.file.save(leaf, ContentFile(data), save=False)
-    vault_file.save()
+    try:
+        # A savepoint: a lost race must leave the caller's transaction usable.
+        with transaction.atomic():
+            vault_file.save()
+    except IntegrityError as exc:
+        # Another copy took the key between the check above and this insert.
+        # The bytes are written and no row points at them — delete them, or
+        # they are disk nobody is billed for and nothing ever sweeps. Nothing
+        # has been recorded or charged yet.
+        vault_file.file.delete(save=False)
+        raise TransferRefused(
+            "a file with that name was added to that bucket at the same moment; "
+            "copy it again", code="name_taken") from exc
     if verdict is not None:
         scanning.record(vault_file, verdict, user=actor, door="capsule")
 
