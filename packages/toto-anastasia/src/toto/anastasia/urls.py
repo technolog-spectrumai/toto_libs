@@ -37,6 +37,9 @@ urlpatterns = [
     # The retained series behind the History charts. Counts only — see
     # `views.samples`.
     path("<uuid:uuid>/samples/", views.samples, name="samples"),
+    # A reading on demand, through the beat's own `samples.take` and its
+    # throttle. POST: it writes a row.
+    path("<uuid:uuid>/samples/take/", views.take_reading, name="take_reading"),
     path("<uuid:uuid>/storage/", views.storage, name="storage"),
     # The files area. The Files TAB owns `files/`; the raw JSON listing moved
     # to `files/list/` on 2026-09-14. Every write is a thin door onto the same

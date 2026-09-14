@@ -20,7 +20,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, override_settings
 from django.urls import reverse
 
-from toto.anastasia import choices, install, services, views
+from toto.anastasia import choices, install, samples, services, views
 from toto.anastasia.models import CapsuleEvent, ComputeLease, Execution, InstallRun
 from toto.anastasia.samples import CapsuleSample
 
@@ -412,6 +412,116 @@ class SamplesTests(DeskTestCase):
         for measure in payload["measures"]:
             for value in measure["values"]:
                 self.assertNotIsInstance(value, str)
+
+
+class TakeReadingTests(DeskTestCase):
+    """"Take a reading now", on the History tab."""
+
+    def setUp(self):
+        super().setUp()
+        self.lease = services.reserve(owner=self.user, name="lab",
+                                      limits=RUNNABLE)
+        services.mount(lease=self.lease)
+
+    def _url(self, name="take_reading", lease=None):
+        return reverse(f"anastasia:{name}", args=[(lease or self.lease).uuid])
+
+    def _press(self, **extra):
+        return self.client.post(self._url(), HTTP_ACCEPT="application/json",
+                                **extra)
+
+    # -- what the tab offers --------------------------------------------------
+
+    def test_the_history_tab_offers_the_button_for_a_mounted_capsule(self):
+        response = self.client.get(self._url("capsule_history"))
+        self.assertContains(response, 'data-testid="take-reading"')
+        self.assertContains(response, f'action="{self._url()}"')
+        self.assertContains(response, "Take a reading now to start the history.")
+
+    def test_an_unmounted_capsule_draws_it_disabled_with_the_reason(self):
+        services.unmount(lease=self.lease)
+        response = self.client.get(self._url("capsule_history"))
+        self.assertContains(response, 'data-testid="take-reading-disabled"')
+        self.assertNotContains(response, 'data-testid="take-reading"')
+        self.assertContains(response, "Mount this Capsule to take readings.")
+
+    # -- pressing it ------------------------------------------------------------
+
+    def test_a_press_takes_a_reading_the_chart_then_draws(self):
+        self.assertEqual(samples.series(self.lease)["points"], 0)
+        body = self._press().json()
+        self.assertEqual((body["recorded"], body["reason"]), (True, ""))
+        self.assertEqual(body["message"], "A reading was taken.")
+        self.assertEqual(samples.series(self.lease)["points"], 1)
+
+    def test_a_second_press_is_throttled_and_says_when_the_next_can_be_taken(self):
+        """A button that bypassed the throttle would fill the table at one row
+        a click."""
+        self._press()
+        body = self._press().json()
+        self.assertFalse(body["recorded"])
+        self.assertEqual(body["reason"], samples.TOO_SOON)
+        self.assertGreater(body["next_in_seconds"], 0)
+        self.assertIn("The next can be taken in 5 minutes", body["message"])
+        self.assertEqual(samples.CapsuleSample.objects.filter(lease=self.lease).count(), 1)
+
+    def test_an_unmounted_capsule_is_an_answer_not_an_error(self):
+        services.unmount(lease=self.lease)
+        response = self._press()
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual((body["recorded"], body["reason"]),
+                         (False, samples.NOT_MOUNTED))
+        self.assertIn("not mounted", body["message"])
+        self.assertFalse(samples.CapsuleSample.objects.exists())
+
+    def test_without_javascript_it_returns_to_history_with_the_sentence(self):
+        response = self.client.post(self._url())
+        self.assertRedirects(response, self._url("capsule_history"),
+                             fetch_redirect_response=False)
+        self.assertIn("A reading was taken.", self._messages(response))
+
+    # -- who may press it -------------------------------------------------------
+
+    def test_it_is_owner_only_post_only_and_gone_with_the_reservation(self):
+        self.assertEqual(self.client.get(self._url()).status_code, 405)
+        theirs = services.reserve(owner=self.other, name="theirs", limits=SMALL)
+        self.assertEqual(self._press_on(theirs).status_code, 404)
+        services.release(lease=self.lease)
+        self.assertEqual(self._press().status_code, 404)
+        self.assertFalse(samples.CapsuleSample.objects.exists())
+
+    def _press_on(self, lease):
+        return self.client.post(self._url(lease=lease),
+                                HTTP_ACCEPT="application/json")
+
+    # -- one writer ---------------------------------------------------------------
+
+    def test_the_button_and_the_beat_write_through_one_function(self):
+        """`CapsuleSample` once shipped with a recorder and no caller. A second
+        writer that skipped a step — the throttle-first order, the tolerated
+        storage failure — would be the same failure, quieter. So `record` has
+        exactly one caller, `samples.take`, and both doors go through it."""
+        import re
+        from pathlib import Path
+
+        from toto.anastasia import tasks
+
+        package = Path(samples.__file__).resolve().parent
+        callers = []
+        for path in sorted(package.rglob("*.py")):
+            if {"tests", "migrations"} & set(path.relative_to(package).parts):
+                continue
+            text = path.read_text(encoding="utf-8")
+            # Both spellings of a second writer: calling `record` from outside,
+            # and creating the row directly.
+            if path.name != "samples.py" and re.search(
+                    r"\bsamples(?:_mod)?\.record\(|\bCapsuleSample(?:\.objects\.create)?\(",
+                    text):
+                callers.append(path.name)
+        self.assertEqual(callers, [], "something other than samples.take writes a reading")
+        self.assertIn("samples.take(", Path(tasks.__file__).read_text(encoding="utf-8"))
+        self.assertIn("samples_mod.take(", Path(views.__file__).read_text(encoding="utf-8"))
 
 
 # --------------------------------------------------------------------------- #

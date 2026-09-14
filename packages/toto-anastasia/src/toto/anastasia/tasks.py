@@ -70,29 +70,19 @@ def reconcile() -> dict:
     # manager that restarted is noticed without anyone having to look.
     refreshed = recorded = 0
     for lease in ComputeLease.objects.open().select_related("runtime"):
-        runtime = services.runtime_for(lease)
-        if not runtime.is_mounted:
+        # THE HISTORY TABLE IS WRITTEN THROUGH `samples.take`, by this tick and
+        # by a person's "Take a reading now" on the History tab, and by nothing
+        # else. `CapsuleSample` once shipped with a recorder and no caller, so
+        # every chart drawn from it was empty; the refresh, the throttle-first
+        # order that spares the storage walk, and the tolerated storage failure
+        # all live in `take` so the two callers cannot drift apart.
+        try:
+            taken = samples.take(lease)
+        except Exception:  # noqa: BLE001 — one Capsule's reading must not cost the others theirs
+            log.exception("anastasia: could not take a reading of %s", lease.uuid)
             continue
-        services.refresh_runtime(lease)
-        refreshed += 1
-        # THE HISTORY TABLE IS WRITTEN HERE AND NOWHERE ELSE. `CapsuleSample`
-        # shipped with a recorder and a pruner and no caller for either, so
-        # every chart drawn from it was empty and every row it would have
-        # kept was never written. The throttle is asked FIRST, because the
-        # storage reading is a tree walk on the executor and this tick runs
-        # every two minutes; a walk whose result is thrown away is the one
-        # cost here worth avoiding.
-        if not samples.due(lease):
-            continue
-        storage = None
-        read_storage = getattr(backend, "storage", None)
-        if read_storage is not None:
-            try:
-                storage = read_storage(lease) or None
-            except Exception:  # noqa: BLE001 — a reading is information, not a precondition
-                log.warning("anastasia: no storage reading for %s", lease.uuid)
-        if samples.record(lease, services.capsule_report(lease), storage):
-            recorded += 1
+        refreshed += taken["refreshed"]
+        recorded += taken["recorded"]
     result["refreshed"] = refreshed
     result["recorded"] = recorded
     # Installs nobody is watching still have to close. A run is advanced by

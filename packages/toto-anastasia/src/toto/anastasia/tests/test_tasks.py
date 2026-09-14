@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+from unittest import mock
 
 from django.test import override_settings
 from django.utils import timezone
@@ -122,10 +123,12 @@ class ReconcileTaskTests(AnastasiaTestCase):
 
 
 class HistoryRecordingTests(AnastasiaTestCase):
-    """The beat writes `CapsuleSample`, and is the only thing that does.
+    """The beat writes `CapsuleSample` through `samples.take`.
 
     Until 2026-09-11 nothing called `samples.record` or `samples.prune`, so
-    the history table shipped empty and unbounded at once.
+    the history table shipped empty and unbounded at once. Since 2026-09-14 a
+    person can take a reading too — through the same `take`, which
+    `test_views.TakeReadingTests` holds to being the only writer.
     """
 
     def setUp(self):
@@ -213,6 +216,27 @@ class HistoryRecordingTests(AnastasiaTestCase):
         self.assertEqual(result["recorded"], 1)
         self.assertIsNone(CapsuleSample.objects.get(lease=self.mounted)
                           .storage_bytes)
+
+    def test_one_capsule_failing_costs_the_others_nothing(self):
+        """A reading that raises for one Capsule must not cost the next one
+        its reading, nor the install sweep and prune that follow the loop."""
+        from toto.anastasia import samples
+
+        second = services.reserve(owner=self.user, name="second", limits=RUNNABLE)
+        services.mount(lease=second)
+        real_take = samples.take
+
+        def take(lease, **kwargs):
+            if lease.pk == self.mounted.pk:
+                raise RuntimeError("this one is broken")
+            return real_take(lease, **kwargs)
+
+        with mock.patch.object(samples, "take", side_effect=take):
+            result = self._reconcile_with(FakeRuntimeBackend)
+        self.assertEqual(result["recorded"], 1)
+        self.assertTrue(samples.CapsuleSample.objects.filter(lease=second).exists())
+        self.assertIn("pruned", result)
+        self.assertIn("installs_closed", result)
 
     def test_the_tick_prunes(self):
         from django.utils import timezone

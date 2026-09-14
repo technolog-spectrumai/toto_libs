@@ -27,6 +27,7 @@ import io
 import itertools
 import json
 import logging
+import math
 import os
 import re
 from datetime import datetime, timezone as dt_timezone
@@ -38,7 +39,7 @@ from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.translation import gettext as _
-from django.utils.translation import gettext_lazy
+from django.utils.translation import gettext_lazy, ngettext
 from django.views.decorators.http import require_GET, require_POST
 
 from toto.ui import PageProcessor
@@ -643,6 +644,54 @@ def samples(request, uuid):
         # A junk window is 24 hours, not a 500. The caller is a chart.
         hours = 24
     return JsonResponse(samples_mod.series(lease, hours=hours))
+
+
+@login_required
+@require_POST
+def take_reading(request, uuid):
+    """Take a reading NOW, from the History tab's button.
+
+    `samples.take` — the beat's own function, so a reading taken by hand is
+    the same reading the beat would have taken: refreshed, storage included,
+    NULL where unmeasured. THE THROTTLE STILL HOLDS. A press within five
+    minutes of the last reading writes nothing and says when the next one can
+    be taken; a button that bypassed it would be the way to fill the table at
+    one row a second.
+
+    Not an error when there is nothing to read: an unmounted Capsule answers
+    200 with a reason, because "nothing to read" is an ordinary answer and the
+    page shows it as a sentence.
+    """
+    lease = _own_open_lease(request, uuid)
+    taken = samples_mod.take(lease)
+    if taken["recorded"]:
+        sentence = _("A reading was taken.")
+    elif taken["reason"] == samples_mod.NOT_MOUNTED:
+        sentence = _("This Capsule is not mounted, so there is nothing to read.")
+    else:
+        minutes = max(1, math.ceil(taken["next_in_seconds"] / 60))
+        sentence = ngettext(
+            "Readings are at most one every %(interval)s minutes. The next can "
+            "be taken in %(minutes)s minute.",
+            "Readings are at most one every %(interval)s minutes. The next can "
+            "be taken in %(minutes)s minutes.",
+            minutes) % {"interval": samples_mod.MIN_INTERVAL_SECONDS // 60,
+                        "minutes": minutes}
+
+    if request.headers.get("Accept", "").startswith("application/json"):
+        return JsonResponse({
+            "recorded": taken["recorded"],
+            "reason": taken["reason"],
+            "next_in_seconds": taken["next_in_seconds"],
+            "message": sentence,
+        })
+    # Without JavaScript the button is an ordinary form: back to the tab it
+    # was pressed on, with the same sentence.
+    if taken["recorded"]:
+        messages.success(request, sentence)
+    else:
+        messages.info(request, sentence)
+    return _back(lease, "history")
 
 
 # --------------------------------------------------------------------------- #

@@ -21,8 +21,13 @@ THREE THINGS THAT MAKE OR BREAK A SAMPLES TABLE, all of them about volume:
 
 from __future__ import annotations
 
-from django.db import models
+import logging
+import math
+
+from django.db import OperationalError, models, transaction
 from django.utils import timezone
+
+log = logging.getLogger("toto.anastasia.samples")
 
 #: Never write two samples for one capsule closer together than this, however
 #: often the caller asks. Five minutes is finer than any graph a person reads
@@ -141,6 +146,125 @@ def record(lease, report: dict, storage: dict | None = None, *, now=None):
         net_rx_bytes=usage.get("net_rx_bytes"),
         net_tx_bytes=usage.get("net_tx_bytes"),
     )
+
+
+def seconds_until_due(lease, *, now=None) -> int:
+    """How long until `due` says yes. 0 when a reading taken now would be kept.
+
+    Derived FROM `due` rather than recomputed beside it, so the two cannot
+    disagree at the boundary: `due` treats a reading exactly
+    `MIN_INTERVAL_SECONDS` old as still too recent, and a page that said
+    "now" there would offer a press that gets refused.
+    """
+    now = now or timezone.now()
+    if due(lease, now=now):
+        return 0
+    latest = (CapsuleSample.objects.filter(lease=lease)
+              .order_by("-taken_at").values_list("taken_at", flat=True).first())
+    elapsed = (now - latest).total_seconds()
+    # Never more than one interval: a reading another writer stamped a moment
+    # AFTER this caller's clock (two processes, two clocks, one race) would
+    # otherwise count down past it, and the page would say "one every 5
+    # minutes, the next in 6".
+    return max(1, min(MIN_INTERVAL_SECONDS,
+                      math.ceil(MIN_INTERVAL_SECONDS - elapsed)))
+
+
+#: Why `take` recorded nothing. Codes, so a page branches on them rather than
+#: on a sentence.
+NOT_MOUNTED = "not_mounted"
+TOO_SOON = "too_soon"
+
+
+def take(lease, *, now=None) -> dict:
+    """Take one reading of one Capsule. THE ONLY WAY A SAMPLE IS WRITTEN.
+
+    Two callers, one sequence: the reconcile beat, every two minutes, and a
+    person pressing "Take a reading now" on the History tab. The history table
+    once shipped with a recorder and no caller at all, so every chart drawn
+    from it was empty; a second writer that forgot a step would be the same
+    failure, quieter. `tests/test_views.py` asserts nothing else calls
+    `record`.
+
+    The order is the point:
+
+    * an UNMOUNTED Capsule is not asked anything — it has nothing to report,
+      and asking would wake the executor for a reading that is all NULL;
+    * the runtime is refreshed, so the reading and the header agree;
+    * the throttle is asked BEFORE the storage reading, because that reading
+      is a tree walk on the executor and a walk whose result is thrown away is
+      the one cost in the sampler worth avoiding;
+    * a storage reading that fails costs only the storage columns — a reading
+      is information, not a precondition;
+    * the write itself re-checks the throttle under a lock on the lease row,
+      so two presses (or a press and the beat) that both passed the first
+      check still write one row. The lock is taken AFTER the walk, never
+      around it: holding the lease row for a thirty-second executor call
+      would stall every mount and release of that Capsule behind a chart.
+
+    Never raises for a silent runtime. Returns what happened:
+    ``{"recorded", "refreshed", "reason", "sample", "next_in_seconds"}``.
+    """
+    from . import services
+    from .models import ComputeLease
+    from .runtime import get_backend
+
+    def at():
+        # THE CLOCK IS READ AT EACH STEP, not once at the top. Two executor
+        # calls lie between the first throttle check and the write — the
+        # status read (15 s timeout) and the storage walk (30 s) — and a stamp
+        # taken before them dated a reading up to 45 s before the values it
+        # holds, and made every countdown run long by the same amount. A caller
+        # that passes `now` (a test) gets that one instant throughout.
+        return now or timezone.now()
+
+    runtime = services.runtime_for(lease)
+    if not runtime.is_mounted:
+        return {"recorded": False, "refreshed": False, "reason": NOT_MOUNTED,
+                "sample": None, "next_in_seconds": 0}
+
+    services.refresh_runtime(lease)
+    if not due(lease, now=at()):
+        return {"recorded": False, "refreshed": True, "reason": TOO_SOON,
+                "sample": None,
+                "next_in_seconds": seconds_until_due(lease, now=at())}
+
+    storage = None
+    read_storage = getattr(get_backend(), "storage", None)
+    if read_storage is not None:
+        try:
+            storage = read_storage(lease) or None
+        except Exception:  # noqa: BLE001 — a reading is information, not a precondition
+            log.warning("anastasia: no storage reading for %s", lease.uuid)
+
+    report = services.capsule_report(lease)
+    row = None
+    try:
+        with transaction.atomic():
+            # On Postgres the row lock is what makes `record`'s own throttle
+            # re-check authoritative against a concurrent writer. On SQLite
+            # FOR UPDATE is dropped and the transaction begins DEFERRED: if
+            # another connection commits between this transaction's first
+            # read and its insert, SQLite refuses the insert at once
+            # (SQLITE_BUSY_SNAPSHOT) instead of waiting — see below.
+            list(ComputeLease.objects.select_for_update().filter(pk=lease.pk)
+                 .values_list("pk", flat=True))
+            row = record(lease, report, storage, now=at())
+    except OperationalError:
+        # "database is locked": another writer committed inside this
+        # transaction's window — on this table, almost always the other
+        # reading. Treated as too soon, NEVER raised: in the beat an exception
+        # here would cost every other Capsule its reading this tick, and the
+        # install sweep and the prune after them.
+        log.warning("anastasia: reading of %s lost a write race; skipped",
+                    lease.uuid)
+        row = None
+    if row is None:
+        return {"recorded": False, "refreshed": True, "reason": TOO_SOON,
+                "sample": None,
+                "next_in_seconds": seconds_until_due(lease, now=at())}
+    return {"recorded": True, "refreshed": True, "reason": "", "sample": row,
+            "next_in_seconds": MIN_INTERVAL_SECONDS}
 
 
 def prune(*, now=None, days: int = RETENTION_DAYS) -> int:

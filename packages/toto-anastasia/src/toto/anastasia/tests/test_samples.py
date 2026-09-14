@@ -6,11 +6,182 @@ table has a ceiling and that "not measured" never charts as zero.
 
 from __future__ import annotations
 
+from unittest import mock
+
+from django.db import OperationalError
+from django.test import override_settings
 from django.utils import timezone
 
 from toto.anastasia import samples, services
 
-from .base import SMALL, AnastasiaTestCase
+from .base import RUNNABLE, SMALL, AnastasiaTestCase, FakeRuntimeBackend
+
+
+class _Counting(FakeRuntimeBackend):
+    """A runtime that answers a sample and a storage walk, and counts both."""
+
+    status_calls: list = []
+    walks: list = []
+
+    def status(self, lease):
+        type(self).status_calls.append(str(lease.uuid))
+        return {"sample": {"ram_mb_used": 42},
+                "manager_generation": type(self).generation, "mounted": True}
+
+    def storage(self, lease):
+        type(self).walks.append(str(lease.uuid))
+        return {"bytes": 4096, "files": 3, "complete": True}
+
+
+class _StorageExplodes(_Counting):
+    def storage(self, lease):
+        raise RuntimeError("walk failed")
+
+
+@override_settings(ANASTASIA_RUNTIME_BACKEND="toto.anastasia.tests.test_samples._Counting")
+class TakeTests(AnastasiaTestCase):
+    """`samples.take`: the one sequence the beat and the History button share."""
+
+    def setUp(self):
+        super().setUp()
+        _Counting.status_calls = []
+        _Counting.walks = []
+        self.lease = services.reserve(owner=self.user, name="up", limits=RUNNABLE)
+        services.mount(lease=self.lease)
+
+    def test_it_takes_a_reading_with_storage(self):
+        taken = samples.take(self.lease)
+        self.assertTrue(taken["recorded"])
+        self.assertTrue(taken["refreshed"])
+        self.assertEqual(taken["reason"], "")
+        row = samples.CapsuleSample.objects.get(lease=self.lease)
+        self.assertEqual(row.ram_mb_used, 42)
+        self.assertEqual(row.storage_bytes, 4096)
+        self.assertEqual(taken["sample"], row)
+        self.assertEqual(taken["next_in_seconds"], samples.MIN_INTERVAL_SECONDS)
+
+    def test_an_unmounted_capsule_is_not_asked_anything(self):
+        """It has nothing to report; asking wakes the executor for NULLs."""
+        services.unmount(lease=self.lease)
+        _Counting.status_calls = []
+        taken = samples.take(self.lease)
+        self.assertEqual((taken["recorded"], taken["refreshed"], taken["reason"]),
+                         (False, False, samples.NOT_MOUNTED))
+        self.assertEqual((_Counting.status_calls, _Counting.walks), ([], []))
+        self.assertFalse(samples.CapsuleSample.objects.exists())
+
+    def test_too_soon_walks_nothing_and_says_how_long(self):
+        """The throttle is asked BEFORE the storage walk: a walk whose result
+        is thrown away is the one cost in the sampler worth avoiding."""
+        self.assertTrue(samples.take(self.lease)["recorded"])
+        again = samples.take(self.lease)
+        self.assertFalse(again["recorded"])
+        self.assertEqual(again["reason"], samples.TOO_SOON)
+        self.assertEqual(len(_Counting.walks), 1)
+        self.assertGreater(again["next_in_seconds"], 0)
+        self.assertLessEqual(again["next_in_seconds"], samples.MIN_INTERVAL_SECONDS)
+        self.assertEqual(samples.CapsuleSample.objects.count(), 1)
+
+    @override_settings(ANASTASIA_RUNTIME_BACKEND="toto.anastasia.tests.test_samples._StorageExplodes")
+    def test_a_storage_reading_that_raises_costs_only_the_storage(self):
+        taken = samples.take(self.lease)
+        self.assertTrue(taken["recorded"])
+        row = samples.CapsuleSample.objects.get(lease=self.lease)
+        self.assertEqual(row.ram_mb_used, 42)
+        self.assertIsNone(row.storage_bytes)
+
+    def test_the_stamp_is_the_moment_of_the_write_not_of_the_first_check(self):
+        """Two executor calls lie between the first check and the write. A
+        stamp taken before them dated a reading up to 45 s early."""
+        lease = self.lease
+        clock = {"now": timezone.now()}
+
+        class SlowWalk(_Counting):
+            def storage(self, lease_):
+                clock["now"] = clock["now"] + timezone.timedelta(seconds=40)
+                return super().storage(lease_)
+
+        globals()["SlowWalk"] = SlowWalk
+        with override_settings(
+                ANASTASIA_RUNTIME_BACKEND="toto.anastasia.tests.test_samples.SlowWalk"), \
+                mock.patch.object(samples.timezone, "now", lambda: clock["now"]):
+            taken = samples.take(lease)
+        self.assertTrue(taken["recorded"])
+        self.assertEqual(taken["sample"].taken_at, clock["now"])
+
+    def test_a_locked_database_is_too_soon_never_an_exception(self):
+        """SQLite refuses a deferred transaction's insert when another writer
+        committed inside its window. Raised into the beat, that would cost
+        every other Capsule its reading this tick."""
+        with mock.patch.object(samples, "record",
+                               side_effect=OperationalError("database is locked")):
+            taken = samples.take(self.lease)
+        self.assertEqual((taken["recorded"], taken["reason"]),
+                         (False, samples.TOO_SOON))
+        self.assertFalse(samples.CapsuleSample.objects.exists())
+
+    def test_record_rechecks_the_throttle_after_the_walk(self):
+        """Two presses that both passed the first check — or a press and the
+        beat — must still write one row. Simulated by landing the other
+        writer's row DURING the storage walk.
+
+        What this proves is `record`'s own re-check. The row lock around it
+        matters only against a truly concurrent writer on Postgres, which a
+        single-connection test cannot produce; it passes with the lock
+        removed, and is named for what it does prove."""
+        lease = self.lease
+
+        class Racing(_Counting):
+            def storage(self, lease_):
+                samples.CapsuleSample.objects.create(lease=lease)
+                return super().storage(lease_)
+
+        globals()["Racing"] = Racing
+        with override_settings(
+                ANASTASIA_RUNTIME_BACKEND="toto.anastasia.tests.test_samples.Racing"):
+            taken = samples.take(lease)
+        self.assertFalse(taken["recorded"])
+        self.assertEqual(taken["reason"], samples.TOO_SOON)
+        self.assertEqual(samples.CapsuleSample.objects.count(), 1)
+
+
+class SecondsUntilDueTests(AnastasiaTestCase):
+    def setUp(self):
+        super().setUp()
+        self.lease = services.reserve(owner=self.user, name="c", limits=SMALL)
+        self.now = timezone.now()
+
+    def _sample(self, seconds_ago):
+        samples.CapsuleSample.objects.create(
+            lease=self.lease,
+            taken_at=self.now - timezone.timedelta(seconds=seconds_ago))
+
+    def test_no_history_is_due_now(self):
+        self.assertEqual(samples.seconds_until_due(self.lease, now=self.now), 0)
+
+    def test_a_recent_reading_counts_down(self):
+        self._sample(100)
+        self.assertEqual(samples.seconds_until_due(self.lease, now=self.now),
+                         samples.MIN_INTERVAL_SECONDS - 100)
+
+    def test_an_old_reading_is_due(self):
+        self._sample(samples.MIN_INTERVAL_SECONDS + 1)
+        self.assertEqual(samples.seconds_until_due(self.lease, now=self.now), 0)
+
+    def test_it_agrees_with_due_at_the_boundary(self):
+        """`due` treats a reading exactly one interval old as too recent; a
+        page that said "now" there would offer a press that is refused."""
+        self._sample(samples.MIN_INTERVAL_SECONDS)
+        self.assertFalse(samples.due(self.lease, now=self.now))
+        self.assertGreaterEqual(samples.seconds_until_due(self.lease, now=self.now), 1)
+
+    def test_a_reading_stamped_after_now_never_counts_past_one_interval(self):
+        """Two writers, two clocks: the other one's row can carry a stamp a
+        moment later than this caller's `now`. "One every 5 minutes, the next
+        in 6" is the sentence that contradicts itself."""
+        self._sample(-5)
+        self.assertEqual(samples.seconds_until_due(self.lease, now=self.now),
+                         samples.MIN_INTERVAL_SECONDS)
 
 
 class RecordTests(AnastasiaTestCase):

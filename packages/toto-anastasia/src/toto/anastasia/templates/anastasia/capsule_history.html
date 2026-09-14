@@ -37,10 +37,45 @@ platform, in the head so `Chart` exists before `drawHistory` runs.{% endcomment 
         </template>
         <span class="opacity-50" x-show="series && series.newest"
               x-text="series ? '{% trans "Last reading" %} ' + new Date(series.newest).toLocaleString() : ''"></span>
+        {% comment %}A READING ON DEMAND. The beat takes one about every five
+        minutes; this takes one now, through the same `samples.take` and under
+        the same throttle — a second press inside the interval writes nothing
+        and says when the next can be taken. An ordinary form, so it still
+        works before Alpine starts; with Alpine it posts in place and redraws
+        the window the person is looking at.{% endcomment %}
+        {% if mounted %}
+          <form method="post" action="{% url 'anastasia:take_reading' capsule.uuid %}"
+                @submit.prevent="takeReading($el)">
+            {% csrf_token %}
+            <button type="submit" data-testid="take-reading"
+                    :disabled="!!taking"
+                    :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
+                    class="inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 font-semibold transition disabled:cursor-wait disabled:opacity-50">
+              <i class="fa-solid fa-rotate" :class="taking ? 'fa-spin' : ''"></i>
+              <span>{% trans "Take a reading now" %}</span>
+            </button>
+          </form>
+        {% else %}
+          <button type="button" disabled data-testid="take-reading-disabled"
+                  title="{% trans 'Mount this Capsule to take readings.' %}"
+                  :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                  class="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border px-2 py-1 font-semibold opacity-40">
+            <i class="fa-solid fa-rotate"></i><span>{% trans "Take a reading now" %}</span>
+          </button>
+        {% endif %}
       </div>
     </div>
+    <p x-show="readingMessage" x-cloak class="mt-2 text-xs" data-testid="reading-message"
+       :class="readingRecorded ? 'text-emerald-600' : 'opacity-70'" x-text="readingMessage"></p>
     <template x-if="series && series.points === 0">
-      <p class="mt-3 text-sm opacity-60">{% trans "No readings in this window. Readings are taken while the Capsule is mounted, about every five minutes." %}</p>
+      <div class="mt-3 text-sm opacity-60">
+        <p>{% trans "No readings in this window. Readings are taken while the Capsule is mounted, about every five minutes." %}</p>
+        {% if mounted %}
+          <p class="mt-1">{% trans "Take a reading now to start the history." %}</p>
+        {% else %}
+          <p class="mt-1">{% trans "Mount this Capsule to take readings." %}</p>
+        {% endif %}
+      </div>
     </template>
     <template x-if="series && series.points > 0">
       <div class="mt-4 grid gap-5 sm:grid-cols-2">
@@ -138,6 +173,43 @@ function capsuleHistory() {
     // Chart.js instances by canvas id, so a refetch replaces rather than
     // stacks — a second `new Chart` on a canvas that has one is an error.
     charts: {},
+    // The on-demand reading: in flight, and what the server said about it.
+    taking: false,
+    readingMessage: '',
+    readingRecorded: false,
+    async takeReading(form) {
+      if (this.taking) return;
+      this.taking = true;
+      try {
+        const token = form.querySelector('[name=csrfmiddlewaretoken]');
+        const response = await fetch(form.action, {
+          method: 'POST', credentials: 'same-origin',
+          headers: {'Accept': 'application/json', 'X-CSRFToken': token ? token.value : ''},
+        });
+        // An answer the server did not phrase arrives as HTML: a Capsule
+        // released in another tab (404), an expired session (a redirect to
+        // the sign-in page) or a refused CSRF token (403). Each gets the
+        // sentence that says what to do, not "could not reach the server".
+        if (!(response.headers.get('Content-Type') || '').includes('application/json')) {
+          this.readingRecorded = false;
+          this.readingMessage = response.status === 404
+            ? "{% trans 'This Capsule is no longer reserved. Reload the page.' %}"
+            : ((response.redirected || response.status === 403)
+              ? "{% trans 'Your session has expired. Reload the page and try again.' %}"
+              : "{% trans 'The server could not take the reading. Reload and try again.' %}");
+          return;
+        }
+        const body = await response.json();
+        this.readingRecorded = !!body.recorded;
+        this.readingMessage = body.message || '';
+        if (body.recorded) { await this.load(this.series ? this.series.hours : 24); }
+      } catch (e) {
+        this.readingRecorded = false;
+        this.readingMessage = "{% trans 'The reading could not be taken — the page could not reach the server. Reload and try again.' %}";
+      } finally {
+        this.taking = false;
+      }
+    },
     async load(hours) {
       try {
         const response = await fetch(this.samplesUrl + '?hours=' + hours, {headers: {'Accept': 'application/json'}});
