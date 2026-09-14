@@ -106,6 +106,20 @@ def egress_offered() -> bool:
     return bool(getattr(settings, "ANASTASIA_EGRESS", False))
 
 
+def ctan_mirror() -> str:
+    """The CTAN mirror a Capsule's LaTeX installs download from, or "".
+
+    EMPTY MEANS NOT OFFERED, and a LaTeX install is refused with a sentence
+    naming this setting — the same rule as an unconfigured pool. There is no
+    default because there is no neutral one: CTAN's own download address
+    redirects to a random mirror, which the Capsule's proxy allowlist would
+    refuse, so a working value is always a choice of one specific host — and
+    that host, with ``ctan.org`` for the package index, must be on
+    ``anastasia.egress.allow``.
+    """
+    return (getattr(settings, "ANASTASIA_CTAN_MIRROR", "") or "").strip().rstrip("/")
+
+
 def shared_secret() -> str:
     """The HMAC secret this host signs executor requests with.
 

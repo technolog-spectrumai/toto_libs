@@ -47,6 +47,21 @@ _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,59}$")
 _SAFE_DISTS = re.compile(r"^[a-z0-9]([a-z0-9._-]*[a-z0-9])?"
                          r"(\+[a-z0-9]([a-z0-9._-]*[a-z0-9])?)*$")
 
+#: CTAN package ids to install, joined by "+" like `_SAFE_DISTS`. CTAN's ids
+#: are lowercase letters, digits and dashes ("tcolorbox", "biblatex-apa",
+#: "pst-3dplot"); nothing else is needed, and each name reaches the runner as
+#: ONE argument and then a URL path segment, where a dot or a slash would mean
+#: something.
+_SAFE_CTAN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}(\+[a-z0-9][a-z0-9-]{0,62})*$")
+
+#: The CTAN mirror a LaTeX install downloads from: https, a plain host, an
+#: optional port and path, no credentials, no "." or ".." segments. Set by the
+#: OPERATOR (`ANASTASIA_CTAN_MIRROR`), never typed by a user — and still
+#: validated here, because this table is read by the executor too.
+_SAFE_MIRROR = re.compile(
+    r"^https://[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:\d{1,5})?"
+    r"(?!.*/\.{1,2}(/|$))(/[A-Za-z0-9._~-]+)*/?$")
+
 #: An ffmpeg time position: seconds, or HH:MM:SS with optional milliseconds.
 #: Bounded because it is interpolated into an argv, and because "whatever
 #: ffmpeg accepts" is a much larger surface than anything a form needs.
@@ -60,7 +75,7 @@ class ParamError(ValueError):
 @dataclass(frozen=True)
 class Param:
     name: str
-    kind: str      # "str"|"int"|"bool"|"enum"|"path"|"lang"|"time"|"dists"
+    kind: str      # "str"|"int"|"bool"|"enum"|"path"|"lang"|"time"|"dists"|"ctan"|"mirror"
     required: bool = False
     default: object = None
     choices: tuple = ()
@@ -148,6 +163,22 @@ class Param:
             if len(set(names)) != len(names):
                 raise ParamError(f"{self.name} names the same package twice.")
             return raw
+        if self.kind == "ctan":
+            raw = raw.strip().lower()
+            if not _SAFE_CTAN.match(raw):
+                raise ParamError(
+                    f"{self.name} must be CTAN package names like “tcolorbox” "
+                    "or “tcolorbox+pgf”, with no versions and no spaces.")
+            names = raw.split("+")
+            if len(set(names)) != len(names):
+                raise ParamError(f"{self.name} names the same package twice.")
+            return raw
+        if self.kind == "mirror":
+            if not _SAFE_MIRROR.match(raw):
+                raise ParamError(
+                    f"{self.name} must be the https address of a CTAN mirror, "
+                    "like “https://ctan.example.org/tex-archive”.")
+            return raw.rstrip("/")
         raise ParamError(f"{self.name} has an unknown parameter kind.")
 
 
@@ -187,10 +218,12 @@ class Family:
     #: ports. There is no kernel: a Run is one job that writes its output and
     #: exits, and nothing needs to connect TO a runner.
     #:
-    #: With both gone the posture collapses to one case — every runner of every
-    #: family gets `--network none` — and that is why the field is removed
-    #: rather than left False everywhere. A posture nothing can request is one
-    #: nobody has to reason about, and an unused field is one somebody sets.
+    #: With both gone no FAMILY can ask for a network, and that is why the
+    #: field is removed rather than left False everywhere. A posture nothing
+    #: can request is one nobody has to reason about, and an unused field is
+    #: one somebody sets. What a runner gets is decided by its CAPSULE:
+    #: `--network none` by default, one NIC onto the filtering proxy when the
+    #: reservation asked for internet access — whatever the family.
 
 
 PDF = Family(
@@ -402,10 +435,28 @@ INSTALL_PACKAGES = Operation(
     outputs=(),
 )
 
+INSTALL_LATEX_PACKAGES = Operation(
+    name="install_latex_packages", family=LATEX, label="Install LaTeX packages",
+    params=(
+        # CTAN ids only — see `_SAFE_CTAN`. Each is resolved through CTAN's
+        # package index to its ready-to-install (TDS) archive; a package that
+        # has none is refused by name in the log, not guessed at.
+        Param("packages", "ctan", required=True),
+        # The one host archives may come from. CTAN's own download links
+        # redirect to a random mirror, which a proxy allowlist would refuse,
+        # so the operator names one and the runner refuses every redirect.
+        Param("mirror", "mirror", required=True),
+    ),
+    default_timeout=600, max_timeout=1800,
+    # Nothing in /out. The files land in /files/texmf, the Capsule's own TeX
+    # tree, where `compile_latex` finds them through TEXMFHOME.
+    outputs=(),
+)
+
 OPERATIONS = {
     op.name: op for op in (
         RENDER_PDF, COMPILE_LATEX, RUN_MEDIA_COMMAND, RUN_OCR,
-        RUN_PYTHON, INSTALL_PACKAGES,
+        RUN_PYTHON, INSTALL_PACKAGES, INSTALL_LATEX_PACKAGES,
     )
 }
 

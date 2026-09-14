@@ -41,7 +41,13 @@ def _render_pdf(params: dict) -> list:
 
 
 def _compile_latex(params: dict) -> list:
+    # TEXMFHOME names the tree `install_latex_packages` writes, so a package
+    # installed into this Capsule is found by every later compile. kpathsea
+    # searches TEXMFHOME before the distribution and needs no ls-R there; a
+    # tree that does not exist is simply not searched, so a Capsule that never
+    # installed anything compiles exactly as before.
     return [
+        "env", f"TEXMFHOME={TEXMF_HOME}",
         "anastasia-compile-latex",
         "--main", params["main"],
         "--engine", params["engine"],
@@ -142,9 +148,35 @@ def _install_packages(params: dict) -> list:
     ]
 
 
+#: Where a LaTeX install puts its files, and where a compile finds them. One
+#: constant for the same reason as SITE_PACKAGES: two spellings of one path
+#: is "\usepackage{tcolorbox}" failing after a green install.
+TEXMF_HOME = "/files/texmf"
+
+
+def _install_latex_packages(params: dict) -> list:
+    """CTAN packages into the Capsule's TeX tree, from the operator's mirror.
+
+    Not tlmgr: Debian's TeX Live is a frozen apt snapshot whose tlmgr refuses
+    to install (deploy/anastasia/latex/Dockerfile). The runner resolves each
+    name through CTAN's package index to its TDS archive and unpacks that into
+    TEXMF_HOME, which is exactly the layout TEXMFHOME expects. The same `env`
+    reasons as pip's: a read-only rootfs, and /scratch the one writable temp.
+    """
+    names = params["packages"].split("+")
+    return [
+        "env", "TMPDIR=/scratch", "HOME=/scratch",
+        "anastasia-install-latex",
+        "--texmf", TEXMF_HOME,
+        "--mirror", params["mirror"],
+        *names,
+    ]
+
+
 _BUILDERS = {
     "render_pdf": _render_pdf,
     "install_packages": _install_packages,
+    "install_latex_packages": _install_latex_packages,
     "compile_latex": _compile_latex,
     "run_media_command": _run_media_command,
     "run_ocr": _run_ocr,

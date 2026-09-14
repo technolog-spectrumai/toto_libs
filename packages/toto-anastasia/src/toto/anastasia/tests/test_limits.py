@@ -216,6 +216,31 @@ class CatalogueTests(SimpleTestCase):
         self.assertEqual(op.clean({"dists": "NumPy+Pandas"})["dists"],
                          "numpy+pandas")
 
+    def test_installing_latex_packages_is_an_operation_on_the_latex_family(self):
+        """The LaTeX twin of the decision above (2026-09-14): an ordinary
+        latex-family job, CTAN ids only, and a mirror the operator chose —
+        validated here too, because the executor reads this table."""
+        op = families.operation("install_latex_packages")
+        self.assertIs(op.family, families.LATEX)
+        self.assertEqual([p.name for p in op.params], ["packages", "mirror"])
+        self.assertTrue(all(p.required for p in op.params))
+        mirror = "https://ctan.example.org/tex-archive"
+        for bad in ("tcolorbox==6.1", "tcolorbox pgf", "../etc", "tcolor_box",
+                    "tcolor.box", "", "pgf+pgf", "-e"):
+            with self.subTest(packages=bad):
+                with self.assertRaises(families.ParamError):
+                    op.clean({"packages": bad, "mirror": mirror})
+        self.assertEqual(
+            op.clean({"packages": "TColorBox+pst-3dplot", "mirror": mirror + "/"}),
+            {"packages": "tcolorbox+pst-3dplot", "mirror": mirror})
+        for bad in ("http://ctan.example.org", "ftp://ctan.example.org",
+                    "https://user@ctan.example.org/", "https://ctan.example.org/a b",
+                    "https://ctan.example.org/../x", "https://ctan.example.org/./x",
+                    "https://ctan.example.org/x?y=1", "https://"):
+            with self.subTest(mirror=bad):
+                with self.assertRaises(families.ParamError):
+                    op.clean({"packages": "pgf", "mirror": bad})
+
     def test_every_family_default_is_above_the_reservation_floor(self):
         """A family whose default runner could not fit in the smallest legal
         Capsule would be undiscoverable until someone tried it."""

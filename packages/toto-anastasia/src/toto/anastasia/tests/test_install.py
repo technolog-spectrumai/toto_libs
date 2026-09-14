@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 
 from toto.anastasia import choices, execute, families, install, services, tasks
 from toto.anastasia.executor import runners
@@ -70,6 +70,29 @@ class ArgvTests(SimpleTestCase):
             with self.subTest(operation=name):
                 self.assertIn(name, runners._BUILDERS)
 
+    def test_latex_packages_go_to_the_capsules_tex_tree_from_the_pinned_mirror(self):
+        op = families.operation("install_latex_packages")
+        argv = runners.build_argv(op, op.clean({
+            "packages": "tcolorbox+pgf",
+            "mirror": "https://ctan.example.org/tex-archive"}))
+        self.assertIn("anastasia-install-latex", argv)
+        self.assertEqual(argv[argv.index("--texmf") + 1], runners.TEXMF_HOME)
+        self.assertEqual(runners.TEXMF_HOME, "/files/texmf")
+        self.assertEqual(argv[argv.index("--mirror") + 1],
+                         "https://ctan.example.org/tex-archive")
+        self.assertEqual(argv[-2:], ["tcolorbox", "pgf"])
+        self.assertEqual(argv[0], "env")
+        self.assertIn("TMPDIR=/scratch", argv[:4])
+
+    def test_a_compile_sees_what_was_installed(self):
+        """The two builders must agree on the tree, or a green install is a
+        `\\usepackage` that still fails."""
+        op = families.operation("compile_latex")
+        argv = runners.build_argv(op, op.clean({"main": "main.tex"}))
+        self.assertIn(f"TEXMFHOME={runners.TEXMF_HOME}", argv)
+        self.assertLess(argv.index(f"TEXMFHOME={runners.TEXMF_HOME}"),
+                        argv.index("anastasia-compile-latex"))
+
 
 class StartTests(AnastasiaTestCase):
     def test_a_capsule_without_internet_access_is_refused_before_anything(self):
@@ -112,6 +135,44 @@ class StartTests(AnastasiaTestCase):
         lease = _egress_capsule(self.user, mount=False)
         with self.assertRaises(execute.CannotExecute):
             install.start(lease=lease, dists="numpy", requested_by=self.user)
+        self.assertEqual(InstallRun.objects.count(), 0)
+
+    def test_an_unknown_kind_is_refused_before_anything(self):
+        lease = _egress_capsule(self.user)
+        with self.assertRaises(execute.CannotExecute) as caught:
+            install.start(lease=lease, dists="numpy", kind="rust")
+        self.assertEqual(caught.exception.refusal_code, install.BAD_KIND)
+        self.assertEqual(InstallRun.objects.count(), 0)
+
+    @override_settings(ANASTASIA_CTAN_MIRROR="")
+    def test_a_latex_install_with_no_mirror_says_who_sets_one(self):
+        lease = _egress_capsule(self.user)
+        with self.assertRaises(execute.CannotExecute) as caught:
+            install.start(lease=lease, dists="tcolorbox", kind="latex")
+        self.assertEqual(caught.exception.refusal_code, install.NO_MIRROR)
+        self.assertIn("ANASTASIA_CTAN_MIRROR", str(caught.exception))
+        self.assertEqual(Execution.objects.count(), 0)
+
+    @override_settings(ANASTASIA_CTAN_MIRROR="https://ctan.example.org/tex-archive/")
+    def test_a_latex_install_starts_a_latex_job_with_the_mirror(self):
+        lease = _egress_capsule(self.user)
+        run = install.start(lease=lease, dists="TColorBox+pst-3dplot",
+                            kind="latex", requested_by=self.user)
+        self.assertEqual(run.kind, "latex")
+        self.assertEqual(run.packages, ["tcolorbox", "pst-3dplot"])
+        self.assertEqual(run.execution.operation, "install_latex_packages")
+        self.assertEqual(run.execution.family, "latex")
+        starts = [c for c in FakeRuntimeBackend.calls if c[0] == "start"]
+        self.assertEqual(starts[0][2], {
+            "packages": "tcolorbox+pst-3dplot",
+            "mirror": "https://ctan.example.org/tex-archive"})
+
+    @override_settings(ANASTASIA_CTAN_MIRROR="https://ctan.example.org/tex-archive")
+    def test_a_latex_name_with_a_version_is_a_sentence(self):
+        lease = _egress_capsule(self.user)
+        with self.assertRaises(execute.CannotExecute) as caught:
+            install.start(lease=lease, dists="tcolorbox==6", kind="latex")
+        self.assertIn("CTAN package names", str(caught.exception))
         self.assertEqual(InstallRun.objects.count(), 0)
 
 
@@ -262,6 +323,17 @@ class RefreshTests(AnastasiaTestCase):
         self.assertEqual(run.detail, "changed my mind")
         self.assertIn(("kill", str(run.execution.uuid)), FakeRuntimeBackend.calls)
 
+    def test_the_phase_never_moves_backwards(self):
+        """`start` says "resolving"; a refresh before pip has printed anything
+        used to recompute "queued" from the empty log."""
+        self.assertEqual(self.run.phase, "resolving")
+        FakeRuntimeBackend.log_text = ""
+        run = install.refresh(self.run)
+        self.assertEqual(run.phase, "resolving")
+        FakeRuntimeBackend.log_text = PIP_RESOLVING + PIP_INSTALLING
+        run = install.refresh(run)
+        self.assertEqual(run.phase, "installing")
+
     def test_the_beat_closes_a_run_nobody_watched(self):
         FakeRuntimeBackend.settled = {"found": True, "running": False,
                                       "exit_code": 0}
@@ -365,8 +437,57 @@ class ApiTests(AnastasiaTestCase):
 
     def test_the_describe_shape_is_the_contract(self):
         body = self._start().json()
-        for key in ("uuid", "capsule", "execution", "status", "finished",
+        for key in ("uuid", "kind", "capsule", "execution", "status", "finished",
                     "phase", "packages", "packages_done", "packages_total",
                     "detail", "log_length", "log_truncated", "created_at",
                     "started_at", "finished_at"):
             self.assertIn(key, body)
+        self.assertEqual(body["kind"], "python")
+
+    @override_settings(ANASTASIA_CTAN_MIRROR="https://ctan.example.org/tex-archive")
+    def test_kind_latex_installs_ctan_packages(self):
+        response = self.call("post", f"/api/v1/capsules/{self.lease.uuid}/installs",
+                             body={"packages": ["tcolorbox"], "kind": "latex"})
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["kind"], "latex")
+
+    def test_an_unknown_kind_is_a_400(self):
+        response = self.call("post", f"/api/v1/capsules/{self.lease.uuid}/installs",
+                             body={"packages": "x", "kind": "rust"})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], install.BAD_KIND)
+
+
+class LatexCountingTests(AnastasiaTestCase):
+    """What a LaTeX install's log counts, which is not what pip's does."""
+
+    @override_settings(ANASTASIA_CTAN_MIRROR="https://ctan.example.org/tex-archive")
+    def setUp(self):
+        super().setUp()
+        self.lease = _egress_capsule(self.user)
+        self.run = install.start(lease=self.lease, dists="pst-3dplot+tcolorbox",
+                                 kind="latex", requested_by=self.user)
+
+    def test_a_ctan_id_ending_in_a_digit_is_not_mistaken_for_a_version(self):
+        """pip's rule strips "-3dplot" from "pst-3dplot" as if it were a
+        version, and the install would close claiming it installed nothing."""
+        FakeRuntimeBackend.log_text = (
+            "Collecting pst-3dplot\n  Downloading https://m/x.tds.zip\n"
+            "Installing collected packages: pst-3dplot\n"
+            "Successfully installed pst-3dplot\n"
+            "Collecting tcolorbox\n"
+            "ERROR: tcolorbox: CTAN has no ready-to-install archive\n")
+        FakeRuntimeBackend.settled = {"found": True, "running": False,
+                                      "exit_code": 1}
+        run = install.refresh(self.run)
+        self.assertEqual(run.packages_done, 1)
+        self.assertEqual(run.status, choices.FAILED)
+
+    def test_a_green_latex_install_counts_packages_not_distributions(self):
+        FakeRuntimeBackend.log_text = ("Successfully installed pst-3dplot\n"
+                                       "Successfully installed tcolorbox\n")
+        FakeRuntimeBackend.settled = {"found": True, "running": False,
+                                      "exit_code": 0}
+        run = install.refresh(self.run)
+        self.assertEqual(run.status, choices.SUCCESS)
+        self.assertIn("Installed 2 of 2 requested packages", run.detail)

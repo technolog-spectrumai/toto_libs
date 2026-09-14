@@ -465,7 +465,16 @@ class InstallRun(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         blank=True, related_name="anastasia_installs")
 
-    #: PEP 503-normalised names, as cleaned by the `dists` parameter.
+    #: WHAT is being installed: Python distributions into
+    #: /files/site-packages, or CTAN packages into /files/texmf. One row type
+    #: for both, because what a person watches — a phase, a count, a log — is
+    #: the same, and `install.KINDS` is where the two differ.
+    KIND_CHOICES = (("python", "Python"), ("latex", "LaTeX"))
+    kind = models.CharField(max_length=12, choices=KIND_CHOICES,
+                            default="python")
+
+    #: The requested names, as cleaned by the operation's parameter:
+    #: PEP 503-normalised for Python, CTAN ids for LaTeX.
     packages = models.JSONField(default=list, blank=True)
 
     status = models.CharField(max_length=12, choices=choices.EXECUTION_STATUSES,

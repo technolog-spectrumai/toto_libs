@@ -128,7 +128,10 @@ class ExecutionTests(ManagerTestCase):
         self.start(operation="compile_latex",
                    params={"main": "a.tex", "engine": "xelatex"})
         argv = list(self.docker.containers.values())[0]["argv"]
-        self.assertEqual(argv[0], "anastasia-compile-latex")
+        # The catalogue's own prefix first — TEXMFHOME, so a compile finds what
+        # this Capsule installed (runners.py) — and then the runner script.
+        self.assertEqual(argv[:3], ["env", "TEXMFHOME=/files/texmf",
+                                    "anastasia-compile-latex"])
         self.assertIn("--engine", argv)
         self.assertIn("xelatex", argv)
 

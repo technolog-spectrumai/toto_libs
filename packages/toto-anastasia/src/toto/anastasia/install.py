@@ -35,7 +35,7 @@ from django.db.models import F, TextField, Value
 from django.db.models.functions import Concat
 from django.utils import timezone
 
-from . import choices, execute, families, jobs
+from . import choices, conf, execute, families, jobs
 from .models import InstallRun
 from .runtime import get_backend
 
@@ -43,9 +43,24 @@ log = logging.getLogger(__name__)
 
 OPERATION = "install_packages"
 
+#: What can be installed, and how each kind reaches its operation. Python
+#: distributions go to /files/site-packages through pip; CTAN packages go to
+#: /files/texmf through `anastasia-install-latex`. Both print pip's progress
+#: words, so one phase and one count are derived the same way for either.
+KINDS = {
+    "python": {"operation": "install_packages", "param": "dists",
+               "noun": "distributions"},
+    "latex": {"operation": "install_latex_packages", "param": "packages",
+              "noun": "packages"},
+}
+
 #: The refusal code for a Capsule without egress. Beside the ones in
 #: services.py; here because only an install can earn it.
 NO_EGRESS = "no_egress"
+#: A LaTeX install on a platform with no CTAN mirror configured.
+NO_MIRROR = "no_mirror"
+#: A kind that is not in KINDS.
+BAD_KIND = "bad_kind"
 
 #: How much of the runner's output the row keeps, in characters. A log is a
 #: diagnostic, not an archive: past this the copy stops growing and says so,
@@ -76,33 +91,50 @@ def _normalise(name: str) -> str:
 # Starting                                                                     #
 # --------------------------------------------------------------------------- #
 
-def start(*, lease, dists: str, requested_by=None, timeout=None) -> InstallRun:
+def start(*, lease, dists: str, requested_by=None, timeout=None,
+          kind: str = "python") -> InstallRun:
     """Submit the install job and open its run row, or refuse with a sentence.
 
     NOTHING IS LEFT BEHIND BY A REFUSAL: the row is created only after
     `execute.submit` has accepted the job, so a full Capsule or an exhausted
     quota produces the audit line submit already writes and no orphan run. The
     run's uuid is minted first so the execution can carry it as its subject.
+
+    `dists` is the "+"-joined names for either kind; the name is historical.
     """
+    spec = KINDS.get(kind)
+    if spec is None:
+        raise execute.CannotExecute(
+            f"“{kind}” is not something that can be installed; the kinds are "
+            f"{', '.join(sorted(KINDS))}.", BAD_KIND)
     if not lease.egress:
         raise execute.CannotExecute(
             f"“{lease.name}” was reserved without internet access, so nothing "
             "can be fetched into it. Reserve a Capsule with internet access to "
             "install packages.", NO_EGRESS)
-    op = families.operation(OPERATION)
+    params = {spec["param"]: dists}
+    if kind == "latex":
+        mirror = conf.ctan_mirror()
+        if not mirror:
+            raise execute.CannotExecute(
+                "This platform has no CTAN mirror configured, so LaTeX packages "
+                "cannot be installed. An administrator sets "
+                "ANASTASIA_CTAN_MIRROR.", NO_MIRROR)
+        params["mirror"] = mirror
+    op = families.operation(spec["operation"])
     try:
-        clean = op.clean({"dists": dists})
+        clean = op.clean(params)
     except families.ParamError as exc:
         raise execute.CannotExecute(str(exc)) from exc
-    names = clean["dists"].split("+")
+    names = clean[spec["param"]].split("+")
 
     run_uuid = uuid_module.uuid4()
     execution = execute.submit(
-        lease=lease, operation=OPERATION, params={"dists": clean["dists"]},
+        lease=lease, operation=spec["operation"], params=clean,
         timeout=timeout, subject_label="anastasia.InstallRun",
         subject_id=str(run_uuid), requested_by=requested_by)
     return InstallRun.objects.create(
-        uuid=run_uuid, lease=lease, execution=execution,
+        uuid=run_uuid, lease=lease, execution=execution, kind=kind,
         requested_by=requested_by if getattr(requested_by, "pk", None) else None,
         packages=names, packages_total=len(names),
         status=choices.RUNNING, phase="resolving",
@@ -179,6 +211,7 @@ def describe(run: InstallRun) -> dict:
     """The run as a client sees it. The log is separate and on request."""
     return {
         "uuid": str(run.uuid),
+        "kind": run.kind,
         "capsule": str(run.lease.uuid),
         "execution": str(run.execution.uuid) if run.execution_id else None,
         "status": run.status,
@@ -286,25 +319,33 @@ def _close_execution(backend, execution, status: dict) -> None:
     execution.refresh_from_db()
 
 
-def _reported(text: str) -> set:
-    """The distributions pip has reported as present, normalised.
+def _reported(text: str, kind: str = "python") -> set:
+    """The packages the installer has reported as present.
 
-    "Successfully installed numpy-2.1.0 pandas-2.2.3" names each with its
-    version after the LAST dash before a digit; "Requirement already
+    PYTHON: "Successfully installed numpy-2.1.0 pandas-2.2.3" names each with
+    its version after the LAST dash before a digit; "Requirement already
     satisfied: numpy" names one already there. Both count: the request was
     for the name to be importable, and it is.
+
+    LATEX: "Successfully installed pst-3dplot" names the CTAN id as it is.
+    The version-stripping rule above would turn that into "pst" — CTAN ids
+    legitimately end in a dash and a digit — so it is Python's alone.
     """
     names = set()
     for match in _SUCCESS_LINE.finditer(text):
         for token in match.group(1).split():
-            names.add(_normalise(re.sub(r"-\d\S*$", "", token)))
-    for match in _SATISFIED_LINE.finditer(text):
-        names.add(_normalise(match.group(1)))
+            if kind == "python":
+                names.add(_normalise(re.sub(r"-\d\S*$", "", token)))
+            else:
+                names.add(token.lower())
+    if kind == "python":
+        for match in _SATISFIED_LINE.finditer(text):
+            names.add(_normalise(match.group(1)))
     return names
 
 
 def _phase(text: str) -> str:
-    """The furthest stage the log shows pip has reached, while it runs."""
+    """The furthest stage the log shows the installer has reached."""
     if "Installing collected packages" in text:
         return "installing"
     if "Downloading" in text:
@@ -315,9 +356,17 @@ def _phase(text: str) -> str:
 
 
 def _derive(run: InstallRun) -> None:
-    """Phase and count from the log copy. Written only when they moved."""
-    done = len(set(run.packages) & _reported(run.log))
+    """Phase and count from the log copy. Written only when they moved.
+
+    THE PHASE NEVER MOVES BACKWARDS. `start` writes "resolving"; a first
+    refresh before the installer has printed anything used to recompute
+    "queued" from the empty log and show the run going back a step.
+    """
+    done = len(set(run.packages) & _reported(run.log, run.kind))
     phase = _phase(run.log)
+    if (phase in PHASES and run.phase in PHASES
+            and PHASES.index(phase) < PHASES.index(run.phase)):
+        phase = run.phase
     fields = {}
     if done != run.packages_done:
         fields["packages_done"] = done
@@ -330,19 +379,20 @@ def _derive(run: InstallRun) -> None:
 
 
 def _close_from_execution(run: InstallRun, execution) -> None:
-    done = len(set(run.packages) & _reported(run.log))
+    done = len(set(run.packages) & _reported(run.log, run.kind))
+    noun = KINDS.get(run.kind, KINDS["python"])["noun"]
+    tool = "pip" if run.kind == "python" else "The installer"
     if execution.status == choices.SUCCESS:
         if run.packages_total and done < run.packages_total:
-            # pip exited 0 but did not name every requested distribution.
-            # Possible — a name that resolved to nothing new prints
-            # differently across pip versions — and worth a sentence rather
-            # than a green tick over a count that does not add up.
-            detail = (f"pip reported success but named only {done} of "
-                      f"{run.packages_total} requested distributions; "
-                      "read the log.")
+            # It exited 0 but did not name every requested package. Possible
+            # — a name that resolved to nothing new prints differently across
+            # pip versions — and worth a sentence rather than a green tick
+            # over a count that does not add up.
+            detail = (f"{tool} reported success but named only {done} of "
+                      f"{run.packages_total} requested {noun}; read the log.")
         else:
             detail = (f"Installed {done} of {run.packages_total} requested "
-                      "distributions into this Capsule.")
+                      f"{noun} into this Capsule.")
         _close(run, status=choices.SUCCESS, phase="finished", detail=detail,
                done=done, finished_at=execution.finished_at)
     else:

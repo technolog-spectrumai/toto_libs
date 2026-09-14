@@ -422,9 +422,14 @@ def install_collection(request, owner, uuid):
     if not isinstance(packages, str) or not packages:
         return _error("`packages` must name at least one distribution, as "
                       "“numpy+pandas” or a list of names.", code="bad_packages")
+    # `kind` is optional and additive: a client written before LaTeX installs
+    # existed sends none and gets the Python install it always got.
+    kind = payload.get("kind") or "python"
+    if not isinstance(kind, str) or kind not in install.KINDS:
+        return _error("`kind` is “python” or “latex”.", code=install.BAD_KIND)
     try:
         run = install.start(lease=lease, dists=packages, requested_by=owner,
-                            timeout=payload.get("timeout"))
+                            timeout=payload.get("timeout"), kind=kind)
     except ValidationError as exc:
         return _refusal(exc)
     return JsonResponse(install.describe(run), status=201)
