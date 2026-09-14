@@ -1,38 +1,39 @@
-"""Pages, the JSON endpoints, and the gate on running code."""
+"""Pages, the JSON endpoints, and the gate on running code.
 
-import unittest
+Every page here is served under a language app's namespace, and no language
+app is installed where this suite runs, so they are reached through the test
+lab (tests/testlab.py). The Run endpoint and the gate tests written against it
+were dracena's (`dracena:execute`) and left with it on 2026-09-14; the
+permission that gate asked is ambrosia's and is tested at the bottom.
+"""
 
 import json
 from unittest import mock
-
-from django.test import override_settings
-from django.urls import reverse
 
 from toto.vault.models import Bucket, VaultDirectory, VaultFile
 
 from toto.ambrosia import services
 from toto.ambrosia.models import Workspace
 
-from .base import AmbrosiaTestCase
+from . import testlab
+from .base import AmbrosiaTestCase, TestlabTestCase
 
 
-
-
-class LobbyTests(AmbrosiaTestCase):
+class LobbyTests(TestlabTestCase):
     def test_the_lobby_renders(self):
         self.client.force_login(self.owner)
-        response = self.client.get(reverse("dracena:lobby"))
+        response = self.client.get(testlab.url("lobby"))
         self.assertEqual(response.status_code, 200)
 
     def test_anonymous_users_are_sent_to_login(self):
-        self.assertEqual(self.client.get(reverse("dracena:lobby")).status_code,
+        self.assertEqual(self.client.get(testlab.url("lobby")).status_code,
                          302)
 
     def test_only_your_own_workspaces_are_listed(self):
         mine = self.make_workspace(name="Mine")
         theirs = self.make_workspace(owner=self.other, name="Theirs")
         self.client.force_login(self.owner)
-        body = self.client.get(reverse("dracena:lobby")).content.decode()
+        body = self.client.get(testlab.url("lobby")).content.decode()
         self.assertIn("Mine", body)
         self.assertNotIn("Theirs", body)
 
@@ -40,7 +41,7 @@ class LobbyTests(AmbrosiaTestCase):
         bucket = self.make_bucket()
         self.client.force_login(self.owner)
         response = self.client.post(
-            reverse("dracena:workspace_create"),
+            testlab.url("workspace_create"),
             {"name": "Fresh", "kind": "python", "bucket": bucket.pk,
              "directory": "", "new_directory_name": "fresh"})
         self.assertEqual(response.status_code, 302)
@@ -51,9 +52,9 @@ class LobbyTests(AmbrosiaTestCase):
 
     def test_creating_without_a_bucket_goes_back_to_the_lobby(self):
         self.client.force_login(self.owner)
-        response = self.client.post(reverse("dracena:workspace_create"),
+        response = self.client.post(testlab.url("workspace_create"),
                                     {"name": "Fresh", "kind": "python"})
-        self.assertRedirects(response, reverse("dracena:lobby"))
+        self.assertRedirects(response, testlab.url("lobby"))
         self.assertFalse(Workspace.objects.filter(name="Fresh").exists())
 
     def test_you_cannot_post_a_bucket_belonging_to_someone_else(self):
@@ -61,27 +62,27 @@ class LobbyTests(AmbrosiaTestCase):
                                        slug="not-yours", storage_backend="local")
         self.client.force_login(self.owner)
         response = self.client.post(
-            reverse("dracena:workspace_create"),
+            testlab.url("workspace_create"),
             {"name": "Sneaky", "kind": "python", "bucket": theirs.pk,
              "new_directory_name": "sneaky"})
-        self.assertRedirects(response, reverse("dracena:lobby"))
+        self.assertRedirects(response, testlab.url("lobby"))
         self.assertFalse(Workspace.objects.filter(name="Sneaky").exists())
 
     def test_the_lobby_says_so_when_you_have_no_buckets(self):
         self.client.force_login(self.owner)
-        response = self.client.get(reverse("dracena:lobby"))
+        response = self.client.get(testlab.url("lobby"))
         self.assertFalse(response.context["has_buckets"])
         self.assertIn("no buckets yet", response.content.decode())
 
 
-class WorkspaceRoomTests(AmbrosiaTestCase):
+class WorkspaceRoomTests(TestlabTestCase):
     def setUp(self):
         super().setUp()
         self.ws = self.make_workspace()
         self.main = VaultFile.objects.get(directory=self.ws.root_directory)
 
-    def _url(self, name="dracena:workspace", **kw):
-        return reverse(name, kwargs={"slug": self.ws.slug, **kw})
+    def _url(self, name="workspace", **kw):
+        return testlab.url(name, slug=self.ws.slug, **kw)
 
     def test_the_owner_can_open_the_room(self):
         self.client.force_login(self.owner)
@@ -95,8 +96,7 @@ class WorkspaceRoomTests(AmbrosiaTestCase):
     def test_staff_may_look_at_someone_elses_workspace(self):
         theirs = self.make_workspace(owner=self.other, name="Theirs")
         self.client.force_login(self.admin)
-        url = reverse("dracena:workspace", kwargs={"slug": theirs.slug})
-        response = self.client.get(url)
+        response = self.client.get(testlab.url("workspace", slug=theirs.slug))
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.context["readonly"],
                         "staff look, they do not edit")
@@ -155,25 +155,25 @@ class WorkspaceRoomTests(AmbrosiaTestCase):
             self.assertNotIn("Gitea", registry.names())
 
 
-class CloseAndDestroyTests(AmbrosiaTestCase):
+class CloseAndDestroyTests(TestlabTestCase):
     def setUp(self):
         super().setUp()
         self.ws = self.make_workspace(name="Doomed")
         self.client.force_login(self.owner)
 
     def _url(self, name):
-        return reverse(name, kwargs={"slug": self.ws.slug})
+        return testlab.url(name, slug=self.ws.slug)
 
     def test_closing_keeps_the_folder_and_the_files(self):
         root_pk = self.ws.root_directory_id
-        response = self.client.post(self._url("dracena:workspace_close"))
-        self.assertRedirects(response, reverse("dracena:lobby"))
+        response = self.client.post(self._url("workspace_close"))
+        self.assertRedirects(response, testlab.url("lobby"))
         self.assertFalse(Workspace.objects.filter(pk=self.ws.pk).exists())
         self.assertTrue(VaultDirectory.objects.filter(pk=root_pk).exists())
         self.assertTrue(VaultFile.objects.filter(directory_id=root_pk).exists())
 
     def test_destroying_needs_the_name_typed_back(self):
-        response = self.client.post(self._url("dracena:workspace_destroy"),
+        response = self.client.post(self._url("workspace_destroy"),
                                     {"confirm": "not the name"})
         self.assertEqual(response.status_code, 302)
         self.assertIn("destroy=1", response["Location"])
@@ -181,39 +181,39 @@ class CloseAndDestroyTests(AmbrosiaTestCase):
 
     def test_destroying_with_the_name_takes_the_folder_with_it(self):
         root_pk = self.ws.root_directory_id
-        response = self.client.post(self._url("dracena:workspace_destroy"),
+        response = self.client.post(self._url("workspace_destroy"),
                                     {"confirm": "Doomed"})
-        self.assertRedirects(response, reverse("dracena:lobby"))
+        self.assertRedirects(response, testlab.url("lobby"))
         self.assertFalse(Workspace.objects.filter(pk=self.ws.pk).exists())
         self.assertFalse(VaultDirectory.objects.filter(pk=root_pk).exists())
         self.assertFalse(VaultFile.objects.filter(directory_id=root_pk).exists())
 
     def test_the_bucket_itself_survives_a_destroy(self):
         bucket_pk = self.ws.bucket_id
-        self.client.post(self._url("dracena:workspace_destroy"),
+        self.client.post(self._url("workspace_destroy"),
                          {"confirm": "Doomed"})
         self.assertTrue(Bucket.objects.filter(pk=bucket_pk).exists())
 
     def test_a_stranger_cannot_destroy_your_workspace(self):
         self.client.force_login(self.other)
-        response = self.client.post(self._url("dracena:workspace_destroy"),
+        response = self.client.post(self._url("workspace_destroy"),
                                     {"confirm": "Doomed"})
         self.assertEqual(response.status_code, 404)
         self.assertTrue(Workspace.objects.filter(pk=self.ws.pk).exists())
 
     def test_staff_look_but_do_not_destroy(self):
         self.client.force_login(self.admin)
-        response = self.client.post(self._url("dracena:workspace_destroy"),
+        response = self.client.post(self._url("workspace_destroy"),
                                     {"confirm": "Doomed"})
         self.assertEqual(response.status_code, 404)
         self.assertTrue(Workspace.objects.filter(pk=self.ws.pk).exists())
 
     def test_both_buttons_refuse_a_get(self):
-        for name in ("dracena:workspace_close", "dracena:workspace_destroy"):
+        for name in ("workspace_close", "workspace_destroy"):
             self.assertEqual(self.client.get(self._url(name)).status_code, 405)
 
 
-class FileEndpointTests(AmbrosiaTestCase):
+class FileEndpointTests(TestlabTestCase):
     def setUp(self):
         super().setUp()
         self.ws = self.make_workspace()
@@ -221,19 +221,26 @@ class FileEndpointTests(AmbrosiaTestCase):
         self.client.force_login(self.owner)
 
     def _url(self, name, **kw):
-        return reverse(name, kwargs={"slug": self.ws.slug, **kw})
+        return testlab.url(name, slug=self.ws.slug, **kw)
+
+    def _build_folder(self):
+        # A bare build/ folder: the base's read-only rule keys on the NAME.
+        # Producing one is a compiling lab's business and not under test here.
+        return VaultDirectory.objects.create(
+            name="build", bucket=self.ws.bucket, owner=self.owner,
+            parent=self.ws.root_directory)
 
     def test_content_comes_back_as_json(self):
         services.write_file(vault_file=self.main, content="answer = 42\n")
         data = self.client.get(
-            self._url("dracena:file_content", pk=self.main.pk)).json()
+            self._url("file_content", pk=self.main.pk)).json()
         self.assertTrue(data["ok"])
         self.assertEqual(data["content"], "answer = 42\n")
         self.assertEqual(data["file_type"], "python")
 
     def test_saving_persists(self):
         response = self.client.post(
-            self._url("dracena:file_save", pk=self.main.pk),
+            self._url("file_save", pk=self.main.pk),
             data=json.dumps({"content": "saved = True\n"}),
             content_type="application/json")
         self.assertTrue(response.json()["ok"])
@@ -245,21 +252,16 @@ class FileEndpointTests(AmbrosiaTestCase):
                                      bucket=self.make_bucket(name="Theirs"))
         alien = VaultFile.objects.get(directory=theirs.root_directory)
         response = self.client.get(
-            self._url("dracena:file_content", pk=alien.pk))
+            self._url("file_content", pk=alien.pk))
         self.assertEqual(response.status_code, 404)
 
     def test_a_generated_file_opens_read_only(self):
-        # a bare build/ folder — the base's read-only rule keys on the NAME;
-        # producing one is texlab's business and not under test here
-        from toto.vault.models import VaultDirectory
-        build = VaultDirectory.objects.create(
-            name="build", bucket=self.ws.bucket, owner=self.owner,
-            parent=self.ws.root_directory)
         log = services.create_file(workspace=self.ws, user=self.owner,
-                                   filename="main.log", directory=build)
+                                   filename="main.log",
+                                   directory=self._build_folder())
         services.write_file(vault_file=log, content="! Undefined control sequence.\n")
         data = self.client.get(
-            self._url("dracena:file_content", pk=log.pk)).json()
+            self._url("file_content", pk=log.pk)).json()
         self.assertTrue(data["readonly"])
         self.assertFalse(data["truncated"])
         self.assertIn("Undefined", data["content"])
@@ -268,17 +270,12 @@ class FileEndpointTests(AmbrosiaTestCase):
         # Enforced on the server, not by the UI's good manners: a hand-made POST
         # must not overwrite a compile's output either, and the next run would
         # discard the edit regardless.
-        # a bare build/ folder — the base's read-only rule keys on the NAME;
-        # producing one is texlab's business and not under test here
-        from toto.vault.models import VaultDirectory
-        build = VaultDirectory.objects.create(
-            name="build", bucket=self.ws.bucket, owner=self.owner,
-            parent=self.ws.root_directory)
         log = services.create_file(workspace=self.ws, user=self.owner,
-                                   filename="main.log", directory=build)
+                                   filename="main.log",
+                                   directory=self._build_folder())
         services.write_file(vault_file=log, content="the log\n")
         response = self.client.post(
-            self._url("dracena:file_save", pk=log.pk),
+            self._url("file_save", pk=log.pk),
             data=json.dumps({"content": "nonsense"}),
             content_type="application/json")
         self.assertEqual(response.status_code, 409)
@@ -288,19 +285,14 @@ class FileEndpointTests(AmbrosiaTestCase):
     def test_a_huge_log_comes_back_trimmed_to_its_tail(self):
         # A pdfTeX log runs to megabytes when a package is chatty, and the tail
         # is where the errors are. Refusing to open it would be worse.
-        # a bare build/ folder — the base's read-only rule keys on the NAME;
-        # producing one is texlab's business and not under test here
-        from toto.vault.models import VaultDirectory
-        build = VaultDirectory.objects.create(
-            name="build", bucket=self.ws.bucket, owner=self.owner,
-            parent=self.ws.root_directory)
         log = services.create_file(workspace=self.ws, user=self.owner,
-                                   filename="big.log", directory=build)
+                                   filename="big.log",
+                                   directory=self._build_folder())
         filler = "x" * 99 + "\n"
         body = filler * ((services.MAX_READ_BYTES // 100) + 50)
         services.write_file(vault_file=log, content=body + "! the last error\n")
         data = self.client.get(
-            self._url("dracena:file_content", pk=log.pk)).json()
+            self._url("file_content", pk=log.pk)).json()
         self.assertTrue(data["truncated"])
         self.assertLess(len(data["content"]), len(body))
         self.assertTrue(data["content"].endswith("! the last error\n"))
@@ -309,26 +301,24 @@ class FileEndpointTests(AmbrosiaTestCase):
     def test_a_stranger_cannot_read_a_file(self):
         self.client.force_login(self.other)
         response = self.client.get(
-            self._url("dracena:file_content", pk=self.main.pk))
+            self._url("file_content", pk=self.main.pk))
         self.assertEqual(response.status_code, 404)
 
     def test_staff_may_read_but_not_save(self):
         theirs = self.make_workspace(owner=self.other, name="Theirs")
         their_file = VaultFile.objects.get(directory=theirs.root_directory)
         self.client.force_login(self.admin)
-        read = self.client.get(reverse("dracena:file_content",
-                                       kwargs={"slug": theirs.slug,
-                                               "pk": their_file.pk}))
+        read = self.client.get(testlab.url(
+            "file_content", slug=theirs.slug, pk=their_file.pk))
         self.assertEqual(read.status_code, 200)
         write = self.client.post(
-            reverse("dracena:file_save",
-                    kwargs={"slug": theirs.slug, "pk": their_file.pk}),
+            testlab.url("file_save", slug=theirs.slug, pk=their_file.pk),
             data=json.dumps({"content": "nope"}), content_type="application/json")
         self.assertEqual(write.status_code, 404)
 
     def test_creating_a_file_returns_the_refreshed_tree(self):
         response = self.client.post(
-            self._url("dracena:file_create"),
+            self._url("file_create"),
             data=json.dumps({"name": "extra.py"}),
             content_type="application/json")
         data = response.json()
@@ -337,14 +327,14 @@ class FileEndpointTests(AmbrosiaTestCase):
 
     def test_creating_a_folder_returns_the_refreshed_tree(self):
         response = self.client.post(
-            self._url("dracena:dir_create"),
+            self._url("dir_create"),
             data=json.dumps({"name": "pkg"}),
             content_type="application/json")
         self.assertIn("pkg", [i["name"] for i in response.json()["items"]])
 
     def test_a_duplicate_name_reports_the_reason(self):
         response = self.client.post(
-            self._url("dracena:file_create"),
+            self._url("file_create"),
             data=json.dumps({"name": "main.py"}),
             content_type="application/json")
         self.assertEqual(response.status_code, 409)
@@ -352,120 +342,28 @@ class FileEndpointTests(AmbrosiaTestCase):
 
     def test_deleting_removes_the_file(self):
         response = self.client.post(
-            self._url("dracena:file_delete", pk=self.main.pk),
+            self._url("file_delete", pk=self.main.pk),
             content_type="application/json")
         self.assertTrue(response.json()["ok"])
         self.assertFalse(VaultFile.objects.filter(pk=self.main.pk).exists())
 
     def test_endpoints_refuse_a_get_where_they_mutate(self):
         self.assertEqual(
-            self.client.get(self._url("dracena:file_create")).status_code, 405)
-
-
-@override_settings(
-    ANASTASIA_POOL={"cpu_millicores": 4000, "ram_mb": 8192,
-                    "scratch_mb": 8192, "pids": 2048},
-    ANASTASIA_RUNTIME_BACKEND="toto.dracena.tests.fakes.FakeRunBackend",
-)
-class ExecutionGateTests(AmbrosiaTestCase):
-    """Running code is a privilege, not a consequence of owning a workspace.
-
-    Two privileges now, and they refuse in a different order. Staff-ness is
-    checked first (403); holding a Compute Capsule is checked second (409). The
-    owner here is given one, so the tests below reach the gate they are
-    actually about instead of stopping at "you have nowhere to run this".
-    """
-
-    def setUp(self):
-        super().setUp()
-        self.ws = self.make_workspace()
-        from toto.anastasia import services
-        from toto.anastasia.limits import Limits
-
-        lease = services.reserve(owner=self.owner, name="gate",
-                                 limits=Limits(2000, 2048, 1024, 512))
-        services.mount(lease=lease, actor=self.owner)
-
-    def _execute_as(self, user, code="1 + 1"):
-        self.client.force_login(user)
-        return self.client.post(
-            reverse("dracena:execute", kwargs={"slug": self.ws.slug}),
-            data=json.dumps({"code": code}), content_type="application/json")
-
-    def test_a_stranger_cannot_even_reach_the_endpoint(self):
-        response = self._execute_as(self.other)
-        self.assertEqual(response.status_code, 404)
-
-    def test_a_non_staff_owner_of_their_own_workspace_is_refused(self):
-        theirs = self.make_workspace(owner=self.other, name="Theirs")
-        self.client.force_login(self.other)
-        response = self.client.post(
-            reverse("dracena:execute", kwargs={"slug": theirs.slug}),
-            data=json.dumps({"code": "1"}), content_type="application/json")
-        self.assertEqual(response.status_code, 403)
-        self.assertIn("server", response.json()["error"].lower())
-
-    def test_empty_code_is_refused_before_anything_is_submitted(self):
-        response = self._execute_as(self.owner, code="   ")
-        self.assertEqual(response.status_code, 400)
-
-    def test_a_job_that_could_not_run_says_so(self):
-        """503 and a sentence — never a traceback.
-
-        Repointed on 2026-09-10 from `kernel.KernelUnavailable` ("this build
-        cannot talk to a Python kernel") to `scripts.ScriptFailed`. The claim
-        is the same and the class it belongs to is the same: the platform could
-        not run this, as distinct from the code having a bug in it.
-        """
-        from toto.dracena import scripts
-
-        with mock.patch.object(
-                scripts, "run",
-                side_effect=scripts.ScriptFailed("no interpreter here")):
-            response = self._execute_as(self.owner)
-        self.assertEqual(response.status_code, 503)
-        self.assertIn("no interpreter here", response.json()["error"])
-
-    def test_a_successful_run_returns_the_console_shape(self):
-        from toto.dracena import scripts
-
-        fake = {"status": "ok", "stdout": "hi\n", "stderr": "", "error": "",
-                "exit_code": 0, "files": []}
-        with mock.patch.object(scripts, "run", return_value=fake):
-            data = self._execute_as(self.owner).json()
-        self.assertTrue(data["ok"])
-        self.assertEqual(data["stdout"], "hi\n")
-        self.assertEqual(data["exit_code"], 0)
-        # `rich` and `execution_count` were in this shape until 2026-09-10 and
-        # are gone with the kernel that produced them. Absent, not empty: a
-        # client that reads them should fail its own check rather than draw
-        # nothing forever.
-        self.assertNotIn("rich", data)
-        self.assertNotIn("execution_count", data)
-
-    def test_the_kernel_routes_are_gone_rather_than_left_answering(self):
-        """`kernel/status/` and `kernel/<action>/` are UNROUTED since
-        2026-09-10 — not 410s, not no-ops. Their only caller was the room's own
-        JavaScript, and a tombstone that answers is one somebody writes a
-        client against.
-        """
-        from django.urls import NoReverseMatch
-
-        for name, kwargs in (("kernel_status", {"slug": self.ws.slug}),
-                             ("kernel_action", {"slug": self.ws.slug,
-                                                "action": "start"})):
-            with self.subTest(route=name):
-                with self.assertRaises(NoReverseMatch):
-                    reverse(f"dracena:{name}", kwargs=kwargs)
+            self.client.get(self._url("file_create")).status_code, 405)
 
 
 class PermissionSettingTests(AmbrosiaTestCase):
     def test_the_access_setting_is_honoured(self):
         from toto.ambrosia import permissions
 
-        with override_settings(AMBROSIA_EXECUTION_ACCESS="superuser"):
-            # Read at import time, so reload the module's view of it.
+        # EXECUTION_ACCESS is read once, at import, so the module's copy is the
+        # one that has to change. This used override_settings until
+        # 2026-09-14 and asserted only that a superuser may run, which is true
+        # under the "staff" default too, so it passed without proving anything.
+        with mock.patch.object(permissions, "EXECUTION_ACCESS", "superuser"):
             self.assertTrue(permissions.can_execute(self.admin))
+            self.assertFalse(permissions.can_execute(self.owner),
+                             "staff is not enough once superuser is required")
 
     def test_staff_may_execute_by_default(self):
         from toto.ambrosia import permissions

@@ -16,6 +16,8 @@ from toto.core.models import Platform
 
 from toto.ambrosia import services
 
+from . import testlab
+
 User = get_user_model()
 
 
@@ -76,3 +78,18 @@ class AmbrosiaTestCase(TestCase):
         return services.create_workspace(
             owner=owner, name=name, bucket=bucket, directory=directory,
             new_directory_name=new_directory_name or "", **kw)
+
+
+@override_settings(ROOT_URLCONF=testlab.URLCONF)
+class TestlabTestCase(AmbrosiaTestCase):
+    """AmbrosiaTestCase with the test lab registered and its routes mounted.
+
+    For everything reached through a language app's namespace: the lobby, the
+    room, the file endpoints, settings, hibernation and the workspace API. See
+    tests/testlab.py for why the suite no longer borrows a real lab. A test
+    that needs a hook swapped calls `testlab.install(self, run=...)` again.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.lab = testlab.install(self)
