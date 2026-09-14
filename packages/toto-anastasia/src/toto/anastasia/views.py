@@ -398,6 +398,9 @@ def capsule(request, uuid):
                        _capsule_context(
                            request, lease, "information",
                            runtime=services.runtime_for(lease),
+                           # The pie's denominator: the executor's own bound
+                           # on the files area, read rather than restated.
+                           area_budget=_area_budget(),
                            storage_url=(reverse("anastasia:storage",
                                                 args=[lease.uuid])
                                         if storage_supported else "")))

@@ -591,6 +591,35 @@ class CapsuleViewTests(DeskTestCase):
         self.assertEqual(response.context["capsule"]["expires_at"],
                          self.lease.expires_at)
 
+    def test_information_draws_the_files_area_against_its_budget(self):
+        """The one disk figure with a measured use AND an enforced limit, and
+        the limit is the executor's own. Job input and output is a line under
+        the pie, never a slice of it."""
+        from toto.anastasia.executor import capsules as executor_capsules
+
+        class Measuring(FakeRuntimeBackend):
+            def storage(self, lease):
+                return {}
+
+        with mock.patch("toto.anastasia.views.get_backend", return_value=Measuring()):
+            response = self._get("capsule")
+            self.assertEqual(response.context["area_budget"],
+                             executor_capsules.DEFAULT_AREA_BUDGET)
+            self.assertContains(response, "Mount this Capsule to measure its disk use.")
+            self.assertNotContains(response, 'data-testid="disk-pie"')
+
+            services.mount(lease=self.lease)
+            response = self._get("capsule")
+        self.assertContains(response, 'data-testid="disk-pie"')
+        self.assertContains(response, "type: 'doughnut'")
+        self.assertContains(response, f"budget: {executor_capsules.DEFAULT_AREA_BUDGET},")
+        self.assertContains(response, "gone when each job ends")
+        self.assertNotContains(response, "job scratch")
+        # Too large to count is over budget to the executor
+        # (`check_area_budget`), so it is drawn as blocked, never as room.
+        self.assertContains(response, 'data-testid="disk-uncounted"')
+        self.assertContains(response, "no job will start, and nothing can be uploaded")
+
     def test_history_carries_the_series_and_the_rule_that_null_is_a_gap(self):
         response = self._get("capsule_history")
         self.assertContains(response,

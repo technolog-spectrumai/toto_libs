@@ -1,5 +1,5 @@
 {% extends "anastasia/capsule_base.html" %}
-{% load i18n %}
+{% load i18n static %}
 
 {% comment %}INFORMATION — what the Capsule is NOW.
 
@@ -7,6 +7,12 @@ What it holds, what it is using, when the reservation ends, and how much disk
 each area takes. Past behaviour — readings over time, events, jobs — is the
 History tab's.
 {% endcomment %}
+
+{% block capsule_head %}
+{% comment %}Chart.js for the disk pie, vendored like every chart on the
+platform, in the head so `Chart` exists before `drawPie` runs.{% endcomment %}
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+{% endblock %}
 
 {% block capsule_content %}
 <div class="grid gap-4 md:grid-cols-2" x-data="capsuleInformation()" x-init="load()">
@@ -81,22 +87,65 @@ History tab's.
     {% elif not mounted %}
       <p class="mt-3 text-sm opacity-60">{% trans "Mount this Capsule to measure its disk use." %}</p>
     {% else %}
-      <template x-if="storage === null">
-        <p class="mt-3 text-sm opacity-60">{% trans "Measuring…" %}</p>
-      </template>
-      <template x-if="storage && storage.areas">
-        <div class="mt-3 space-y-2 text-sm">
-          <p><span class="font-bold" x-text="humanBytes(storage.areas.files ? storage.areas.files.bytes : 0)"></span>
-             <span class="text-xs opacity-60">{% trans "in Files — kept between jobs" %}</span></p>
-          <p><span class="font-bold" x-text="humanBytes(storage.areas.exec ? storage.areas.exec.bytes : 0)"></span>
-             <span class="text-xs opacity-60">{% trans "in job scratch — gone when each job ends" %}</span></p>
+      <p x-show="storage === null" class="mt-3 text-sm opacity-60">{% trans "Measuring…" %}</p>
+      <p x-show="storage && !storage.areas" x-cloak class="mt-3 text-sm text-amber-500">
+        {% trans "The compute runtime did not answer, so disk use cannot be measured right now." %}
+      </p>
+
+      {% comment %}
+        THE PIE: the files area against its budget — the one disk figure with
+        both a measured use and a limit the executor enforces. The budget is
+        the executor's own constant, passed in, never restated here.
+
+        Job input and output is NOT a slice: it lives outside that budget and
+        has no total of its own, so it is a line under the pie. The reserved
+        Scratch is not drawn at all — it is memory, per runner, and nothing
+        measures how much of it is used.
+
+        OVER BUDGET the ring is full and amber and a sentence says by how much:
+        a pie cannot show more than all of itself, and a full ring alone would
+        read as "exactly full". INCOMPLETE counts as over budget, because the
+        executor counts it so (`executor/files.py:check_area_budget`): what was
+        counted is drawn, the rest of the ring is amber and "not counted", and
+        the sentence says nothing more is accepted. Drawing the rest as free
+        space would promise room the executor refuses.
+      {% endcomment %}
+      <div x-show="storage && storage.areas" x-cloak
+           class="mt-3 flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+        <div x-show="budget > 0" class="relative h-40 w-40 shrink-0" data-testid="disk-pie">
+          <canvas x-ref="pie" aria-label="{% trans 'Disk use of the files area' %}" role="img"></canvas>
+          <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+            <span class="text-lg font-bold" x-text="(filesComplete() ? '' : '≥ ') + usedPercent() + '%'"></span>
+            <span class="text-[10px] opacity-60">{% trans "of the budget" %}</span>
+          </div>
         </div>
-      </template>
-      {% comment %}"We could not measure" and "it is empty" are different
-      claims, and only one of them is safe to act on.{% endcomment %}
-      <template x-if="storage && !storage.complete">
-        <p class="mt-2 text-xs text-amber-500">{% trans "This measurement is incomplete — the runtime did not finish counting." %}</p>
-      </template>
+        <ul class="min-w-0 space-y-1.5 text-sm">
+          <li class="flex flex-wrap items-center gap-2">
+            <span class="h-3 w-3 shrink-0 rounded-sm" :style="'background:' + colors().used"></span>
+            <span class="font-bold" x-text="bytes(filesBytes())"></span>
+            <span class="text-xs opacity-60">{% trans "used in Files — kept between jobs" %}</span>
+          </li>
+          <li class="flex flex-wrap items-center gap-2" x-show="budget > 0 && !blocked()">
+            <span class="h-3 w-3 shrink-0 rounded-sm" :style="'background:' + colors().free"></span>
+            <span class="font-bold" x-text="bytes(freeBytes())"></span>
+            <span class="text-xs opacity-60">{% trans "free in the files budget" %}</span>
+          </li>
+          <li x-show="budget > 0" class="text-xs opacity-60"
+              x-text="'{% trans "Budget" %} ' + bytes(budget)"></li>
+          <li x-show="overBudget()" class="text-xs font-semibold text-amber-600" data-testid="disk-over-budget"
+              x-text="'{% trans "Over the budget by" %} ' + bytes(filesBytes() - budget) + '. ' + '{% trans "No job will start until something is deleted." %}'"></li>
+          <li class="border-t border-current/10 pt-1.5">
+            <span class="font-bold" x-text="bytes(execBytes())"></span>
+            <span class="text-xs opacity-60">{% trans "in job input and output — gone when each job ends" %}</span>
+          </li>
+        </ul>
+      </div>
+      {% comment %}"We could not measure all of it" and "this is all of it" are
+      different claims, and only one of them is safe to act on.{% endcomment %}
+      <p x-show="storage && storage.areas && area('files') && !filesComplete()" x-cloak
+         class="mt-2 text-xs font-semibold text-amber-600" data-testid="disk-uncounted">
+        {% trans "This area holds more than can be counted, so it is treated as over its budget: no job will start, and nothing can be uploaded or copied into it, until something is deleted." %}
+      </p>
     {% endif %}
   </div>
 </div>
@@ -111,12 +160,76 @@ function capsuleInformation() {
     storage: null,
     storageUrl: '{{ storage_url|escapejs }}',
     poll: {{ mounted|yesno:"true,false" }},
+    // The executor's bound on the files area, in bytes. 0 when this
+    // deployment could not say, and then no pie is drawn.
+    budget: {{ area_budget|default_if_none:0 }},
+    chart: null,
     async load() {
       if (!this.storageUrl || !this.poll) return;
       try {
         const response = await fetch(this.storageUrl, {headers: {'Accept': 'application/json'}});
-        if (response.ok) { this.storage = await response.json(); }
+        if (response.ok) {
+          this.storage = await response.json();
+          // The canvas is shown by the same change; draw once it is.
+          this.$nextTick(() => this.drawPie());
+        }
       } catch (e) { /* an unanswered measurement stays "Measuring…" */ }
+    },
+    area(name) {
+      return (this.storage && this.storage.areas && this.storage.areas[name]) || null;
+    },
+    filesBytes() { const a = this.area('files'); return a ? (a.bytes || 0) : 0; },
+    execBytes() { const a = this.area('exec'); return a ? (a.bytes || 0) : 0; },
+    filesComplete() { const a = this.area('files'); return !!(a && a.complete); },
+    freeBytes() { return Math.max(0, this.budget - this.filesBytes()); },
+    overBudget() { return this.budget > 0 && this.filesBytes() > this.budget; },
+    // What the executor refuses on: over the budget, or too large to count.
+    blocked() { return this.overBudget() || !!(this.area('files') && !this.filesComplete()); },
+    usedPercent() {
+      if (!this.budget) return 0;
+      return Math.min(100, Math.round((this.filesBytes() * 100) / this.budget));
+    },
+    colors() {
+      return {used: this.blocked() ? '#f59e0b' : '#4F46E5', free: 'rgba(128, 128, 128, 0.25)',
+              uncounted: 'rgba(245, 158, 11, 0.3)'};
+    },
+    // Sizes the way a person reads them, for the tooltip as well as the
+    // legend: a Chart.js tooltip would otherwise say "1,073,741,824".
+    bytes(n) {
+      if (!n) return '0 B';
+      if (n < 1024) return n + ' B';
+      if (n < 1048576) return (n / 1024).toFixed(1) + ' kB';
+      if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
+      return (n / 1073741824).toFixed(2) + ' GB';
+    },
+    drawPie() {
+      const canvas = this.$refs.pie;
+      if (!canvas || typeof Chart === 'undefined' || !this.budget || !this.area('files')) return;
+      if (this.chart) { this.chart.destroy(); }
+      // Over budget the used slice is the whole ring: a pie cannot show more
+      // than all of itself, and the sentence beside it says by how much.
+      const used = Math.min(this.filesBytes(), this.budget);
+      const rest = this.overBudget() ? 0 : this.freeBytes();
+      // NOT COUNTED IS NOT FREE: the executor refuses on it. Its slice has no
+      // size worth naming, so its tooltip names none.
+      const counted = this.filesComplete();
+      const format = (n) => this.bytes(n);
+      this.chart = new Chart(canvas.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels: ["{% trans 'Used space' %}", counted ? "{% trans 'Free space' %}" : "{% trans 'Not counted' %}"],
+          datasets: [{data: [used, rest], borderWidth: 0,
+                      backgroundColor: [this.colors().used, counted ? this.colors().free : this.colors().uncounted]}],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, animation: false, cutout: '60%',
+          plugins: {
+            legend: {display: false},
+            tooltip: {callbacks: {label: (item) => (item.dataIndex === 1 && !counted)
+              ? item.label : item.label + ': ' + format(item.raw)}},
+          },
+        },
+      });
     },
   };
 }
