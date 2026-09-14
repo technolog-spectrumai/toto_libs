@@ -19,6 +19,15 @@ urlpatterns = [
     path("<uuid:uuid>/", views.capsule, name="capsule"),
     path("<uuid:uuid>/history/", views.capsule_history, name="capsule_history"),
     path("<uuid:uuid>/files/", views.capsule_files, name="capsule_files"),
+    path("<uuid:uuid>/env/", views.capsule_env, name="capsule_env"),
+    # Installing, from the Env tab: the same `install.py` the bearer API
+    # drives. The run is addressed under its Capsule, so ownership is the
+    # Capsule's and a stranger's run is a 404 like a stranger's Capsule.
+    path("<uuid:uuid>/env/install/", views.env_install, name="env_install"),
+    path("<uuid:uuid>/env/installs/<uuid:run>/", views.env_install_status,
+         name="env_install_status"),
+    path("<uuid:uuid>/env/installs/<uuid:run>/cancel/", views.env_install_cancel,
+         name="env_install_cancel"),
     # The verbs. Each redirects back to the tab it was pressed on.
     path("<uuid:uuid>/mount/", views.mount, name="mount"),
     path("<uuid:uuid>/unmount/", views.unmount, name="unmount"),

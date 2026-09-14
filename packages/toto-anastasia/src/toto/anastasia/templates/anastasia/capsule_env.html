@@ -1,0 +1,216 @@
+{% extends "anastasia/capsule_base.html" %}
+{% load i18n %}
+
+{% comment %}ENV — what is installed into this Capsule, and installing more.
+
+Two kinds, one shape: Python distributions (pip, into /files/site-packages,
+found by every Python run through PYTHONPATH) and CTAN packages
+(`anastasia-install-latex`, into /files/texmf, found by every compile through
+TEXMFHOME). Both live in the files area, so they are KEPT, NOT DURABLE — the
+sentence at the top says what that means.
+
+A PHASE AND A COUNT, never one percentage: resolving, downloading and
+installing are not comparable stages, and a bar over all three would be a lie
+told smoothly (`install.py`).
+
+A FORM THAT CANNOT WORK IS DRAWN DISABLED WITH ITS REASON, never removed: no
+internet access (chosen at reservation), not mounted, no CTAN mirror.
+{% endcomment %}
+
+{% block capsule_content %}
+{{ status_urls|json_script:"env-status-urls" }}
+<div class="space-y-4" x-data="capsuleEnv()" x-init="init()" data-testid="env">
+
+  <p :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-xl border px-4 py-3 text-xs opacity-80">
+    {% trans "Packages are installed into this Capsule's files area, and every job in the Capsule finds them. Like its files, they survive a job and an unmount, and they do not survive a reboot or releasing the Capsule." %}
+  </p>
+
+  {% if not egress %}
+    <p class="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-600" data-testid="env-no-egress">
+      <i class="fa-solid fa-globe mr-1"></i>
+      {% if egress_offered %}
+        {% trans "This Capsule was reserved without internet access, so nothing can be fetched into it. Internet access is chosen when reserving: reserve a Capsule with it to install packages." %}
+      {% else %}
+        {% trans "This platform does not offer Capsules internet access, so packages cannot be installed. Everything already in the runner images is available." %}
+      {% endif %}
+    </p>
+  {% elif not mounted %}
+    <p class="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-600" data-testid="env-unmounted">
+      {% trans "Mount this Capsule to install packages or to see what is installed." %}
+    </p>
+  {% endif %}
+
+  {% if mounted and not listing_answered %}
+    <p class="text-xs text-amber-500" data-testid="env-unanswered">{% trans "The compute runtime did not answer, so the installed packages cannot be listed right now." %}</p>
+  {% elif mounted and not listing_complete %}
+    <p class="text-xs text-amber-500" data-testid="env-incomplete">{% trans "These lists may be incomplete — the runtime stopped counting files before it reached the end." %}</p>
+  {% endif %}
+
+  <div class="grid gap-4 lg:grid-cols-2">
+
+    {# ------------------------------------------------------------ Python #}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="flex flex-col gap-4 rounded-lg border p-5" data-kind="python">
+      <div>
+        <h2 class="flex items-center gap-2 text-lg font-bold"><i class="fa-brands fa-python"></i>{% trans "Python" %}</h2>
+        <p class="mt-1 text-xs opacity-70">{% trans "Installed with pip. Every Python run in this Capsule can import them." %}</p>
+      </div>
+
+      <form method="post" action="{% url 'anastasia:env_install' capsule.uuid %}" class="space-y-2">
+        {% csrf_token %}
+        <input type="hidden" name="kind" value="python">
+        <div class="flex gap-2">
+          <input name="packages" autocomplete="off" spellcheck="false"
+                 placeholder="{% trans 'numpy pandas matplotlib' %}"
+                 {% if not egress or not mounted %}disabled{% endif %}
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                 class="min-w-0 flex-1 rounded-xl border px-3 py-2 font-mono text-sm disabled:opacity-50">
+          <button {% if not egress or not mounted %}disabled{% endif %}
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="rounded-xl px-4 py-2 text-sm font-bold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
+            {% trans "Install" %}</button>
+        </div>
+        <p class="text-xs opacity-60">{% trans "Package names only, separated by spaces — no versions. pip fetches whatever the index serves today, and the log says which versions those were." %}</p>
+      </form>
+
+      <div>
+        <h3 class="text-xs font-bold uppercase tracking-wide opacity-60">{% trans "Installed" %}</h3>
+        {% if installed_python %}
+          <ul class="mt-2 flex flex-wrap gap-1.5" data-testid="installed-python">
+            {% for name, version in installed_python %}
+              <li :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                  class="rounded-full border px-2 py-0.5 font-mono text-xs">{{ name }} <span class="opacity-50">{{ version }}</span></li>
+            {% endfor %}
+          </ul>
+        {% elif mounted %}
+          <p class="mt-2 text-xs opacity-60">{% trans "Nothing installed yet. The Python in the runner image and its standard library are always there." %}</p>
+        {% endif %}
+      </div>
+
+      {% include "anastasia/_install_runs.html" with runs=python_runs %}
+    </section>
+
+    {# ------------------------------------------------------------- LaTeX #}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="flex flex-col gap-4 rounded-lg border p-5" data-kind="latex">
+      <div>
+        <h2 class="flex items-center gap-2 text-lg font-bold"><i class="fa-solid fa-square-root-variable"></i>{% trans "LaTeX" %}</h2>
+        <p class="mt-1 text-xs opacity-70">{% trans "The whole of TeX Live is already installed, so most documents need nothing here. This adds a CTAN package that is missing or newer, and every compile in this Capsule finds it." %}</p>
+      </div>
+
+      {% if not ctan_mirror_set %}
+        <p class="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600" data-testid="env-no-mirror">
+          {% trans "This platform has no CTAN mirror configured, so LaTeX packages cannot be installed. An administrator sets ANASTASIA_CTAN_MIRROR." %}
+        </p>
+      {% endif %}
+
+      <form method="post" action="{% url 'anastasia:env_install' capsule.uuid %}" class="space-y-2">
+        {% csrf_token %}
+        <input type="hidden" name="kind" value="latex">
+        <div class="flex gap-2">
+          <input name="packages" autocomplete="off" spellcheck="false"
+                 placeholder="{% trans 'tcolorbox' %}"
+                 {% if not egress or not mounted or not ctan_mirror_set %}disabled{% endif %}
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                 class="min-w-0 flex-1 rounded-xl border px-3 py-2 font-mono text-sm disabled:opacity-50">
+          <button {% if not egress or not mounted or not ctan_mirror_set %}disabled{% endif %}
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="rounded-xl px-4 py-2 text-sm font-bold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
+            {% trans "Install" %}</button>
+        </div>
+        <p class="text-xs opacity-60">{% trans "CTAN package names, separated by spaces. Only packages CTAN offers a ready-to-install archive for can be installed; the log names any that cannot." %}</p>
+      </form>
+
+      <div>
+        <h3 class="text-xs font-bold uppercase tracking-wide opacity-60">{% trans "Installed" %}</h3>
+        {% if installed_latex %}
+          <ul class="mt-2 flex flex-wrap gap-1.5" data-testid="installed-latex">
+            {% for name in installed_latex %}
+              <li :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                  class="rounded-full border px-2 py-0.5 font-mono text-xs">{{ name }}</li>
+            {% endfor %}
+          </ul>
+        {% elif mounted %}
+          <p class="mt-2 text-xs opacity-60">{% trans "Nothing added yet." %}</p>
+        {% endif %}
+      </div>
+
+      {% include "anastasia/_install_runs.html" with runs=latex_runs %}
+    </section>
+  </div>
+
+  <p x-show="finishedSinceLoad" x-cloak class="text-sm" data-testid="env-reload">
+    {% trans "An install finished." %}
+    <a href="" class="font-semibold underline">{% trans "Reload to see what is installed." %}</a>
+  </p>
+</div>
+{% endblock %}
+
+{% block capsule_script %}
+<script>
+function capsuleEnv() {
+  const raw = document.getElementById('env-status-urls');
+  const statusUrls = raw ? JSON.parse(raw.textContent) : {};
+  return {
+    // uuid -> the run as the status route last described it.
+    live: {},
+    // uuid -> the log text read so far, and whether it is shown.
+    logs: {},
+    shown: {},
+    statusUrls,
+    finishedSinceLoad: false,
+    init() {
+      if (!Object.keys(this.statusUrls).length) return;
+      this.poll();
+      this.timer = setInterval(() => this.poll(), 2000);
+    },
+    async read(uuid, url) {
+      const since = (this.logs[uuid] || '').length;
+      const response = await fetch(url + '?since=' + since, {headers: {'Accept': 'application/json'}});
+      if (!response.ok) return null;
+      const body = await response.json();
+      // Appended, never redrawn: `log_since` says where this slice starts.
+      this.logs[uuid] = (this.logs[uuid] || '').slice(0, body.log_since) + (body.log || '');
+      this.live[uuid] = body;
+      return body;
+    },
+    async poll() {
+      for (const [uuid, url] of Object.entries(this.statusUrls)) {
+        try {
+          const body = await this.read(uuid, url);
+          if (body && body.finished) {
+            delete this.statusUrls[uuid];
+            this.finishedSinceLoad = true;
+          }
+        } catch (e) { /* a failed poll leaves the last reading */ }
+      }
+      if (!Object.keys(this.statusUrls).length && this.timer) {
+        clearInterval(this.timer);
+        this.timer = null;
+      }
+    },
+    async toggleLog(uuid, url) {
+      this.shown[uuid] = !this.shown[uuid];
+      if (this.shown[uuid] && this.logs[uuid] === undefined) {
+        try { await this.read(uuid, url); } catch (e) { /* shown empty */ }
+      }
+    },
+    phaseLabel(phase) {
+      return {
+        queued: "{% trans 'Queued' %}", resolving: "{% trans 'Resolving' %}",
+        downloading: "{% trans 'Downloading' %}", installing: "{% trans 'Installing' %}",
+        finished: "{% trans 'Finished' %}", failed: "{% trans 'Failed' %}"
+      }[phase] || phase;
+    },
+    statusClass(status) {
+      return {
+        running: 'bg-sky-500/20 text-sky-500', pending: 'bg-sky-500/20 text-sky-500',
+        success: 'bg-emerald-500/20 text-emerald-500', failed: 'bg-red-500/20 text-red-500',
+        killed: 'bg-gray-500/20', lost: 'bg-amber-500/20 text-amber-500'
+      }[status] || 'bg-gray-500/20';
+    },
+  };
+}
+</script>
+{% endblock %}

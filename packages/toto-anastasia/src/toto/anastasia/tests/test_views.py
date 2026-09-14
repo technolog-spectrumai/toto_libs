@@ -20,8 +20,8 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, override_settings
 from django.urls import reverse
 
-from toto.anastasia import choices, services, views
-from toto.anastasia.models import CapsuleEvent, ComputeLease, Execution
+from toto.anastasia import choices, install, services, views
+from toto.anastasia.models import CapsuleEvent, ComputeLease, Execution, InstallRun
 from toto.anastasia.samples import CapsuleSample
 
 from .base import RUNNABLE, SMALL, AnastasiaTestCase, FakeRuntimeBackend
@@ -43,7 +43,7 @@ _TEMPLATES = [{
 
 #: The Capsule view's tabs, by route name and slug, in strip order.
 TABS = (("capsule", "information"), ("capsule_history", "history"),
-        ("capsule_files", "files"))
+        ("capsule_files", "files"), ("capsule_env", "env"))
 
 X_CLOAK = "[x-cloak]{display:none!important}"
 
@@ -1026,6 +1026,160 @@ class FilesTabTests(DeskTestCase):
             with self.subTest(name=name):
                 self.assertEqual(self.client.get(self._url(name)).status_code,
                                  405)
+
+
+# --------------------------------------------------------------------------- #
+# Env                                                                          #
+# --------------------------------------------------------------------------- #
+
+class EnvTabTests(DeskTestCase):
+    """Installing into a Capsule from its Env tab — the door onto `install.py`,
+    whose own behaviour `test_install.py` pins."""
+
+    MIRROR = "https://ctan.example.org/tex-archive"
+
+    def setUp(self):
+        super().setUp()
+        self.lease = services.reserve(owner=self.user, name="lab",
+                                      limits=RUNNABLE, egress=True)
+        services.mount(lease=self.lease, actor=self.user)
+
+    def _url(self, name, *extra, lease=None):
+        return reverse(f"anastasia:{name}",
+                       args=[(lease or self.lease).uuid, *extra])
+
+    def _env(self, lease=None):
+        return self.client.get(self._url("capsule_env", lease=lease))
+
+    def _dark(self):
+        dark = services.reserve(owner=self.user, name="dark", limits=SMALL)
+        services.mount(lease=dark, actor=self.user)
+        return dark
+
+    # -- what the tab says --------------------------------------------------
+
+    def test_without_internet_it_says_why_and_draws_the_forms_disabled(self):
+        """Hidden, the form would be looked for; disabled, it says why."""
+        with override_settings(ANASTASIA_EGRESS=True):
+            response = self._env(self._dark())
+        self.assertFalse(response.context["egress"])
+        self.assertContains(response, 'data-testid="env-no-egress"')
+        self.assertContains(response, "chosen when reserving")
+        self.assertEqual(response.content.decode().count(
+            f'action="{self._url("env_install", lease=response.context["lease"])}"'), 2)
+        self.assertContains(response, "disabled")
+
+    def test_an_unmounted_capsule_says_to_mount(self):
+        services.unmount(lease=self.lease, actor=self.user)
+        self.assertContains(self._env(), 'data-testid="env-unmounted"')
+
+    @override_settings(ANASTASIA_CTAN_MIRROR="")
+    def test_the_latex_card_names_the_missing_mirror(self):
+        self.assertContains(self._env(), 'data-testid="env-no-mirror"')
+
+    @override_settings(ANASTASIA_CTAN_MIRROR=MIRROR)
+    def test_with_a_mirror_the_latex_card_does_not_complain(self):
+        self.assertNotContains(self._env(), 'data-testid="env-no-mirror"')
+
+    def test_what_is_installed_is_read_off_the_files_area(self):
+        FakeRuntimeBackend.files[str(self.lease.uuid)] = {
+            "site-packages/numpy-2.1.0.dist-info/METADATA": b"",
+            "site-packages/scikit_learn-1.5.2.dist-info/RECORD": b"",
+            "site-packages/numpy/__init__.py": b"",
+            "texmf/.toto-installed/tcolorbox": b"{}",
+            "texmf/tex/latex/tcolorbox/tcolorbox.sty": b"",
+        }
+        response = self._env()
+        self.assertEqual(response.context["installed_python"],
+                         [("numpy", "2.1.0"), ("scikit-learn", "1.5.2")])
+        self.assertEqual(response.context["installed_latex"], ["tcolorbox"])
+        self.assertContains(response, 'data-testid="installed-python"')
+        self.assertContains(response, 'data-testid="installed-latex"')
+
+    # -- installing -----------------------------------------------------------
+
+    def test_installing_python_from_the_tab_starts_a_run(self):
+        response = self.client.post(self._url("env_install"), {
+            "kind": "python", "packages": "numpy, pandas\nmatplotlib"})
+        self.assertRedirects(response, self._url("capsule_env"),
+                             fetch_redirect_response=False)
+        run = InstallRun.objects.get(lease=self.lease)
+        self.assertEqual((run.kind, run.packages),
+                         ("python", ["numpy", "pandas", "matplotlib"]))
+
+    @override_settings(ANASTASIA_CTAN_MIRROR=MIRROR)
+    def test_installing_latex_from_the_tab_starts_a_latex_run(self):
+        self.client.post(self._url("env_install"),
+                         {"kind": "latex", "packages": "tcolorbox pgf"})
+        run = InstallRun.objects.get(lease=self.lease)
+        self.assertEqual((run.kind, run.packages), ("latex", ["tcolorbox", "pgf"]))
+        self.assertEqual(run.execution.operation, "install_latex_packages")
+
+    def test_a_refusal_is_install_starts_own_sentence_on_the_tab(self):
+        dark = self._dark()
+        response = self.client.post(self._url("env_install", lease=dark),
+                                    {"kind": "python", "packages": "numpy"})
+        self.assertRedirects(response, self._url("capsule_env", lease=dark),
+                             fetch_redirect_response=False)
+        self.assertIn("internet access", " ".join(self._messages(response)))
+        self.assertFalse(InstallRun.objects.exists())
+
+    def test_an_unknown_kind_and_an_empty_name_are_sentences(self):
+        response = self.client.post(self._url("env_install"),
+                                    {"kind": "rust", "packages": "serde"})
+        self.assertIn("not something that can be installed",
+                      " ".join(self._messages(response)))
+        response = self.client.post(self._url("env_install"),
+                                    {"kind": "python", "packages": "  , "})
+        self.assertIn("at least one package", " ".join(self._messages(response)))
+        self.assertFalse(InstallRun.objects.exists())
+
+    def test_install_is_a_post_only(self):
+        self.assertEqual(self.client.get(self._url("env_install")).status_code, 405)
+
+    # -- watching -------------------------------------------------------------
+
+    def test_open_runs_are_polled_and_finished_runs_are_not(self):
+        run = install.start(lease=self.lease, dists="numpy", requested_by=self.user)
+        response = self._env()
+        self.assertEqual(list(response.context["status_urls"]), [str(run.uuid)])
+        self.assertContains(response, f'data-run="{run.uuid}"')
+        FakeRuntimeBackend.settled = {"found": True, "running": False,
+                                      "exit_code": 0}
+        install.refresh(run)
+        self.assertEqual(self._env().context["status_urls"], {})
+
+    def test_the_status_route_advances_the_run_and_keeps_the_place(self):
+        run = install.start(lease=self.lease, dists="numpy", requested_by=self.user)
+        FakeRuntimeBackend.log_text = "Collecting numpy\n  Downloading numpy.whl\n"
+        body = self.client.get(self._url("env_install_status", run.uuid)).json()
+        self.assertEqual(body["phase"], "downloading")
+        self.assertIn("Collecting numpy", body["log"])
+        again = self.client.get(self._url("env_install_status", run.uuid)
+                                + f"?since={len(body['log'])}").json()
+        self.assertEqual(again["log"], "")
+        self.assertEqual(again["log_since"], len(body["log"]))
+
+    def test_stopping_from_the_tab_kills_the_run(self):
+        run = install.start(lease=self.lease, dists="numpy", requested_by=self.user)
+        response = self.client.post(self._url("env_install_cancel", run.uuid))
+        self.assertRedirects(response, self._url("capsule_env"),
+                             fetch_redirect_response=False)
+        run.refresh_from_db()
+        self.assertEqual(run.status, choices.KILLED)
+
+    def test_a_run_is_only_reachable_under_its_own_capsule_by_its_owner(self):
+        run = install.start(lease=self.lease, dists="numpy", requested_by=self.user)
+        mine_too = services.reserve(owner=self.user, name="other", limits=SMALL)
+        self.assertEqual(self.client.get(
+            self._url("env_install_status", run.uuid, lease=mine_too)).status_code, 404)
+        self.client.force_login(self.other)
+        self.assertEqual(self.client.get(
+            self._url("env_install_status", run.uuid)).status_code, 404)
+        self.assertEqual(self.client.post(
+            self._url("env_install_cancel", run.uuid)).status_code, 404)
+        run.refresh_from_db()
+        self.assertEqual(run.status, choices.RUNNING)
 
 
 # --------------------------------------------------------------------------- #

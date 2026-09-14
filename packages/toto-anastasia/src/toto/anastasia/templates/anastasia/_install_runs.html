@@ -1,0 +1,50 @@
+{% load i18n %}
+{% comment %}The recent installs of one kind. `runs` is a list of
+`install.describe` dicts, each with its `status_url` and `cancel_url`. An open
+run is live: `capsuleEnv()` polls it and these rows read `live[uuid]` over the
+server's first answer. A phase and a count, never a percentage.{% endcomment %}
+<div>
+  <h3 class="text-xs font-bold uppercase tracking-wide opacity-60">{% trans "Recent installs" %}</h3>
+  {% if runs %}
+    <ul class="mt-2 space-y-2">
+      {% for run in runs %}
+        <li :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'"
+            class="rounded-lg border px-3 py-2 text-sm" data-run="{{ run.uuid }}">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="min-w-0 flex-1 truncate font-mono text-xs">{{ run.packages|join:" " }}</span>
+            <span class="rounded px-2 py-0.5 text-xs font-semibold"
+                  :class="statusClass(live['{{ run.uuid }}'] ? live['{{ run.uuid }}'].status : '{{ run.status }}')"
+                  x-text="live['{{ run.uuid }}'] ? phaseLabel(live['{{ run.uuid }}'].phase) : phaseLabel('{{ run.phase }}')">{{ run.phase }}</span>
+            <span class="text-xs opacity-60"
+                  x-text="(live['{{ run.uuid }}'] ? live['{{ run.uuid }}'].packages_done : {{ run.packages_done }}) + ' / {{ run.packages_total }}'">{{ run.packages_done }} / {{ run.packages_total }}</span>
+          </div>
+          <p class="mt-1 text-xs opacity-70"
+             x-text="live['{{ run.uuid }}'] ? live['{{ run.uuid }}'].detail : '{{ run.detail|escapejs }}'">{{ run.detail }}</p>
+          <div class="mt-1 flex flex-wrap items-center gap-3 text-xs">
+            <span class="opacity-50">{{ run.created_at|date:"SHORT_DATETIME_FORMAT" }}</span>
+            <button type="button" class="underline opacity-70" @click="toggleLog('{{ run.uuid }}', '{{ run.status_url }}')"
+                    x-text="shown['{{ run.uuid }}'] ? '{% trans "Hide log" %}' : '{% trans "Show log" %}'">{% trans "Show log" %}</button>
+            {% if not run.finished %}
+              <form method="post" action="{{ run.cancel_url }}" x-show="!(live['{{ run.uuid }}'] && live['{{ run.uuid }}'].finished)">
+                {% csrf_token %}
+                <button class="text-red-500 underline">{% trans "Stop" %}</button>
+              </form>
+            {% endif %}
+          </div>
+          <pre x-show="shown['{{ run.uuid }}']" x-cloak
+               :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+               class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded p-2 font-mono text-[11px]"
+               x-text="logs['{{ run.uuid }}'] || '{% trans "Nothing printed yet." %}'"></pre>
+          {% if run.log_truncated %}
+            <p x-show="shown['{{ run.uuid }}']" x-cloak class="mt-1 text-xs text-amber-500">{% trans "The saved log stopped growing at its size limit." %}</p>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+    {% if runs|length >= env_runs %}
+      <p class="mt-2 text-xs opacity-60">{% blocktrans %}The newest {{ env_runs }} are shown.{% endblocktrans %}</p>
+    {% endif %}
+  {% else %}
+    <p class="mt-2 text-xs opacity-60">{% trans "None yet." %}</p>
+  {% endif %}
+</div>

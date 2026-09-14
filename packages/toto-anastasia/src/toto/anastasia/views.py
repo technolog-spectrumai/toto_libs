@@ -28,6 +28,7 @@ import itertools
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone as dt_timezone
 
 from django.contrib.auth.decorators import login_required
@@ -42,9 +43,9 @@ from django.views.decorators.http import require_GET, require_POST
 
 from toto.ui import PageProcessor
 
-from . import choices, conf, families, samples as samples_mod, services, transfer
+from . import choices, conf, families, install, samples as samples_mod, services, transfer
 from .limits import Limits, LimitsError
-from .models import CapsuleEvent, ComputeLease, Execution, CapsuleRuntime
+from .models import CapsuleEvent, ComputeLease, Execution, CapsuleRuntime, InstallRun
 from .runtime import RuntimeUnavailable, get_backend
 
 log = logging.getLogger("toto.anastasia.views")
@@ -88,6 +89,8 @@ CAPSULE_TABS = (
      "anastasia:capsule_history"),
     ("files", gettext_lazy("Files"), "fa-solid fa-folder-tree",
      "anastasia:capsule_files"),
+    ("env", gettext_lazy("Env"), "fa-solid fa-cubes",
+     "anastasia:capsule_env"),
 )
 _TAB_URLS = {slug: url for slug, _label, _icon, url in CAPSULE_TABS}
 
@@ -438,6 +441,171 @@ def storage(request, uuid):
     body = reading(lease) or {}
     return JsonResponse({**body, "supported": True,
                          "complete": bool(body.get("complete", False))})
+
+
+# --------------------------------------------------------------------------- #
+# Env — packages installed into the Capsule                                    #
+# --------------------------------------------------------------------------- #
+#
+# The page's door onto `install.py`, which the bearer API already drives. Two
+# kinds in one tab, because what a person does with either is the same: name
+# packages, watch a phase and a count, read the log if it failed. What differs
+# — where the files go, which operation runs, what a name may look like — is
+# `install.KINDS`, and none of it is decided here.
+
+#: How many runs of each kind the tab lists. The newest; the page says so.
+ENV_RUNS = 10
+
+#: A wheel's installed metadata directory: `<name>-<version>.dist-info`, with
+#: the name's dashes already written as underscores and no dash in the version.
+_DIST_INFO = re.compile(r"^site-packages/([^/]+)-([^/-]+)\.dist-info(?:/|$)")
+
+#: The runner's record of one installed CTAN package.
+_TEXMF_MARKER = re.compile(r"^texmf/\.toto-installed/([a-z0-9][a-z0-9-]*)$")
+
+
+def _installed_python(entries) -> list:
+    """(name, version) for every distribution in site-packages.
+
+    READ OFF THE LISTING, not asked of pip: running a job to find out what is
+    installed would cost a runner per page view. A `.dist-info` directory is
+    what pip leaves for every distribution it installs, dependencies
+    included, so this is the whole set — and a listing that stopped early
+    says so beside it.
+    """
+    found = set()
+    for entry in entries or ():
+        match = _DIST_INFO.match((entry or {}).get("name") or "")
+        if match:
+            found.add((match.group(1).replace("_", "-"), match.group(2)))
+    return sorted(found)
+
+
+def _installed_latex(entries) -> list:
+    """Every CTAN package `anastasia-install-latex` recorded as installed."""
+    found = set()
+    for entry in entries or ():
+        match = _TEXMF_MARKER.match((entry or {}).get("name") or "")
+        if match and not entry.get("is_dir"):
+            found.add(match.group(1))
+    return sorted(found)
+
+
+def _back_to_env(lease):
+    return _back(lease, "env")
+
+
+@login_required
+def capsule_env(request, uuid):
+    """ENV — what is installed into the Capsule, and installing more.
+
+    Installing needs the Capsule MOUNTED (it is a job) and reserved WITH
+    internet access (it fetches). Neither is hidden when missing: the form is
+    drawn disabled with the sentence that says which, because a tab that
+    simply had no form would leave a person looking for it.
+    """
+    lease = _own_open_lease(request, uuid)
+    context = _capsule_context(request, lease, "env")
+    backend = get_backend()
+    listing = {}
+    if context["mounted"] and getattr(backend, "capsule_files", None) is not None:
+        listing = backend.capsule_files(lease) or {}
+    entries = listing.get("files", [])
+
+    runs = {}
+    status_urls = {}
+    for kind in install.KINDS:
+        rows = (InstallRun.objects.filter(lease=lease, kind=kind)
+                .select_related("lease", "execution")[:ENV_RUNS])
+        runs[kind] = []
+        for row in rows:
+            described = install.describe(row)
+            described["status_url"] = reverse(
+                "anastasia:env_install_status", args=[lease.uuid, row.uuid])
+            described["cancel_url"] = reverse(
+                "anastasia:env_install_cancel", args=[lease.uuid, row.uuid])
+            runs[kind].append(described)
+            # Only OPEN runs are polled; a finished one has nothing new to say.
+            if not described["finished"]:
+                status_urls[described["uuid"]] = described["status_url"]
+
+    context.update({
+        "egress": bool(lease.egress),
+        "egress_offered": conf.egress_offered(),
+        "ctan_mirror_set": bool(conf.ctan_mirror()),
+        "python_runs": runs["python"],
+        "latex_runs": runs["latex"],
+        "env_runs": ENV_RUNS,
+        "status_urls": status_urls,
+        "installed_python": _installed_python(entries),
+        "installed_latex": _installed_latex(entries),
+        "listing_answered": bool(listing),
+        "listing_complete": bool(listing.get("complete", False)),
+    })
+    return _render_tab(request, "anastasia/capsule_env.html", context)
+
+
+@login_required
+@require_POST
+def env_install(request, uuid):
+    """Start an install from the tab. Every refusal is `install.start`'s own
+    sentence — no internet access, no mirror, a version in a name, a Capsule
+    that is not mounted — shown on the tab it came from."""
+    lease = _own_lease(request, uuid)
+    kind = (request.POST.get("kind") or "").strip()
+    # Spaces, commas or new lines between names: what a person types or
+    # pastes. The operation's parameter is the one rule for what a NAME may be.
+    names = [name for name in re.split(r"[\s,]+", request.POST.get("packages") or "")
+             if name]
+    if not names:
+        messages.error(request, _("Name at least one package to install."))
+        return _back_to_env(lease)
+    try:
+        run = install.start(lease=lease, dists="+".join(names), kind=kind,
+                            requested_by=request.user)
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+        return _back_to_env(lease)
+    messages.success(request, _("Installing %(names)s. You can leave this "
+                                "page; the install carries on.")
+                     % {"names": ", ".join(run.packages)})
+    return _back_to_env(lease)
+
+
+def _own_install(request, uuid, run) -> InstallRun:
+    lease = _own_lease(request, uuid)
+    return get_object_or_404(
+        InstallRun.objects.select_related("lease", "execution"),
+        uuid=run, lease=lease)
+
+
+@login_required
+@require_GET
+def env_install_status(request, uuid, run):
+    """One run, advanced — reading it pulls the next slice of its log.
+
+    `?since=N` returns the log from character N, the API's contract, so the
+    tab appends rather than redraws.
+    """
+    row = install.refresh(_own_install(request, uuid, run))
+    try:
+        since = max(0, int(request.GET.get("since") or 0))
+    except (TypeError, ValueError):
+        since = 0
+    body = install.describe(row)
+    body["log"] = row.log[since:]
+    body["log_since"] = min(since, len(row.log))
+    return JsonResponse(body)
+
+
+@login_required
+@require_POST
+def env_install_cancel(request, uuid, run):
+    row = _own_install(request, uuid, run)
+    install.cancel(row, actor=request.user,
+                   reason=_("Stopped from the Env tab."))
+    messages.success(request, _("The install was stopped."))
+    return _back_to_env(row.lease)
 
 
 @login_required
