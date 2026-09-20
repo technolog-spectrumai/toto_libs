@@ -3,6 +3,13 @@
 The clamp tests must never skip: the whole point of storing a setting on the
 workspace is that it works on a host with no ledger, which is this one. The
 billed shape is reached by mocking the grant instead.
+
+EVERY ROUTE HERE IS THE TEST LAB'S since 2026-09-20. This file posted at
+`dracena:workspace_settings` and read dracena's field declaration; the Python
+lab was parked on 2026-09-14 (zenobia/limbo/dracena) and nothing replaced it,
+so the generic endpoint had no subject left. `tests/testlab.py` is that
+subject now — it registers the way a real lab does, which is the seam these
+tests were always about.
 """
 
 import unittest
@@ -15,7 +22,8 @@ from django.urls import reverse
 
 from toto.ambrosia import limits, settings_spec
 from toto.ambrosia.models import Workspace
-from toto.ambrosia.tests.base import AmbrosiaTestCase
+from toto.ambrosia.tests import testlab
+from toto.ambrosia.tests.base import AmbrosiaTestCase, TestlabTestCase
 
 
 
@@ -61,14 +69,13 @@ def _ceiling() -> int:
     return times.ceiling_seconds(DIAL)
 
 
-class SettingsEndpointTests(AmbrosiaTestCase):
+class SettingsEndpointTests(TestlabTestCase):
     def setUp(self):
         super().setUp()
         self.ws = self.make_workspace(name="Configured", kind="python")
 
     def _url(self, slug=None):
-        return reverse("dracena:workspace_settings",
-                       kwargs={"slug": slug or self.ws.slug})
+        return testlab.url("workspace_settings", slug=slug or self.ws.slug)
 
     def _post(self, payload):
         return self.client.post(self._url(), data=json.dumps(payload),
@@ -76,36 +83,36 @@ class SettingsEndpointTests(AmbrosiaTestCase):
 
     def test_the_owner_can_save_a_setting(self):
         self.client.force_login(self.owner)
-        response = self._post({"settings": {"exec_timeout": 45}})
+        response = self._post({"settings": {"timeout": 45}})
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertTrue(body["ok"])
-        self.assertEqual(body["settings"]["exec_timeout"], 45)
+        self.assertEqual(body["settings"]["timeout"], 45)
 
         self.ws.refresh_from_db()
-        self.assertEqual(self.ws.settings_for("dracena")["exec_timeout"], 45)
+        self.assertEqual(self.ws.settings_for(testlab.NAMESPACE)["timeout"], 45)
 
     def test_settings_survive_a_reload(self):
         # Posted two keys until 2026-09-10; `inline_plots` is deleted with the
         # kernel that ran %matplotlib, and dracena declares one field now.
         self.client.force_login(self.owner)
-        self._post({"settings": {"exec_timeout": 45}})
+        self._post({"settings": {"timeout": 45}})
 
         fresh = Workspace.objects.get(pk=self.ws.pk)
-        self.assertEqual(fresh.settings_for("dracena")["exec_timeout"], 45)
+        self.assertEqual(fresh.settings_for(testlab.NAMESPACE)["timeout"], 45)
 
     def test_a_stranger_gets_404_not_403(self):
         # Same reasoning as every other mutation here: 403 would confirm the
         # workspace exists.
         self.client.force_login(self.other)
-        self.assertEqual(self._post({"settings": {"exec_timeout": 45}}).status_code, 404)
+        self.assertEqual(self._post({"settings": {"timeout": 45}}).status_code, 404)
 
     def test_staff_looking_at_someone_elses_workspace_cannot_save(self):
         theirs = self.make_workspace(owner=self.other, name="Theirs", kind="python")
         self.client.force_login(self.admin)
         response = self.client.post(
-            self._url(theirs.slug), data=json.dumps({"settings": {"exec_timeout": 45}}),
+            self._url(theirs.slug), data=json.dumps({"settings": {"timeout": 45}}),
             content_type="application/json")
         self.assertEqual(response.status_code, 404)
 
@@ -119,13 +126,13 @@ class SettingsEndpointTests(AmbrosiaTestCase):
 
     def test_a_value_out_of_bounds_names_the_field(self):
         self.client.force_login(self.owner)
-        response = self._post({"settings": {"exec_timeout": 99999}})
+        response = self._post({"settings": {"timeout": 99999}})
         self.assertEqual(response.status_code, 409)
-        self.assertIn("exec_timeout", response.json()["fields"])
+        self.assertIn("timeout", response.json()["fields"])
 
     def test_a_value_that_is_not_a_number_is_refused(self):
         self.client.force_login(self.owner)
-        response = self._post({"settings": {"exec_timeout": "soon"}})
+        response = self._post({"settings": {"timeout": "soon"}})
         self.assertEqual(response.status_code, 409)
 
     @override_settings(AMBROSIA_EXECUTION_ACCESS="superuser")
@@ -134,18 +141,18 @@ class SettingsEndpointTests(AmbrosiaTestCase):
         # not decide what their interpreter may do.
         with mock.patch("toto.ambrosia.permissions.EXECUTION_ACCESS", "superuser"):
             self.client.force_login(self.owner)
-            response = self._post({"settings": {"exec_timeout": 45}})
+            response = self._post({"settings": {"timeout": 45}})
         self.assertEqual(response.status_code, 409)
-        self.assertIn("exec_timeout", response.json()["fields"])
+        self.assertIn("timeout", response.json()["fields"])
 
     def test_reset_drops_every_override(self):
         self.client.force_login(self.owner)
-        self._post({"settings": {"exec_timeout": 45}})
+        self._post({"settings": {"timeout": 45}})
         response = self._post({"reset": True})
 
         self.assertTrue(response.json()["ok"])
         self.ws.refresh_from_db()
-        self.assertEqual(self.ws.settings_for("dracena"), {})
+        self.assertEqual(self.ws.settings_for(testlab.NAMESPACE), {})
 
     def test_get_is_refused(self):
         self.client.force_login(self.owner)
@@ -157,7 +164,7 @@ class SettingsEndpointTests(AmbrosiaTestCase):
         # never save anything on an untouched workspace.
         self.client.force_login(self.owner)
         room = self.client.get(
-            reverse("dracena:workspace", kwargs={"slug": self.ws.slug}))
+            testlab.url("workspace", slug=self.ws.slug))
         published = json.loads(
             room.content.decode().split('id="ambrosia-config"')[1]
             .split(">", 1)[1].split("</script>")[0])["settings"]
@@ -169,15 +176,15 @@ class SettingsEndpointTests(AmbrosiaTestCase):
         # Storing the current default would silently detach this workspace
         # from a later change to the host setting.
         self.client.force_login(self.owner)
-        self._post({"settings": {"exec_timeout": 45}})
-        self._post({"settings": {"exec_timeout": None}})
+        self._post({"settings": {"timeout": 45}})
+        self._post({"settings": {"timeout": None}})
 
         self.ws.refresh_from_db()
-        self.assertNotIn("exec_timeout", self.ws.settings_for("dracena"))
+        self.assertNotIn("timeout", self.ws.settings_for(testlab.NAMESPACE))
 
     def test_a_list_payload_is_refused_rather_than_crashing(self):
         self.client.force_login(self.owner)
-        response = self._post({"settings": ["exec_timeout"]})
+        response = self._post({"settings": ["timeout"]})
         self.assertEqual(response.status_code, 409)
 
 
@@ -296,7 +303,7 @@ class ClampTests(AmbrosiaTestCase):
                 limits.resolve_seconds(DIAL, self.ws, 10 ** 9), _free())
 
 
-class EnvFieldTests(AmbrosiaTestCase):
+class EnvFieldTests(TestlabTestCase):
     """The ENV kind's guarantees, tested against a field this test declares.
 
     MOVED HERE FROM the settings endpoint on 2026-09-10. They used to post
@@ -353,6 +360,10 @@ class EnvFieldTests(AmbrosiaTestCase):
         """
         from toto.ambrosia import registry
 
+        # The test lab is registered by TestlabTestCase, so this loop always
+        # has a subject: it went vacuous on 2026-09-14, when the two real labs
+        # were parked and nothing was registered at all.
+        self.assertTrue(registry._BY_KIND, "no lab registered — vacuous sweep")
         for kind, app in registry._BY_KIND.items():
             with self.subTest(kind=kind):
                 kinds = {f.kind for f in app.settings_fields()}
@@ -360,7 +371,7 @@ class EnvFieldTests(AmbrosiaTestCase):
                                  f"the {app.namespace} lab declares an ENV field")
 
 
-class SettingsSpecTests(AmbrosiaTestCase):
+class SettingsSpecTests(TestlabTestCase):
     def setUp(self):
         super().setUp()
         self.ws = self.make_workspace(name="Spec", kind="python")
@@ -371,28 +382,24 @@ class SettingsSpecTests(AmbrosiaTestCase):
         It named `idle_seconds` and `inline_plots` until 2026-09-10 and both
         are deleted, so the assertion is now written against the declaration
         itself. That is also the better test: the claim `effective` makes is
-        "no declared key is missing", not "these three keys exist".
+        "no declared key is missing", not "these three keys exist". The
+        declaration is the test lab's since 2026-09-20 — see the module
+        docstring.
         """
-        from toto.dracena import workspace_settings
-
-        fields = workspace_settings.fields()
+        fields = testlab.fields()
         values = settings_spec.effective(fields, {}, workspace=self.ws)
         self.assertEqual(set(values), {f.key for f in fields})
-        self.assertIn("exec_timeout", values)
+        self.assertIn("timeout", values)
 
     def test_describe_carries_the_bounds_the_panel_renders(self):
-        from toto.dracena import workspace_settings
-
         described = {f["key"]: f for f in settings_spec.describe(
-            workspace_settings.fields(), workspace=self.ws)}
-        self.assertEqual(described["exec_timeout"]["min"],
-                         workspace_settings.EXEC_TIMEOUT_MIN)
-        self.assertEqual(described["exec_timeout"]["max"],
-                         workspace_settings.EXEC_TIMEOUT_MAX)
-        self.assertTrue(described["exec_timeout"]["needsExecute"])
+            testlab.fields(), workspace=self.ws)}
+        self.assertEqual(described["timeout"]["min"], testlab.TIMEOUT_MIN)
+        self.assertEqual(described["timeout"]["max"], testlab.TIMEOUT_MAX)
+        self.assertTrue(described["timeout"]["needsExecute"])
 
 
-class SettingsRoomTests(AmbrosiaTestCase):
+class SettingsRoomTests(TestlabTestCase):
     def setUp(self):
         super().setUp()
         self.ws = self.make_workspace(name="Roomy", kind="python")
@@ -400,7 +407,7 @@ class SettingsRoomTests(AmbrosiaTestCase):
     def _room(self, user):
         self.client.force_login(user)
         return self.client.get(
-            reverse("dracena:workspace", kwargs={"slug": self.ws.slug}))
+            testlab.url("workspace", slug=self.ws.slug))
 
     def test_the_room_carries_the_settings_button_and_drawer(self):
         body = self._room(self.owner).content.decode()
@@ -423,6 +430,6 @@ class SettingsRoomTests(AmbrosiaTestCase):
         theirs = self.make_workspace(owner=self.other, name="Theirs", kind="python")
         self.client.force_login(self.admin)
         body = self.client.get(
-            reverse("dracena:workspace", kwargs={"slug": theirs.slug})).content.decode()
+            testlab.url("workspace", slug=theirs.slug)).content.decode()
         self.assertIn("openSettings()", body)          # they may look
         self.assertNotIn("saveSettings()", body)       # and not save

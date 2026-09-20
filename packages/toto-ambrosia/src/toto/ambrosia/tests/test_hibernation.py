@@ -29,15 +29,33 @@ from unittest import mock
 from django.test import override_settings
 from django.urls import reverse
 
+from unittest import skipUnless
+
+from django.apps import apps as django_apps
+
 from toto.ambrosia import hibernation
 from toto.ambrosia.models import WorkspaceHibernation, WorkspaceKind
 from toto.ambrosia.tests.base import AmbrosiaTestCase
-from toto.anastasia import services as capsule_services
-from toto.anastasia.limits import Limits
-from toto.anastasia.models import ComputeLease
-from toto.dracena.tests.fakes import POOL, FakeRunBackend
+
+#: **The compute tier this file is about may not be installed.** Compute
+#: Capsules and the two language labs were parked on 2026-09-14
+#: (zenobia/limbo/anastasia, .../dracena, .../texlab), and a test module that
+#: imports a parked app at module scope does not skip — it breaks the whole
+#: run with "doesn't declare an explicit app_label". So the imports are behind
+#: this flag and every class below is skipped without them. On a host that
+#: installs the tier again, this file runs exactly as it did.
+HAS_CAPSULES = django_apps.is_installed("toto.anastasia")
+
+if HAS_CAPSULES:
+    from toto.anastasia import services as capsule_services
+    from toto.anastasia.limits import Limits
+    from toto.anastasia.models import ComputeLease
+    from toto.dracena.tests.fakes import POOL, FakeRunBackend
+else:
+    POOL = {}
 
 
+@skipUnless(HAS_CAPSULES, "Compute Capsules are parked on this host")
 @override_settings(
     ANASTASIA_POOL=POOL,
     ANASTASIA_RUNTIME_BACKEND="toto.dracena.tests.fakes.FakeRunBackend",

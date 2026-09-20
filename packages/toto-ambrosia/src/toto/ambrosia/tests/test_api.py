@@ -17,13 +17,32 @@ from unittest import mock
 
 from django.test import override_settings
 
+from unittest import skipUnless
+
+from django.apps import apps as django_apps
+
 from toto.ambrosia import filetree, registry
 from toto.ambrosia.models import WorkspaceKind
 from toto.ambrosia.tests.base import AmbrosiaTestCase
-from toto.anastasia.tokens import CapsuleToken
-from toto.dracena.tests.fakes import POOL
+
+#: **The compute tier this file is about may not be installed.** Compute
+#: Capsules and the two language labs were parked on 2026-09-14
+#: (zenobia/limbo/anastasia, .../dracena, .../texlab), and a test module that
+#: imports a parked app at module scope does not skip — it breaks the whole
+#: run with "doesn't declare an explicit app_label". So the imports are behind
+#: this flag and every class below is skipped without them. On a host that
+#: installs the tier again, this file runs exactly as it did.
+HAS_CAPSULES = django_apps.is_installed("toto.anastasia")
+
+if HAS_CAPSULES:
+    from toto.anastasia.tokens import CapsuleToken
+    from toto.dracena.tests.fakes import POOL
+else:
+    POOL = {}
 
 
+@skipUnless(HAS_CAPSULES, "the workspace API's bearer tokens are anastasia's, "
+                          "and Compute Capsules are parked on this host")
 class WorkspaceApiTestCase(AmbrosiaTestCase):
     def setUp(self):
         super().setUp()

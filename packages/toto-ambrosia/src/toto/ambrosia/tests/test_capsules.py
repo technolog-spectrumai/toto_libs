@@ -11,18 +11,32 @@ from __future__ import annotations
 
 import json
 
+from unittest import skipUnless
+
+from django.apps import apps as django_apps
 from django.test import override_settings
 from django.urls import reverse
 
 from toto.ambrosia import capsules, settings_spec
 from toto.ambrosia.tests.base import AmbrosiaTestCase
-from toto.anastasia import jobs
-from toto.anastasia import services as capsule_services
-from toto.anastasia.limits import Limits
+
+#: **The compute tier this file is about may not be installed.** Compute
+#: Capsules and the two language labs were parked on 2026-09-14
+#: (zenobia/limbo/anastasia, .../dracena, .../texlab), and a test module that
+#: imports a parked app at module scope does not skip — it breaks the whole
+#: run with "doesn't declare an explicit app_label". So the imports are behind
+#: this flag and every class below is skipped without them. On a host that
+#: installs the tier again, this file runs exactly as it did.
+HAS_CAPSULES = django_apps.is_installed("toto.anastasia")
+
+if HAS_CAPSULES:
+    from toto.anastasia import jobs
+    from toto.anastasia import services as capsule_services
+    from toto.anastasia.limits import Limits
 
 POOL = {"cpu_millicores": 8000, "ram_mb": 16384, "scratch_mb": 8192,
         "pids": 4096}
-SMALL = Limits(1000, 1024, 512, 256)
+SMALL = Limits(1000, 1024, 512, 256) if HAS_CAPSULES else None
 
 
 @override_settings(
@@ -32,6 +46,7 @@ SMALL = Limits(1000, 1024, 512, 256)
     # the manager here exactly as it does there.
     ANASTASIA_RUNTIME_BACKEND="toto.anastasia.tests.base.FakeRuntimeBackend",
 )
+@skipUnless(HAS_CAPSULES, "Compute Capsules are parked on this host")
 class CapsuleSettingTests(AmbrosiaTestCase):
     def setUp(self):
         super().setUp()
