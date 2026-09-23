@@ -41,13 +41,25 @@ class MeshGateApiViewTests(TestCase):
     # the view runs, so a missing project id still 403s for a non-member.
     GATED_URL = "/kanban/api/projects/1/missions/"
 
+    def _needs_the_gated_api(self):
+        # Kanban's missions API lives where the boards do (aurelian); zenobia
+        # parked the boards and mounts no /kanban/ at all.
+        from django.urls import Resolver404, resolve
+
+        try:
+            resolve(self.GATED_URL)
+        except Resolver404:
+            self.skipTest("this host mounts no gated missions API")
+
     def test_gated_read_denied_for_non_member(self):
+        self._needs_the_gated_api()
         self.client.force_login(self.user)
         res = self.client.get(self.GATED_URL)
         self.assertEqual(res.status_code, 403)
         self.assertTrue(res.json().get("gated"))
 
     def test_gated_read_allowed_for_member(self):
+        self._needs_the_gated_api()
         self.user.groups.add(self.group)
         self.client.force_login(self.user)
         res = self.client.get(self.GATED_URL)
@@ -56,6 +68,7 @@ class MeshGateApiViewTests(TestCase):
         self.assertNotEqual(res.status_code, 401)
 
     def test_non_member_blocked_unauthenticated(self):
+        self._needs_the_gated_api()
         res = self.client.get(self.GATED_URL)
         self.assertEqual(res.status_code, 401)
 
@@ -174,7 +187,14 @@ class MeApiViewTests(TestCase):
 
 class AppsDescriptorApiTests(TestCase):
     """The /telegraph/api/apps/ capability descriptor — lets Enigma+ show only the apps
-    the connected server (portal vs faros) actually installs."""
+    the connected server (portal vs faros) actually installs.
+
+    Asked signed in, as the desktop asks it: a host may keep it behind its login
+    gate (zenobia does), and what is under test is the answer, not the door."""
+
+    def setUp(self):
+        self.client.force_login(
+            User.objects.create_user(username="descriptor", password="pw"))
 
     def test_reports_all_known_features_as_bools(self):
         res = self.client.get("/api/apps/")
