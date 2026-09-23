@@ -1,4 +1,3 @@
-import time
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from .models import Platform, Font, Theme, ColorMix
@@ -44,8 +43,6 @@ class ViewSmokeTests(TestCase):
             site_name="Blue Journal",
             publication_year=datetime.now().year,
             active=True,
-            rate_limit_window=1,
-            rate_limit_max_requests=3,
             theme=theme,
         )
 
@@ -62,8 +59,13 @@ class ViewSmokeTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_login_view_invalid_credentials_shows_visible_error(self):
+        # The host decides which page takes the password: zenobia sends
+        # core:login on to its SSO door, which renders the same alert. Post
+        # where the host's login link actually leads.
+        door = self.client.get(reverse("core:login")).get(
+            "Location", reverse("core:login")).split("?")[0]
         response = self.client.post(
-            reverse("core:login"),
+            door,
             {"username": "testuser", "password": "wrong"},
         )
         self.assertEqual(response.status_code, 200)
@@ -79,32 +81,10 @@ class ViewSmokeTests(TestCase):
         response = self.client.get(reverse('core:welcome'))
         self.assertEqual(response.status_code, 302)
         #self.assertRedirects(response, reverse('core:maintenance'))
-    #
-    def test_rate_limit_blocks_after_max_requests(self):
-        """Exceeding max requests within window should return 429."""
-        for i in range(self.config.rate_limit_max_requests):
-            response = self.client.get(reverse('core:welcome'))
-            self.assertEqual(response.status_code, 200)
 
-        # Next request should be blocked
-        response = self.client.get(reverse('core:welcome'))
-        self.assertEqual(response.status_code, 429)
-
-    def test_rate_limit_resets_after_window(self):
-        """Requests should be allowed again after window expires."""
-        for i in range(self.config.rate_limit_max_requests):
-            self.client.get(reverse('core:welcome'))
-
-        # Blocked
-        response = self.client.get(reverse('core:welcome'))
-        self.assertEqual(response.status_code, 429)
-
-        # Wait for window to expire
-        time.sleep(self.config.rate_limit_window)
-
-        # Should be allowed again
-        response = self.client.get(reverse('core:welcome'))
-        self.assertEqual(response.status_code, 200)
+    # No rate-limit tests: they asserted a 429 from a middleware that no
+    # longer exists anywhere. Platform.rate_limit_window and
+    # rate_limit_max_requests are read by nothing (2026-09-23).
 
 
 class ManualFeatureGateTests(TestCase):
