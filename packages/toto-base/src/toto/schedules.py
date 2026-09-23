@@ -31,6 +31,8 @@ def beat_schedule(
     tax_minute=15,
     faucets=False,
     faucets_minute=7,
+    mana=False,
+    mana_minute=13,
     subscriptions=False,
     subscriptions_hour=5,
     subscriptions_minute=5,
@@ -155,6 +157,17 @@ def beat_schedule(
         schedule["tax-daily-levy"] = {
             "task": "toto.tax.tasks.run_daily_levy",
             "schedule": crontab(hour=tax_hour, minute=tax_minute),
+        }
+
+    if mana:
+        from celery.schedules import crontab
+
+        # The mana pools' hourly refill (toto.mana), off the faucet's :07 and
+        # the hour boundary. Idempotent per member, pool and hour
+        # (mana.ManaGrant), and it never backfills a missed hour.
+        schedule["mana-hourly-regen"] = {
+            "task": "toto.mana.tasks.regenerate_hour",
+            "schedule": crontab(minute=str(mana_minute)),
         }
 
     if faucets:

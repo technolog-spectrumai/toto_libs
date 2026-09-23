@@ -174,6 +174,8 @@ TASK_MODULES = [
     # since the treasury payroll left with Stations. Inert where toto-economy
     # is absent, and inert where no faucet is switched on.
     "toto.assets",
+    # The mana pools' hourly refill. Inert where toto-economy is absent.
+    "toto.mana",
     # toto.quota's stuck-run sweeper (quota/tasks.py). In toto-base, so it is
     # importable on every host; the beat entry (schedules.beat_schedule
     # sweep=...) is what turns it on.
