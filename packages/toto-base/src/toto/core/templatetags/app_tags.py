@@ -12,3 +12,16 @@ def app_installed(app_label):
     {% url %} tags are never reversed when the app is absent.
     """
     return apps.is_installed(app_label)
+
+
+@register.filter
+def economy_hidden(user):
+    """True when this host shows ``user`` mana instead of the economy.
+
+    ``toto.quota.rates.economy_hidden_from``, for templates — so the economy
+    strip, the gas pump and the usage tab all ask one question and cannot
+    disagree about who sees what.
+    """
+    from toto.quota.rates import economy_hidden_from
+
+    return economy_hidden_from(user)

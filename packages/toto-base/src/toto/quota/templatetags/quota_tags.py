@@ -21,8 +21,8 @@ from toto.quota.metrics import registry
 register = template.Library()
 
 
-@register.inclusion_tag("quota/partials/_quota_tab.html")
-def quota_tab(app_label, label=None):
+@register.inclusion_tag("quota/partials/_quota_tab.html", takes_context=True)
+def quota_tab(context, app_label, label=None):
     """A usage link for this app, or nothing when it meters nothing.
 
     Checking the registry is what keeps the tab honest: an app that declares no
@@ -32,6 +32,16 @@ def quota_tab(app_label, label=None):
     """
     if not registry.for_app(app_label):
         return {"url": ""}
+    request = context.get("request")
+    from toto.quota.rates import economy_hidden_from
+
+    if request is not None and economy_hidden_from(getattr(request, "user", None)):
+        # A member on a mana host: their usage IS their mana.
+        try:
+            return {"url": reverse("mana:index"), "label": _("Mana"),
+                    "icon": "fa-solid fa-droplet"}
+        except NoReverseMatch:
+            return {"url": ""}
     try:
         url = reverse("quota:my_usage_app", args=[app_label])
     except NoReverseMatch:  # pragma: no cover - quota is mounted everywhere

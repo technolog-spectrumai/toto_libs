@@ -1,8 +1,8 @@
 {% load i18n app_tags %}
 {% comment %}ONE strip for the whole economy — wallet, usage and everything under it.
 
-   Caller passes active_tab = assets | usage | bourse | subscriptions | metered
-                            | records.
+   Caller passes active_tab = mana | assets | usage | bourse | subscriptions
+                            | metered | records.
 
    `plans` is still accepted as an alias for `subscriptions` — the subscriptions
    app uses that word for its own sub-navigation, and a page there passes both.
@@ -51,6 +51,25 @@
    block as visible page text.{% endcomment %}
 <nav class="mb-4 flex flex-wrap items-center gap-2" aria-label="{% trans 'Economy navigation' %}">
 
+  {% comment %}MANA. On a host that installs toto.mana a member sees their three
+     pools and not the machinery under them: the Wallet, Usage, Bourse, Metered
+     and Records chips below are staff-only there (the pages behind them are
+     gated too — zenobia's StaffPrefixMiddleware). A host without mana keeps
+     this strip exactly as it was; the decision belongs to the host that made
+     it, which is why the condition is the app, not a flag.{% endcomment %}
+  {% if "toto.mana"|app_installed %}{% url 'mana:index' as mana_url %}{% if mana_url %}
+  <a href="{{ mana_url }}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'mana' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-droplet"></i>{% trans "Mana" %}</a>
+  {% endif %}{% endif %}
+
+  {% if not user|economy_hidden %}
+
   {% if "toto.assets"|app_installed %}
   {% if user.is_staff %}{% url 'assets:asset_list' as assets_url %}{% else %}{% url 'assets:wallet' as assets_url %}{% endif %}
   {% if assets_url %}
@@ -87,6 +106,8 @@
     <i class="fa-solid fa-chart-line"></i>{% trans "Bourse" %}</a>
   {% endif %}{% endif %}
 
+  {% endif %}
+
   {% comment %}Subscriptions — browse the plans and subscribe. Called that rather
      than "Plans" because it is where you go to CHANGE what you pay, not just to
      read a list, and because it replaced the "Fees" chip that used to sit in the
@@ -110,6 +131,7 @@
     <i class="fa-solid fa-id-card"></i>{% trans "Subscriptions" %}</a>
   {% endif %}{% endif %}
 
+  {% if not user|economy_hidden %}
   {% comment %}The divider, and the reason this is one strip and not two: to the
      left are destinations, to the right are three views of metering. They used
      to be a second row, which read as a second navigation.{% endcomment %}
@@ -150,5 +172,6 @@
      is linked from that same subheading as "How you are charged", and from
      metric_detail.html and fees.html besides.
   {% endcomment %}
+  {% endif %}
 
 </nav>

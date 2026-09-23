@@ -29,6 +29,10 @@ class GasPumpPlugin(FloatingPlugin):
         user = getattr(request, "user", None)
         if not getattr(user, "is_authenticated", False):
             return False
+        from toto.quota.rates import economy_hidden_from
+
+        if economy_hidden_from(user):
+            return False        # the mana chip in the header replaces it
         return bool(self._metrics_for(request))
 
     # -- data ---------------------------------------------------------------

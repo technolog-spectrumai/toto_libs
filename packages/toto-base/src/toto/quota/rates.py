@@ -27,6 +27,27 @@ from __future__ import annotations
 from django.db import DatabaseError
 
 
+def economy_hidden_from(user) -> bool:
+    """Whether this host shows this person mana instead of the economy.
+
+    True on a host that installs ``toto.mana``, for anybody who is not staff:
+    there a member sees three pools, and the wallet, the gas pump, usage and
+    the rate card are operator views. A host without mana is unchanged — the
+    decision belongs to the host that made it, which is why the test is the
+    app and not a flag.
+    """
+    from django.apps import apps
+    from django.conf import settings
+
+    if not apps.is_installed("toto.mana"):
+        return False
+    # The same switch that opens the economy desks opens their links: one
+    # setting, one meaning (zenobia's ECONOMY_STAFF_ONLY; absent means on).
+    if not getattr(settings, "ECONOMY_STAFF_ONLY", True):
+        return False
+    return not (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False))
+
+
 def pricing_enabled() -> bool:
     """True when this host has a rate card to read or write."""
     from .charge import billing_enabled

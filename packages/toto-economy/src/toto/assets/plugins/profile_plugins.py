@@ -11,6 +11,11 @@ class WalletProfilePlugin(ProfilePlugin):
         profile = kwargs.get("profile")
         if not profile:
             return False
+        request = kwargs.get("request")
+        from toto.quota.rates import economy_hidden_from
+
+        if request is not None and economy_hidden_from(getattr(request, "user", None)):
+            return False        # the mana section replaces it for a member
         return bool(getattr(profile, "user", None))
 
     def get_context(self, **kwargs):
