@@ -24,6 +24,12 @@ from django.utils import timezone
 
 from .peering import PEER_PATH
 
+try:  # celery is optional in toto-base; without it nothing sends this
+    from celery.exceptions import SoftTimeLimitExceeded
+except ImportError:  # pragma: no cover
+    class SoftTimeLimitExceeded(Exception):
+        pass
+
 #: (connect, read) — a peer that cannot accept a connection in 5s is down;
 #: a streamed download may legitimately take longer between chunks.
 DEFAULT_TIMEOUT = (5, 30)
@@ -103,6 +109,10 @@ class PeerClient:
             resp = _http().request(
                 method, self._base + path, headers=headers,
                 timeout=DEFAULT_TIMEOUT, stream=stream, **kwargs)
+        except SoftTimeLimitExceeded:
+            # The worker's clock, not the link: stamping it would badge a
+            # working peer as broken, and a PeerError would fail the run.
+            raise
         except Exception as exc:  # noqa: BLE001 - every transport failure, one shape
             self._stamp(f"{type(exc).__name__}: {exc}")
             raise PeerError(

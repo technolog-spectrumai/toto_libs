@@ -9,6 +9,10 @@ raising — a caller never needs a guard::
     if not verdict.ok:
         return JsonResponse({"error": verdict.reason, ...}, status=400)
 
+The one exception let through is a celery worker's soft time limit: it is the
+worker's, not the scanner's, and swallowed here it would land a file unscanned
+and run the task on into the hard kill.
+
 The same trick as :mod:`toto.quota.rates`, for the same reason.
 
 **Read the degradation carefully, because it is a real trade.** With the app
@@ -29,6 +33,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from django.apps import apps
+
+try:  # celery is optional in toto-base; without it nothing sends this
+    from celery.exceptions import SoftTimeLimitExceeded
+except ImportError:  # pragma: no cover
+    class SoftTimeLimitExceeded(Exception):
+        pass
 
 #: What this platform knows how to screen. Images, video and audio are
 #: deliberately absent: they are opaque blobs to a text scanner, and pretending
@@ -108,7 +118,7 @@ def scan_size_cap_bytes():
 
 
 def scan(data, *, file_type: str, filename: str = "") -> Verdict:
-    """Screen content before it is stored. Never raises.
+    """Screen content before it is stored. Never raises (but see above).
 
     ``data`` may be bytes or str; the scanner decodes. A type nothing screens,
     or a host with no antivirus, comes back clean-and-unscanned.
@@ -121,6 +131,8 @@ def scan(data, *, file_type: str, filename: str = "") -> Verdict:
         return Verdict.clean(scanned=False)
     try:
         return engine.scan(data, file_type=file_type, filename=filename)
+    except SoftTimeLimitExceeded:
+        raise
     except Exception:  # noqa: BLE001
         # A scanner that crashes must not turn somebody's save into a 500. It
         # also must not silently pass hostile content off as screened — so this
@@ -129,13 +141,16 @@ def scan(data, *, file_type: str, filename: str = "") -> Verdict:
 
 
 def record(vault_file, verdict: Verdict, *, user=None, door: str = "") -> None:
-    """Remember what a scan concluded about a stored file. Never raises."""
+    """Remember what a scan concluded about a stored file. Never raises
+    (but see above)."""
     if not scanning_enabled() or not verdict.scanned:
         return
     try:
         from toto.antivirus import engine
 
         engine.record(vault_file, verdict, user=user, door=door)
+    except SoftTimeLimitExceeded:
+        raise
     except Exception:  # noqa: BLE001 - bookkeeping must not break a save
         return
 
@@ -192,5 +207,7 @@ def should_scan(owner, file_type: str, door: str = "") -> bool:
         from toto.antivirus.models import ScanPreference
 
         return ScanPreference.applies(owner, file_type, door)
+    except SoftTimeLimitExceeded:
+        raise
     except Exception:  # noqa: BLE001
         return True

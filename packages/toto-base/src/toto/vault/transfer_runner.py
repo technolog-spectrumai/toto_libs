@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import logging
 import os
 from decimal import Decimal
 
@@ -24,6 +25,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from .transfer import TransferRun, TransferStatus
+
+logger = logging.getLogger("toto.vault")
 
 try:  # celery is optional in toto-base; without it nothing sends this
     from celery.exceptions import SoftTimeLimitExceeded
@@ -71,6 +74,8 @@ def execute_transfer_run(run_id: int) -> TransferRun:
 
     file_ids = list(run.file_ids or [])
     for idx in range(run.cursor, len(file_ids)):
+        if _closed(run):
+            return run
         src_pk = file_ids[idx]
         source_file = VaultFile.objects.filter(
             pk=src_pk, bucket=source).first()
@@ -176,7 +181,7 @@ def execute_transfer_run(run_id: int) -> TransferRun:
             try:
                 with transaction.atomic():
                     if run.copy_policy == "replace":
-                        VaultFile.objects.filter(bucket=dest, key=key).delete()
+                        _supersede(dest, key)
                     new_file = VaultFile(
                         owner=source_file.owner,
                         title=source_file.title,
@@ -202,9 +207,22 @@ def execute_transfer_run(run_id: int) -> TransferRun:
                 dst_driver.delete(stored_name)
                 run.refresh_from_db()
                 return _fail(run, str(exc))
+            except BaseException:
+                # A soft time limit or a lock timeout stops the landing just
+                # as surely, and its bytes are as unowned. The row check is
+                # for a commit that went through before an on_commit hook
+                # raised: those bytes are the new copy's.
+                if not VaultFile.objects.filter(
+                        bucket=dest, file=stored_name).exists():
+                    dst_driver.delete(stored_name)
+                raise
 
         try:
             _meter(run, src_pk, len(content), tariff)
+        except SoftTimeLimitExceeded:
+            # The worker's time ran out, not the payer's funds: "Billing
+            # failed" here would say the opposite.
+            raise
         except Exception as exc:  # noqa: BLE001 - funds ran out mid-run
             # The file already landed; the run stops HERE so the ledger and
             # the rows never drift further apart. Resume re-bills nothing
@@ -212,10 +230,12 @@ def execute_transfer_run(run_id: int) -> TransferRun:
             return _fail(run, f"Billing failed after {run.files_done} "
                               f"file(s): {exc}")
 
+    if _closed(run):
+        return run
     with transaction.atomic():
         run.status = TransferStatus.SUCCESS
         run.finished_at = timezone.now()
-        run.save()
+        run.save(update_fields=["status", "finished_at"])
         if run.files_done:
             from .models import BucketCopyLog
 
@@ -253,13 +273,27 @@ def _landed(run, source_file, new_file, dest_key: str) -> None:
             f"{type(exc).__name__}: {exc}") from exc
 
 
+def _closed(run) -> bool:
+    """Whether somebody else closed this run while it ran — the sweeper, or
+    the next yamabiko pass once this one outlived its lease. The runner then
+    stops and hands back the run as the closer left it: going on would land
+    and bill the same files as whoever took over."""
+    if TransferRun.objects.filter(
+            pk=run.pk, status=TransferStatus.RUNNING).exists():
+        return False
+    run.refresh_from_db()
+    return True
+
+
 def _advance(run, idx: int, *, done: bool, n_bytes: int = 0) -> None:
-    """Counters + cursor, saved inside the caller's transaction."""
+    """Counters + cursor, saved inside the caller's transaction. Only these
+    columns: a full save would write this worker's RUNNING over a closer's
+    FAILED."""
     run.cursor = idx + 1
     if done:
         run.files_done += 1
         run.bytes_done += n_bytes
-    run.save()
+    run.save(update_fields=["cursor", "files_done", "bytes_done"])
 
 
 def _skip(run, idx: int, key: str, reason: str) -> None:
@@ -267,7 +301,27 @@ def _skip(run, idx: int, key: str, reason: str) -> None:
         run.add_skip(key, reason, pk=(run.file_ids or [None] * (idx + 1))[idx])
         run.files_skipped += 1
         run.cursor = idx + 1
-        run.save()
+        run.save(update_fields=["skips", "files_skipped", "cursor"])
+
+
+def _supersede(bucket, key: str) -> None:
+    """Delete the row a 'replace' landing takes the key of — inside the
+    landing transaction, as before, so cascades, PROTECT and the landing's
+    listeners all see it gone — but its bytes only once that commits.
+
+    A bare delete unlinks a local file at once (the post_delete receiver does
+    not wait for the commit), so a landing refused later in the transaction
+    brought the old row back pointing at nothing. Blanking ``file`` first
+    leaves that receiver nothing to unlink; the rollback restores it."""
+    from .models import VaultFile
+    from .purge import _delete_blob
+
+    doomed = VaultFile.objects.filter(bucket=bucket, key=key)
+    names = [name for name in doomed.values_list("file", flat=True) if name]
+    doomed.update(file="")
+    doomed.delete()
+    for name in names:
+        transaction.on_commit(lambda name=name: _delete_blob(bucket, name))
 
 
 def _fail(run, reason: str):
@@ -289,21 +343,34 @@ def _tariff(user):
 def _meter(run, src_pk: int, n_bytes: int, tariff) -> None:
     """Usage + charge for one landed file. The usage event is idempotent by
     (run, source row); the charge follows the gateway's at-most-once shape —
-    it is only ever reached in the iteration that advanced the cursor."""
+    it is only ever reached in the iteration that advanced the cursor.
+
+    Not ``record_usage``: it answers None both for "already recorded" and for
+    "the write failed", and swallows everything on the way. Read as the first,
+    the second made a landed file free and ate a soft time limit. Here only
+    an EXISTING event means billed. A usage event that cannot be written is
+    logged and the file is charged anyway: the cursor has already moved past
+    it, so nothing would ever bill it later, and a charge that fails raises
+    for the caller ("Billing failed")."""
     if run.owner is None or n_bytes <= 0:
         return
-    from toto.quota import record_usage
+    from django.db import DatabaseError
     from toto.quota.charge import charge
 
     from .models import VaultUsageEvent
 
+    key = f"vault.transfer.mb:{run.pk}:{src_pk}"
     src = {"source_type": "vault.TransferRun", "source_id": str(run.pk)}
-    event = record_usage(
-        VaultUsageEvent, "storage.transfer_mb", _mb(n_bytes), run.owner,
-        unit="MB",
-        idempotency_key=f"vault.transfer.mb:{run.pk}:{src_pk}", **src)
-    # The charge follows the event, never the loop: a replayed iteration finds
-    # its event already recorded (None here) and must not bill a second time.
-    if event is not None:
-        charge(run.owner, tariff, "storage.transfer_mb", _mb(n_bytes),
-               unit="MB", **src)
+    # A replayed iteration finds its event already recorded and must not bill
+    # a second time.
+    if VaultUsageEvent.objects.filter(idempotency_key=key).exists():
+        return
+    try:
+        with transaction.atomic():
+            VaultUsageEvent.objects.create(
+                idempotency_key=key, metric_code="storage.transfer_mb",
+                quantity=_mb(n_bytes), unit="MB", user=run.owner, **src)
+    except DatabaseError:
+        logger.exception("vault: usage event %s not recorded; charging anyway", key)
+    charge(run.owner, tariff, "storage.transfer_mb", _mb(n_bytes),
+           unit="MB", **src)

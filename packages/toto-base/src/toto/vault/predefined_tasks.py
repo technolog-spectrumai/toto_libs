@@ -75,15 +75,26 @@ def vault_refresh_remote_bucket(input_data: dict) -> dict:
 def vault_transfer_files(input_data: dict) -> dict:
     """Copy a frozen selection between buckets, resuming at the cursor.
     Expects input_data = {"data": {"run_id": <TransferRun pk>}}."""
+    from . import transfer_dispatch
     from .transfer import TransferStatus
-    from .transfer_runner import execute_transfer_run
+    from .transfer_runner import SoftTimeLimitExceeded, execute_transfer_run
 
     run_id = (input_data.get("data") or {}).get("run_id")
     if run_id is None:
         raise ValueError(
             "vault_transfer_files requires run_id in its input data.")
 
-    run = execute_transfer_run(run_id)
+    try:
+        run = execute_transfer_run(run_id)
+    except SoftTimeLimitExceeded:
+        # The runner leaves the cursor for a resume and the closing to its
+        # caller. Otherwise only the stuck-run sweeper closes this row, an
+        # hour on, and until then Retry answers "still going" and refuses
+        # any other run between the same two buckets.
+        transfer_dispatch.fail_transfer_run(
+            run_id, "The worker's time ran out; Retry continues from where "
+                    "it stopped.")
+        raise
     if run.status == TransferStatus.FAILED:
         raise RuntimeError(run.error or "The transfer failed.")
     return {"data": {"run_id": run_id, "status": run.status,
