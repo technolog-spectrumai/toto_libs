@@ -12,6 +12,11 @@ class ManaConfig(AppConfig):
         # (toto.quota.apps) — one widget, no discovery.
         from .plugins import header_plugins  # noqa: F401
 
+        from django.apps import apps
+
+        if apps.is_installed("toto.socialhub"):
+            from .plugins import profile_plugins  # noqa: F401
+
         self._connect_signup()
         self._connect_encrypt_reward()
 

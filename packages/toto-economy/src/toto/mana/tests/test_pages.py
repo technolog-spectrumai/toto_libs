@@ -164,3 +164,40 @@ class HistoryTests(PageTestCase):
         self.assertEqual(kinds[:1], ["regen"])
         self.assertIn("signup", kinds)
         self.assertIn("transfer", kinds)
+
+
+class BadgeTests(PageTestCase):
+    def render(self, code):
+        from django.template import Context, Template
+        from django.test import RequestFactory
+
+        request = RequestFactory().get("/")
+        request.user = self.ada
+        return Template('{% load quota_tags %}{% price_hint "' + code + '" %}').render(
+            Context({"request": request}))
+
+    def test_a_pooled_price_reads_as_mana_not_a_ticker(self):
+        html = self.render("storage.request")
+        self.assertIn('data-mana-role="storage"', html)
+        self.assertIn("−0.5", html)
+        self.assertNotIn("GREEN", html)
+
+    def test_an_unpriced_metric_still_says_nothing(self):
+        self.assertEqual(self.render("storage.egress_mb").strip(), "")
+
+
+class ProfileTests(PageTestCase):
+    def test_the_owner_sees_their_pools_on_their_profile(self):
+        from toto.tax.tests.factories import make_person
+
+        person = make_person(self.ada)
+        body = self.client.get(reverse("socialhub:profile_details", args=[person.slug])).content.decode()
+        self.assertIn('data-testid="mana-profile"', body)
+
+    def test_nobody_else_does(self):
+        from toto.tax.tests.factories import make_person
+
+        person = make_person(self.ada)
+        self.client.force_login(User.objects.create_user("bob", password="pw"))
+        body = self.client.get(reverse("socialhub:profile_details", args=[person.slug])).content.decode()
+        self.assertNotIn('data-testid="mana-profile"', body)
