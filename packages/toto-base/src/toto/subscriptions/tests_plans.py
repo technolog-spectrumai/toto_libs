@@ -325,14 +325,14 @@ class TheFreeTierIsWhatItClaimsTests(SimpleTestCase):
         an accident.
 
         `sepulka` was declared beside it that day and left on 2026-09-23 with
-        the sealed-backup app, catalogue entry and plan grant together. The
-        loop stays so the next operator tool is one word here."""
+        the sealed-backup app, catalogue entry and plan grant together.
+        `yamabiko` (bucket echoes) joined the same day — one word here."""
         from toto.subscriptions import plans
         from toto.subscriptions.catalogue import registry
 
         professional = next(p for p in plans.all_plans()
                             if p.key == "professional")
-        for key in ("monit",):
+        for key in ("monit", "yamabiko"):
             with self.subTest(feature=key):
                 self.assertIsNotNone(registry.get(key))
                 self.assertFalse(registry.get(key).free)

@@ -295,6 +295,13 @@ _DEFAULTS = (
     Entitlement("monit", "Monitoring", order=50,
                 icon="fa-solid fa-heart-pulse",
                 description="This host's health, its trends and its record."),
+    # Yamabiko, 2026-09-23: one bucket kept as an echo of another, on a
+    # schedule. An operator's tool (members own only their personal bucket),
+    # declared and sold beside monit so it is not free by omission. Declared
+    # here and granted by the professional plan in the same edit.
+    Entitlement("yamabiko", "Echoes", order=51,
+                icon="fa-solid fa-clone",
+                description="Keep one bucket as a copy of another, on a schedule."),
     # NO "sepulka" (the sealed whole-installation archive): declared here on
     # 2026-09-06 beside monit, gone on 2026-09-23 when the only host that
     # mounted it parked the app. It did little the deploy config's own backups

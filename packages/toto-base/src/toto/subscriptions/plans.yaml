@@ -88,7 +88,8 @@ plans:
     #
     # `sepulka` left on 2026-09-23 the same way, with the sealed-backup app,
     # when the only host that mounted it parked it. Its catalogue entry went in
-    # the same edit.
+    # the same edit. `yamabiko` (bucket echoes, the job sepulka's leaving handed
+    # over) joined the same day, declared in catalogue.py in the same edit.
     features:
       - cyprian
       - memo
@@ -108,6 +109,7 @@ plans:
       - steven
       - travels
       - monit
+      - yamabiko
       - anastasia
       - dracena
       - texlab
