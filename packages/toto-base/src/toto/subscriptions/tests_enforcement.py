@@ -33,7 +33,7 @@ from django.test import RequestFactory, TestCase, modify_settings
 from toto.core.models import Platform
 
 from . import services
-from .gate import SubscriptionGateMiddleware, is_entitled
+from .gate import SubscriptionGateMiddleware, is_entitled, plan_exempt
 from .models import Subscription, SubscriptionState
 from .tests import make_plans
 from .tests import setUpModule as _install_fixture_ladder
@@ -118,13 +118,24 @@ class EntitlementMatrixTests(MatrixTestCase):
 
 
 class GateMatrixTests(MatrixTestCase):
-    def _run(self, user, code, method, **extra):
+    def _run(self, user, code, method, view=None, **extra):
         factory = RequestFactory()
         request = getattr(factory, method)(f"/{code}/x/", **extra)
         request.user = user
         request.resolver_match = type("M", (), {"app_name": code})()
         middleware = SubscriptionGateMiddleware(lambda r: None)
-        return middleware.process_view(request, None, (), {}), request
+        return middleware.process_view(request, view, (), {}), request
+
+    def test_a_brake_is_never_refused(self):
+        """A write in a paid app that 402s unmarked passes when its view is
+        marked @plan_exempt — and only that view."""
+        user = self.users["never-subscribed"]
+        response, _ = self._run(user, "aralia", "post", view=lambda request: None)
+        self.assertEqual(response.status_code, 402)
+        response, request = self._run(user, "aralia", "post",
+                                      view=plan_exempt(lambda request: None))
+        self.assertIsNone(response)
+        self.assertFalse(request.plan_locked)
 
     def test_writes_402_exactly_where_the_plan_stops(self):
         for code in ("cyprian", "aralia"):

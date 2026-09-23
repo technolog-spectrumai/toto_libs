@@ -16,6 +16,7 @@ is covered by the same code as the pages** — every API route resolves through
     unauthenticated ......................... proceed (login is not a paywall)
     free entitlement, or app not in the
       catalogue at all ...................... proceed
+    a view marked @plan_exempt .............. proceed (a brake, see below)
     the user's plan grants it ............... proceed
     safe method (GET/HEAD/OPTIONS) .......... proceed, and mark the request
     anything else ........................... 402
@@ -25,6 +26,16 @@ means in code. It has a property worth stating: **a lapsed subscriber can always
 get their data out.** Downloads are GETs. Nothing anybody made is ever behind
 the paywall, which is what makes lapsing a safe thing to let happen
 automatically.
+
+## Brakes
+
+Some writes must work without the plan: the ones that STOP a paid app doing
+something it keeps doing on its own. A scheduled job that runs and bills
+whatever the plan says cannot put its Pause behind the plan, or a lapse turns
+into a bill nobody can halt. ``@plan_exempt`` marks such a view, per view like
+``csrf_exempt``, so the app stays paid and every other write in it still 402s.
+It is for brakes and for letting them off again: a marked view that makes the
+app do anything it was not already set to do is that feature given away.
 
 ## Failure
 
@@ -55,6 +66,17 @@ ALWAYS_FREE = frozenset({
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 
 PAYMENT_REQUIRED = 402
+
+
+def plan_exempt(view_func):
+    """Mark a view the gate never refuses: a brake (see the module docstring).
+
+    The gate reads the mark off the view the URL resolves to, so it goes on
+    that function, outermost among its decorators or anywhere inside ones
+    that copy attributes (``functools.wraps`` does).
+    """
+    view_func.plan_exempt = True
+    return view_func
 
 
 def entitlement_for_request(request) -> str:
@@ -118,7 +140,7 @@ class SubscriptionGateMiddleware:
             return None
 
         code = entitlement_for_request(request)
-        if not code or code in ALWAYS_FREE:
+        if not code or code in ALWAYS_FREE or getattr(view_func, "plan_exempt", False):
             return None
 
         try:
