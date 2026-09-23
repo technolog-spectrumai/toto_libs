@@ -411,6 +411,13 @@ document.addEventListener('alpine:init', () => {
            class="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition hover:opacity-80">
           {% trans "Cancel" %}
         </a>
+        {% comment %}Mounted only by a host that keeps buckets in step (zenobia's
+        yamabiko); absent everywhere else.{% endcomment %}
+        {% url 'yamabiko:new' as echo_url %}
+        {% if echo_url %}
+        <a href="{{ echo_url }}" class="text-sm underline opacity-70 hover:opacity-100">
+          <i class="fa-solid fa-clone"></i> {% trans "Keep these in step" %}</a>
+        {% endif %}
       </div>
 
     </form>

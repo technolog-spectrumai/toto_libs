@@ -42,6 +42,13 @@
         {% blocktrans with when=run.created_at|date:"Y-m-d H:i" %}Started {{ when }}{% endblocktrans %}
         · {{ run.get_copy_policy_display }}
       </p>
+      {% comment %}A host that keeps buckets in step (zenobia's yamabiko) mounts
+      this name; everywhere else the link is simply absent.{% endcomment %}
+      {% url 'yamabiko:new' as echo_url %}
+      {% if echo_url %}
+      <a href="{{ echo_url }}?from_run={{ run.pk }}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-clone"></i>{% trans "Keep these in step" %}</a>
+      {% endif %}
     </header>
 
     <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"

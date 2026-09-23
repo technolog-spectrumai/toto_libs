@@ -71,6 +71,15 @@
             <i class="fa-solid fa-cloud"></i>{% trans "Remote" %}</a>
         {% endif %}
       {% endif %}{% endif %}
+      {% comment %}Echoes: a host that keeps buckets in step (zenobia's yamabiko)
+      mounts this name; everywhere else the tab is absent.{% endcomment %}
+      {% url 'yamabiko:list' as echoes_url %}
+      {% if echoes_url %}
+        <a href="{{ echoes_url }}"
+           :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+           class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition opacity-50">
+          <i class="fa-solid fa-clone"></i>{% trans "Echoes" %}</a>
+      {% endif %}
       {% url 'vault:archive' as archive_url %}
       {% if archive_url %}
         <a href="{{ archive_url }}"
