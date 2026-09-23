@@ -24,7 +24,18 @@ from toto.assets.services.bootstrap import (CORE_ASSETS, DEFAULT_FAUCETS,
                                             ensure_monetary_issuer)
 from toto.assets.testing import TEST_ISSUER_KEY
 
-CORE_UNITS = {"MANA", "ASR", "TPLN"}
+CORE_UNITS = {"ASR", "TPLN"}
+
+
+def core_units():
+    """What bootstrap minted, minus the three mana pools.
+
+    ``toto.mana`` rides the same bootstrap on hosts that install it; these
+    tests are about the core currencies, and must read the same on a host that
+    does not.
+    """
+    return set(Asset.objects.exclude(metadata__family="toto_mana")
+               .values_list("unit_name", flat=True))
 
 
 @override_settings(MONETARY_ISSUER_KEY=TEST_ISSUER_KEY, ASSETS_MONETARY_MASTER=True)
@@ -39,10 +50,9 @@ class FreshInstallTests(TestCase):
         self.assertIsNotNone(local_issuer())
         self.assertTrue(is_monetary_master())
 
-    def test_it_creates_the_three_core_assets(self):
+    def test_it_creates_the_two_core_assets(self):
         bootstrap_economy()
-        self.assertEqual(
-            set(Asset.objects.values_list("unit_name", flat=True)), CORE_UNITS)
+        self.assertEqual(core_units(), CORE_UNITS)
 
     def test_each_one_is_engraved_with_its_stated_supply_and_scale(self):
         """A maximum cannot be raised afterwards, so this is the only chance to
@@ -109,7 +119,7 @@ class AlreadyInitialisedTests(TestCase):
         change once issued, so bootstrap could not overwrite those even if it
         tried. What it must not touch is what staff CAN change.
         """
-        asset = Asset.objects.get(unit_name="MANA")
+        asset = Asset.objects.get(unit_name="ASR")
         asset.minting_authority = "The Guild"
         asset.active = False
         asset.save(update_fields=["minting_authority", "active"])
@@ -128,7 +138,7 @@ class AlreadyInitialisedTests(TestCase):
         from django.db.models import ProtectedError
 
         with self.assertRaises(ProtectedError):
-            LedgerTransaction.objects.filter(reference="create-mana").delete()
+            LedgerTransaction.objects.filter(reference="create-asr").delete()
 
 
 class NotTheMasterTests(TestCase):
@@ -164,8 +174,7 @@ class EveryIngressPathTests(TestCase):
 
     def test_an_unrelated_ingress_command_still_guarantees_the_currencies(self):
         call_command("ingress_quota", stdout=StringIO(), stderr=StringIO())
-        self.assertEqual(
-            set(Asset.objects.values_list("unit_name", flat=True)), CORE_UNITS)
+        self.assertEqual(core_units(), CORE_UNITS)
 
     def test_ingress_assets_guarantees_them_too(self):
         call_command("ingress_assets", stdout=StringIO(), stderr=StringIO())
@@ -182,7 +191,7 @@ class EveryIngressPathTests(TestCase):
 
 @override_settings(MONETARY_ISSUER_KEY=TEST_ISSUER_KEY, ASSETS_MONETARY_MASTER=True)
 class DefaultFaucetTests(TestCase):
-    """The MANA and ASR faucets every install has.
+    """The ASR faucet every install has — MANA's was retired with it.
 
     Bootstrap creates the ARRANGEMENT and nothing else: no people, no amounts,
     switched off. Those are the two things nobody but a person should choose,
@@ -201,7 +210,7 @@ class DefaultFaucetTests(TestCase):
     def test_it_creates_one_faucet_per_payable_currency(self):
         self.assertEqual(
             set(self.faucets().values_list("asset__unit_name", flat=True)),
-            {"MANA", "ASR"})
+            {"ASR"})
 
     def test_tpln_gets_none(self):
         """The accounting currency, not something people are paid in. A faucet
@@ -243,7 +252,7 @@ class DefaultFaucetTests(TestCase):
         from toto.assets.models import Faucet, FaucetMember
 
         user = get_user_model().objects.create_user("ada", password="pw")
-        faucet = Faucet.objects.get(slug="default-mana")
+        faucet = Faucet.objects.get(slug="default-asr")
         faucet.name = "Crew stipends"
         faucet.note = "ours now"
         faucet.active = True
@@ -258,7 +267,7 @@ class DefaultFaucetTests(TestCase):
         self.assertEqual(faucet.note, "ours now")
         self.assertTrue(faucet.active)
         self.assertEqual(faucet.members.count(), 1)
-        self.assertEqual(Faucet.objects.filter(asset__unit_name="MANA").count(), 1)
+        self.assertEqual(Faucet.objects.filter(asset__unit_name="ASR").count(), 1)
 
     def test_a_renamed_faucet_is_still_found_rather_than_duplicated(self):
         """The slug is the key, not the name — which is exactly why the slug is
@@ -285,7 +294,7 @@ class DefaultFaucetTests(TestCase):
         call_command("ingress_quota", stdout=StringIO(), stderr=StringIO())
         self.assertEqual(
             set(Faucet.objects.values_list("asset__unit_name", flat=True)),
-            {"MANA", "ASR"})
+            {"ASR"})
 
 
 class FaucetsWithoutCurrenciesTests(TestCase):
@@ -307,4 +316,4 @@ class FaucetsWithoutCurrenciesTests(TestCase):
         self.assertFalse(Faucet.objects.exists())
 
     def test_the_catalogue_names_only_payable_currencies(self):
-        self.assertEqual({f.unit_name for f in DEFAULT_FAUCETS}, {"MANA", "ASR"})
+        self.assertEqual({f.unit_name for f in DEFAULT_FAUCETS}, {"ASR"})

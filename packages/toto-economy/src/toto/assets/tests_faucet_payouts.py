@@ -52,10 +52,10 @@ class PayoutTestCase(TestCase):
             site_name="Test",
             defaults={"author": "t", "publication_year": 2026, "active": True})
         bootstrap_economy()
-        self.mana = Asset.objects.get(unit_name="MANA")
+        self.asr = Asset.objects.get(unit_name="ASR")
         self.ada = User.objects.create_user("ada", password="pw")
         self.bob = User.objects.create_user("bob", password="pw")
-        self.faucet = Faucet.objects.create(name="Stipends", asset=self.mana,
+        self.faucet = Faucet.objects.create(name="Stipends", asset=self.asr,
                                             active=True)
 
     def add(self, user, amount="1", **over):
@@ -92,12 +92,12 @@ class OneHourTests(PayoutTestCase):
         faucets.run_hour()
         payout = FaucetPayout.objects.get()
         self.assertEqual(payout.amount_base_units,
-                         2 * 10 ** self.mana.decimals)
+                         2 * 10 ** self.asr.decimals)
 
         member.amount_per_hour = Decimal("99")
         member.save(update_fields=["amount_per_hour"])
         payout.refresh_from_db()
-        self.assertEqual(payout.amount_base_units, 2 * 10 ** self.mana.decimals)
+        self.assertEqual(payout.amount_base_units, 2 * 10 ** self.asr.decimals)
 
 
 class IdempotencyTests(PayoutTestCase):
@@ -173,8 +173,8 @@ class SafetyTests(PayoutTestCase):
 
     def test_a_retired_currency_stops_its_faucet(self):
         self.add(self.ada, "2")
-        self.mana.active = False
-        self.mana.save(update_fields=["active"])
+        self.asr.active = False
+        self.asr.save(update_fields=["active"])
         self.assertEqual(faucets.run_hour().paid, 0)
 
     def test_a_member_on_zero_is_recorded_rather_than_skipped(self):
@@ -192,7 +192,7 @@ class SafetyTests(PayoutTestCase):
         """THE isolation property. A dry reserve for one member must not be a
         dry reserve for the run."""
         self.add(self.ada, "2")
-        broken_asset = Asset.objects.get(unit_name="ASR")
+        broken_asset = Asset.objects.get(unit_name="TPLN")   # not the healthy faucet's ASR
         broken_asset.reserve_account = None
         broken_asset.save(update_fields=["reserve_account"])
         broken = Faucet.objects.create(name="Broken", asset=broken_asset,
@@ -213,7 +213,7 @@ class SafetyTests(PayoutTestCase):
 
     def test_a_failure_records_why_in_words(self):
         """"failed" with nothing beside it is a state an operator cannot act on."""
-        broken_asset = Asset.objects.get(unit_name="ASR")
+        broken_asset = Asset.objects.get(unit_name="TPLN")
         broken_asset.reserve_account = None
         broken_asset.save(update_fields=["reserve_account"])
         broken = Faucet.objects.create(name="Broken", asset=broken_asset,
@@ -228,7 +228,7 @@ class SafetyTests(PayoutTestCase):
         """A failed hour stays failed. Re-running claims the hour again and
         finds it taken, rather than paying it a second time once the cause is
         fixed — a faucet drips, it does not backfill."""
-        broken_asset = Asset.objects.get(unit_name="ASR")
+        broken_asset = Asset.objects.get(unit_name="TPLN")
         broken_asset.reserve_account = None
         broken_asset.save(update_fields=["reserve_account"])
         broken = Faucet.objects.create(name="Broken", asset=broken_asset,
@@ -237,7 +237,7 @@ class SafetyTests(PayoutTestCase):
                                     amount_per_hour=Decimal("5"))
 
         faucets.run_hour()
-        broken_asset.reserve_account = self.mana.reserve_account
+        broken_asset.reserve_account = self.asr.reserve_account
         broken_asset.save(update_fields=["reserve_account"])
         report = faucets.run_hour()
 
@@ -266,7 +266,7 @@ class AuditTests(PayoutTestCase):
         self.assertEqual((runs[1].paid, runs[1].skipped), (0, 1))
 
     def test_failures_are_named_on_the_run_as_well(self):
-        broken_asset = Asset.objects.get(unit_name="ASR")
+        broken_asset = Asset.objects.get(unit_name="TPLN")
         broken_asset.reserve_account = None
         broken_asset.save(update_fields=["reserve_account"])
         broken = Faucet.objects.create(name="Broken", asset=broken_asset,
@@ -359,10 +359,10 @@ class CrashRecoveryTests(PayoutTestCase):
 
         FaucetPayout.objects.create(
             member=member, period_label=label,
-            amount_base_units=int(member.amount_per_hour * 10 ** self.mana.decimals),
+            amount_base_units=int(member.amount_per_hour * 10 ** self.asr.decimals),
             status=FaucetPayoutStatus.PENDING)
         return distribute_asset(
-            asset=self.mana, recipient_account=self._account(member.user),
+            asset=self.asr, recipient_account=self._account(member.user),
             amount=member.amount_per_hour,
             reference=faucets.reference_for(member, label))
 
@@ -455,7 +455,7 @@ class UnpayableRateTests(PayoutTestCase):
     condition was deterministic and the beat retried straight into it.
     """
 
-    HUGE = "10000000000"          # ten billion MANA/hour; MANA has 9 decimals
+    HUGE = "10000000000"          # ten billion ASR/hour; ASR has 9 decimals, as MANA did
 
     def test_the_form_refuses_it_and_says_why(self):
         staff = User.objects.create_user("staff", password="pw", is_staff=True)
@@ -465,7 +465,7 @@ class UnpayableRateTests(PayoutTestCase):
             {"account_id": wallet_id(self.ada),
              "amount_per_hour": self.HUGE}, follow=True)
         text = " ".join(str(m) for m in response.context["messages"]).lower()
-        self.assertIn("more mana an hour than the ledger can record", text)
+        self.assertIn("more asr an hour than the ledger can record", text)
         self.assertFalse(FaucetMember.objects.exists())
 
     def test_the_model_refuses_it(self):

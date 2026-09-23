@@ -17,7 +17,10 @@ resolves through :func:`settlement_asset`.
    the right to bill in. It is authoritative on a branch precisely because a
    branch does not get to decide what it bills in — see
    ``toto.assets.contracts`` and portal/hierarchical_economy.md.
-3. **MANA.** The default, and the reason ingress guarantees it exists.
+3. **ASR.** The default, and the reason ingress guarantees it exists. It was
+   MANA until 2026-09-23, when the single MANA currency was retired in favour
+   of the three coloured pools of ``toto.mana``; those are what a member is
+   refilled and rewarded in, and they are not a settlement currency.
 
 ## What this is NOT
 
@@ -25,7 +28,7 @@ It is not "what metered work costs" — that is
 :func:`toto.tariffs.rate_card.gas_asset`, and the two are kept apart on purpose.
 A platform's rate card is denominated by its currency CONTRACT and by the ticker
 it was seeded under, and a host that has been billing in ASR for a year must not
-silently re-denominate its whole rate card because MANA appeared. What this
+silently re-denominate its whole rate card because a new default appeared. What this
 answers is the other direction: what the platform PAYS — grants, rewards,
 faucet payouts, internal settlements — which had no single answer at all.
 
@@ -41,7 +44,7 @@ from __future__ import annotations
 
 #: The currency a platform settles in when nobody has said otherwise. Created
 #: by ``toto.assets.services.bootstrap``, so it is present on every install.
-DEFAULT_UNIT = "MANA"
+DEFAULT_UNIT = "ASR"
 
 
 def settlement_asset():
@@ -76,7 +79,7 @@ def settlement_choice():
     """The stored row, or None when the platform is running on the default.
 
     Separate from :func:`settlement_asset` because the UI has to tell the two
-    apart: "settling in MANA because staff chose it" and "settling in MANA
+    apart: "settling in ASR because staff chose it" and "settling in ASR
     because nobody has chosen anything" look identical otherwise, and only one
     of them is a decision.
     """

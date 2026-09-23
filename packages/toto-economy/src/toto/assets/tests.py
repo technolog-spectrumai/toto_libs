@@ -422,25 +422,26 @@ class IngressAssetsTests(TestCase):
         self.call()
         self.call()
 
-        self.assertEqual(Asset.objects.filter(unit_name="MANA").count(), 1)
+        self.assertFalse(Asset.objects.filter(unit_name="MANA").exists())
         self.assertEqual(Asset.objects.filter(unit_name="ASR").count(), 1)
         self.assertEqual(Asset.objects.filter(unit_name="TPLN").count(), 1)
 
-    def test_a_base_build_has_exactly_the_three_core_currencies(self):
-        # MANA settles internal payments, ASR is the gas, TPLN is the unit of
+    def test_a_base_build_has_exactly_the_two_core_currencies(self):
+        # ASR is the gas and the settlement default, TPLN is the unit of
         # account. Everything else is demo material and must not reach a real
         # deployment.
         #
-        # This asserted two until 8/2026, when MANA was added and the seeding
-        # moved into a shared bootstrap that EVERY ingress path runs — the
-        # currencies used to be created by this one command, so whether an
-        # install had an economy depended on which command its operator ran.
-        # See toto.assets.services.bootstrap.
+        # This asserted two until 8/2026, three (with MANA) until 2026-09-23,
+        # and two again since MANA was retired for the three pools of
+        # toto.mana — which ride the same bootstrap where that app is
+        # installed, and are excluded here because they are not currencies a
+        # platform settles in. See toto.assets.services.bootstrap.
         self.call()
 
         self.assertEqual(
-            sorted(Asset.objects.values_list("unit_name", flat=True)),
-            ["ASR", "MANA", "TPLN"],
+            sorted(Asset.objects.exclude(metadata__family="toto_mana")
+                   .values_list("unit_name", flat=True)),
+            ["ASR", "TPLN"],
         )
         for asset in Asset.objects.all():
             self.assertNotEqual((asset.metadata or {}).get("kind"), "platform_token")

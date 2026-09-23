@@ -75,24 +75,18 @@ class CoreAsset:
         return f"create-{self.unit_name.lower()}"
 
 
-#: The three currencies every install has, in the order they are created.
+#: The two currencies every install has, in the order they are created.
 #:
 #: ASR and TPLN carry the supplies they were first seeded with, deliberately
 #: frozen: re-running ingress against an already-seeded ledger must not trip the
-#: immutability re-check. MANA is new in 8/2026 — it is the default settlement
-#: asset (see toto.assets.services.settlement), so it is the one that pays
-#: faucets by the hour and needs a supply that suits a slow continuous drip
-#: rather than a symbolic total.
+#: immutability re-check.
+#:
+#: MANA stood first in this list from 8/2026 until 2026-09-23, as the default
+#: settlement asset. It was retired in favour of the three coloured pools of
+#: ``toto.mana`` (security, compute, storage), which are minted by
+#: ``toto.mana.bootstrap`` at the end of :func:`bootstrap_economy`. An existing
+#: ledger keeps its MANA rows — deactivated, never deleted.
 CORE_ASSETS: tuple[CoreAsset, ...] = (
-    CoreAsset(
-        unit_name="MANA", name="Mana", decimals=9,
-        supply=Decimal("1000000000"),
-        description=("Mana — the platform's settlement asset. What internal "
-                     "payments, rewards and faucets are paid in. 9 decimal "
-                     "places."),
-        metadata={"kind": "currency", "family": "toto_currency",
-                  "plural": "Mana", "seeded_by": "ingress"},
-    ),
     CoreAsset(
         unit_name="ASR", name="Assarion", decimals=9,
         supply=Decimal("6666.666666667"),
@@ -113,8 +107,8 @@ CORE_ASSETS: tuple[CoreAsset, ...] = (
 
 #: Frozen on purpose: these two reached live ledgers at these numbers, and a
 #: supply that moved would be a supply somebody has to reconcile by hand.
-assert CORE_ASSETS[1].supply == Decimal("6666.666666667")
-assert CORE_ASSETS[2].supply == Decimal("76658.70")
+assert CORE_ASSETS[0].supply == Decimal("6666.666666667")
+assert CORE_ASSETS[1].supply == Decimal("76658.70")
 
 
 @dataclass(frozen=True)
@@ -145,10 +139,6 @@ class DefaultFaucet:
 #: in, and a faucet nobody will ever switch on is a row that only invites
 #: somebody to wonder what it is for.
 DEFAULT_FAUCETS: tuple[DefaultFaucet, ...] = (
-    DefaultFaucet(
-        unit_name="MANA", name="Mana faucet",
-        note=("The platform's settlement asset. Add people and an hourly "
-              "amount each, then switch this on.")),
     DefaultFaucet(
         unit_name="ASR", name="Assarion faucet",
         note=("Assarion, the fine-grained unit of account. Add people and an "
@@ -233,7 +223,7 @@ def ensure_currency_reserve():
 
 
 def ensure_core_assets(*, reporter=None) -> dict:
-    """MANA, ASR and TPLN — created if absent, left alone if present.
+    """ASR and TPLN — created if absent, left alone if present.
 
     Returns ``{unit_name: Asset}`` for whatever exists afterwards, which on a
     host that cannot issue is simply whatever was already there.
@@ -295,7 +285,7 @@ def ensure_core_assets(*, reporter=None) -> dict:
 # --------------------------------------------------------------------------- #
 
 def ensure_default_faucets(*, reporter=None) -> dict:
-    """The MANA and ASR faucets, created if absent and never touched if present.
+    """The ASR faucet, created if absent and never touched if present.
 
     **Empty and switched off**, always. Bootstrap creates the arrangement; it
     does not decide who is paid or how much — those are the two things nobody
@@ -349,4 +339,11 @@ def bootstrap_economy(*, reporter=None) -> dict:
     ensure_monetary_issuer(reporter=reporter)
     assets = ensure_core_assets(reporter=reporter)
     ensure_default_faucets(reporter=reporter)
+    # The three mana pools, where the app is installed. Same wheel, but a
+    # soft edge all the same: a host that installs the ledger without mana
+    # must not import it.
+    if django_apps.is_installed("toto.mana"):
+        from toto.mana.bootstrap import ensure_mana
+
+        ensure_mana(reporter=reporter)
     return assets

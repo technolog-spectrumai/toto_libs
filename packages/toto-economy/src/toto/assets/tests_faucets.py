@@ -31,13 +31,13 @@ class FaucetTestCase(TestCase):
             site_name="Test",
             defaults={"author": "t", "publication_year": 2026, "active": True})
         bootstrap_economy()
-        self.mana = Asset.objects.get(unit_name="MANA")
+        self.asr = Asset.objects.get(unit_name="ASR")
         self.staff = User.objects.create_user("staff", password="pw", is_staff=True)
         self.ada = User.objects.create_user("ada", password="pw")
         self.bob = User.objects.create_user("bob", password="pw")
 
     def make_faucet(self, name="Stipends", active=True):
-        return Faucet.objects.create(name=name, asset=self.mana, active=active)
+        return Faucet.objects.create(name=name, asset=self.asr, active=active)
 
 
 class ModelTests(FaucetTestCase):
@@ -45,7 +45,7 @@ class ModelTests(FaucetTestCase):
     def test_a_faucet_is_created_switched_off_by_default(self):
         """Filled with people first, switched on second. The alternative is a
         faucet that starts paying before anybody has checked the numbers."""
-        self.assertFalse(Faucet.objects.create(name="New", asset=self.mana).active)
+        self.assertFalse(Faucet.objects.create(name="New", asset=self.asr).active)
 
     def test_the_slug_is_derived_and_stays_unique(self):
         first = self.make_faucet(name="Stipends")
@@ -106,10 +106,10 @@ class StaffManagementTests(FaucetTestCase):
 
     def test_staff_can_create_a_faucet(self):
         response = self.client.post(reverse("assets:faucet_create"), {
-            "name": "Stipends", "asset": self.mana.pk, "note": "for the crew"},
+            "name": "Stipends", "asset": self.asr.pk, "note": "for the crew"},
             follow=True)
         faucet = Faucet.objects.get(name="Stipends")
-        self.assertEqual(faucet.asset, self.mana)
+        self.assertEqual(faucet.asset, self.asr)
         self.assertFalse(faucet.active)
         self.assertIn("switched off", self.messages_from(response))
 
@@ -117,12 +117,12 @@ class StaffManagementTests(FaucetTestCase):
         before = Faucet.objects.count()
         self.assertIn("needs a name", self.messages_from(self.client.post(
             reverse("assets:faucet_create"),
-            {"name": "", "asset": self.mana.pk}, follow=True)))
+            {"name": "", "asset": self.asr.pk}, follow=True)))
         self.assertIn("active currency", self.messages_from(self.client.post(
             reverse("assets:faucet_create"),
             {"name": "X", "asset": "99999"}, follow=True)))
-        # Counted rather than asserted empty: bootstrap seeds the default MANA
-        # and ASR faucets, so "none exist" stopped being the question. What
+        # Counted rather than asserted empty: bootstrap seeds the default ASR
+        # faucet, so "none exist" stopped being the question. What
         # matters is that a refused create wrote nothing.
         self.assertEqual(Faucet.objects.count(), before)
         self.assertFalse(Faucet.objects.filter(name="X").exists())
@@ -252,7 +252,7 @@ class OrdinaryUserTests(FaucetTestCase):
     def test_a_member_may_not_create_a_faucet(self):
         before = Faucet.objects.count()
         response = self.client.post(reverse("assets:faucet_create"),
-                                    {"name": "Mine", "asset": self.mana.pk})
+                                    {"name": "Mine", "asset": self.asr.pk})
         self.assertEqual(response.status_code, 403)
         self.assertEqual(Faucet.objects.count(), before)
         self.assertFalse(Faucet.objects.filter(name="Mine").exists())
@@ -444,7 +444,7 @@ class WalletPickerTests(FaucetTestCase):
         self.assertFalse(FaucetMember.objects.filter(faucet=self.faucet).exists())
 
     def test_a_reserve_account_cannot_be_attached_by_hand(self):
-        self._add(self.mana.reserve_account_id)
+        self._add(self.asr.reserve_account_id)
         self.assertFalse(FaucetMember.objects.filter(faucet=self.faucet).exists())
 
     def test_a_negative_rate_is_refused(self):
