@@ -435,3 +435,220 @@ def explain_shortfall(user, asset, needed_base_units: int,
             "It refills %(regen)s an hour — enough again in about %(hours)s h."
         ) % {"regen": _amount(pool.regen_per_hour), "hours": hours}
     return sentence
+
+
+# ---------------------------------------------------------------------------
+# What a member sees
+# ---------------------------------------------------------------------------
+# Every number below is read from the ledger and the live rate card; nothing
+# is cached here, so the chip, the pages and the JSON cannot disagree.
+
+ICON = {"security": "fa-solid fa-shield-halved", "compute": "fa-solid fa-bolt",
+        "storage": "fa-solid fa-database"}
+
+#: The daily levies that drain a pool continuously, per role.
+LEVY_OF = {"security": ("security.plain_gb_day",), "storage": ("storage.gb_day",),
+           "compute": ()}
+
+
+def label_of(role: str) -> str:
+    from django.utils.translation import gettext as _
+
+    return {"security": _("Security"), "compute": _("Compute"),
+            "storage": _("Storage")}.get(role, role)
+
+
+def next_tick_at(now=None):
+    """When the next hourly refill runs (``settings.MANA_REGEN_MINUTE``, UTC)."""
+    from datetime import timedelta
+
+    from django.conf import settings
+    from django.utils import timezone
+
+    minute = int(getattr(settings, "MANA_REGEN_MINUTE", 13))
+    now = (now or timezone.now()).astimezone(timezone.utc)
+    tick = now.replace(minute=minute, second=0, microsecond=0)
+    return tick if tick > now else tick + timedelta(hours=1)
+
+
+def _price(code: str):
+    from decimal import Decimal
+
+    from toto.quota import rates
+
+    row = rates.price_of(code)
+    if not row:
+        return None
+    return Decimal(row["price_display"]) / Decimal(row.get("unit_quantity") or 1)
+
+
+def drain_per_day(user, role: str):
+    """What this member's holdings cost the pool each day, at today's price."""
+    from decimal import Decimal
+
+    from toto.quota.levy import registry as levy_registry
+
+    total = Decimal(0)
+    for code in LEVY_OF.get(role, ()):
+        provider, price = levy_registry.get(code), _price(code)
+        if provider is None or price is None:
+            continue
+        total += Decimal(provider.measure(user)) / Decimal(provider.raw_per_unit) * price
+    return total
+
+
+def balances_of(user) -> dict | None:
+    """``{role: {...}}`` for the chip, the pages and the JSON, or None.
+
+    None for an anonymous caller or a host with no pools — the chip hides
+    rather than showing three empty bars that would read as "you have nothing".
+    """
+    from decimal import Decimal
+
+    from . import status
+
+    if user is None or not getattr(user, "is_authenticated", False):
+        return None
+    found = pools()
+    if not found:
+        return None
+    out = {}
+    for role in colours.ROLES:
+        pool = found.get(role)
+        if pool is None:
+            continue
+        scale = Decimal(10) ** pool.asset.decimals
+        amount = Decimal(balance_base_units(user, pool)) / scale
+        drain = drain_per_day(user, role)
+        regen_day = pool.regen_per_hour * 24
+        net_day = regen_day - drain
+        full_h, empty_h = status.eta_hours(amount, pool.max_pool, net_day / 24)
+        out[role] = {
+            "role": role, "label": label_of(role), "icon": ICON[role],
+            "hue": colours.HUE[role], "unit": pool.asset.unit_name,
+            "amount": amount, "max": pool.max_pool,
+            "pct": status.pct_of(amount, pool.max_pool),
+            "band": status.band_of(amount, pool.max_pool),
+            "trend": status.trend_of(amount, pool.max_pool, net_day),
+            "regen_per_hour": pool.regen_per_hour, "regen_per_day": regen_day,
+            "drain_per_day": drain, "net_per_day": net_day,
+            "eta_full_hours": full_h, "eta_empty_hours": empty_h,
+        }
+    return out
+
+
+def lowest(balances: dict | None) -> str | None:
+    """The role nearest empty — the one the chip's number shows."""
+    if not balances:
+        return None
+    return min(balances.values(), key=lambda b: (b["pct"], b["role"]))["role"]
+
+
+def _kind(tx, role) -> str:
+    ref = tx.reference or ""
+    if ref.startswith("mana:reward:"):
+        return "reward"
+    if ref.startswith(f"mana:{role}:"):
+        return "signup" if ref.endswith(":signup") else "regen"
+    if tx.source_type == "tariff_usage":
+        code = (tx.metadata or {}).get("metric_code", "")
+        return "levy" if code in {c for codes in LEVY_OF.values() for c in codes} else "charge"
+    if tx.reversed_transaction_id:
+        return "refund"
+    return "transfer"
+
+
+def history(user, role=None, limit: int = 50) -> list:
+    """The member's pool movements, newest first — straight off the ledger.
+
+    Filtered on ``LedgerEntry.asset``, never ``LedgerTransaction.asset``: a
+    tariff charge leaves the transaction's asset empty, and would vanish.
+    """
+    from decimal import Decimal
+
+    from toto.assets.models import LedgerEntry
+    from toto.assets.prepaid import get_prepaid_account
+
+    account = get_prepaid_account(user)
+    found = pools()
+    if account is None or not found:
+        return []
+    by_asset = {p.asset_id: p for p in found.values()
+                if role is None or p.role == role}
+    entries = (LedgerEntry.objects
+               .filter(account=account, asset_id__in=list(by_asset))
+               .select_related("transaction")
+               .order_by("-created_at", "-pk")[:limit])
+    rows = []
+    for entry in entries:
+        pool = by_asset[entry.asset_id]
+        tx = entry.transaction
+        scale = Decimal(10) ** pool.asset.decimals
+        rows.append({
+            "at": entry.created_at, "role": pool.role,
+            "delta": Decimal(entry.amount_base_units) / scale,
+            "kind": _kind(tx, pool.role),
+            "label": tx.description or "",
+            "metric_code": (tx.metadata or {}).get("metric_code", ""),
+        })
+    return rows
+
+
+def series(user, role: str, days: int = 7) -> list:
+    """The pool's level at the end of each of the last ``days`` days, oldest
+    first, ending now. Rebuilt by walking the ledger backwards from today's
+    balance — exact, and nothing extra stored."""
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from django.utils import timezone
+
+    from toto.assets.models import LedgerEntry
+    from toto.assets.prepaid import get_prepaid_account
+
+    pool = pools().get(role)
+    account = get_prepaid_account(user)
+    if pool is None or account is None:
+        return []
+    scale = Decimal(10) ** pool.asset.decimals
+    now = timezone.now()
+    level = Decimal(balance_base_units(user, pool)) / scale
+    since = now - timedelta(days=days)
+    moves = list(LedgerEntry.objects
+                 .filter(account=account, asset=pool.asset, created_at__gte=since)
+                 .order_by("-created_at").values_list("created_at", "amount_base_units"))
+    points, i = [], 0
+    for d in range(days + 1):
+        at = now - timedelta(days=d)
+        while i < len(moves) and moves[i][0] > at:
+            level -= Decimal(moves[i][1]) / scale
+            i += 1
+        points.append({"at": at, "level": max(level, Decimal(0))})
+    return list(reversed(points))
+
+
+def plain_files(user, limit: int = 10) -> tuple[list, int]:
+    """``(costliest plaintext files, how many plaintext files in all)``.
+
+    What the "Encrypt some files…" prompt lists. The same billable set the
+    plaintext levy measures, so the list and the drain cannot disagree.
+    """
+    from decimal import Decimal
+
+    from toto.quota.levy import registry as levy_registry
+
+    provider = levy_registry.get("security.plain_gb_day")
+    if provider is None:
+        return [], 0
+    from toto.vault.models import VaultFile
+
+    qs = provider._billable(VaultFile.objects.filter(owner=user))
+    total = qs.count()
+    price = _price("security.plain_gb_day") or Decimal(0)
+    rows = []
+    for f in qs.order_by("-file_size_bytes", "pk")[:limit]:
+        gb = Decimal(f.file_size_bytes or 0) / Decimal(provider.raw_per_unit)
+        rows.append({"pk": f.pk, "title": f.title or f.key,
+                     "bytes": f.file_size_bytes or 0,
+                     "drain_per_day": (gb * price)})
+    return rows, total
