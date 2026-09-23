@@ -14,6 +14,7 @@ from datetime import timedelta
 import unittest
 from decimal import Decimal
 
+from django.apps import apps as global_apps
 from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test import TestCase, override_settings
@@ -52,16 +53,40 @@ class SampleQuotaPolicy(AbstractQuotaPolicy):
         app_label = "quota"
 
 
+# Declaring a model registers it in the GLOBAL app registry for the rest of the
+# process, and SampleUsageEvent has a CASCADE FK to User. Left registered, every
+# user.delete() in the same run, in any suite and before or after this one,
+# deletes from quota_sampleusageevent: a table that exists only while a
+# SampleModels class runs. vault.tests_versions died of it ("no such table").
+# So the pair leaves the registry as soon as it is declared, and SampleModels
+# registers it for exactly as long as its tables exist.
+SAMPLES = (SampleUsageEvent, SampleQuotaPolicy)
+
+
+def _unregister_samples():
+    for model in SAMPLES:
+        global_apps.all_models[model._meta.app_label].pop(model._meta.model_name, None)
+    global_apps.clear_cache()
+
+
+_unregister_samples()
+
+
 class SampleModels(TestCase):
     """Builds the sample tables around each test class.
 
     The runner only auto-creates tables for apps with no migrations, and quota
     has two — so these test-only concretes need the schema editor. Done before
-    the class atomic opens, and undone after it closes.
+    the class atomic opens, and undone after it closes. The registry entry
+    lives exactly as long as the tables, and it is removed in a class cleanup
+    so it goes even when set-up or tear-down fails.
     """
 
     @classmethod
     def setUpClass(cls):
+        for model in SAMPLES:
+            global_apps.register_model(model._meta.app_label, model)
+        cls.addClassCleanup(_unregister_samples)
         with connection.schema_editor() as editor:
             editor.create_model(SampleUsageEvent)
             editor.create_model(SampleQuotaPolicy)
@@ -258,6 +283,19 @@ class RecordingTests(SampleModels):
         record_usage(SampleUsageEvent, "widgets.made", 1, self.alice)
         self.alice.delete()
         self.assertEqual(SampleUsageEvent.objects.count(), 0)
+
+
+class SampleLifetimeTests(TestCase):
+    """Outside a SampleModels class the pair has no tables, so it must not be
+    registered either. The other suites in this process delete users too."""
+
+    def test_a_user_delete_elsewhere_does_not_reach_the_sample_tables(self):
+        self.assertNotIn(SampleUsageEvent, global_apps.get_models())
+        self.assertNotIn(SampleQuotaPolicy, global_apps.get_models())
+
+        leaver = User.objects.create_user(username="leaver", password="pw")
+        leaver.delete()   # died with "no such table: quota_sampleusageevent"
+        self.assertFalse(User.objects.filter(username="leaver").exists())
 
 
 class SummaryTests(SampleModels):
