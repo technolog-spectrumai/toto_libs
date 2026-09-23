@@ -5,10 +5,18 @@ the two hosts that never bill. {% endcomment %}
 {% if quotes %}
   <span class="inline-flex flex-wrap items-center gap-1 align-middle text-xs opacity-70"
         title="{% if label %}{{ label }}{% else %}{% trans "What this costs" %}{% endif %}">
-    <i class="fa-solid fa-coins" aria-hidden="true"></i>
     {% for quote in quotes %}
-      <span class="whitespace-nowrap tabular-nums"
-            title="{{ quote.label }}">{{ quote.price }}&nbsp;{{ quote.asset }}{% if quote.per %}<span class="opacity-70">/{{ quote.per }}</span>{% endif %}</span>{% if not forloop.last %}<span class="opacity-50">+</span>{% endif %}
+      {% if quote.role %}{% comment %}A mana pool: "−3" in the pool's colour, no ticker. Each colour class
+         is written out because tailwind reads the page, not the Python.{% endcomment %}
+        <span class="inline-flex items-center gap-0.5 whitespace-nowrap font-bold tabular-nums" data-mana-role="{{ quote.role }}"
+              title="{{ quote.label }} — {% if quote.role == 'security' %}{% trans 'security mana' %}{% elif quote.role == 'compute' %}{% trans 'compute mana' %}{% else %}{% trans 'storage mana' %}{% endif %}"
+              {% if quote.role == "security" %}:class="darkMode ? 'text-accent-dark' : 'text-accent-light'"{% elif quote.role == "compute" %}:class="darkMode ? 'text-warn-dark' : 'text-warn-light'"{% else %}:class="darkMode ? 'text-success-dark' : 'text-success-light'"{% endif %}>
+          <i class="fa-solid fa-droplet" aria-hidden="true"></i>−{{ quote.price }}{% if quote.per %}<span class="font-normal opacity-70">/{{ quote.per }}</span>{% endif %}</span>
+      {% else %}
+        <i class="fa-solid fa-coins" aria-hidden="true"></i>
+        <span class="whitespace-nowrap tabular-nums"
+              title="{{ quote.label }}">{{ quote.price }}&nbsp;{{ quote.asset }}{% if quote.per %}<span class="opacity-70">/{{ quote.per }}</span>{% endif %}</span>
+      {% endif %}{% if not forloop.last %}<span class="opacity-50">+</span>{% endif %}
     {% endfor %}
   </span>
 {% endif %}

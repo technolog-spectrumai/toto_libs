@@ -107,6 +107,33 @@ def price_hint(context, *metric_codes, label=None):
             "price": price,
             "asset": row.get("asset", ""),
             "per": per,
+            # Which mana pool this draws on, when it is priced in one — the
+            # badge a member reads is "−3 security mana", never an asset ticker.
+            "role": _mana_role(request, code, row.get("asset_id")),
         })
 
     return {"quotes": quotes, "label": label}
+
+
+def _mana_role(request, code, asset_id):
+    """The pool a priced metric draws on, or "" — never raises.
+
+    Only when the price really is in a pool's asset: a host with the mana app
+    but no pools yet still prices in gas, and must still say so. The pool
+    assets are read once per request, like the rate card above.
+    """
+    from django.apps import apps
+
+    if not asset_id or not apps.is_installed("toto.mana"):
+        return ""
+    try:
+        from toto.mana import services
+
+        pooled = getattr(request, "_toto_mana_pool_assets", None) if request is not None else None
+        if pooled is None:
+            pooled = {p.asset_id: p.role for p in services.pools().values()}
+            if request is not None:
+                request._toto_mana_pool_assets = pooled
+        return pooled.get(asset_id, "")
+    except Exception:  # noqa: BLE001 - a hint must never break a toolbar
+        return ""
