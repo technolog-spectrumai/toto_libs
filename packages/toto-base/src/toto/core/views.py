@@ -326,8 +326,9 @@ def _manual_features(request):
         # ships in toto-economy, so the section may link tariffs/assets URLs.
         "tax": apps.is_installed("toto.tax"),
         # Where the three mana pools are installed, storage is paid in mana and
-        # the storage-fee chapter says so instead of describing debt.
-        "mana": apps.is_installed("toto.mana"),
+        # the storage-fee chapter says so instead of describing debt. Mounted,
+        # not merely installed: that chapter links mana:index.
+        "mana": _mounted("mana:index"),
         "subscriptions": apps.is_installed("toto.subscriptions"),
         "gervazy": apps.is_installed("toto.gervazy"),
         "socialhub": apps.is_installed("toto.socialhub"),
