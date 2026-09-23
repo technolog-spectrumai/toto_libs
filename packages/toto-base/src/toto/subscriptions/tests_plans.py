@@ -319,16 +319,20 @@ class TheFreeTierIsWhatItClaimsTests(SimpleTestCase):
                 self.assertFalse(entitlement.free)
 
     def test_the_operator_tools_are_declared_and_sold(self):
-        """`monit` and `sepulka` were undeclared before 2026-09-06, which made
-        them free BY OMISSION — `is_entitled` answers True for an app the
-        catalogue does not know. Declaring them is what makes the tier a
-        decision rather than an accident."""
+        """`monit` was undeclared before 2026-09-06, which made it free BY
+        OMISSION — `is_entitled` answers True for an app the catalogue does
+        not know. Declaring it is what makes the tier a decision rather than
+        an accident.
+
+        `sepulka` was declared beside it that day and left on 2026-09-23 with
+        the sealed-backup app, catalogue entry and plan grant together. The
+        loop stays so the next operator tool is one word here."""
         from toto.subscriptions import plans
         from toto.subscriptions.catalogue import registry
 
         professional = next(p for p in plans.all_plans()
                             if p.key == "professional")
-        for key in ("monit", "sepulka"):
+        for key in ("monit",):
             with self.subTest(feature=key):
                 self.assertIsNotNone(registry.get(key))
                 self.assertFalse(registry.get(key).free)

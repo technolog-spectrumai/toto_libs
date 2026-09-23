@@ -295,10 +295,18 @@ _DEFAULTS = (
     Entitlement("monit", "Monitoring", order=50,
                 icon="fa-solid fa-heart-pulse",
                 description="This host's health, its trends and its record."),
-    Entitlement("sepulka", "Sepulka", order=51,
-                icon="fa-solid fa-box-archive",
-                description="Capture this whole installation into one sealed "
-                            "archive, and restore it."),
+    # NO "sepulka" (the sealed whole-installation archive): declared here on
+    # 2026-09-06 beside monit, gone on 2026-09-23 when the only host that
+    # mounted it parked the app. It did little the deploy config's own backups
+    # do not, and an archive carrying every key the host holds was a leak risk
+    # for as long as one existed. Removed from BOTH here and the professional
+    # plan in the same edit — this is the half W001 cannot see: a plan that
+    # still names an undeclared key is `subscriptions.E001`, and the build
+    # stops.
+    #
+    # Undeclared means free by omission again, which is harmless only because
+    # nothing mounts the namespace. Reviving the app means declaring it here
+    # again in the same edit that mounts it.
 
     Entitlement("repo", "Version control", order=44,
                 icon="fa-solid fa-code-branch",
