@@ -161,6 +161,20 @@
 <section id="storage-fee"
   :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
   class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  {% if features.mana %}
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-droplet"></i>Storage and security mana</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Keeping files here draws a little <span class="font-semibold">storage mana</span> every day for
+    each gigabyte you hold, and files you keep <span class="font-semibold">unencrypted</span> draw
+    <span class="font-semibold">security mana</span> as well. Both pools refill by themselves, a little
+    every hour. When a pool is empty the daily charge simply takes what is there:
+    <span class="font-semibold">nothing is owed, no case is opened, and nothing you have stored is ever
+    deleted</span>. Encrypting a file stops its security drain and earns some mana back. Your pools,
+    and what is drawing on them, are on your
+    <a href="{% url 'mana:index' %}" class="font-semibold underline hover:opacity-80">Mana</a> page.
+  </p>
+  {% else %}
   <h2 class="flex items-center gap-2 text-lg font-bold">
     <i class="fa-solid fa-coins"></i>Storage fee</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
@@ -208,6 +222,7 @@
     Every way this platform charges is listed on
     <a href="{% url 'quota:taxes' %}" class="font-semibold underline hover:opacity-80">How you are charged</a>.
   </p>
+  {% endif %}
 </section>
 {% endif %}
 

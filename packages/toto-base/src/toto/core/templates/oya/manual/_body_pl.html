@@ -163,6 +163,20 @@
 <section id="storage-fee"
   :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
   class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  {% if features.mana %}
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-droplet"></i>Mana pamięci i bezpieczeństwa</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Przechowywanie plików pobiera codziennie trochę <span class="font-semibold">many pamięci</span>
+    za każdy przechowywany gigabajt, a pliki trzymane <span class="font-semibold">bez szyfrowania</span>
+    pobierają też <span class="font-semibold">manę bezpieczeństwa</span>. Obie pule napełniają się
+    same, po trochu co godzinę. Gdy pula jest pusta, dzienna opłata pobiera tylko to, co jest:
+    <span class="font-semibold">nic nie jest zadłużane, żadna sprawa nie jest zakładana i nic z
+    przechowywanych plików nie jest usuwane</span>. Zaszyfrowanie pliku zatrzymuje ubytek many
+    bezpieczeństwa i przywraca jej część. Swoje pule i to, co je zużywa, zobaczysz na stronie
+    <a href="{% url 'mana:index' %}" class="font-semibold underline hover:opacity-80">Mana</a>.
+  </p>
+  {% else %}
   <h2 class="flex items-center gap-2 text-lg font-bold">
     <i class="fa-solid fa-coins"></i>Opłata za przechowywanie</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
@@ -212,6 +226,7 @@
     przed zamówieniem. Wszystkie sposoby naliczania opłat wymienia strona
     <a href="{% url 'quota:taxes' %}" class="font-semibold underline hover:opacity-80">Jak są naliczane opłaty</a>.
   </p>
+  {% endif %}
 </section>
 {% endif %}
 
