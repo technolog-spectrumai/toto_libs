@@ -380,3 +380,58 @@ def _reward_encrypt(vault_file, *, at=None):
         grant.transaction = tx
         grant.save(update_fields=["amount_base_units", "transaction"])
     return tx
+
+
+# ---------------------------------------------------------------------------
+# Refusal wording
+# ---------------------------------------------------------------------------
+
+def _label(role: str) -> str:
+    from django.utils.translation import gettext as _
+
+    return {"security": _("security mana"), "compute": _("compute mana"),
+            "storage": _("storage mana")}.get(role, role)
+
+
+def _amount(value) -> str:
+    """A pool amount for a sentence: whole numbers bare, else two places."""
+    from decimal import ROUND_DOWN, Decimal
+
+    value = Decimal(value)
+    if value == value.to_integral_value():
+        return str(value.to_integral_value())
+    return str(value.quantize(Decimal("0.01"), rounding=ROUND_DOWN).normalize())
+
+
+def explain_shortfall(user, asset, needed_base_units: int,
+                      have_base_units: int) -> str | None:
+    """The refusal sentence for a charge in a pool's asset, or None.
+
+    Says which pool, what it needed and had, and when it will be enough again
+    at the refill rate — the question a member actually has at a refusal.
+    """
+    import math
+    from decimal import Decimal
+
+    from django.utils.translation import gettext as _
+
+    role = is_mana_asset(asset)
+    if role is None:
+        return None
+    pool = pools()[role]
+    scale = Decimal(10) ** asset.decimals
+    needed = Decimal(needed_base_units) / scale
+    have = Decimal(have_base_units) / scale
+    sentence = _("Not enough %(mana)s: this needs %(needed)s and you have "
+                 "%(have)s.") % {"mana": _label(role), "needed": _amount(needed),
+                                 "have": _amount(have)}
+    if needed > pool.max_pool:
+        return sentence + " " + _(
+            "That is more than a full pool holds (%(max)s), so it cannot be "
+            "paid by waiting.") % {"max": _amount(pool.max_pool)}
+    if pool.regen_per_hour > 0:
+        hours = max(1, math.ceil((needed - have) / pool.regen_per_hour))
+        sentence += " " + _(
+            "It refills %(regen)s an hour — enough again in about %(hours)s h."
+        ) % {"regen": _amount(pool.regen_per_hour), "hours": hours}
+    return sentence
