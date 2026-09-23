@@ -1,11 +1,9 @@
 """An empty pool refuses in mana words, with when it will be enough again."""
 
 from decimal import Decimal
-from io import StringIO
 from itertools import count
 
 from django.contrib.auth import get_user_model
-from django.core.management import call_command
 from django.test import TestCase, override_settings
 
 from toto.assets.models import Asset
@@ -15,6 +13,7 @@ from toto.assets.services.bootstrap import bootstrap_economy
 from toto.assets.testing import TEST_ISSUER_KEY
 from toto.core.models import Platform
 from toto.mana import services
+from toto.mana.tests.fixtures import seed_prices
 from toto.quota.charge import InsufficientFunds, check_funds, price_for
 from toto.tariffs.models import TariffItem
 
@@ -29,7 +28,7 @@ class RefusalTests(TestCase):
             site_name="Test",
             defaults={"author": "t", "publication_year": 2026, "active": True})
         bootstrap_economy()
-        call_command("ingress_mana", stdout=StringIO(), stderr=StringIO())
+        seed_prices()
         self.pools = services.pools()
         self.ada = get_user_model().objects.create_user("ada", password="pw")
 

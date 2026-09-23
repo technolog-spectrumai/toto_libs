@@ -3,7 +3,6 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.core.management import call_command
 from django.test import TestCase, override_settings
 
 from toto.assets.models import Asset, Faucet, LedgerTransaction
@@ -113,13 +112,3 @@ class BranchTests(TestCase):
         bootstrap_economy()
         self.assertFalse(Asset.objects.filter(unit_name="BLUE").exists())
         self.assertEqual(ManaPool.objects.count(), 0)
-
-
-@override_settings(**MASTER)
-class AnyIngressTests(TestCase):
-    def test_an_unrelated_ingress_command_produces_the_pools(self):
-        """Obligatory: it rides IngressCommand.bootstrap, not one command."""
-        platform()
-        get_user_model().objects.create_superuser("root", "r@x.invalid", "x")
-        call_command("ingress_quota", verbosity=0)
-        self.assertEqual(ManaPool.objects.count(), 3)

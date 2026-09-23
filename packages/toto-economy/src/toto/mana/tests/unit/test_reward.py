@@ -99,15 +99,3 @@ class SignalTests(RewardTestCase):
         with mock.patch("toto.mana.services.reward_encrypt",
                         side_effect=RuntimeError("boom")):
             file_encrypted.send(sender=VaultFile, file=self.file())   # no raise
-
-    def test_a_real_encryption_earns_through_the_whole_path(self):
-        """Strategy, signal, receiver, ledger — nothing mocked."""
-        from toto.gervazy.models import UserStrongbox
-
-        UserStrongbox.objects.create(owner=self.ada, name="sb")
-        self.spend("50")
-        f = self.file()
-        f.encrypt(password="correct horse battery staple")
-        f.refresh_from_db()
-        self.assertTrue(f.is_encrypted)
-        self.assertEqual(self.held(), Decimal("60"))

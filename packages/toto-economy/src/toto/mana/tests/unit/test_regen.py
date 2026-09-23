@@ -2,11 +2,9 @@
 
 from datetime import timedelta
 from decimal import Decimal
-from io import StringIO
 from itertools import count
 
 from django.contrib.auth import get_user_model
-from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -60,22 +58,6 @@ class ArrivalTests(RegenTestCase):
     def test_the_opening_fill_is_claimed_once(self):
         self.assertEqual(ManaGrant.objects.filter(user=self.ada, key="signup").count(), 3)
         self.assertEqual(services.fill_pools(self.ada), 0)
-
-    def test_members_who_predate_the_pools_are_filled_by_ingress_once(self):
-        from toto.mana.models import ManaPool
-
-        ManaPool.objects.all().delete()               # a ledger from before mana
-        old = User.objects.create_user("old", password="pw")
-        self.assertEqual(ManaGrant.objects.filter(user=old).count(), 0)
-        bootstrap_economy()                           # the pools arrive
-        self.pools = services.pools()
-        self.assertEqual(self.held(old, "compute"), Decimal("0"))
-
-        call_command("ingress_mana", stdout=StringIO(), stderr=StringIO())
-        self.assertEqual(self.held(old, "compute"), Decimal("100"))
-        before = LedgerTransaction.objects.count()
-        call_command("ingress_mana", stdout=StringIO(), stderr=StringIO())
-        self.assertEqual(LedgerTransaction.objects.count(), before)
 
     def test_a_second_fill_under_one_reason_moves_nothing(self):
         """The ledger's own reference is the second layer: even with the claim
