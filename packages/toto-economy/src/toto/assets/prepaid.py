@@ -8,7 +8,9 @@ AI runs, graph queries, VOD streams, etc.).
 Convention: code = "user-prepaid-<user.pk>"
 
 The account is created lazily on first use and eagerly via post_save signal
-on User.  This module has no imports from domain apps (tariffs, vault, etc.).
+on User.  This module has no module-level imports from domain apps (tariffs,
+vault, etc.); :func:`grant_asset` asks toto.tariffs lazily, and only where it
+is installed, what the rate card charges in.
 """
 from __future__ import annotations
 
@@ -51,6 +53,38 @@ def get_prepaid_account(user):
     return LedgerAccount.objects.filter(code=prepaid_code(user.pk)).first()
 
 
+def grant_asset():
+    """The asset a starting grant is paid in, or None before any is seeded.
+
+    What metered work is CHARGED in — the platform rate card's currency
+    (``Tariff.pricing_asset``: the staff charging currency, then
+    ``gas_asset()``) — because the grant exists so that a newcomer can pay for
+    it. It used to be the settlement asset, which agrees on a default install
+    and parts ways exactly where it matters: the rate desk's charging-currency
+    switch re-denominates the rate card without touching the settlement row,
+    and a host that names its own ``GAS_ASSET`` bills in it while settlement
+    falls back to ASR. Either way a newcomer was funded in a currency no price
+    asked for, and refused everything.
+
+    A staff SETTLEMENT choice still moves the grant — ``gas_asset()`` honours
+    it first. Without ``toto.tariffs`` nothing is priced, and the settlement
+    asset is the only answer there is.
+    """
+    from django.apps import apps
+
+    from toto.assets.services.settlement import settlement_asset
+
+    if apps.is_installed("toto.tariffs"):
+        from toto.tariffs.models import Tariff
+        from toto.tariffs.rate_card import DEFAULT_TARIFF_CODE, gas_asset
+
+        tariff = Tariff.objects.filter(code=DEFAULT_TARIFF_CODE).first()
+        billed = tariff.pricing_asset() if tariff is not None else gas_asset()
+        if billed is not None and billed.active:
+            return billed
+    return settlement_asset()
+
+
 def grant_starting_gas(user, amount=None):
     """Fund a new account so it can actually do anything.
 
@@ -69,17 +103,13 @@ def grant_starting_gas(user, amount=None):
     from toto.assets.models import Asset, LedgerTransaction
     from toto.assets.services.assets import distribute_asset
 
-    # The platform's settlement asset, not a ticker from settings: a starting
-    # grant is an internal payment like any other, and it must be denominated in
-    # whatever the platform actually pays in. Reading GAS_ASSET here meant a
-    # host that had switched settlement asset still granted newcomers the old
-    # one — in a currency nothing else on the platform used.
-    from toto.assets.services.settlement import settlement_asset
-
-    settling = settlement_asset()
-    if settling is None:
+    # Denominated in what the rate card charges, not in a ticker from settings
+    # and not in the settlement asset — see grant_asset() for why each of those
+    # funded newcomers in a currency nothing on the platform asked them for.
+    granting = grant_asset()
+    if granting is None:
         return None
-    unit = settling.unit_name
+    unit = granting.unit_name
     try:
         amount = Decimal(str(amount if amount is not None
                              else getattr(settings, "GAS_STARTING_GRANT", "0")))

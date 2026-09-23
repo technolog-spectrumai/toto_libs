@@ -17,7 +17,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
-from toto.assets.prepaid import grant_starting_gas
+from toto.assets.prepaid import grant_asset, grant_starting_gas
 
 
 class Command(BaseCommand):
@@ -35,9 +35,8 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        from toto.assets.models import Asset, LedgerTransaction
+        from toto.assets.models import LedgerTransaction
 
-        unit = getattr(settings, "GAS_ASSET", "ASR")
         raw = options.get("amount") or getattr(settings, "GAS_STARTING_GRANT", "0")
         try:
             amount = Decimal(str(raw))
@@ -50,12 +49,16 @@ class Command(BaseCommand):
             ))
             return
 
-        asset = Asset.objects.filter(unit_name=unit, active=True).first()
+        # The asset grant_starting_gas() pays in, asked the same way. This read
+        # GAS_ASSET, so it could check one reserve and report one currency
+        # while every grant it made landed in another.
+        asset = grant_asset()
         if asset is None:
             self.stdout.write(self.style.ERROR(
-                f"✗ no active {unit} asset — run ingress_assets first."
+                "✗ no active currency to grant in — run ingress_assets first."
             ))
             return
+        unit = asset.unit_name
         if not asset.reserve_account_id:
             self.stdout.write(self.style.ERROR(f"✗ {unit} has no reserve account to draw from."))
             return

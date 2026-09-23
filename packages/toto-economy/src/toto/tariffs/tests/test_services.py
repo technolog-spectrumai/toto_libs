@@ -15,6 +15,7 @@ from toto.assets.models import (
     LedgerTransaction,
     to_base_units,
 )
+from toto.quota.metrics import Metric
 from toto.tariffs.models import (
     BillingMetric,
     BillingUnit,
@@ -611,63 +612,130 @@ class RateCardTests(TestCase):
         self.assertNotEqual(demo.status, TariffStatus.ACTIVE)
 
 
-@override_settings(TARIFF_SEED_PRICES=True)
+#: The metric GasGrantTests price and charge. The suite's own, because every
+#: real one that stood here left some host that runs this file — texlab was
+#: parked in 9/2026, and a price for a metric nobody registers is never charged:
+#: price_for() answers None and every check after it passes vacuously. Not
+#: registered (the registry is process-wide, and rate_card.upsert_price takes
+#: any Metric), and not in toto/mana/colours.py, so it is priced on the gas rate
+#: card on a host with mana pools as much as on one without.
+GRANT_PROBE = Metric(code="gasgrant.probe", label="Grant probe",
+                     app_label="gasgrant", unit="request")
+
+
+@override_settings(GAS_STARTING_GRANT="0.1")
 class GasGrantTests(TestCase):
-    """A new account has to be able to afford something."""
+    """A new account has to be able to afford something.
+
+    The grant, the metric and the price are stated here rather than read off
+    the host (tax's testing settings set no grant; zenobia sets 0.1 from its
+    environment and prices nothing in gas). What is left to the library is
+    what is under test: that signup pays the grant at all, and that it lands
+    in the asset the charge then draws.
+    """
+
+    PRICE = "0.02"      # the 0.1 grant buys exactly five
 
     def seed(self):
+        """A fresh install with one gas price on it. Returns the price row."""
         from django.core.management import call_command
         from io import StringIO
-        call_command("ingress_assets", stdout=StringIO(), stderr=StringIO())
-        call_command("ingress_tariffs", stdout=StringIO(), stderr=StringIO())
 
-    def test_a_new_user_is_funded_and_can_pay(self):
+        from toto.tariffs import rate_card
+
+        call_command("ingress_assets", stdout=StringIO(), stderr=StringIO())
+        return rate_card.upsert_price(GRANT_PROBE, self.PRICE)
+
+    def newcomer(self, username):
         from django.contrib.auth import get_user_model
-        from toto.assets.models import Asset
+
+        return get_user_model().objects.create_user(username=username, password="pw")
+
+    def held(self, user, asset):
         from toto.assets.prepaid import get_prepaid_account
         from toto.assets.queries import get_asset_balance_display
-        from toto.quota.charge import check_funds, price_for
-
-        self.seed()
-        user = get_user_model().objects.create_user(username="newcomer", password="pw")
 
         account = get_prepaid_account(user)
-        self.assertIsNotNone(account)
-        balance = get_asset_balance_display(Asset.objects.get(unit_name="ASR"), account)
-        self.assertGreater(balance, 0)
+        self.assertIsNotNone(account, "signup created no prepaid account")
+        return get_asset_balance_display(asset, account)
 
-        tariff = price_for(user, "texlab")
-        check_funds(user, tariff, "texlab.compile", 1)   # affordable → no raise
+    def test_the_signup_hook_is_held_strongly(self):
+        """It was a local function connected weakly, so it was collected as
+        soon as ``AssetsConfig.ready()`` returned and signup funded nobody.
+        DEBUG=True hid that — Django's argument check caches the receiver — and
+        every deployed profile runs DEBUG=False. Asserted on the connection,
+        so it fails whichever DEBUG the process booted with."""
+        import weakref
+
+        from django.db.models.signals import post_save
+
+        hooks = {entry[0][0]: entry[1] for entry in post_save.receivers}
+        hook = hooks.get("assets_create_prepaid_on_user_create")
+        self.assertIsNotNone(hook, "signup is not hooked at all")
+        self.assertNotIsInstance(hook, weakref.ReferenceType)
+
+    def test_a_new_user_is_funded_in_what_the_rate_card_charges(self):
+        from toto.quota.charge import check_funds, price_for
+
+        item = self.seed()
+        user = self.newcomer("newcomer")
+
+        self.assertEqual(self.held(user, item.charged_asset), Decimal("0.1"))
+        tariff = price_for(user, GRANT_PROBE.app_label)
+        self.assertIsNotNone(tariff, "unpriced, check_funds would prove nothing")
+        check_funds(user, tariff, GRANT_PROBE.code, 1)   # affordable → no raise
+
+    def test_the_grant_follows_the_charging_currency(self):
+        """The rate desk's switch re-denominates the rate card and leaves the
+        settlement row alone. A grant paid in the settlement asset then funded
+        newcomers in a currency no price asked for."""
+        from toto.quota.rates import set_charging_currency
+
+        item = self.seed()
+        set_charging_currency(Asset.objects.get(unit_name="TPLN").pk)
+        item.refresh_from_db()
+        self.assertEqual(item.charged_asset.unit_name, "TPLN")
+
+        user = self.newcomer("switched")
+        self.assertEqual(self.held(user, item.charged_asset), Decimal("0.1"))
+
+    @override_settings(GAS_ASSET="GASX")
+    def test_the_grant_follows_the_hosts_gas_asset(self):
+        """A host that names its own GAS_ASSET bills in it unless contracted
+        otherwise, while settlement falls back to ASR."""
+        item = self.seed()
+        user = self.newcomer("ticker")
+        self.assertEqual(self.held(user, item.charged_asset), Decimal("0.1"))
 
     def test_the_grant_is_paid_once(self):
-        from django.contrib.auth import get_user_model
-        from toto.assets.models import Asset
-        from toto.assets.prepaid import get_prepaid_account, grant_starting_gas
-        from toto.assets.queries import get_asset_balance_display
+        from toto.assets.prepaid import grant_starting_gas
 
-        self.seed()
-        user = get_user_model().objects.create_user(username="greedy", password="pw")
-        asr = Asset.objects.get(unit_name="ASR")
-        before = get_asset_balance_display(asr, get_prepaid_account(user))
+        item = self.seed()
+        user = self.newcomer("greedy")
+        before = self.held(user, item.charged_asset)
+        self.assertGreater(before, 0)    # or "once" is "never", and passes
 
         self.assertIsNone(grant_starting_gas(user))
-        after = get_asset_balance_display(asr, get_prepaid_account(user))
-        self.assertEqual(before, after)
+        self.assertEqual(self.held(user, item.charged_asset), before)
 
     def test_an_empty_wallet_is_refused(self):
-        from django.contrib.auth import get_user_model
         from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
 
-        self.seed()
-        user = get_user_model().objects.create_user(username="spender", password="pw")
-        tariff = price_for(user, "texlab")
+        item = self.seed()
+        user = self.newcomer("spender")
+        tariff = price_for(user, GRANT_PROBE.app_label)
+        self.assertIsNotNone(tariff, "unpriced, nothing could ever be refused")
 
         # Burn the grant, then the next one must be refused rather than
-        # driving the balance negative. 0.1 ASR at 0.0001 buys 1000 compiles.
+        # driving the balance negative.
+        paid = 0
         with self.assertRaises(InsufficientFunds):
-            for _ in range(1200):
-                check_funds(user, tariff, "texlab.compile", 1)
-                charge(user, tariff, "texlab.compile", 1)
+            for _ in range(10):
+                check_funds(user, tariff, GRANT_PROBE.code, 1)
+                charge(user, tariff, GRANT_PROBE.code, 1)
+                paid += 1
+        self.assertEqual(paid, 5)
+        self.assertEqual(self.held(user, item.charged_asset), 0)
 
 
 # ---------------------------------------------------------------------------
