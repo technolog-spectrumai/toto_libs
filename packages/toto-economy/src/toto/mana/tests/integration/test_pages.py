@@ -201,3 +201,17 @@ class ProfileTests(PageTestCase):
         self.client.force_login(User.objects.create_user("bob", password="pw"))
         body = self.client.get(reverse("socialhub:profile_details", args=[person.slug])).content.decode()
         self.assertNotIn('data-testid="mana-profile"', body)
+
+
+class AntivirusPageTests(PageTestCase):
+    """The scan confirm names its mana price before the click, and a refusal
+    points at the way to earn security mana back."""
+
+    def test_the_confirm_step_carries_the_badge_and_the_way_out(self):
+        from django.apps import apps
+
+        if not apps.is_installed("toto.antivirus"):
+            self.skipTest("antivirus is not installed on this build")
+        body = self.get("antivirus:index").content.decode()
+        self.assertIn('data-mana-role="security"', body)
+        self.assertIn(reverse("mana:colour", args=["security"]) + "?encrypt=1", body)

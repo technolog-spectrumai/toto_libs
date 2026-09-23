@@ -1,5 +1,5 @@
 {% extends "antivirus/base.html" %}
-{% load i18n %}
+{% load i18n quota_tags app_tags %}
 
 {% comment %}The Files tab: the vault's tree, read-only, in security terms.
 
@@ -126,11 +126,22 @@
             </li>
           </template>
         </ul>
+        {% comment %}A refusal for want of mana names its way out: encrypting files
+           stops the plaintext drain and earns security mana back.{% endcomment %}
+        {% if "toto.mana"|app_installed %}{% url 'mana:colour' 'security' as mana_security_url %}{% if mana_security_url %}
+        <p x-show="refusedForMana" x-cloak class="mt-3 text-sm">
+          <a href="{{ mana_security_url }}?encrypt=1" class="font-semibold hover:underline">
+            <i class="fa-solid fa-lock" aria-hidden="true"></i>
+            {% trans "Out of security mana? Encrypt some files to earn it back." %}</a></p>
+        {% endif %}{% endif %}
       </div>
 
       <div class="flex items-center justify-end gap-3 border-t border-current/10 p-5 pt-3">
         <template x-if="phase === 'confirm'">
           <div class="flex items-center gap-3">
+            {% comment %}What each scan costs, before the click — a mana badge where
+               the price is in a pool, the plain price elsewhere, nothing if free.{% endcomment %}
+            {% price_hint "antivirus.scan" %}
             <button type="button" @click="scanModal = false"
                     class="rounded px-4 py-2 text-sm font-semibold opacity-70 transition hover:opacity-100">
               {% trans "Cancel" %}</button>
@@ -168,6 +179,7 @@ function antivirus() {
     done: 0,
     outcomes: [],
     stopRequested: false,
+    refusedForMana: false,
     get checkedCount() {
       return Object.values(this.checked).filter(Boolean).length;
     },
@@ -207,6 +219,7 @@ function antivirus() {
       this.done = 0;
       this.outcomes = [];
       this.stopRequested = false;
+      this.refusedForMana = false;
       for (const id of ids) {
         if (this.stopRequested) {
           this.outcomes.push({title: this._title(id), ok: false,
@@ -236,6 +249,7 @@ function antivirus() {
           /* Out of funds or over quota: every later file refuses for the same
              reason, so stop asking rather than printing it N times. */
           if (res.status === 402 || res.status === 429) this.stopRequested = true;
+          if (res.status === 402) this.refusedForMana = true;
         } else if (data.finished) {
           /* The inline path (no worker listening) already carries the
              verdict — polling a run that will never change again is waste. */
