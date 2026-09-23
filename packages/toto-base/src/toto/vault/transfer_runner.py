@@ -25,6 +25,12 @@ from django.utils import timezone
 
 from .transfer import TransferRun, TransferStatus
 
+try:  # celery is optional in toto-base; without it nothing sends this
+    from celery.exceptions import SoftTimeLimitExceeded
+except ImportError:  # pragma: no cover
+    class SoftTimeLimitExceeded(Exception):
+        pass
+
 
 def _mb(n_bytes: int) -> Decimal:
     return Decimal(str(n_bytes)) / Decimal("1048576")
@@ -94,6 +100,10 @@ def execute_transfer_run(run_id: int) -> TransferRun:
             return _fail(run, str(exc))
         except PeerError as exc:
             return _fail(run, str(exc))
+        except SoftTimeLimitExceeded:
+            # The worker's time is up. Not this file's fault, and not the
+            # run's: the cursor stands where it is and a resume continues.
+            raise
         except Exception as exc:  # noqa: BLE001 - unreadable source = this file's skip
             _skip(run, idx, key_label,
                   f"Could not be read: {type(exc).__name__}: {exc}")
@@ -129,7 +139,7 @@ def execute_transfer_run(run_id: int) -> TransferRun:
         if dest_remote:
             filename = os.path.basename(source_file.file.name) or key_label
             try:
-                dest_client.upload(io.BytesIO(content), filename)
+                reply = dest_client.upload(io.BytesIO(content), filename)
             except PeerStatusError as exc:
                 _skip(run, idx, key_label,
                       f"The destination host refused it: "
@@ -137,8 +147,14 @@ def execute_transfer_run(run_id: int) -> TransferRun:
                 continue
             except PeerError as exc:
                 return _fail(run, str(exc))
-            with transaction.atomic():
-                _advance(run, idx, done=True, n_bytes=len(content))
+            far_key = (reply or {}).get("key", "") if isinstance(reply, dict) else ""
+            try:
+                with transaction.atomic():
+                    _advance(run, idx, done=True, n_bytes=len(content))
+                    _landed(run, source_file, None, far_key)
+            except LandingRefused as exc:
+                run.refresh_from_db()
+                return _fail(run, str(exc))
         else:
             if run.copy_policy == "fail":
                 if VaultFile.objects.filter(
@@ -153,30 +169,39 @@ def execute_transfer_run(run_id: int) -> TransferRun:
                 key = _unique_copy_key(source_file, dest)
             try:
                 stored_name = dst_driver.save(source_file.file.name, content)
+            except SoftTimeLimitExceeded:
+                raise
             except Exception as exc:  # noqa: BLE001 - a dead backend fails the RUN
                 return _fail(run, f"{type(exc).__name__}: {exc}")
-            with transaction.atomic():
-                if run.copy_policy == "replace":
-                    VaultFile.objects.filter(bucket=dest, key=key).delete()
-                new_file = VaultFile(
-                    owner=source_file.owner,
-                    title=source_file.title,
-                    key=key,
-                    content_hash=actual_hash,
-                    file_type=source_file.file_type,
-                    is_encrypted=source_file.is_encrypted,
-                    is_public=source_file.is_public,
-                    notes=source_file.notes,
-                    file_size_bytes=len(content),
-                    bucket=dest,
-                    directory=run.dest_directory,
-                    origin=FileOrigin.NATIVE,
-                )
-                new_file.file = stored_name
-                new_file.save()
-                _scanning.record(new_file, verdict, user=run.owner,
-                                 door="transfer")
-                _advance(run, idx, done=True, n_bytes=len(content))
+            try:
+                with transaction.atomic():
+                    if run.copy_policy == "replace":
+                        VaultFile.objects.filter(bucket=dest, key=key).delete()
+                    new_file = VaultFile(
+                        owner=source_file.owner,
+                        title=source_file.title,
+                        key=key,
+                        content_hash=actual_hash,
+                        file_type=source_file.file_type,
+                        is_encrypted=source_file.is_encrypted,
+                        is_public=source_file.is_public,
+                        notes=source_file.notes,
+                        file_size_bytes=len(content),
+                        bucket=dest,
+                        directory=run.dest_directory,
+                        origin=FileOrigin.NATIVE,
+                    )
+                    new_file.file = stored_name
+                    new_file.save()
+                    _scanning.record(new_file, verdict, user=run.owner,
+                                     door="transfer")
+                    _advance(run, idx, done=True, n_bytes=len(content))
+                    _landed(run, source_file, new_file, key)
+            except LandingRefused as exc:
+                # Nothing of this file committed; its bytes go too.
+                dst_driver.delete(stored_name)
+                run.refresh_from_db()
+                return _fail(run, str(exc))
 
         try:
             _meter(run, src_pk, len(content), tariff)
@@ -198,6 +223,34 @@ def execute_transfer_run(run_id: int) -> TransferRun:
                 from_bucket=source, to_bucket=dest,
                 performed_by=run.owner, file_count=run.files_done)
     return run
+
+
+class LandingRefused(Exception):
+    """A landing listener refused a file; the message is the run's error."""
+
+
+def _landed(run, source_file, new_file, dest_key: str) -> None:
+    """Tell listeners a file landed — the last statement of its landing
+    transaction, so what they record commits with the row and the cursor, or
+    not at all.
+
+    Sent with ``send``, not ``send_robust``: a listener that fails must stop
+    the run rather than let a file land that it could not record (yamabiko's
+    notebook is the reason this exists). The transaction rolls back, the
+    stored bytes are deleted, and the run fails naming the listener's error.
+    """
+    from .signals import transfer_file_landed
+
+    try:
+        transfer_file_landed.send(
+            sender=TransferRun, run=run, source_file=source_file,
+            new_file=new_file, dest_key=dest_key)
+    except SoftTimeLimitExceeded:
+        raise
+    except Exception as exc:  # noqa: BLE001 - any listener failure refuses the file
+        raise LandingRefused(
+            f"A listener refused {source_file.key or source_file.title}: "
+            f"{type(exc).__name__}: {exc}") from exc
 
 
 def _advance(run, idx: int, *, done: bool, n_bytes: int = 0) -> None:
@@ -245,9 +298,12 @@ def _meter(run, src_pk: int, n_bytes: int, tariff) -> None:
     from .models import VaultUsageEvent
 
     src = {"source_type": "vault.TransferRun", "source_id": str(run.pk)}
-    record_usage(
+    event = record_usage(
         VaultUsageEvent, "storage.transfer_mb", _mb(n_bytes), run.owner,
         unit="MB",
         idempotency_key=f"vault.transfer.mb:{run.pk}:{src_pk}", **src)
-    charge(run.owner, tariff, "storage.transfer_mb", _mb(n_bytes),
-           unit="MB", **src)
+    # The charge follows the event, never the loop: a replayed iteration finds
+    # its event already recorded (None here) and must not bill a second time.
+    if event is not None:
+        charge(run.owner, tariff, "storage.transfer_mb", _mb(n_bytes),
+               unit="MB", **src)

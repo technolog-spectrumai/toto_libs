@@ -236,3 +236,62 @@ class SweepPolicyTests(TransferTestCase):
         labels = {p.model_label for p in _REGISTRY}
         self.assertIn("vault.TransferRun", labels)
         self.assertIn("vault.BucketRefreshRun", labels)
+
+
+class LandingSignalTests(TransferTestCase):
+    """transfer_file_landed: once per landed file, inside its transaction."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.other = Bucket.objects.create(name="other", slug="other", owner=cls.owner)
+
+    def _listen(self, handler):
+        from .signals import transfer_file_landed
+
+        transfer_file_landed.connect(handler, weak=False, dispatch_uid="test-landing")
+        self.addCleanup(transfer_file_landed.disconnect, dispatch_uid="test-landing")
+
+    def test_it_fires_once_per_landed_file_and_never_for_a_skip(self):
+        heard = []
+        self._listen(lambda sender, **kw: heard.append(
+            (kw["source_file"].key, kw["new_file"].key, kw["dest_key"])))
+        good = self._local_file(key="good", content=b"fine")
+        bad = self._local_file(key="bad", content=b"real bytes")
+        VaultFile.objects.filter(pk=bad.pk).update(content_hash="0" * 64)
+        run = self._execute(self._run(self.local, self.other, [good, bad]))
+        self.assertEqual(run.status, transfer.TransferStatus.SUCCESS, run.error)
+        self.assertEqual(heard, [("good", "good", "good")])
+
+    def test_a_refusing_listener_fails_the_run_and_lands_nothing(self):
+        def refuse(sender, **kw):
+            raise RuntimeError("notebook is full")
+
+        self._listen(refuse)
+        vf = self._local_file(key="refused", content=b"bytes")
+        run = self._execute(self._run(self.local, self.other, [vf]))
+        self.assertEqual(run.status, transfer.TransferStatus.FAILED)
+        self.assertIn("notebook is full", run.error)
+        self.assertEqual(run.cursor, 0)
+        self.assertEqual(run.files_done, 0)
+        self.assertFalse(VaultFile.objects.filter(bucket=self.other).exists())
+
+    def test_a_soft_time_limit_stops_the_run_without_a_skip(self):
+        from celery.exceptions import SoftTimeLimitExceeded
+
+        vf = self._local_file(key="slow", content=b"bytes")
+        run = self._run(self.local, self.other, [vf])
+        with mock.patch("toto.vault.storage_backends.LocalVaultStorageDriver.read",
+                        side_effect=SoftTimeLimitExceeded()):
+            with self.assertRaises(SoftTimeLimitExceeded):
+                self._execute(run)
+        run.refresh_from_db()
+        self.assertEqual((run.cursor, run.files_skipped), (0, 0))
+
+    def test_a_replayed_file_is_charged_once(self):
+        vf = self._local_file(key="paid", content=b"x" * 2048)
+        run = self._run(self.local, self.other, [vf])
+        with mock.patch("toto.quota.charge.charge") as charge:
+            transfer_runner._meter(run, vf.pk, 2048, tariff=None)
+            transfer_runner._meter(run, vf.pk, 2048, tariff=None)
+        self.assertEqual(charge.call_count, 1)
