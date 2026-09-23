@@ -227,6 +227,21 @@ PRICES = {
 }
 
 
+def _mana_pooled() -> tuple[set, set]:
+    """``(codes a mana pool prices here, pks of the pool assets)``.
+
+    Both empty without ``toto.mana`` or before its pools exist — then this
+    seeder prices every metric in gas, exactly as it always has.
+    """
+    from django.apps import apps
+
+    if not apps.is_installed("toto.mana"):
+        return set(), set()
+    from toto.mana.services import pool_asset_ids, pooled_codes
+
+    return pooled_codes(), pool_asset_ids()
+
+
 def host_prices() -> dict:
     """The rate card this host seeds: the defaults above, under its overrides.
 
@@ -295,11 +310,19 @@ class Command(IngressCommand):
         # tariff, which is what makes it reachable from the UI.
         self.stdout.write(f"  +/✓ tariff {rate_card.DEFAULT_TARIFF_CODE}")
 
+        # Mana-drawing metrics are priced by ``ingress_mana`` in their pool's
+        # asset. Seeding them here in gas would be overwritten there — or,
+        # worse, win on a host where this runs last.
+        mana_codes, pool_assets = _mana_pooled()
+
         priced = 0
         for metric_spec in registry.all():
             # The mirror rows exist whether or not the metric is priced, so the
             # billing side keeps a complete catalogue of what could be charged.
             rate_card.billing_metric_for(metric_spec)
+            if metric_spec.code in mana_codes:
+                self.stdout.write(f"  ·   {metric_spec.code} is priced by ingress_mana")
+                continue
             price = prices.get(metric_spec.code)
             if price is None:
                 # Metered but not priced — free, and deliberately so.
@@ -328,8 +351,11 @@ class Command(IngressCommand):
                 f"  ⚠ not priced — this host meters none of: "
                 f"{', '.join(not_metered_here)}"
             ))
-        assert not TariffItem.objects.filter(tariff=tariff).exclude(charged_asset=gas).exists(), (
-            "the default tariff must price everything in gas"
+        assert not (TariffItem.objects.filter(tariff=tariff)
+                    .exclude(charged_asset=gas)
+                    .exclude(charged_asset__in=pool_assets).exists()), (
+            "the default tariff must price everything in gas, except what "
+            "draws on a mana pool"
         )
 
         if not self.full:

@@ -132,12 +132,17 @@ class SeederAgreesWithTheGridTests(TestCase):
     def test_the_seeder_and_the_grid_produce_identical_items(self):
         from toto.quota.metrics import registry
 
-        metric = registry.get("storage.request")
-        if metric is None:  # vault not installed on this host
-            self.skipTest("storage.request is not registered here")
-
         call_command("ingress_tariffs", verbosity=0)
-        seeded = TariffItem.objects.get(metric__code=metric.code)
+        # Any metric THIS seeder priced. It used to be storage.request by name;
+        # on a host with toto.mana that metric draws on a pool and is priced by
+        # ingress_mana instead, so the gas seeder leaves it alone — which is the
+        # point, not a gap in this test.
+        seeded = (TariffItem.objects
+                  .filter(tariff__code=rate_card.DEFAULT_TARIFF_CODE)
+                  .order_by("metric__code").first())
+        if seeded is None:
+            self.skipTest("the seeder priced nothing in gas on this host")
+        metric = registry.get(seeded.metric.code)
         before = {f: getattr(seeded, f) for f in self.FIELDS}
 
         price = seeded.price_per_unit_display
