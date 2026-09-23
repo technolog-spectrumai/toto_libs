@@ -158,9 +158,23 @@ def _plan_allows(user, link) -> bool:
         return True
 
 
+#: The words `_resolve_dashboard_item` has an arm for, besides "group:<name>".
+DASHBOARD_VISIBILITIES = ("public", "private", "staff", "superuser")
+
+
 def _resolve_dashboard_item(item, user):
     visibility = item.get("visibility", "public")
     authenticated = user.is_authenticated
+    # An unknown word hides the tile. It used to fall through every arm below
+    # and show the tile to EVERYONE: zenobia's Presentations tile said
+    # "authenticated" from 2026-09-05 to 2026-09-23 and was public but for the
+    # login gate. A typo in a visibility must fail closed, and say so.
+    if not isinstance(visibility, str) or not (
+        visibility in DASHBOARD_VISIBILITIES or visibility.startswith("group:")
+    ):
+        logger.warning("dashboard tile %r has unknown visibility %r; hidden",
+                       item.get("title"), visibility)
+        return None
     if visibility == "private" and not authenticated:
         return None
     # "superuser" cards (e.g. the Grafana "Monitoring" link) are hidden from
