@@ -145,18 +145,28 @@ def billing_metric_for(metric):
 # Reading and writing prices
 # ---------------------------------------------------------------------------
 
-def resolve_asset(tariff=None, asset=None):
+def resolve_asset(tariff=None, asset=None, metric=None):
     """Which asset a price is denominated in.
 
-    Order: an explicit choice → the tariff's own default → the host's gas asset.
-    Each step is a deliberate widening of who gets to decide, and the last one is
-    what keeps every host that has only ever billed in gas working unchanged.
+    Order: an explicit choice → the metric's MANA POOL → the tariff's own
+    default → the host's gas asset. Each step is a deliberate widening of who
+    gets to decide, and the last one is what keeps every host that has only
+    ever billed in gas working unchanged.
+
+    The pool sits above the tariff default on purpose: the staff "charging
+    currency" switch writes ``tariff.default_asset``, and a mana metric must not
+    be silently re-denominated into a wallet no member can see the next time
+    somebody edits its price on the rate desk.
 
     Raises :class:`NoGasAsset` only when the chain runs out — i.e. nobody picked
     an asset AND the host has none seeded.
     """
     if asset is not None:
         return asset
+    if metric is not None:
+        pool_asset = _mana_asset_for(getattr(metric, "code", ""))
+        if pool_asset is not None:
+            return pool_asset
     if tariff is not None and getattr(tariff, "default_asset_id", None):
         return tariff.default_asset
     resolved = gas_asset()
@@ -166,6 +176,20 @@ def resolve_asset(tariff=None, asset=None):
             "run `manage.py ingress_assets` before pricing anything."
         )
     return resolved
+
+
+def _mana_asset_for(metric_code: str):
+    """The pool asset for a mana metric, or None — never raises."""
+    from django.apps import apps
+
+    if not metric_code or not apps.is_installed("toto.mana"):
+        return None
+    try:
+        from toto.mana.services import asset_for
+
+        return asset_for(metric_code)
+    except Exception:  # noqa: BLE001 — a price write must not die on this
+        return None
 
 
 def upsert_price(metric, display_value, asset=None, tariff=None):
@@ -183,7 +207,7 @@ def upsert_price(metric, display_value, asset=None, tariff=None):
 
     price = Decimal(str(display_value))
     tariff = tariff or default_tariff()
-    resolved_asset = resolve_asset(tariff, asset)
+    resolved_asset = resolve_asset(tariff, asset, metric=metric)
     billing_metric = billing_metric_for(metric)
     unit = billing_unit_for(metric)
 
