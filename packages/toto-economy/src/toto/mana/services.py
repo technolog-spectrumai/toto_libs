@@ -302,3 +302,81 @@ def regenerate_hour(*, at=None) -> RunReport:
                 report.failed += 1
                 report.failures.append(f"{pool.role}: {outcome}")
     return report
+
+
+# ---------------------------------------------------------------------------
+# Earning — encrypting a file refills security mana
+# ---------------------------------------------------------------------------
+
+def reward_encrypt(vault_file, *, at=None):
+    """Credit the owner's security pool for encrypting a file. Never raises.
+
+    Once per file per UTC day (the claim key), at most ``ENCRYPT_DAILY_CAP``
+    earned this way per day, never past the pool's maximum. The holding is
+    locked before today's earnings are summed, so two encryptions finishing
+    together are serialised and cannot both slip under the cap.
+
+    Returns the ledger transaction, or None when nothing was paid.
+    """
+    try:
+        return _reward_encrypt(vault_file, at=at)
+    except Exception:                                   # noqa: BLE001
+        log.exception("mana: encrypt reward failed for file %s",
+                      getattr(vault_file, "pk", "?"))
+        return None
+
+
+def _reward_encrypt(vault_file, *, at=None):
+    from django.db import IntegrityError, transaction
+    from django.db.models import Sum
+    from django.utils import timezone
+
+    from toto.assets.models import (AssetHolding, from_base_units,
+                                    to_base_units)
+    from toto.assets.prepaid import get_or_create_prepaid_account
+    from toto.assets.services.assets import distribute_asset
+
+    from .models import ManaGrant
+
+    pool = pools().get("security")
+    owner = getattr(vault_file, "owner", None)
+    if pool is None or owner is None or not _payable(pool):
+        return None
+
+    day = (at or timezone.now()).astimezone(timezone.utc).date().isoformat()
+    key = f"encrypt:{vault_file.pk}:{day}"
+    try:
+        with transaction.atomic():
+            grant = ManaGrant.objects.create(user=owner, role=pool.role, key=key)
+    except IntegrityError:
+        return None                                     # this file, today: done
+
+    decimals = pool.asset.decimals
+    account, _ = get_or_create_prepaid_account(owner)
+    with transaction.atomic():
+        AssetHolding.objects.get_or_create(account=account, asset=pool.asset)
+        held = balance_base_units(owner, pool, lock=True)
+        earned = (ManaGrant.objects
+                  .filter(user=owner, role=pool.role, key__startswith="encrypt:",
+                          key__endswith=f":{day}")
+                  .aggregate(total=Sum("amount_base_units"))["total"] or 0)
+        cap_left = to_base_units(colours.ENCRYPT_DAILY_CAP, decimals) - earned
+        room = to_base_units(pool.max_pool, decimals) - held
+        gained = min(to_base_units(colours.ENCRYPT_REWARD, decimals), cap_left, room)
+        if gained <= 0:
+            grant.detail = "daily cap reached" if cap_left <= 0 else "pool full"
+            grant.save(update_fields=["detail"])
+            return None
+        tx = distribute_asset(
+            asset=pool.asset, recipient_account=account,
+            amount=from_base_units(gained, decimals),
+            reference=f"mana:reward:encrypt:{vault_file.pk}:{day}",
+            description=f"{pool.asset.name}: encrypted "
+                        f"{getattr(vault_file, 'title', '') or 'a file'}",
+            metadata={"kind": "mana", "role": pool.role, "user_pk": owner.pk,
+                      "reward": "encrypt", "file_pk": vault_file.pk},
+        )
+        grant.amount_base_units = gained
+        grant.transaction = tx
+        grant.save(update_fields=["amount_base_units", "transaction"])
+    return tx

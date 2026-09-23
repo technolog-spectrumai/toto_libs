@@ -9,6 +9,32 @@ class ManaConfig(AppConfig):
 
     def ready(self):
         self._connect_signup()
+        self._connect_encrypt_reward()
+
+    @staticmethod
+    def _connect_encrypt_reward():
+        """Encrypting a vault file earns security mana (``reward_encrypt``).
+
+        Only where the vault is installed; the receiver swallows everything, so
+        a reward that cannot be paid never reaches the person encrypting.
+        """
+        from django.apps import apps
+
+        if not apps.is_installed("toto.vault"):
+            return
+        from toto.vault.signals import file_encrypted
+
+        def _on_encrypted(sender, file=None, **kwargs):
+            try:
+                from .services import reward_encrypt
+
+                reward_encrypt(file)
+            except Exception:                           # noqa: BLE001
+                import logging
+
+                logging.getLogger("toto.mana").exception("mana: encrypt receiver")
+
+        file_encrypted.connect(_on_encrypted, dispatch_uid="mana_reward_encrypt")
 
     @staticmethod
     def _connect_signup():

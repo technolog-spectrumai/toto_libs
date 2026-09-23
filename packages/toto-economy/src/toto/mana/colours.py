@@ -94,7 +94,8 @@ REGEN_DEFAULTS: dict[str, tuple[Decimal, Decimal]] = {
 }
 
 #: Encrypting a vault file: what it earns, and how often. Morion's rekey
-#: reward, which is the same shape of act — once per file per day, a daily
-#: ceiling, and never more than the room left in the pool.
+#: reward, which is the same shape of act — once per file per UTC day, at most
+#: ``ENCRYPT_DAILY_CAP`` MANA (an amount, not a count) earned this way a day,
+#: and never more than the room left in the pool.
 ENCRYPT_REWARD = Decimal("10")
-ENCRYPT_DAILY_CAP = 30
+ENCRYPT_DAILY_CAP = Decimal("30")
