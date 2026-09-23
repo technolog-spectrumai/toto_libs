@@ -5,10 +5,14 @@ user's numbers); the levy desk is staff-only with a hard 403, never a
 redirect — the rate-desk convention.
 """
 
+import re
 from decimal import Decimal
 
 from toto.assets.testing import LedgerTestCase as TestCase
+from django.apps import apps
+from django.conf import settings
 from django.urls import reverse
+from django.utils import translation
 
 from ..models import TaxRule
 from .factories import (GB, make_gas_asset, make_rule, make_user,
@@ -80,16 +84,64 @@ class TaxViewTests(TestCase):
 
     def test_manual_renders_the_storage_fee_section(self):
         """The platform-rule text must render — and its links must reverse —
-        on any host that installs toto.tax."""
+        on any host that installs toto.tax, in both languages.
+
+        Two things here are the HOST's to decide, so neither is spelled out:
+
+        * where the manual lives — ``reverse``, not ``"/manual/"``: this suite
+          mounts toto.core at the root, zenobia at ``/core/``;
+        * which version of the chapter it carries — where toto.mana is
+          installed, storage is paid from a pool and the chapter says so
+          instead of describing a fee and a week's grace
+          (``_manual_features``' ``mana`` flag). The version asserted is the
+          one this host's app registry selects.
+
+        What does not vary is the promise both versions make: nothing a member
+        has stored is ever deleted to settle a bill. It is asserted in each
+        language because the Polish fee chapter went on promising random,
+        permanent deletion for six weeks after the English one — and the
+        code — stopped. Under its own settings this suite renders the fee
+        version; run under zenobia it renders the mana one.
+        """
+        mana = apps.is_installed("toto.mana")
+        expected = {
+            ("en", False): ["Storage fee", "automatically", "one week",
+                            "nothing you have stored is ever deleted"],
+            ("pl", False): ["Opłata za przechowywanie", "automatycznie", "tydzień",
+                            "nic z przechowywanych plików nie jest usuwane"],
+            ("en", True): ["Storage and security mana", "nothing is owed",
+                           "nothing you have stored is ever deleted"],
+            ("pl", True): ["Mana pamięci i bezpieczeństwa", "nic nie jest zadłużane",
+                           "nic z przechowywanych plików nie jest usuwane"],
+        }
+        if mana:
+            links = [reverse("mana:index")]
+        else:
+            links = [reverse("quota:metric_detail", args=["storage.gb_day"]),
+                     reverse("assets:wallet")]
         self.client.force_login(self.alice)
 
-        response = self.client.get("/manual/")
+        for lang in ("en", "pl"):
+            if lang not in dict(settings.LANGUAGES):
+                continue   # a host without that language serves another
+            # Both, because hosts differ: with LocaleMiddleware the header
+            # picks the language, without it the thread's active one does.
+            # `override` also restores the thread's language afterwards.
+            with self.subTest(language=lang), translation.override(lang):
+                response = self.client.get(reverse("core:manual"),
+                                           HTTP_ACCEPT_LANGUAGE=lang)
 
-        self.assertEqual(response.status_code, 200)
-        content = response.content.decode()
-        self.assertIn("Storage fee", content)
-        self.assertIn("automatically", content)
-        self.assertIn("one week", content)
+                self.assertEqual(response.status_code, 200)
+                found = re.search(r'<section id="storage-fee".*?</section>',
+                                  response.content.decode(), re.S)
+                self.assertIsNotNone(found, "no storage-fee chapter")
+                section = " ".join(found.group(0).split())
+                for phrase in expected[(lang, mana)]:
+                    self.assertIn(phrase.lower(), section.lower())
+                self.assertNotIn("losowo", section)     # "randomly", pl
+                self.assertNotIn("randomly", section)
+                for url in links:
+                    self.assertIn(f'href="{url}"', section)
 
     def test_saving_creates_a_rule_for_a_ruleless_provider(self):
         TaxRule.objects.all().delete()
