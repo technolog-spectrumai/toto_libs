@@ -123,10 +123,30 @@ def set_charging_currency(asset_id) -> str | None:
     #    has a different `decimals`. The displayed number is deliberately kept —
     #    this changes the denomination, not the price, because there is no
     #    exchange rate anywhere in this ledger to convert with.
-    for item in TariffItem.objects.exclude(charged_asset=asset).select_related("charged_asset"):
+    #
+    #    Items priced in a mana pool's asset are skipped: that asset is what a
+    #    member's pool holds, and moving one into the charging currency would
+    #    bill a wallet no member can see.
+    for item in (TariffItem.objects.exclude(charged_asset=asset)
+                 .exclude(charged_asset_id__in=_pool_asset_ids())
+                 .select_related("charged_asset")):
         item.charged_asset = asset
         item.save(update_fields=["charged_asset", "price_per_unit_base_units"])
     return asset.unit_name
+
+
+def _pool_asset_ids() -> set:
+    """Assets a mana pool is bound to. Lazy, and empty where mana is absent —
+    toto-base may not import toto-economy at module scope."""
+    from django.apps import apps
+
+    if not apps.is_installed("toto.mana"):
+        return set()
+    try:
+        from toto.mana.services import pool_asset_ids
+    except ImportError:  # pragma: no cover
+        return set()
+    return pool_asset_ids()
 
 
 def set_price(metric_code: str, raw, asset_id=None) -> bool:
