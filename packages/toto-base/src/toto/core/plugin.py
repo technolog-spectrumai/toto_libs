@@ -23,6 +23,13 @@ class RenderedFloatingPlugin:
     html: str
 
 
+@dataclass(order=True)
+class RenderedHeaderPlugin:
+    order: int
+    key: str
+    html: str
+
+
 class BasePlugin:
     """
     Generic reusable plugin base.
@@ -220,6 +227,41 @@ class FloatingPlugin(BasePlugin):
 
     @classmethod
     def render_all(cls, **kwargs) -> list[RenderedFloatingPlugin]:
+        rendered = []
+        for plugin in cls.all():
+            result = plugin.render(**kwargs)
+            if result is not None:
+                rendered.append(result)
+        return sorted(rendered)
+
+
+class HeaderPlugin(BasePlugin):
+    """Widgets in the app bar itself — a balance, a health bar, a presence dot.
+
+    The header had no slot for anything per-user: `HEADER_NAV_ITEMS` takes
+    static links, and `FloatingPlugin` renders into a fixed corner. A widget
+    that must be seen on every page at every width (the mana chip) needs to
+    sit beside the brand, so this registry mirrors `FloatingPlugin` and
+    `{% render_header_plugins %}` renders it there, once for the desktop bar
+    and once (``variant="mobile"``) inside the dropdown.
+
+    Registered by explicit import from an app's ``ready()``, exactly like the
+    gas pump (`toto.quota.apps`) — nothing here is auto-discovered.
+    """
+
+    registry: ClassVar[dict[str, "HeaderPlugin"]] = {}
+
+    def render(self, **kwargs) -> RenderedHeaderPlugin | None:
+        if not self.is_visible(**kwargs):
+            return None
+        return RenderedHeaderPlugin(
+            order=self.get_order(),
+            key=self.get_key(),
+            html=self.render_html(**kwargs),
+        )
+
+    @classmethod
+    def render_all(cls, **kwargs) -> list[RenderedHeaderPlugin]:
         rendered = []
         for plugin in cls.all():
             result = plugin.render(**kwargs)
