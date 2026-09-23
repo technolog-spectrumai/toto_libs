@@ -8,6 +8,10 @@ class ManaConfig(AppConfig):
     verbose_name = "Mana"
 
     def ready(self):
+        # The header chip registers by explicit import, as the gas pump does
+        # (toto.quota.apps) — one widget, no discovery.
+        from .plugins import header_plugins  # noqa: F401
+
         self._connect_signup()
         self._connect_encrypt_reward()
 
