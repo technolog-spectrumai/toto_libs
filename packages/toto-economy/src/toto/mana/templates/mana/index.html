@@ -1,0 +1,39 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Mana" %} - {{ platform.site_name }}{% endblock %}
+{% block content %}
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'" class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-5xl space-y-6">
+    <header>
+      <h1 class="flex items-center gap-3 text-3xl font-extrabold">
+        <i class="fa-solid fa-droplet" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" aria-hidden="true"></i>{% trans "Mana" %}</h1>
+      <p class="mt-1 max-w-prose text-sm opacity-70">
+        {% trans "Three pools. What you do draws on them, and each one fills up again by itself, a little every hour." %}</p>
+    </header>
+
+    {% include "oya/_economy_tabs.html" with active_tab="mana" %}
+
+    {% if cards %}
+      <section class="grid gap-4 sm:grid-cols-3" aria-label="{% trans 'Your pools' %}">
+        {% for b in cards %}
+          <article data-role="{{ b.role }}"
+                   :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                   class="flex flex-col gap-2 rounded-2xl border p-5 shadow-sm">
+            {% include "mana/partials/_bar.html" %}
+            {% include "mana/partials/_flow.html" %}
+            {% include "mana/partials/_eta.html" %}
+            <a href="{% url 'mana:colour' b.role %}" class="mt-auto pt-2 text-xs font-semibold hover:underline">
+              {% trans "Details" %} <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+          </article>
+        {% endfor %}
+      </section>
+      <p class="text-xs opacity-60">
+        {% blocktrans with at=next_tick_at|date:"H:i" %}Next refill at {{ at }} UTC.{% endblocktrans %}
+        <a href="{% url 'mana:about' %}" class="font-semibold hover:underline">{% trans "How mana works" %}</a></p>
+    {% else %}
+      <p class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70">
+        {% trans "Mana is not set up on this platform yet." %}</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

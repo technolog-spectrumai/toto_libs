@@ -1,0 +1,12 @@
+{% load i18n %}{% comment %}Ledger rows for one pool: when, what, and the signed amount.{% endcomment %}
+<li class="flex items-center justify-between gap-3 border-b border-current/10 py-1.5 text-sm">
+  <span class="min-w-0">
+    <span class="block truncate">
+      {% if row.kind == "regen" %}{% trans "Refilled" %}{% elif row.kind == "signup" %}{% trans "Opening fill" %}{% elif row.kind == "reward" %}{% trans "Earned" %}{% elif row.kind == "levy" %}{% trans "Daily levy" %}{% elif row.kind == "refund" %}{% trans "Refund" %}{% elif row.kind == "charge" %}{% trans "Spent" %}{% else %}{% trans "Transfer" %}{% endif %}
+      <span class="opacity-60">· {{ row.label }}</span></span>
+    <span class="block text-xs opacity-50">{{ row.at|date:"M d, H:i" }}</span>
+  </span>
+  <span class="shrink-0 font-mono font-bold tabular-nums"
+        {% if row.delta >= 0 %}:class="darkMode ? 'text-success-dark' : 'text-success-light'"{% else %}:class="darkMode ? 'text-warn-dark' : 'text-warn-light'"{% endif %}>
+    {% if row.delta >= 0 %}+{% endif %}{{ row.delta|floatformat:"-2" }}</span>
+</li>

@@ -1,0 +1,86 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% block title %}{% blocktrans with name=b.label %}{{ name }} mana{% endblocktrans %} - {{ platform.site_name }}{% endblock %}
+{% block content %}
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'" class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-3xl space-y-5"
+       x-data="{ open: { drain: {{ prompt_open|yesno:'true,false' }}, history: false, chart: false, prices: false }, all: false }">
+    <a href="{% url 'mana:index' %}" class="text-sm font-semibold hover:underline">
+      <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> {% trans "All pools" %}</a>
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="space-y-2 rounded-2xl border p-6 shadow-sm" data-role="{{ b.role }}">
+      {% include "mana/partials/_bar.html" with big=True %}
+      {% include "mana/partials/_flow.html" %}
+      {% include "mana/partials/_eta.html" %}
+      <p class="text-xs opacity-60">{% blocktrans with regen=b.regen_per_hour|floatformat:"-1" at=next_tick_at|date:"H:i" %}Refills +{{ regen }} an hour, up to the cap. Next refill at {{ at }} UTC.{% endblocktrans %}</p>
+    </section>
+
+    {% if colour == "security" and plain_files %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border shadow-sm">
+      <button type="button" @click="open.drain = !open.drain" :aria-expanded="open.drain.toString()"
+              class="flex w-full items-center justify-between px-6 py-4 text-left font-semibold">
+        <span><i class="fa-solid fa-lock-open" aria-hidden="true"></i> {% trans "What drains it — encrypt some files" %}</span>
+        <i class="fa-solid" :class="open.drain ? 'fa-chevron-up' : 'fa-chevron-down'" aria-hidden="true"></i></button>
+      <div x-show="open.drain" x-collapse class="px-6 pb-5">{% include "mana/partials/_prompt.html" %}</div>
+    </section>
+    {% endif %}
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border shadow-sm">
+      <button type="button" @click="open.history = !open.history" :aria-expanded="open.history.toString()"
+              class="flex w-full items-center justify-between px-6 py-4 text-left font-semibold">
+        <span><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> {% trans "Recent activity" %}</span>
+        <i class="fa-solid" :class="open.history ? 'fa-chevron-up' : 'fa-chevron-down'" aria-hidden="true"></i></button>
+      <div x-show="open.history" x-collapse class="px-6 pb-5">
+        {% if history %}
+          <ul>{% for row in history|slice:":5" %}{% include "mana/partials/_history_rows.html" %}{% endfor %}</ul>
+          {% if history|length > 5 %}
+            <ul x-show="all" x-collapse>{% for row in history|slice:"5:" %}{% include "mana/partials/_history_rows.html" %}{% endfor %}</ul>
+            <button type="button" x-show="!all" @click="all = true" class="mt-2 text-xs font-semibold hover:underline">{% trans "Show everything" %}</button>
+          {% endif %}
+        {% else %}
+          <p class="text-sm italic opacity-60">{% trans "Nothing spent or earned yet." %}</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border shadow-sm">
+      <button type="button" @click="open.chart = !open.chart" :aria-expanded="open.chart.toString()"
+              class="flex w-full items-center justify-between px-6 py-4 text-left font-semibold">
+        <span><i class="fa-solid fa-chart-line" aria-hidden="true"></i> {% trans "The last 7 days" %}</span>
+        <i class="fa-solid" :class="open.chart ? 'fa-chevron-up' : 'fa-chevron-down'" aria-hidden="true"></i></button>
+      <div x-show="open.chart" x-collapse class="px-6 pb-5">
+        {% if chart %}
+        <svg viewBox="0 0 300 64" class="h-20 w-full" role="img" aria-label="{% trans 'Pool level over the last 7 days' %}">
+          <polyline points="{{ chart }}" fill="none" stroke-width="2" stroke-linejoin="round"
+            {% if b.role == "security" %}:class="darkMode ? 'stroke-accent-dark' : 'stroke-accent-light'"{% elif b.role == "compute" %}:class="darkMode ? 'stroke-warn-dark' : 'stroke-warn-light'"{% else %}:class="darkMode ? 'stroke-success-dark' : 'stroke-success-light'"{% endif %}/>
+        </svg>
+        <p class="text-xs opacity-60">{% blocktrans with low=chart_low|floatformat:"-1" %}Lowest in these 7 days: {{ low }}.{% endblocktrans %}</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border shadow-sm">
+      <button type="button" @click="open.prices = !open.prices" :aria-expanded="open.prices.toString()"
+              class="flex w-full items-center justify-between px-6 py-4 text-left font-semibold">
+        <span><i class="fa-solid fa-list" aria-hidden="true"></i> {% trans "What changes it" %}</span>
+        <i class="fa-solid" :class="open.prices ? 'fa-chevron-up' : 'fa-chevron-down'" aria-hidden="true"></i></button>
+      <div x-show="open.prices" x-collapse class="px-6 pb-5">
+        <ul class="space-y-1 text-sm">
+          {% for p in prices %}
+            <li class="flex justify-between gap-3 border-b border-current/10 py-1">
+              <span>{% if p.kind == "earn" %}{% trans "Encrypting a file" %}{% else %}{{ p.label }}{% endif %}
+                {% if p.kind == "levy" %}<span class="text-xs opacity-60">{% trans "per GB, daily" %}</span>{% endif %}</span>
+              <span class="font-mono font-bold tabular-nums" {% if p.kind == "earn" %}:class="darkMode ? 'text-success-dark' : 'text-success-light'"{% else %}:class="darkMode ? 'text-warn-dark' : 'text-warn-light'"{% endif %}>{% if p.kind == "earn" %}+{% else %}−{% endif %}{{ p.amount|floatformat:"-2" }}</span>
+            </li>
+          {% empty %}
+            <li class="italic opacity-60">{% trans "Nothing is priced in this pool." %}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </section>
+
+    <p class="text-xs opacity-60"><a href="{% url 'mana:about' %}" class="font-semibold hover:underline">{% trans "How mana works" %}</a></p>
+  </div>
+</div>
+{% endblock %}

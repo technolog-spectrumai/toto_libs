@@ -48,6 +48,8 @@ from django.utils.translation import gettext as _
 ALWAYS_FREE = frozenset({
     "admin", "core", "sso", "sso_client", "sso_core", "api", "subscriptions",
     "assets", "quota", "tariffs", "socialhub", "people", "gervazy",
+    # Your own pools: a member with no plan must still see why they cannot act.
+    "mana",
 })
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})

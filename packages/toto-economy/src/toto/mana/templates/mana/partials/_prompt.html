@@ -1,0 +1,84 @@
+{% load i18n %}{% comment %}Encrypt some files: the costliest plaintext, pre-ticked with the fewest
+   files that stop the drain (status.preselect, Morion's rule). Posts each file
+   to the vault's own encrypt door and polls async runs exactly as the vault
+   page does; the reward arrives through the file_encrypted signal.{% endcomment %}
+<div x-data="manaPrompt({{ preselected|default:'[]' }}, '{% url 'vault:encrypt_file' %}', '{% url 'vault:encrypt_status' %}', '{% url 'mana:api_balances' %}')"
+     class="space-y-3">
+  <p class="text-sm opacity-80">{% blocktrans with drain=b.drain_per_day|floatformat:"-1" regen=b.regen_per_day|floatformat:"-1" %}Unencrypted files here use {{ drain }} a day, and {{ regen }} a day comes back. Encrypting a file stops its drain and earns security mana. The ticked files are the fewest that turn the pool around.{% endblocktrans %}</p>
+  <ul class="space-y-1">
+    {% for f in plain_files %}
+      <li class="flex items-center gap-3 text-sm">
+        <input type="checkbox" id="mana-f-{{ f.pk }}" value="{{ f.pk }}" x-model.number="chosen"
+               class="h-4 w-4">
+        <label for="mana-f-{{ f.pk }}" class="min-w-0 flex-1 truncate" title="{{ f.title }}">{{ f.title }}
+          <span class="opacity-50">· {{ f.bytes|filesizeformat }}</span></label>
+        <span class="shrink-0 font-mono text-xs tabular-nums opacity-70">{{ f.drain_per_day|floatformat:"-2" }}/{% trans "day" %}</span>
+      </li>
+    {% endfor %}
+  </ul>
+  {% if plain_more %}<p class="text-xs opacity-60">{% blocktrans count n=plain_more %}…and {{ n }} more unencrypted file, costing less.{% plural %}…and {{ n }} more unencrypted files, each costing less.{% endblocktrans %}</p>{% endif %}
+  <div class="grid gap-2 sm:grid-cols-2">
+    <input type="password" x-model="password" autocomplete="new-password" placeholder="{% trans 'Password' %}"
+           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-lg border px-3 py-2 text-sm">
+    <input type="password" x-model="repeat" autocomplete="new-password" placeholder="{% trans 'Repeat password' %}"
+           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-lg border px-3 py-2 text-sm">
+  </div>
+  <p class="text-xs opacity-60">{% trans "Each file gets its own key; the password is not stored." %}</p>
+  <div class="flex flex-wrap items-center gap-3">
+    <button type="button" @click="run()" :disabled="busy || !chosen.length || !password || password !== repeat"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm disabled:opacity-40">
+      <i class="fa-solid" :class="busy ? 'fa-spinner fa-spin' : 'fa-lock'" aria-hidden="true"></i>
+      <span x-text="busy ? '{% trans 'Encrypting…' %}' : '{% trans 'Encrypt the chosen files' %}'"></span></button>
+    <span x-show="password && repeat && password !== repeat" class="text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "The passwords differ." %}</span>
+  </div>
+  <p x-show="report" x-text="report" role="status" aria-live="polite" class="text-sm font-semibold"></p>
+</div>
+<script>
+window.manaPrompt = window.manaPrompt || function (preselected, encryptUrl, statusUrl, apiUrl) {
+  return {
+    chosen: preselected.slice(), password: "", repeat: "", busy: false, report: "",
+    csrf() {
+      const c = document.cookie.split(";").find(c => c.trim().startsWith("csrftoken="));
+      return c ? c.split("=")[1] : "";
+    },
+    async security() {
+      try { const r = await fetch(apiUrl, {headers: {Accept: "application/json"}});
+            const d = await r.json(); return (d.colours.security || {}).amount || 0; }
+      catch (e) { return 0; }
+    },
+    async poll(runId) {
+      for (let i = 0; i < 150; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        const r = await fetch(statusUrl + "?run_id=" + encodeURIComponent(runId), {headers: {"X-CSRFToken": this.csrf()}});
+        const s = await r.json();
+        if (s.done) return s;
+      }
+      return {ok: false};
+    },
+    async run() {
+      this.busy = true; this.report = "";
+      const before = await this.security();
+      let done = 0, failed = 0;
+      for (const pk of this.chosen) {
+        try {
+          const res = await fetch(encryptUrl, {method: "POST",
+            headers: {"X-CSRFToken": this.csrf(), "Content-Type": "application/x-www-form-urlencoded"},
+            body: new URLSearchParams({file_pk: pk, password: this.password})});
+          let data = await res.json();
+          if (data.ok && data.workflow_run_id) data = await this.poll(data.workflow_run_id);
+          data.ok ? done++ : failed++;
+        } catch (e) { failed++; }
+      }
+      const gained = Math.round((await this.security()) - before);
+      window.dispatchEvent(new Event("mana:refresh"));
+      this.report = gained > 0
+        ? "{% trans 'Encrypted' %} " + done + ". +" + gained + " {% trans 'security mana' %}."
+        : "{% trans 'Encrypted' %} " + done + ". {% trans 'No mana this time: the pool is full, or today’s limit is reached.' %}";
+      if (failed) this.report += " " + failed + " {% trans 'could not be encrypted.' %}";
+      this.password = this.repeat = ""; this.busy = false;
+      setTimeout(() => window.location.reload(), 2500);
+    },
+  };
+};
+</script>

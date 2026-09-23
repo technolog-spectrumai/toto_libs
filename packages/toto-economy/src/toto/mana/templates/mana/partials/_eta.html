@@ -1,0 +1,12 @@
+{% load i18n %}{% comment %}One line: when this pool is full or empty at the current rate.{% endcomment %}
+{% if b.eta_empty_hours %}
+  <p class="text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+    {% blocktrans count hours=b.eta_empty_hours %}Empty in about {{ hours }} hour at this rate.{% plural %}Empty in about {{ hours }} hours at this rate.{% endblocktrans %}</p>
+{% elif b.eta_full_hours %}
+  <p class="text-xs font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+    {% blocktrans count hours=b.eta_full_hours %}Full in about {{ hours }} hour.{% plural %}Full in about {{ hours }} hours.{% endblocktrans %}</p>
+{% elif b.pct >= 100 %}
+  <p class="text-xs opacity-60">{% trans "Full." %}</p>
+{% else %}
+  <p class="text-xs opacity-60">{% trans "Holding steady." %}</p>
+{% endif %}

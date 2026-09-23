@@ -1,0 +1,58 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "How mana works" %} - {{ platform.site_name }}{% endblock %}
+{% block content %}
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'" class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-3xl space-y-6">
+    <a href="{% url 'mana:index' %}" class="text-sm font-semibold hover:underline">
+      <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> {% trans "All pools" %}</a>
+    <h1 class="text-3xl font-extrabold">{% trans "How mana works" %}</h1>
+    <p class="text-sm opacity-80">{% trans "Every significant thing you do draws on one of three pools. Each pool fills up again by itself, a little every hour, up to its cap. When a pool is empty, what needs it waits until it has refilled — the other two pools are not affected." %}</p>
+
+    <section class="grid gap-4 sm:grid-cols-3">
+      {% for b in cards %}
+        <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="space-y-2 rounded-2xl border p-5 text-sm">
+          {% include "mana/partials/_bar.html" %}
+          {% if b.role == "security" %}<p class="opacity-80">{% trans "Security: virus scans draw on it, and so does keeping files unencrypted — a little every day. Encrypting a file stops that and earns mana back." %}</p>
+          {% elif b.role == "compute" %}<p class="opacity-80">{% trans "Compute: runs, renders, sends and assistant requests draw on it." %}</p>
+          {% else %}<p class="opacity-80">{% trans "Storage: uploads, bytes moved and the space your files hold draw on it." %}</p>{% endif %}
+          <p class="text-xs opacity-60">{% blocktrans with regen=b.regen_per_hour|floatformat:"-1" max=b.max|floatformat:"-1" %}Refills {{ regen }} an hour, up to {{ max }}.{% endblocktrans %}</p>
+        </article>
+      {% endfor %}
+    </section>
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="space-y-2 rounded-2xl border p-5 text-sm">
+      <h2 class="font-bold">{% trans "Earning mana" %}</h2>
+      <p class="opacity-80">{% blocktrans with reward=encrypt_reward|floatformat:"-1" cap=encrypt_daily_cap|floatformat:"-1" %}Encrypting a file earns {{ reward }} security mana — once per file per day, up to {{ cap }} a day, and never past a full pool.{% endblocktrans %}</p>
+    </section>
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 text-sm">
+      <h2 class="mb-2 font-bold">{% trans "What everything costs" %}</h2>
+      <table class="w-full">
+        <tbody>
+        {% for p in prices %}
+          <tr class="border-b border-current/10">
+            <td class="py-1">{% if p.kind == "earn" %}{% trans "Encrypting a file" %}{% else %}{{ p.label }}{% endif %}
+              {% if p.kind == "levy" %}<span class="text-xs opacity-60">{% trans "per GB, daily" %}</span>{% endif %}</td>
+            <td class="py-1 text-xs opacity-70">{% if p.role == "security" %}{% trans "Security" %}{% elif p.role == "compute" %}{% trans "Compute" %}{% else %}{% trans "Storage" %}{% endif %}</td>
+            <td class="py-1 text-right font-mono font-bold tabular-nums">{% if p.kind == "earn" %}+{% else %}−{% endif %}{{ p.amount|floatformat:"-2" }}</td>
+          </tr>
+        {% empty %}
+          <tr><td class="py-2 italic opacity-60">{% trans "Nothing is priced yet." %}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    {% if staff_links %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="space-y-2 rounded-2xl border p-5 text-sm" data-testid="operators">
+      <h2 class="font-bold">{% trans "For operators" %}</h2>
+      <p class="opacity-80">{% trans "Each pool is an ordinary ledger asset; prices are tariff rows priced in that asset; refills are real transfers from the reserve. The full economy is here:" %}</p>
+      <div class="flex flex-wrap gap-2">
+        {% for link in staff_links %}<a href="{{ link.url }}" class="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:underline">{{ link.label }}</a>{% endfor %}
+      </div>
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
