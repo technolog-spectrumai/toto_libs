@@ -42,9 +42,25 @@ class Command(IngressCommand):
                 f"  · mana: mapped but not metered on this host: {', '.join(absent)}"))
 
         seeded, repaired, kept = self._prices(services)
+        filled = self._fill_existing(services)
         self.stdout.write(self.style.SUCCESS(
             f"✅  mana: {seeded} price(s) seeded, {repaired} re-denominated, "
-            f"{kept} left as staff set them"))
+            f"{kept} left as staff set them; {filled} member(s) filled"))
+
+    def _fill_existing(self, services) -> int:
+        """Members who joined before the pools existed start full, once.
+
+        Keyed on the same ``signup`` claim a new member's fill uses, so a
+        member is filled exactly once however they arrived — and every later
+        deploy is a cheap no-op.
+        """
+        from django.contrib.auth import get_user_model
+
+        filled = 0
+        for user in get_user_model().objects.filter(is_active=True).iterator():
+            if services.fill_pools(user):
+                filled += 1
+        return filled
 
     def _prices(self, services):
         from toto.quota.metrics import registry
