@@ -63,3 +63,25 @@ StorageLevy.consequence_text = (
 )
 
 registry.register(StorageLevy())
+
+
+class PlaintextLevy(StorageLevy):
+    """Gigabytes held UNENCRYPTED — what drains security mana.
+
+    The storage levy narrowed to ``is_encrypted=False``, and nothing else: the
+    same owner attribution, the same mirror-stub exclusion, one ``_billable``
+    shared by the sweep and the live preview so they cannot disagree. Encrypting
+    a file takes it out of the count the next night.
+    """
+
+    code = "vault.plaintext"
+    metric_code = "security.plain_gb_day"
+
+    @staticmethod
+    def _billable(qs):
+        return StorageLevy._billable(qs).filter(is_encrypted=False)
+
+
+PlaintextLevy.consequence_text = ""
+
+registry.register(PlaintextLevy())

@@ -39,6 +39,21 @@ registry.register(Metric(
                   "The rule that arms it lives in toto.tax; the price on the rate card."),
 ))
 
+# Bytes held UNENCRYPTED — the security-mana levy (toto.mana). Same shape as
+# storage.gb_day, narrowed to plaintext: a file drains nothing once it is
+# encrypted, which is the whole point. No default_limit, for the same reason
+# storage.gb_day has none. Priced (in the security pool) and armed by
+# ingress_mana on hosts that install it; everywhere else it is measured and
+# free, like any unpriced metric.
+registry.register(Metric(
+    code="security.plain_gb_day",
+    label=_("Unencrypted storage held"),
+    app_label="vault",
+    unit="gb_day",
+    description=_("Gigabytes held without encryption, sampled nightly. "
+                  "Encrypting a file takes it out of this count."),
+))
+
 # Bytes OUT, the mirror of storage.transfer_mb — and deliberately weaker.
 # Measured on every Django-served download (the public download door, the
 # peer bytes door, the encrypted-download door) and cappable by a staff

@@ -66,3 +66,24 @@ class StorageLevyMeasurementTests(TestCase):
         make_vault_file(bob, 900)
 
         self.assertEqual(provider.measure(alice), 100)
+
+
+class PlaintextLevyTests(TestCase):
+    """Security mana's drain: gigabytes held unencrypted, and only those."""
+
+    def test_it_is_autodiscovered(self):
+        provider = registry.get("security.plain_gb_day")
+        self.assertIsNotNone(provider)
+        self.assertEqual(provider.code, "vault.plaintext")
+        self.assertEqual(provider.raw_per_unit, GB)
+
+    def test_only_unencrypted_bytes_count(self):
+        from toto.vault.models import VaultFile
+
+        user = make_user("plain")
+        make_vault_file(user, GB)
+        sealed = make_vault_file(user, 3 * GB)
+        VaultFile.objects.filter(pk=sealed.pk).update(is_encrypted=True)
+        provider = registry.get("security.plain_gb_day")
+        self.assertEqual(provider.measure(user), GB)
+        self.assertEqual(dict(provider.sample())[user.pk], GB)
