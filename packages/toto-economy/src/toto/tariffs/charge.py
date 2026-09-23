@@ -91,12 +91,18 @@ class InsufficientBalanceError(Exception):
         have_base_units: int,
         asset_decimals: int = 2,
         topup_url: str | None = None,
+        detail: str = "",
     ):
         self.asset_name = asset_name
         self.needed_base_units = needed_base_units
         self.have_base_units = have_base_units
         self.asset_decimals = asset_decimals
         self.topup_url = topup_url
+        #: A sentence that replaces the generic one when set — how a mana pool
+        #: explains itself ("Not enough security mana … refills 4 an hour").
+        #: Every handler renders ``str(exc)``, so this is the one place the
+        #: wording can change without touching twenty call sites.
+        self.detail = detail
 
     @property
     def needed_display(self) -> Decimal:
@@ -113,6 +119,8 @@ class InsufficientBalanceError(Exception):
         return max(Decimal("0"), self.needed_display - self.have_display)
 
     def __str__(self) -> str:
+        if self.detail:
+            return self.detail
         return (
             f"Insufficient {self.asset_name}: "
             f"need {self.needed_display}, "
@@ -206,6 +214,24 @@ def _get_billing_account(user):
     return prepaid
 
 
+def _mana_detail(user, asset, needed_base_units: int, have_base_units: int) -> str:
+    """The mana wording for a refusal in a pool's asset, or "" — never raises.
+
+    A refusal path must never become a 500 because the nicer sentence could
+    not be built; the plain one is always there to fall back on.
+    """
+    from django.apps import apps
+
+    if not apps.is_installed("toto.mana"):
+        return ""
+    try:
+        from toto.mana.services import explain_shortfall
+
+        return explain_shortfall(user, asset, needed_base_units, have_base_units) or ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def check_user_can_act(
     user,
     tariff: "Tariff",
@@ -246,6 +272,7 @@ def check_user_can_act(
                 needed_base_units=draft.amount_base_units,
                 have_base_units=have,
                 asset_decimals=asset.decimals,
+                detail=_mana_detail(user, asset, draft.amount_base_units, have),
             )
         raise InsufficientBalanceError(
             asset_name="tokens",
