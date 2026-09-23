@@ -523,6 +523,10 @@ class VaultFile(models.Model):
         if self.file_type == 'pdf' and not owner_password:
             owner_password = password
         strategy.encrypt(self, password=password, owner_password=owner_password)
+        # Imported here, not at the top: signals.py imports this module.
+        from .signals import file_encrypted
+
+        file_encrypted.send_robust(sender=VaultFile, file=self)
 
     def decrypt(self, password: str):
         if not self.is_encrypted:
