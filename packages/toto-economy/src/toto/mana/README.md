@@ -38,7 +38,9 @@ Outside this directory, the pieces it relies on: `HeaderPlugin` (toto.core),
 - **Unit** — `toto.mana.tests.unit.*`: each operation called directly. Fast; run on every change, and in the clean-env gate.
 - **Integration** — `toto.mana.tests.integration.*`: management commands, page renders, the tax sweep, the real encryption strategy, the staff gate, one member's whole day. Run by hand: **`./user_tests.sh`** at the repo root (`--wide` adds the economy suites mana touches).
 
-Either way the test venv (`zenobia/.venv_test`) holds a *copy* of this wheel:
-rebuild and reinstall it before a run means anything (`user_tests.sh` does).
-Locally you also need what the gate exports — a `MONETARY_ISSUER_KEY` and a
-writable `MEDIA_ROOT`.
+`zenobia/manage.py test` imports this source tree: `manage.py` puts
+`vendor/toto_libs/packages/*/src` first on `sys.path` unless `TOTO_SRC` is set.
+The installed *copy* in `zenobia/.venv_test` is what the clean-env gate and a
+`python -m django` run from `/tmp` import, so rebuild it before those
+(`user_tests.sh` does). Locally you also need what the gate exports — a
+`MONETARY_ISSUER_KEY` and a writable `MEDIA_ROOT`.
