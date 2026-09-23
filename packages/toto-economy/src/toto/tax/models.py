@@ -41,6 +41,17 @@ class TaxRule(models.Model):
         help_text="How the billing unit is written for people, e.g. 'GB'.",
     )
     active = models.BooleanField(default=True)
+    #: Charge what the payer can afford and never open an arrears case. For
+    #: levies priced in a mana pool, which refills by itself: an empty pool is
+    #: a state, not a debt, and an arrears case would freeze EVERY metered
+    #: write on the platform (quota.api.check_quota) — an empty security pool
+    #: must not stop somebody uploading or running a job. Set by ingress_mana
+    #: before it arms such a rule.
+    clamp_to_balance = models.BooleanField(
+        default=False,
+        help_text=("Charge what the payer can afford and never open an arrears "
+                   "case. For levies priced in a regenerating mana pool."),
+    )
     concentration_k = models.DecimalField(
         max_digits=12, decimal_places=4, default=Decimal("0"),
         help_text=(

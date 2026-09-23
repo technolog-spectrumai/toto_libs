@@ -41,6 +41,9 @@ REASON_NOTHING_HELD = "nothing_held"
 # a case left WARNED across an unpriced interlude would otherwise enforce
 # instantly (stale deadline) on the first failure after re-pricing.
 REASON_UNPRICED = "unpriced"
+# A clamped levy (TaxRule.clamp_to_balance) charged what the payer had. Nothing
+# is owed afterwards, by construction, so any case it finds is closed.
+REASON_CLAMPED = "clamped"
 
 ACTIVE_STATUSES = (ArrearsStatus.OPEN, ArrearsStatus.WARNED)
 

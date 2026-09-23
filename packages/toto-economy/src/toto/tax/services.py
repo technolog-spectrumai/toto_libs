@@ -37,6 +37,7 @@ class Outcome:
     NOTHING_HELD = "nothing_held"        # holds none of the resource
     ALREADY = "already"                  # today's event exists; nothing to do
     FAILED = "failed"                    # insufficient balance; arrears touched
+    CLAMPED = "clamped"                  # charged what the payer had; no case
     ERROR = "error"                      # unexpected, logged, run continued
 
 
@@ -281,6 +282,9 @@ def levy_user(rule, metric, provider, user, raw: int, day, *, priced: bool,
         arrears.resolve_case(user, rule, reason=arrears.REASON_UNPRICED)
         return Outcome.FREE
 
+    if rule.clamp_to_balance:
+        return _levy_clamped(rule, metric, user, tariff, billable, day)
+
     try:
         charge(user, tariff, rule.metric_code, billable, unit=metric.unit,
                source_type="tax.TaxRule", source_id=str(rule.pk),
@@ -296,6 +300,69 @@ def levy_user(rule, metric, provider, user, raw: int, day, *, priced: bool,
 
     arrears.resolve_case(user, rule, reason=arrears.REASON_PAID)
     return Outcome.LEVIED
+
+
+def _levy_clamped(rule, metric, user, tariff, billable, day) -> str:
+    """Charge at most what the payer holds; never open an arrears case.
+
+    The usage event above already recorded what was MEASURED; this charges what
+    can be PAID. An empty pool is charged nothing that day — it refills by
+    itself, and the levy tries again tomorrow. A spend racing in between the
+    check and the charge is treated the same way: clamped to nothing, never a
+    debt.
+    """
+    quantity = _affordable_quantity(user, tariff, rule.metric_code, billable,
+                                    metric.unit)
+    if quantity <= 0:
+        arrears.resolve_case(user, rule, reason=arrears.REASON_CLAMPED)
+        return Outcome.CLAMPED
+    try:
+        charge(user, tariff, rule.metric_code, quantity, unit=metric.unit,
+               source_type="tax.TaxRule", source_id=str(rule.pk),
+               description=f"{metric.label} levy {day.isoformat()}"
+                           + ("" if quantity == billable else " (clamped)"))
+    except InsufficientFunds:
+        arrears.resolve_case(user, rule, reason=arrears.REASON_CLAMPED)
+        return Outcome.CLAMPED
+    if quantity == billable:
+        arrears.resolve_case(user, rule, reason=arrears.REASON_PAID)
+        return Outcome.LEVIED
+    arrears.resolve_case(user, rule, reason=arrears.REASON_CLAMPED)
+    return Outcome.CLAMPED
+
+
+#: Usage quantities carry ten decimal places (AbstractUsageEvent.quantity).
+_QUANTUM = Decimal("0.0000000001")
+
+
+def _affordable_quantity(user, tariff, metric_code, quantity, unit) -> Decimal:
+    """The largest share of ``quantity`` the payer can pay for today.
+
+    Scaled by have/needed and rounded DOWN, then CHECKED — a rounding mode
+    other than "up" could otherwise push the scaled charge a fraction over the
+    balance. Two tries, then nothing: overdrawing is never the fallback.
+    """
+    from decimal import ROUND_DOWN
+
+    quantity = Decimal(quantity)
+    for _attempt in range(2):
+        try:
+            check_funds(user, tariff, metric_code, quantity, unit)
+            return quantity
+        except InsufficientFunds as exc:
+            have = Decimal(getattr(exc, "have_base_units", 0) or 0)
+            needed = Decimal(getattr(exc, "needed_base_units", 0) or 0)
+            if have <= 0 or needed <= 0:
+                return Decimal(0)
+            quantity = (quantity * have / needed).quantize(_QUANTUM,
+                                                           rounding=ROUND_DOWN)
+            if quantity <= 0:
+                return Decimal(0)
+    try:
+        check_funds(user, tariff, metric_code, quantity, unit)
+    except InsufficientFunds:
+        return Decimal(0)
+    return quantity
 
 
 def _shortfall_info(user, tariff, metric_code, quantity, unit):
