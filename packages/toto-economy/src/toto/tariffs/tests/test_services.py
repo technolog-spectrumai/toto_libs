@@ -538,6 +538,14 @@ class RateCardTests(TestCase):
     off — the platform goes live capping but not charging, and prices are set
     deliberately from the rate desk afterwards. These tests are about what the
     seeder produces *when asked to*, which is a different question.
+
+    What it produces depends on the host running it, so the assertions follow
+    the seeder's contract and not one host's app list: a price is seeded, in
+    gas, for every metric this host METERS, less the ones a mana pool prices
+    here (``ingress_mana`` owns those). A price for a metric the host does not
+    meter — a parked app, an app only another host installs — is reported and
+    skipped. These tests used to expect ``len(PRICES)`` items, which was only
+    ever true on a host that installed every metered app and had no pools.
     """
 
     def seed(self, full=False):
@@ -546,16 +554,39 @@ class RateCardTests(TestCase):
         call_command("ingress_assets", full=full, stdout=StringIO(), stderr=StringIO())
         call_command("ingress_tariffs", full=full, stdout=StringIO(), stderr=StringIO())
 
+    @staticmethod
+    def gas_priced_here():
+        """The codes the seeder must price in gas on THIS host.
+
+        Call it after seeding: the pools are minted by the same economy
+        bootstrap, and a mapped metric is only exempt once its pool exists.
+        """
+        from django.apps import apps
+        from toto.quota.metrics import registry
+        from toto.tariffs.management.commands.ingress_tariffs import host_prices
+
+        pooled = set()
+        if apps.is_installed("toto.mana"):
+            from toto.mana.services import pooled_codes
+
+            pooled = pooled_codes()
+        return (set(host_prices()) & set(registry.codes())) - pooled
+
     def test_every_priced_metric_is_priced_in_gas(self):
-        from toto.tariffs.management.commands.ingress_tariffs import PRICES
+        from django.conf import settings
+        from toto.tariffs.management.commands.ingress_tariffs import host_prices
 
         self.seed()
         tariff = Tariff.objects.get(code="platform-default")
         items = TariffItem.objects.filter(tariff=tariff, active=True)
 
-        self.assertEqual(items.count(), len(PRICES))
-        for item in items.select_related("charged_asset"):
-            self.assertEqual(item.charged_asset.unit_name, "ASR")
+        self.assertEqual(set(items.values_list("metric__code", flat=True)),
+                         self.gas_priced_here())
+        gas = getattr(settings, "GAS_ASSET", "ASR")
+        prices = host_prices()
+        for item in items.select_related("charged_asset", "metric"):
+            self.assertEqual(item.charged_asset.unit_name, gas)
+            self.assertEqual(item.price_per_unit_display, prices[item.metric.code])
 
     def test_the_metrics_match_what_the_apps_declare(self):
         """Seeded metrics come from the registry, so they cannot be fiction.
@@ -570,23 +601,50 @@ class RateCardTests(TestCase):
         for metric in registry.all():
             self.assertIn(metric.code, seeded)
 
-    def test_a_price_cannot_name_an_unregistered_metric(self):
-        from toto.quota.metrics import registry
+    @override_settings(TARIFF_PRICES={"nobody.meters.this": "0.001"})
+    def test_a_price_this_host_does_not_meter_is_reported_not_seeded(self):
+        """A price nothing here meters can never be charged, so it is not seeded.
+
+        This asserted that PRICES named only metrics registered HERE, and the
+        seeder asserted the same until a second host ran its own rate card (see
+        ``not_metered_here``): the table is a catalogue each host draws its own
+        subset from. What must hold per host is that such a price never reaches
+        the rate card, that the seed still succeeds, and that it says so.
+        """
+        from django.core.management import call_command
+        from io import StringIO
+
+        call_command("ingress_assets", stdout=StringIO(), stderr=StringIO())
+        out = StringIO()
+        call_command("ingress_tariffs", stdout=out, stderr=StringIO())
+
+        self.assertIn("nobody.meters.this", out.getvalue())
+        self.assertFalse(BillingMetric.objects.filter(code="nobody.meters.this").exists())
+        self.assertFalse(TariffItem.objects.filter(metric__code="nobody.meters.this").exists())
+
+    def test_every_price_names_a_metric_some_app_declares(self):
+        """The catalogue itself must not be fiction.
+
+        Not "registered on this host" (the test above) but known to the
+        platform at all. Mana's audit table names every metered code from every
+        wheel, coloured or deliberately not (``NOT_MANA`` — parked apps
+        included), so a typo or a price for something no app ever meters fails
+        here instead of being one more line in an ingress warning.
+        """
+        from toto.mana.colours import COLOUR_OF, NOT_MANA
         from toto.tariffs.management.commands.ingress_tariffs import PRICES
 
-        unknown = set(PRICES) - set(registry.codes())
-        self.assertEqual(unknown, set(), "a price nothing meters can never be charged")
+        unknown = set(PRICES) - set(COLOUR_OF) - set(NOT_MANA)
+        self.assertEqual(unknown, set(), "a price nothing anywhere meters can never be charged")
 
     def test_seeding_is_idempotent(self):
-        from toto.tariffs.management.commands.ingress_tariffs import PRICES
-
         self.seed()
         self.seed()
         self.assertEqual(Tariff.objects.filter(code="platform-default").count(), 1)
-        self.assertEqual(
-            TariffItem.objects.filter(tariff__code="platform-default").count(),
-            len(PRICES),
-        )
+        items = TariffItem.objects.filter(tariff__code="platform-default")
+        expected = self.gas_priced_here()
+        self.assertEqual(items.count(), len(expected))
+        self.assertEqual(set(items.values_list("metric__code", flat=True)), expected)
 
     def test_revenue_has_somewhere_to_land(self):
         self.seed()
@@ -594,11 +652,24 @@ class RateCardTests(TestCase):
             self.assertEqual(item.receiving_account.code, "platform-usage-fees")
 
     def test_without_gas_nothing_is_priced(self):
-        # ingress_tariffs must not invent an asset to price against.
+        """ingress_tariffs must not invent an asset to price against.
+
+        Every ingress command bootstraps the economy before its own work
+        (``IngressCommand.bootstrap``), and on a monetary master — which every
+        LedgerTestCase is — that mints ASR before this seeder runs. So a bare
+        install is asked for explicitly, with the switch that exists for it.
+        """
+        from django.conf import settings
         from django.core.management import call_command
         from io import StringIO
+        from toto.tariffs.management.commands.ingress_tariffs import Command
 
-        call_command("ingress_tariffs", stdout=StringIO(), stderr=StringIO())
+        bare = Command()
+        bare.bootstrap_economy = False
+        call_command(bare, stdout=StringIO(), stderr=StringIO())
+
+        self.assertFalse(Asset.objects.filter(
+            unit_name=getattr(settings, "GAS_ASSET", "ASR")).exists())
         self.assertFalse(TariffItem.objects.exists())
 
     def test_demo_prices_are_draft_and_only_under_full(self):
