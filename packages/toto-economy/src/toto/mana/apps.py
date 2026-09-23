@@ -43,7 +43,10 @@ class ManaConfig(AppConfig):
 
                 logging.getLogger("toto.mana").exception("mana: encrypt receiver")
 
-        file_encrypted.connect(_on_encrypted, dispatch_uid="mana_reward_encrypt")
+        # weak=False: a local function is collected the moment this method
+        # returns — see toto.assets.apps for how DEBUG=True hid that.
+        file_encrypted.connect(_on_encrypted, weak=False,
+                               dispatch_uid="mana_reward_encrypt")
 
     @staticmethod
     def _connect_signup():
@@ -63,5 +66,6 @@ class ManaConfig(AppConfig):
 
             fill_pools(instance)
 
-        post_save.connect(_on_user_save, sender=get_user_model(),
+        # weak=False, for the reason given in _connect_encrypt_reward above.
+        post_save.connect(_on_user_save, sender=get_user_model(), weak=False,
                           dispatch_uid="mana_fill_pools_on_user_create")

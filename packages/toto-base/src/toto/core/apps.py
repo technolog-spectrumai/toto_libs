@@ -25,5 +25,9 @@ class CoreConfig(AppConfig):
                 connection.cursor().execute("PRAGMA journal_mode=WAL;")
                 connection.cursor().execute("PRAGMA synchronous=NORMAL;")
 
-        connection_created.connect(_set_sqlite_wal)
+        # weak=False: a local function is collected the moment this method
+        # returns, and only DEBUG=True's argument-check cache kept it alive —
+        # every deployed profile ran SQLite without WAL.
+        connection_created.connect(_set_sqlite_wal, weak=False,
+                                   dispatch_uid="core_sqlite_wal")
 

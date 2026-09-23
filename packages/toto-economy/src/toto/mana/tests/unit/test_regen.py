@@ -50,6 +50,19 @@ class RegenTestCase(TestCase):
 
 
 class ArrivalTests(RegenTestCase):
+    def test_the_signup_hook_is_held_strongly(self):
+        """A local function connected weakly is collected when ready() returns.
+        DEBUG=True hid it (Django's argument check caches the receiver), so it
+        is asserted on the connection: no deployed member started full."""
+        import weakref
+
+        from django.db.models.signals import post_save
+
+        hooks = {entry[0][0]: entry[1] for entry in post_save.receivers}
+        hook = hooks.get("mana_fill_pools_on_user_create")
+        self.assertIsNotNone(hook, "signup is not hooked at all")
+        self.assertNotIsInstance(hook, weakref.ReferenceType)
+
     def test_a_new_member_starts_with_three_full_pools(self):
         for role in ("security", "compute", "storage"):
             with self.subTest(role=role):

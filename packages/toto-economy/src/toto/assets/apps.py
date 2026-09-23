@@ -28,5 +28,11 @@ class AssetsConfig(AppConfig):
             # missing ledger or an empty reserve cannot break registration.
             grant_starting_gas(instance)
 
-        post_save.connect(_on_user_save, sender=get_user_model(),
+        # weak=False, and it is load-bearing. `_on_user_save` is a local
+        # function, so once this method returns nothing but the signal refers
+        # to it, and a weak reference let it be collected at once. It only
+        # ever looked connected because Django's DEBUG-mode argument check
+        # caches the receiver: under DEBUG=False — every deployed profile —
+        # signup created no prepaid account and paid no starting grant.
+        post_save.connect(_on_user_save, sender=get_user_model(), weak=False,
                           dispatch_uid="assets_create_prepaid_on_user_create")

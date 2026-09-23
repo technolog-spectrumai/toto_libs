@@ -84,6 +84,18 @@ class RewardTests(RewardTestCase):
 
 
 class SignalTests(RewardTestCase):
+    def test_the_encrypt_hook_is_held_strongly(self):
+        """See ArrivalTests.test_the_signup_hook_is_held_strongly: weakly
+        connected, this receiver paid nothing on any DEBUG=False host."""
+        import weakref
+
+        from toto.vault.signals import file_encrypted
+
+        hooks = {entry[0][0]: entry[1] for entry in file_encrypted.receivers}
+        hook = hooks.get("mana_reward_encrypt")
+        self.assertIsNotNone(hook, "encrypting is not hooked at all")
+        self.assertNotIsInstance(hook, weakref.ReferenceType)
+
     def test_the_signal_reaches_the_reward(self):
         from toto.vault.models import VaultFile
         from toto.vault.signals import file_encrypted
