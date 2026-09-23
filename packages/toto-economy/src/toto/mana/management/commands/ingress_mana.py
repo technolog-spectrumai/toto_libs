@@ -42,10 +42,63 @@ class Command(IngressCommand):
                 f"  · mana: mapped but not metered on this host: {', '.join(absent)}"))
 
         seeded, repaired, kept = self._prices(services)
+        self._levies(services)
         filled = self._fill_existing(services)
         self.stdout.write(self.style.SUCCESS(
             f"✅  mana: {seeded} price(s) seeded, {repaired} re-denominated, "
             f"{kept} left as staff set them; {filled} member(s) filled"))
+
+    #: The levies priced in a pool: (metric, unit label, what the rule says).
+    LEVIES = (
+        ("storage.gb_day", "GB",
+         "Storage mana drawn daily for every gigabyte held."),
+        ("security.plain_gb_day", "GB",
+         "Security mana drawn daily for every gigabyte held unencrypted. "
+         "Encrypting a file stops its drain."),
+    )
+
+    def _levies(self, services):
+        """Clamp, then arm — once. The ORDER is the safety.
+
+        ``ingress_tax`` seeds every rule unarmed because an armed levy can open
+        an arrears case, and a case freezes every metered write. A clamped rule
+        cannot open one, so it may arrive armed — but only if the clamp is set
+        first. The ``mana_armed_at`` marker makes arming a one-time act: a
+        staff member who disarms a levy is not overruled by the next deploy.
+        """
+        from django.apps import apps
+        from django.utils import timezone
+
+        if not apps.is_installed("toto.tax"):
+            return
+        from toto.quota import levies
+        from toto.tax.models import TaxRule
+
+        for code, unit_label, description in self.LEVIES:
+            if services.asset_for(code) is None:
+                continue
+            rule, created = TaxRule.objects.get_or_create(
+                metric_code=code,
+                defaults={"unit_label": unit_label, "active": False,
+                          "description": description})
+            if not rule.clamp_to_balance:
+                rule.clamp_to_balance = True
+                rule.save(update_fields=["clamp_to_balance"])
+            metadata = dict(rule.metadata or {})
+            if "mana_armed_at" in metadata:
+                continue
+            try:
+                levies.set_armed(code, True)
+            except Exception as exc:                    # noqa: BLE001
+                self.stdout.write(self.style.WARNING(
+                    f"  ⚠ levy {code} not armed: {exc}"))
+                continue
+            rule.refresh_from_db()
+            metadata = dict(rule.metadata or {})
+            metadata["mana_armed_at"] = timezone.now().isoformat()
+            rule.metadata = metadata
+            rule.save(update_fields=["metadata"])
+            self.stdout.write(f"  + levy {code} clamped and armed")
 
     def _fill_existing(self, services) -> int:
         """Members who joined before the pools existed start full, once.
