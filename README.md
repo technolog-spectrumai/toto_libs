@@ -12,6 +12,15 @@ hosts are **zenobia** (the full management portal — the reference deployment)
 and **faros** (a minimal Tor-only profile); future hosts **delta**
 (e-learning) and **aurelian** (fleet + economy + governance) are on the way.
 
+**Where this lives (2026-09-24).** This repository is the library's home
+again. It was developed here up to 1.30 (2026-08-02); from then until 1.50 it
+was edited inside the portal monorepo's `vendor/toto_libs`. `main` joins both
+histories: the portal-era commits, filtered down to this tree, with the
+standalone history merged in as an ancestor. The standalone branches are kept
+as `legacy/*`. zenobia (`../../zenobia/zenobia`) carries a vendored **copy**
+at `vendor/toto_libs`: change the library here, then copy it over (the
+command is in zenobia's README) and move its pins in the same commit.
+
 This document is the suite-level manual. Each package carries its own README
 with app-by-app detail — this file does not repeat that; it links to them.
 
