@@ -181,7 +181,9 @@ def test_migrations_are_packaged(all_names, owner):
     # 49 + 8 - 3 = 54. Rebuild the wheels before trusting a failure here: the
     # assertion reads what is in dist/, and a stale wheel is why two of these
     # drifted in without anybody seeing it.
-    assert len(apps_with_migrations) == 54, sorted(apps_with_migrations)
+    # 55 (2026-09-25): toto.comments (toto-base) came IN — the generic
+    # comment, attached by per-app through-tables with a real FK.
+    assert len(apps_with_migrations) == 55, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"

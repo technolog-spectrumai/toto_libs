@@ -1,0 +1,40 @@
+{% load i18n %}
+<section class="space-y-3" data-testid="comment-thread" aria-label="{% trans 'Comments' %}">
+  <h2 class="text-lg font-bold">{% trans "Comments" %}</h2>
+  {% for c in comments %}
+  <article id="comment-{{ c.pk }}" class="rounded-lg border border-current/15 p-3 text-sm {% if c.depth %}ml-6{% endif %}">
+    <header class="flex flex-wrap items-center justify-between gap-2 text-xs opacity-70">
+      <span>{% if c.author %}{{ c.author.get_username }}{% else %}{% trans "a former member" %}{% endif %} · {{ c.created_at|date:"Y-m-d H:i" }}{% if c.edited_at %} · {% trans "edited" %}{% endif %}</span>
+      {% if c.can_modify and not c.is_deleted %}
+      <span class="flex items-center gap-2">
+        <details class="inline"><summary class="cursor-pointer font-semibold">{% trans "Edit" %}</summary>
+          <form method="post" action="{% url edit_url_name parent_pk c.pk %}" class="mt-2 space-y-2">{% csrf_token %}
+            <textarea name="body" rows="3" class="w-full rounded border border-current/20 bg-inherit p-2">{{ c.body }}</textarea>
+            <button type="submit" class="rounded border px-2 py-1 text-xs font-semibold">{% trans "Save" %}</button></form></details>
+        <form method="post" action="{% url delete_url_name parent_pk c.pk %}" class="inline" onsubmit="return confirm('{% trans "Withdraw this comment?" %}')">{% csrf_token %}
+          <button type="submit" class="font-semibold hover:underline">{% trans "Withdraw" %}</button></form>
+      </span>
+      {% endif %}
+    </header>
+    {% if c.is_deleted %}<p class="mt-1 italic opacity-60">{% trans "This comment was withdrawn." %}</p>
+    {% else %}<p class="mt-1 whitespace-pre-line break-words">{{ c.body }}</p>{% endif %}
+    {% if not c.depth and not c.is_deleted and user.is_authenticated %}
+    <details class="mt-2 text-xs"><summary class="cursor-pointer font-semibold opacity-70">{% trans "Reply" %}</summary>
+      <form method="post" action="{{ post_url }}" class="mt-2 space-y-2">{% csrf_token %}
+        <input type="hidden" name="reply_to" value="{{ c.pk }}">
+        <textarea name="body" rows="2" class="w-full rounded border border-current/20 bg-inherit p-2"></textarea>
+        <button type="submit" class="rounded border px-2 py-1 font-semibold">{% trans "Reply" %}</button></form></details>
+    {% endif %}
+  </article>
+  {% empty %}
+  <p class="text-sm italic opacity-60">{% trans "No comments yet." %}</p>
+  {% endfor %}
+  {% if user.is_authenticated %}
+  <form method="post" action="{{ post_url }}" class="space-y-2">{% csrf_token %}
+    <label class="block text-sm font-semibold" for="comment-body">{% trans "Add a comment" %}</label>
+    <textarea id="comment-body" name="body" rows="3" class="w-full rounded border border-current/20 bg-inherit p-2 text-sm"></textarea>
+    <button type="submit" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm">{% trans "Comment" %}</button>
+  </form>
+  {% endif %}
+</section>
