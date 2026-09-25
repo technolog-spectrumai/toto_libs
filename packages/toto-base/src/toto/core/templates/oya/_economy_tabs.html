@@ -1,8 +1,8 @@
 {% load i18n app_tags %}
 {% comment %}ONE strip for the whole economy — wallet, usage and everything under it.
 
-   Caller passes active_tab = mana | assets | usage | bourse | subscriptions
-                            | metered | records.
+   Caller passes active_tab = mana | budget | assets | usage | bourse
+                            | subscriptions | metered | records.
 
    `plans` is still accepted as an alias for `subscriptions` — the subscriptions
    app uses that word for its own sub-navigation, and a page there passes both.
@@ -66,6 +66,23 @@
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
      {% endif %}>
     <i class="fa-solid fa-droplet"></i>{% trans "Mana" %}</a>
+  {% endif %}{% endif %}
+
+  {% comment %}BUDGET (2026-09-25). A host-owned app — zenobia's record of the
+     company's real-world money, read by every member and kept by staff. It
+     sits beside Mana and outside the staff-only block on purpose: money is
+     never mana, and reading the company's accounts is not the economy desk.
+     Guarded like bourse: the app, then the URL, so a host without it shows
+     nothing.{% endcomment %}
+  {% if "toto.budget"|app_installed %}{% url 'budget:index' as budget_url %}{% if budget_url %}
+  <a href="{{ budget_url }}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'budget' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-sack-dollar"></i>{% trans "Budget" %}</a>
   {% endif %}{% endif %}
 
   {% if not user|economy_hidden %}

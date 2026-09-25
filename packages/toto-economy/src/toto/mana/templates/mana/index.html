@@ -1,5 +1,5 @@
 {% extends "oya/base.html" %}
-{% load i18n %}
+{% load i18n app_tags %}
 {% block title %}{% trans "Mana" %} - {{ platform.site_name }}{% endblock %}
 {% block content %}
 <div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'" class="min-h-screen px-4 py-8">
@@ -13,6 +13,13 @@
 
     {% include "oya/_economy_tabs.html" with active_tab="mana" %}
 
+    {% comment %}Two sections since 2026-09-25: Mana (the pools) and, on a host
+       that installs toto.budget, Budget (the company's real-world money).
+       The Budget half is a host partial that loads its own tags — a library
+       template cannot load a host tag library. A host without the app sees
+       exactly the page it always had.{% endcomment %}
+    <section aria-labelledby="mana-h2" class="space-y-4">
+    <h2 id="mana-h2" class="text-lg font-bold">{% trans "Mana" %}</h2>
     {% if cards %}
       <section class="grid gap-4 sm:grid-cols-3" aria-label="{% trans 'Your pools' %}">
         {% for b in cards %}
@@ -34,6 +41,17 @@
       <p class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70">
         {% trans "Mana is not set up on this platform yet." %}</p>
     {% endif %}
+    </section>
+
+    {% if "toto.budget"|app_installed %}{% url 'budget:index' as budget_url %}{% if budget_url %}
+    <section aria-labelledby="budget-h2" class="space-y-4">
+      <h2 id="budget-h2" class="flex items-center justify-between text-lg font-bold">
+        <span>{% trans "Budget" %}</span>
+        <a href="{{ budget_url }}" class="text-xs font-semibold hover:underline">{% trans "Open the budget" %} <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></h2>
+      <p class="max-w-prose text-sm opacity-70">{% trans "The company's real-world money, kept by staff. It is not mana and never becomes it." %}</p>
+      {% include "budget/partials/_summary.html" %}
+    </section>
+    {% endif %}{% endif %}
   </div>
 </div>
 {% endblock %}
