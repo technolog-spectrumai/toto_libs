@@ -25,10 +25,19 @@ def _as_uuid(value):
 class ChatConsumer(AsyncWebsocketConsumer):
     """Forum channel socket: live delivery plus a replay of recent history on connect.
 
-    Everything on this socket is plaintext over TLS. There is no MLS relay, no
-    client-side encryption and no CRDT mirror — the database is the single source of
-    truth for the message list.
+    The socket carries plaintext over TLS in every room. In an ENCRYPTED room the
+    server seals each body under the room key before storing it and opens it again for
+    delivery (SECURITY.md: encryption at rest, server-side — no client-side keys, no
+    MLS relay, no CRDT mirror). The database is the single source of truth.
+
+    A send is rate limited per sender, checked against the quota cap and the mana pool
+    BEFORE it is stored, and stored and charged in one transaction — a refusal is an
+    error frame and stores nothing (billing.py).
     """
+
+    #: Three refused sends in a row close the socket (4429): a client that keeps
+    #: sending past the limit is not a person typing.
+    MAX_RATE_REFUSALS = 3
 
     async def connect(self):
         self.channel_slug = self.scope["url_route"]["kwargs"]["channel_slug"]
@@ -112,6 +121,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def handle_chat_message(self, user, data):
         member = await self.get_channel_member(user)
 
+        refusal = await self.check_send_allowed(user)
+        if refusal is not None:
+            await self.send_error(refusal["message"], code=refusal["code"],
+                                  retry_after=refusal.get("retry_after"))
+            if refusal["code"] == "rate_limited":
+                self._rate_refusals = getattr(self, "_rate_refusals", 0) + 1
+                if self._rate_refusals >= self.MAX_RATE_REFUSALS:
+                    await self.close(code=4429)
+            return
+        self._rate_refusals = 0
+
         stored = await self.persist_message(
             user,
             body=data.get("message", ""),
@@ -119,11 +139,36 @@ class ChatConsumer(AsyncWebsocketConsumer):
             sender_avatar_url=self.absolute_url(member.avatar_url),
             reply_to_id=data.get("reply_to"),
         )
-        if not stored:
-            await self.send_error("Could not store the message.")
+        if not stored or stored.get("error"):
+            await self.send_error((stored or {}).get("error") or "Could not store the message.",
+                                  code=(stored or {}).get("code", "store"))
             return
 
         await self.broadcast(payload=stored, sender_channel=self.channel_name)
+
+    @database_sync_to_async
+    def check_send_allowed(self, user):
+        """Rate limit, then quota and mana — before anything is stored."""
+        from toto.core import ratelimit
+        from toto.quota.api import InArrears, QuotaExceeded
+        from toto.quota.charge import InsufficientFunds
+
+        from . import billing, creation
+        from .models import ForumChannel
+
+        channel = ForumChannel.objects.filter(slug=self.channel_slug).first()
+        if channel is None:
+            return {"code": "gone", "message": "This room no longer exists."}
+        limit, window = creation.limits()["send"]
+        try:
+            ratelimit.check(f"forum:send:{user.pk}", limit=limit, window=window)
+        except ratelimit.RateLimited as exc:
+            return {"code": "rate_limited", "message": str(exc), "retry_after": exc.retry_after}
+        try:
+            billing.check_affordable(user, channel)
+        except (QuotaExceeded, InArrears, InsufficientFunds) as exc:
+            return {"code": "payment", "message": str(exc)}
+        return None
 
     async def handle_message_edit(self, user, data):
         message_id = _as_uuid((data.get("id") or "").strip())
@@ -189,16 +234,36 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 id=reply_uuid, channel=channel
             ).first()
 
-        row = store.store_message(
-            channel,
-            msg_type="chat_message",
-            body=body,
-            sender=user if getattr(user, "is_authenticated", False) else None,
-            sender_name=sender_name or "",
-            sender_avatar_url=sender_avatar_url or "",
-            reply_to=reply_to,
-        )
-        return store.message_to_dict(row, absolute=self.absolute_url)
+        from django.db import transaction
+
+        from toto.quota.api import InArrears, QuotaExceeded
+        from toto.quota.charge import InsufficientFunds
+
+        from . import billing
+        from .rooms import RoomKeyUnavailable, open_key
+
+        try:
+            key = open_key(channel) if channel.is_encrypted else None
+            # Stored and charged together: the ledger post is atomic, so a
+            # refused charge rolls the message back and a failed store is
+            # never charged (billing.py).
+            with transaction.atomic():
+                row = store.store_message(
+                    channel,
+                    msg_type="chat_message",
+                    body=body,
+                    sender=user if getattr(user, "is_authenticated", False) else None,
+                    sender_name=sender_name or "",
+                    sender_avatar_url=sender_avatar_url or "",
+                    reply_to=reply_to,
+                    key=key,
+                )
+                billing.settle_message(user, row)
+        except RoomKeyUnavailable as exc:
+            return {"error": str(exc), "code": "key"}
+        except (QuotaExceeded, InArrears, InsufficientFunds) as exc:
+            return {"error": str(exc), "code": "payment"}
+        return store.message_to_dict(row, absolute=self.absolute_url, key=key)
 
     async def persist_message(self, user, *, body, sender_name, sender_avatar_url,
                               reply_to_id=None):
@@ -215,13 +280,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         row = ForumMessage.objects.filter(
             id=message_id, channel__slug=self.channel_slug, deleted_at__isnull=True
-        ).first()
+        ).select_related("channel").first()
         if not row or not row.sender_id or row.sender_id != user.id:
             return None
-        row.body = body
+        key = None
+        if row.is_sealed:
+            from .rooms import RoomKeyUnavailable, open_key
+
+            try:
+                key = open_key(row.channel)
+            except RoomKeyUnavailable:
+                return None
+            store.seal_edit(row, key, body)
+        else:
+            row.body = body
         row.edited_at = timezone.now()
-        row.save(update_fields=["body", "edited_at"])
-        payload = store.message_to_dict(row, absolute=self.absolute_url)
+        row.save(update_fields=["body", "body_sealed", "edited_at"])
+        payload = store.message_to_dict(row, absolute=self.absolute_url, key=key)
         payload["type"] = "message_edit"
         payload["msg_type"] = row.msg_type
         return payload
@@ -331,16 +406,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self._membership_checked_at = now
         return self._membership_ok
 
-    async def send_error(self, message):
-        await self.send(
-            text_data=json.dumps(
-                {
-                    "type": "system_error",
-                    "user": "System",
-                    "message": message,
-                }
-            )
-        )
+    async def send_error(self, message, *, code="", retry_after=None):
+        frame = {"type": "system_error", "user": "System", "message": message}
+        if code:
+            frame["code"] = code
+        if retry_after:
+            frame["retry_after"] = retry_after
+        await self.send(text_data=json.dumps(frame))
+
+    async def room_closed(self, event):
+        """The room expired and was removed: tell the tab, then close."""
+        await self.send(text_data=json.dumps({"type": "room_closed"}))
+        await self.close(code=4410)
 
     def absolute_url(self, url):
         if not url:

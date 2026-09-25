@@ -1,6 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
-{% load i18n %}
+{% load i18n quota_tags %}
 
 {% block title %}{{ channel.name }} · Forum{% endblock %}
 
@@ -930,13 +930,14 @@ document.addEventListener("DOMContentLoaded", async () => {
           <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="truncate text-xl font-bold">
             {{ channel.name }}
           </h1>
-          <div class="mt-0.5 flex flex-wrap gap-2 text-xs opacity-60">
-            <span><span data-online-count>0</span> {% trans "online" %} · {{ participants|length }} {% trans "member" %}{{ participants|length|pluralize }}</span>
+          <div class="mt-0.5 flex flex-wrap items-center gap-2 text-xs">
+            <span class="opacity-60"><span data-online-count>0</span> {% trans "online" %} · {{ participants|length }} {% trans "member" %}{{ participants|length|pluralize }}</span>
+            {% include "forum/_room_badges.html" %}
           </div>
         </div>
 
-        {# Message search #}
-        {% if can_send_messages %}
+        {# Message search — never in an encrypted room: its bodies are sealed #}
+        {% if can_send_messages and not is_encrypted %}
         <form method="get" action="{% url 'forum:message_search' %}" class="hidden shrink-0 items-center gap-1.5 sm:flex">
           <input type="hidden" name="channel" value="{{ channel.slug }}">
           <label class="sr-only" for="header-search">{% trans "Search messages" %}</label>
@@ -976,6 +977,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         {% if can_join %}
           <form method="post" action="{% url 'forum:channel_join' channel.slug %}" class="hidden shrink-0 sm:block">
             {% csrf_token %}
+              {% if needs_password %}<input type="password" name="password" required autocomplete="current-password" placeholder="{% trans 'Room password' %}" aria-label="{% trans 'Room password' %}" class="mr-1 w-32 rounded border border-current/20 bg-inherit px-2 py-1 text-xs">{% endif %}
             <button type="submit"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
               class="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-bold transition hover:opacity-90">
@@ -992,6 +994,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         {% endif %}
       </header>
 
+      {% if is_encrypted %}
+        <div class="border-b border-current/15 px-4 py-2 text-xs opacity-80" data-testid="encrypted-notice">
+          <i class="fa-solid fa-lock" aria-hidden="true"></i>
+          {% if channel.access == "password" %}{% trans "Messages here are encrypted at rest under a room key held by this platform and by the room password. They are not searchable." %}{% else %}{% trans "Messages here are encrypted at rest under a room key held by this platform. They are not searchable." %}{% endif %}
+        </div>
+      {% endif %}
+      {% if join_verdict == "invite" and not can_send_messages %}
+        <div class="border-b border-current/15 px-4 py-2 text-sm opacity-70">{% trans "This room is invite only; its creator or staff add members." %}</div>
+      {% endif %}
+
       {# Observer / join banner #}
       {% if not can_send_messages %}
         <div
@@ -1001,6 +1013,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           {% if can_join %}
             <form method="post" action="{% url 'forum:channel_join' channel.slug %}">
               {% csrf_token %}
+              {% if needs_password %}<input type="password" name="password" required autocomplete="current-password" placeholder="{% trans 'Room password' %}" aria-label="{% trans 'Room password' %}" class="mr-1 w-32 rounded border border-current/20 bg-inherit px-2 py-1 text-xs">{% endif %}
               <button type="submit"
                 :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                 class="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-bold transition hover:opacity-90">
@@ -1041,6 +1054,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           {% if can_join %}
             <form method="post" action="{% url 'forum:channel_join' channel.slug %}">
               {% csrf_token %}
+              {% if needs_password %}<input type="password" name="password" required autocomplete="current-password" placeholder="{% trans 'Room password' %}" aria-label="{% trans 'Room password' %}" class="mr-1 w-32 rounded border border-current/20 bg-inherit px-2 py-1 text-xs">{% endif %}
               <button type="submit"
                 :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                 class="inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-bold transition hover:opacity-90">
@@ -1155,6 +1169,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             class="min-h-[2.75rem] w-full resize-none rounded-xl border px-3 py-2.5 text-base outline-none transition focus:ring-2 focus:ring-current/20 sm:w-auto sm:flex-1 sm:text-sm"
             {% if not can_send_messages %}disabled{% endif %}></textarea>
 
+          {% if can_send_messages %}<span class="self-center" data-testid="send-price">{% price_hint forum_price_code %}</span>{% endif %}
           {# Row 3 (mobile): send — full-width on mobile, square icon button at sm+ #}
           <button
             type="button"

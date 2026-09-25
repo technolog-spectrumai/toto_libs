@@ -302,3 +302,85 @@ class ChatConsumerTests(TransactionTestCase):
             [f for f in leaked if f.get("message") == "leak"], [],
             "an ex-member received a message posted after their membership was revoked",
         )
+
+
+@override_settings(CHANNEL_LAYERS=CHANNEL_LAYERS,
+                   FORUM_VAULT_PASSWORD="forum-test-vault-passphrase",
+                   FORUM_PASSWORD_KDF={"memory_cost": 8, "iterations": 1, "lanes": 1},
+                   FORUM_RATE_LIMITS={"send": (2, 60)})
+class SecureRoomConsumerTests(TransactionTestCase):
+    """Encrypted rooms over the socket, rate limits, and billing refusals."""
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        from toto.forum import creation, rooms
+        from toto.people.models import Person
+
+        cache.clear()
+        rooms.vault.clear_cache()
+        self.user = User.objects.create_user(username="sec", password="pass")
+        Person.objects.create(user=self.user, display_name="Sec")
+        self.channel = creation.create_room(self.user, name="Sealed", encrypted=True)
+
+    async def _connect(self):
+        communicator = _communicator(self.channel.slug, self.user)
+        connected, _ = await communicator.connect()
+        self.assertTrue(connected)
+        await communicator.receive_json_from(timeout=3)      # chat_history
+        return communicator
+
+    async def _frame(self, communicator, msg_type, tries=6):
+        for _ in range(tries):
+            frame = await communicator.receive_json_from(timeout=3)
+            if frame.get("type") == msg_type:
+                return frame
+        return None
+
+    async def test_a_message_is_stored_sealed_and_delivered_in_clear(self):
+        communicator = await self._connect()
+        await communicator.send_json_to({"type": "chat_message", "message": "sealed hello"})
+        frame = await self._frame(communicator, "chat_message")
+        self.assertEqual(frame["message"], "sealed hello")
+        self.assertTrue(frame.get("sealed"))
+        row = await database_sync_to_async(ForumMessage.objects.get)()
+        self.assertEqual(row.body, "")
+        self.assertNotIn(b"sealed hello", bytes(row.body_sealed))
+        await communicator.disconnect()
+
+    async def test_history_is_replayed_decrypted_to_a_member(self):
+        from toto.forum import rooms
+
+        key = await database_sync_to_async(rooms.open_key)(self.channel)
+        await database_sync_to_async(store.store_message)(
+            self.channel, msg_type="chat_message", body="earlier secret", key=key)
+        communicator = _communicator(self.channel.slug, self.user)
+        await communicator.connect()
+        history = await communicator.receive_json_from(timeout=3)
+        self.assertEqual([m["message"] for m in history["messages"]], ["earlier secret"])
+        await communicator.disconnect()
+
+    async def test_a_rate_limited_sender_gets_an_error_frame(self):
+        communicator = await self._connect()
+        for n in range(2):
+            await communicator.send_json_to({"type": "chat_message", "message": f"m{n}"})
+            await self._frame(communicator, "chat_message")
+        await communicator.send_json_to({"type": "chat_message", "message": "too many"})
+        frame = await self._frame(communicator, "system_error")
+        self.assertEqual(frame["code"], "rate_limited")
+        self.assertEqual(await database_sync_to_async(ForumMessage.objects.count)(), 2)
+        await communicator.disconnect()
+
+    async def test_a_payment_refusal_is_an_error_frame_and_stores_nothing(self):
+        from unittest import mock
+
+        from toto.quota.charge import InsufficientFunds
+
+        communicator = await self._connect()
+        with mock.patch("toto.forum.billing.check_funds",
+                        side_effect=InsufficientFunds("RED", 1, 0)):
+            await communicator.send_json_to({"type": "chat_message", "message": "no mana"})
+            frame = await self._frame(communicator, "system_error")
+        self.assertEqual(frame["code"], "payment")
+        self.assertEqual(await database_sync_to_async(ForumMessage.objects.count)(), 0)
+        await communicator.disconnect()

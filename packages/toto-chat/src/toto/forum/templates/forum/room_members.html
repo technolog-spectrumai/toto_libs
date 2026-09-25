@@ -1,0 +1,35 @@
+{% extends "forum/channel_base.html" %}
+{% load i18n %}
+{% block room_content %}
+<section class="space-y-4">
+  <div class="flex flex-wrap items-center gap-2">{% include "forum/_room_badges.html" %}</div>
+  <h2 class="text-lg font-bold">{% trans "Members" %}</h2>
+  <ul class="divide-y divide-current/10 rounded-lg border border-current/15 text-sm">
+    {% for m in members %}
+    <li class="flex items-center justify-between gap-2 px-3 py-2">
+      <span>{{ m.display_name }}{% if m.person.user %} <span class="opacity-60">@{{ m.person.user.username }}</span>{% endif %}</span>
+      {% if can_manage_members and m.person.user_id != channel.created_by_id %}
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="remove"><input type="hidden" name="member" value="{{ m.pk }}">
+        <button type="submit" class="text-xs font-semibold hover:underline">{% trans "Remove" %}</button></form>
+      {% endif %}
+    </li>
+    {% empty %}<li class="px-3 py-2 italic opacity-60">{% trans "Nobody yet." %}</li>{% endfor %}
+  </ul>
+  {% if can_manage_members %}
+  <form method="post" class="flex flex-wrap items-end gap-2">{% csrf_token %}
+    <input type="hidden" name="action" value="add">
+    <label class="text-sm font-semibold">{% trans "Add a member by username" %}
+      <input name="username" required class="mt-1 block rounded border border-current/20 bg-inherit px-2 py-1 text-sm"></label>
+    <button type="submit" class="rounded border px-3 py-1.5 text-sm font-semibold">{% trans "Add" %}</button>
+  </form>
+  {% if channel.access == "password" %}
+  <form method="post" class="flex flex-wrap items-end gap-2">{% csrf_token %}
+    <input type="hidden" name="action" value="password">
+    <label class="text-sm font-semibold">{% trans "New room password" %}
+      <input type="password" name="password" required minlength="8" autocomplete="new-password" class="mt-1 block rounded border border-current/20 bg-inherit px-2 py-1 text-sm"></label>
+    <button type="submit" class="rounded border px-3 py-1.5 text-sm font-semibold">{% trans "Change password" %}</button>
+  </form>
+  {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

@@ -21,7 +21,22 @@ def _channel_to_dict(channel, member_count=None):
         "slug": channel.slug,
         "member_count": member_count if member_count is not None else 0,
         "created_at": channel.created_at.isoformat(),
+        "access": channel.access,
+        "is_encrypted": channel.is_encrypted,
+        "expires_at": channel.expires_at.isoformat() if channel.expires_at else None,
     }
+
+
+def _guard(request):
+    """The Fetch-Metadata refusal (toto.api.fetch_metadata), or None."""
+    from toto.api.fetch_metadata import cross_site_refusal
+
+    return cross_site_refusal(request)
+
+
+def _refusal(exc):
+    status = getattr(exc, "status", None) or getattr(exc, "status_code", 400)
+    return JsonResponse({"error": str(exc)}, status=status)
 
 
 def _absolute_url(request, url):
@@ -63,7 +78,7 @@ class ChannelListApiView(CorsApiView):
             return JsonResponse({"error": "Not authenticated."}, status=401)
 
         joined = set(permissions.readable_channels(request.user).values_list("pk", flat=True))
-        qs = ForumChannel.objects.annotate(
+        qs = permissions.listable_channels(request.user).annotate(
             member_count=models.Count(
                 "forum_members",
                 filter=models.Q(forum_members__is_active=True),
@@ -78,35 +93,30 @@ class ChannelListApiView(CorsApiView):
         return JsonResponse({"channels": channels})
 
     def post(self, request):
-        from django.utils.text import slugify
+        from toto.quota.api import InArrears, QuotaExceeded
+        from toto.quota.charge import InsufficientFunds
 
-        from toto.people.models import Person
-        from toto.forum.models import ForumMember
+        from . import creation
 
+        refused = _guard(request)
+        if refused is not None:
+            return refused
         if not permissions.can_browse(request.user):
             return JsonResponse({"error": "Not authenticated."}, status=401)
         try:
             body = json.loads(request.body)
         except (json.JSONDecodeError, ValueError):
             return JsonResponse({"error": "Invalid JSON."}, status=400)
-
-        name = (body.get("name") or "").strip()
-        if not name:
-            return JsonResponse({"error": "Channel name required."}, status=400)
-        slug = slugify(name)[:50]
-        if not slug:
-            return JsonResponse({"error": "Name cannot be turned into a slug."}, status=400)
-        if ForumChannel.objects.filter(models.Q(name=name) | models.Q(slug=slug)).exists():
-            return JsonResponse({"error": "That channel already exists."}, status=409)
-
-        channel = ForumChannel.objects.create(
-            name=name, slug=slug, created_by=request.user
-        )
-        person = Person.objects.filter(user=request.user).first()
-        if person:
-            ForumMember.objects.create(channel=channel, person=person, is_active=True)
-
-        return JsonResponse(_channel_to_dict(channel, 1 if person else 0), status=201)
+        try:
+            channel = creation.create_room(
+                request.user, name=body.get("name", ""), access=body.get("access", "open"),
+                password=body.get("password", ""), encrypted=bool(body.get("is_encrypted")),
+                expires_in=body.get("expires_in", "") or "")
+        except creation.RoomRefused as exc:
+            return _refusal(exc)
+        except (QuotaExceeded, InArrears, InsufficientFunds) as exc:
+            return _refusal(exc)
+        return JsonResponse(_channel_to_dict(channel, channel.forum_members.count()), status=201)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -225,6 +235,26 @@ class MessageAttachmentApiView(CorsApiView):
                 {"error": "Join this channel to read its attachments."}, status=403
             )
 
+        if row.attachment_sealed:
+            from django.http import HttpResponse
+
+            from . import sealing
+            from .rooms import RoomKeyUnavailable, open_key
+
+            try:
+                with row.attachment.open("rb") as fh:
+                    frame = fh.read()
+                data = sealing.open_bytes(open_key(row.channel), frame, kind="att",
+                                          channel_id=row.channel_id, message_id=row.id)
+            except (FileNotFoundError, OSError):
+                raise Http404("Attachment file is missing.")
+            except (RoomKeyUnavailable, sealing.SealBroken):
+                return JsonResponse({"error": "This attachment cannot be opened now."}, status=409)
+            response = HttpResponse(data, content_type=row.attachment_mime or "application/octet-stream")
+            response["Content-Disposition"] = f'inline; filename="{row.attachment_name or "attachment"}"'
+            response["X-Content-Type-Options"] = "nosniff"
+            return response
+
         try:
             handle = row.attachment.open("rb")
         except (FileNotFoundError, OSError):
@@ -270,33 +300,35 @@ class MessageSearchApiView(CorsApiView):
 @method_decorator(csrf_exempt, name="dispatch")
 class ChannelJoinApiView(CorsApiView):
     def post(self, request, slug):
+        from . import creation
+
+        refused = _guard(request)
+        if refused is not None:
+            return refused
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
-        try:
-            channel = ForumChannel.objects.get(slug=slug)
-        except ForumChannel.DoesNotExist:
+        channel = permissions.listable_channels(request.user).filter(slug=slug).first()
+        if channel is None:
             return JsonResponse({"error": "Channel not found."}, status=404)
-
-        from toto.people.models import Person
-        from toto.forum.models import ForumMember
-
-        person = Person.objects.filter(user=request.user).first()
-        if not person:
-            return JsonResponse({"error": "No person profile linked to this account."}, status=403)
-
-        member, created = ForumMember.objects.get_or_create(
-            channel=channel, person=person, defaults={"is_active": True}
-        )
-        if not member.is_active:
-            member.is_active = True
-            member.save(update_fields=["is_active"])
-
+        password = ""
+        if request.body:
+            try:
+                password = (json.loads(request.body) or {}).get("password", "")
+            except (json.JSONDecodeError, ValueError, AttributeError):
+                password = request.POST.get("password", "")
+        try:
+            created = creation.join(request.user, channel, password=password)
+        except creation.RoomRefused as exc:
+            return _refusal(exc)
         return JsonResponse({"ok": True, "joined": created})
 
 
 @method_decorator(csrf_exempt, name="dispatch")
 class ChannelLeaveApiView(CorsApiView):
     def post(self, request, slug):
+        refused = _guard(request)
+        if refused is not None:
+            return refused
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
         try:
@@ -323,6 +355,9 @@ class ChannelLeaveApiView(CorsApiView):
 @method_decorator(csrf_exempt, name="dispatch")
 class ChannelLeaveAllApiView(CorsApiView):
     def post(self, request):
+        refused = _guard(request)
+        if refused is not None:
+            return refused
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
 
@@ -369,6 +404,9 @@ class MediaUploadApiView(CorsApiView):
         raise NotImplementedError
 
     def post(self, request, slug):
+        refused = _guard(request)
+        if refused is not None:
+            return refused
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
 
@@ -378,7 +416,7 @@ class MediaUploadApiView(CorsApiView):
             return JsonResponse({"error": "Channel not found."}, status=404)
 
         member = permissions.member_for(request.user, channel)
-        if not member:
+        if not member or channel.is_expired:
             return JsonResponse(
                 {"error": "Join this channel before posting to it."}, status=403
             )
@@ -400,20 +438,43 @@ class MediaUploadApiView(CorsApiView):
         display_name = member.display_name
         avatar_url = _absolute_url(request, member.avatar_url)
 
-        row = store.store_message(
-            channel,
-            msg_type=self.msg_type,
-            body=(request.POST.get("message") or "").strip(),
-            sender=request.user,
-            sender_name=display_name,
-            sender_avatar_url=avatar_url or "",
-            attachment=file,
-            attachment_name=file.name or "",
-            attachment_mime=content_type,
-            attachment_size=file.size,
-        )
+        from django.db import transaction
+
+        from toto.core import ratelimit
+        from toto.quota.api import InArrears, QuotaExceeded
+        from toto.quota.charge import InsufficientFunds
+
+        from . import billing, creation
+        from .rooms import RoomKeyUnavailable, open_key
+
+        limit, window = creation.limits()["api_post"]
+        try:
+            ratelimit.check(f"forum:post:{request.user.pk}", limit=limit, window=window)
+            billing.check_affordable(request.user, channel)
+            key = open_key(channel) if channel.is_encrypted else None
+            with transaction.atomic():
+                row = store.store_message(
+                    channel,
+                    msg_type=self.msg_type,
+                    body=(request.POST.get("message") or "").strip(),
+                    sender=request.user,
+                    sender_name=display_name,
+                    sender_avatar_url=avatar_url or "",
+                    attachment=file,
+                    attachment_name=file.name or "",
+                    attachment_mime=content_type,
+                    attachment_size=file.size,
+                    key=key,
+                )
+                billing.settle_message(request.user, row)
+        except ratelimit.RateLimited as exc:
+            return _refusal(exc)
+        except (QuotaExceeded, InArrears, InsufficientFunds) as exc:
+            return _refusal(exc)
+        except RoomKeyUnavailable as exc:
+            return JsonResponse({"error": str(exc)}, status=409)
         payload = store.message_to_dict(
-            row, absolute=lambda url: _absolute_url(request, url)
+            row, absolute=lambda url: _absolute_url(request, url), key=key
         )
 
         channel_layer = get_channel_layer()

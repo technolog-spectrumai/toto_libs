@@ -1,8 +1,16 @@
 """Message persistence and history replay.
 
-Messages are stored in plaintext. Confidentiality in transit is TLS; the row itself is
-readable by the server, which is precisely what makes permanent, paginated, searchable
-history possible — including for a member who joins long after a conversation happened.
+Messages in an ORDINARY room are stored in plaintext. Confidentiality in transit is TLS;
+the row itself is readable by the server, which is precisely what makes permanent,
+paginated, searchable history possible — including for a member who joins long after a
+conversation happened.
+
+Since 2026-09-25 a room may be ENCRYPTED at rest instead, by choice when it is made:
+its bodies and attachments are sealed under the room's key (rooms.py, sealing.py) and
+`body` stays empty. What that costs is stated where a person chooses it: an encrypted
+room is not searchable. What it does NOT bring back is what the old scheme below got
+wrong — there is no TTL on a persistent room, the key is recoverable (the platform box
+or, for a password room, the password), and ordinary rooms are untouched.
 
 This module replaced ``vault.py``, which encrypted every message under a per-channel
 gervazy DEK held in a system strongbox. That scheme capped history at a 24h TTL, required
@@ -22,13 +30,20 @@ MAX_HISTORY_LIMIT = 200
 
 def store_message(channel, *, msg_type, body="", sender=None, sender_name="",
                   sender_avatar_url="", reply_to=None, attachment=None,
-                  attachment_name="", attachment_mime="", attachment_size=None):
+                  attachment_name="", attachment_mime="", attachment_size=None,
+                  key=None):
     """Persist a message and return the saved row.
 
-    ``attachment`` is an uploaded file object (or ``None``); it is written to
-    ``MEDIA_ROOT`` by the model's ``upload_to`` callable, never inlined into the row.
+    ``attachment`` is an uploaded file object (or ``None``); it is written to the
+    forum's attachment storage by the model's ``upload_to`` callable, never inlined
+    into the row. In an encrypted room ``key`` is the room key and both the body and
+    the attachment bytes are sealed; without it an encrypted room refuses to store.
     """
+    from django.core.files.base import ContentFile
+
+    from . import sealing
     from .models import ForumMessage
+    from .rooms import RoomKeyUnavailable
 
     message = ForumMessage(
         channel=channel,
@@ -42,6 +57,17 @@ def store_message(channel, *, msg_type, body="", sender=None, sender_name="",
         attachment_mime=attachment_mime or "",
         attachment_size=attachment_size,
     )
+    if channel.is_encrypted:
+        if key is None:
+            raise RoomKeyUnavailable("An encrypted room stores nothing without its key.")
+        message.body_sealed = sealing.seal_text(key, body or "", channel_id=channel.pk,
+                                                message_id=message.id)
+        message.body = ""
+        if attachment is not None:
+            sealed = sealing.seal_bytes(key, attachment.read(), kind="att",
+                                        channel_id=channel.pk, message_id=message.id)
+            attachment = ContentFile(sealed)
+            message.attachment_sealed = True
     if attachment is not None:
         # save=False: the row has no pk row yet, and upload_to needs message.id, which the
         # model default has already generated.
@@ -50,7 +76,32 @@ def store_message(channel, *, msg_type, body="", sender=None, sender_name="",
     return message
 
 
-def message_to_dict(row, *, history=False, absolute=None):
+def body_of(row, key=None) -> str:
+    """The readable text of a row: plaintext, or its sealed body opened."""
+    if row.deleted_at:
+        return ""
+    if not row.is_sealed:
+        return row.body
+    if key is None:
+        return "[encrypted]"
+    from . import sealing
+
+    try:
+        return sealing.open_text(key, row.body_sealed, channel_id=row.channel_id,
+                                 message_id=row.id)
+    except sealing.SealBroken:
+        return "[unreadable]"
+
+
+def seal_edit(row, key, text) -> None:
+    """Re-seal an edited body with a fresh nonce under the same binding."""
+    from . import sealing
+
+    row.body_sealed = sealing.seal_text(key, text, channel_id=row.channel_id, message_id=row.id)
+    row.body = ""
+
+
+def message_to_dict(row, *, history=False, absolute=None, key=None):
     """Render one row into the wire payload the client expects.
 
     The shape is identical for live broadcasts and replayed history so the browser's
@@ -68,8 +119,12 @@ def message_to_dict(row, *, history=False, absolute=None):
         "user": row.sender_name,
         "avatar_url": _url(row.sender_avatar_url),
         "created_at": row.created_at.isoformat(),
-        "message": "" if row.deleted_at else row.body,
+        "message": body_of(row, key),
     }
+    if row.is_sealed:
+        payload["sealed"] = True
+        if key is not None and payload["message"] == "[unreadable]":
+            payload["unreadable"] = True
     if row.edited_at:
         payload["edited_at"] = row.edited_at.isoformat()
     if row.deleted_at:
@@ -110,7 +165,7 @@ def _before_filter(before, before_id):
 
 
 def history(channel, *, limit=DEFAULT_HISTORY_LIMIT, before=None, before_id=None,
-            absolute=None):
+            absolute=None, key=None):
     """Return up to ``limit`` messages oldest-first, ending just before the cursor.
 
     The cursor is the ``(created_at, id)`` pair of the oldest message you already hold;
@@ -122,7 +177,14 @@ def history(channel, *, limit=DEFAULT_HISTORY_LIMIT, before=None, before_id=None
         qs = qs.filter(_before_filter(before, before_id))
     rows = list(qs[:limit])
     rows.reverse()  # oldest-first for natural append
-    return [message_to_dict(row, history=True, absolute=absolute) for row in rows]
+    if key is None and channel.is_encrypted:
+        from .rooms import RoomKeyUnavailable, open_key
+
+        try:
+            key = open_key(channel)
+        except RoomKeyUnavailable:
+            key = None
+    return [message_to_dict(row, history=True, absolute=absolute, key=key) for row in rows]
 
 
 def has_more_before(channel, oldest, oldest_id=None):

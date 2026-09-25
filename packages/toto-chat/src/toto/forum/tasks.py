@@ -52,3 +52,12 @@ def forum_cleanup_run(run_id):
     cleanup.run_cleanup(run, deadline_seconds=1500)
     return {"run": run.pk, "status": run.status,
             "messages_deleted": run.messages_deleted}
+
+
+@shared_task(name="toto.forum.tasks.forum_expire", ignore_result=True,
+             soft_time_limit=240, time_limit=300)
+def forum_expire():
+    """Delete temporary rooms whose time is up, with everything in them."""
+    from . import expiry
+
+    return expiry.expire_due()

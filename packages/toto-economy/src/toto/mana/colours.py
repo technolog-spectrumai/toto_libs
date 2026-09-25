@@ -57,8 +57,15 @@ COLOUR_OF: dict[str, str] = {
     "assets.chain.verify": "compute",
     "ai.request": "compute",
     "ai.tokens_1k": "compute",
+    # Sealing a message and making a room key are work the server does for
+    # an encrypted room (2026-09-25).
+    "forum.encrypt": "compute",
+    "forum.room_key": "compute",
     # -- security -----------------------------------------------------------
     "antivirus.scan": "security",
+    # Talking in the clear (2026-09-25): an ordinary forum message draws on
+    # the security pool, the way plaintext storage does.
+    "forum.message": "security",
     "security.plain_gb_day": "security",        # a levy, clamped
 }
 
@@ -93,6 +100,10 @@ PRICES: dict[str, Decimal] = {
     "ai.request": Decimal("2"),
     "ai.tokens_1k": Decimal("0.5"),
     "antivirus.scan": Decimal("3"),
+    # A day's refill (4/hour) buys about a thousand ordinary messages.
+    "forum.message": Decimal("0.1"),
+    "forum.encrypt": Decimal("0.2"),
+    "forum.room_key": Decimal("5"),
     "security.plain_gb_day": Decimal("20"),
 }
 

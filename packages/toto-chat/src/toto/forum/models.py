@@ -97,6 +97,66 @@ class ForumChannel(models.Model):
         on_delete=models.SET_NULL, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # ── Room kinds (2026-09-25) ────────────────────────────────────────────
+    # All four are fixed when the room is made — no room turns encrypted, and
+    # a temporary room is not extended — except the password, which its owner
+    # may change. Every row from before this change is an open, plaintext,
+    # permanent room: the migration's defaults ARE the old behaviour.
+    # See SECURITY.md.
+    #: Who may join: anybody (open), whoever knows the password, or only
+    #: whoever the owner or staff add (invite).
+    access = models.CharField(max_length=8, choices=[
+        ("open", _("Open")), ("password", _("Password")), ("invite", _("Invite only"))],
+        default="open")
+    #: Messages and attachments stored as AES-256-GCM ciphertext under the
+    #: room's key (rooms.py), never as plaintext. Not searchable.
+    is_encrypted = models.BooleanField(default=False)
+    #: A temporary room: past this instant it refuses reads and sends, and the
+    #: expiry sweep deletes it with everything in it. Its key lives only in the
+    #: shared cache and expires with it.
+    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    #: The password is never stored. An Argon2id derivation over it yields a
+    #: verifier (stored) and, for an encrypted room, a key-wrapping key (never
+    #: stored) — rooms.derive_password_keys. The costs are per room, so tuning
+    #: the default never locks an old room out.
+    password_salt = models.BinaryField(null=True, blank=True, editable=False)
+    password_verifier = models.BinaryField(null=True, blank=True, editable=False)
+    kdf_memory_cost = models.PositiveIntegerField(null=True, blank=True, editable=False)
+    kdf_iterations = models.PositiveIntegerField(null=True, blank=True, editable=False)
+    kdf_lanes = models.PositiveIntegerField(null=True, blank=True, editable=False)
+
+    @property
+    def is_temporary(self) -> bool:
+        return self.expires_at is not None
+
+    @property
+    def is_expired(self) -> bool:
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    @property
+    def has_password(self) -> bool:
+        return self.access == "password"
+
+    @property
+    def is_invite_only(self) -> bool:
+        return self.access == "invite"
+
+    def badges(self) -> list[dict]:
+        """What the UI says this room is, in the order it says it."""
+        out = []
+        if self.access == "password":
+            out.append({"key": "password", "icon": "fa-key", "label": _("Password")})
+        elif self.access == "invite":
+            out.append({"key": "invite", "icon": "fa-user-lock", "label": _("Invite only")})
+        else:
+            out.append({"key": "open", "icon": "fa-door-open", "label": _("Open")})
+        if self.is_encrypted:
+            out.append({"key": "encrypted", "icon": "fa-lock", "label": _("Encrypted")})
+        if self.is_temporary:
+            out.append({"key": "temporary", "icon": "fa-hourglass-half",
+                        "label": _("Temporary"), "until": self.expires_at})
+        return out
+
     #: Slugs the forum's own URLs already own. `forum/urls.py` declares these
     #: BEFORE the `<slug:slug>/` catch-all, so a channel holding one would be
     #: permanently unreachable — its page would resolve to the forum's, not to
@@ -138,6 +198,8 @@ class ForumChannel(models.Model):
 
     def clean(self):
         super().clean()
+        if self.access == "password" and not self.password_verifier:
+            raise ValidationError(_("A password room needs a password."))
         if self.slug in self.RESERVED_SLUGS:
             raise ValidationError({
                 "slug": _("“%(slug)s” is one of the forum's own addresses. "
@@ -266,6 +328,12 @@ class ForumMessage(models.Model):
     attachment_name = models.CharField(max_length=255, blank=True)
     attachment_mime = models.CharField(max_length=100, blank=True)
     attachment_size = models.PositiveIntegerField(null=True, blank=True)
+    #: In an encrypted room the body is here, as `version || nonce || ct+tag`
+    #: (sealing.py), and `body` stays empty — so search, the admin and any
+    #: forgotten filter over `body` find nothing rather than ciphertext.
+    body_sealed = models.BinaryField(null=True, blank=True, editable=False)
+    #: The attachment bytes on disk are one sealed blob (same framing).
+    attachment_sealed = models.BooleanField(default=False)
 
     reply_to = models.ForeignKey(
         "self",
@@ -294,7 +362,9 @@ class ForumMessage(models.Model):
     def is_deleted(self):
         return self.deleted_at is not None
 
-
+    @property
+    def is_sealed(self) -> bool:
+        return self.body_sealed is not None
 
 
 # ---------------------------------------------------------------------------
@@ -505,6 +575,7 @@ class RunStatus(models.TextChoices):
 class TriggeredBy(models.TextChoices):
     BEAT = "beat", _("On schedule")
     MANUAL = "manual", _("Started by a person")
+    EXPIRY = "expiry", _("A temporary room expired")
 
 
 class ForumRetentionPolicy(models.Model):
@@ -694,3 +765,47 @@ class ForumCleanupRun(models.Model):
     def is_finished(self) -> bool:
         return self.status in (RunStatus.SUCCESS, RunStatus.PARTIAL,
                                RunStatus.FAILED)
+
+
+class ForumRoomKey(models.Model):
+    """The key of one persistent encrypted room, wrapped — never in clear.
+
+    `platform_*` is the room key under the `forum-rooms` strongbox's data key
+    (FORUM_VAULT_PASSWORD, minted by deploy.py): what lets the server read the
+    room for its members, and what recovers it. `password_*` is the same room
+    key under a key derived from the room password: what recovers a password
+    room if the platform secret is ever lost. A temporary room has no row —
+    its key lives only in the cache, and dies with it.
+    """
+
+    channel = models.OneToOneField(ForumChannel, on_delete=models.CASCADE,
+                                   related_name="room_key")
+    platform_wrapped = models.BinaryField()
+    platform_nonce = models.BinaryField()
+    platform_wrapped_key = models.ForeignKey("gervazy.WrappedDataKey",
+                                             on_delete=models.PROTECT, related_name="+")
+    password_wrapped = models.BinaryField(null=True, blank=True)
+    password_nonce = models.BinaryField(null=True, blank=True)
+    version = models.PositiveSmallIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    rotated_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"room key v{self.version} for {self.channel_id}"
+
+
+from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent  # noqa: E402
+
+
+class ForumUsageEvent(AbstractUsageEvent):
+    class Meta(AbstractUsageEvent.Meta):
+        verbose_name = "Forum usage event"
+        verbose_name_plural = "Forum usage events"
+
+
+class ForumQuotaPolicy(AbstractQuotaPolicy):
+    events = ForumUsageEvent
+
+    class Meta(AbstractQuotaPolicy.Meta):
+        verbose_name = "Forum quota policy"
+        verbose_name_plural = "Forum quota policies"

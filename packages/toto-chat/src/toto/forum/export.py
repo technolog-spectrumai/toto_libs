@@ -234,8 +234,17 @@ def survey(*, actor="", channel=None) -> Plan:
         # only, so its blob is neither written nor referenced.
         with_files = (rows.filter(deleted_at__isnull=True)
                       .exclude(attachment="").exclude(attachment__isnull=True))
-        for message in with_files.only("id", "attachment", "attachment_name"):
+        for message in with_files.only("id", "attachment", "attachment_name",
+                                       "attachment_sealed"):
             name = message.attachment.name
+            if message.attachment_sealed:
+                # A sealed blob is ciphertext on disk; the archive carries
+                # plaintext pages, so the file is named as left out rather
+                # than copied in a form nobody can open.
+                plan.skipped.append({"message": str(message.id),
+                                     "file": message.attachment_name,
+                                     "why": "encrypted"})
+                continue
             try:
                 if not storage.exists(name):
                     plan.skipped.append({"message": str(message.id),
@@ -294,7 +303,7 @@ def lift_caps():
 # Rendering
 # ---------------------------------------------------------------------------
 
-def _days(rows, plan):
+def _days(rows, plan, key=None):
     """Messages folded into local-date sections, in order.
 
     Folded in Python rather than with TruncDate: the day boundary has to be the
@@ -307,13 +316,15 @@ def _days(rows, plan):
             if current is not None:
                 out.append((current, bucket))
             current, bucket = day, []
-        bucket.append(_message_context(row, plan))
+        bucket.append(_message_context(row, plan, key))
     if current is not None:
         out.append((current, bucket))
     return out
 
 
-def _message_context(row, plan):
+def _message_context(row, plan, key=None):
+    from .store import body_of
+
     member = plan.by_message.get(str(row.id), "")
     return {
         "id": str(row.id),
@@ -321,7 +332,9 @@ def _message_context(row, plan):
         "sender": row.sender_name or _("Unknown member"),
         "created_at": timezone.localtime(row.created_at),
         "edited": bool(row.edited_at),
-        "body": "" if row.deleted_at else row.body,
+        # An encrypted room's archive is decrypted with the room key: the
+        # archive IS the plaintext copy somebody chose to take (SECURITY.md).
+        "body": body_of(row, key),
         "reply_to": str(row.reply_to_id) if row.reply_to_id else "",
         "kind": row.msg_type,
         # `../attachments/…` because every room page lives one level down.
@@ -334,10 +347,20 @@ def _message_context(row, plan):
 def render_room(room_plan, plan) -> str:
     from .models import ForumMessage
 
+    from .models import ForumChannel
+    from .rooms import RoomKeyUnavailable, open_key
+
     rows = list(ForumMessage.objects.filter(channel_id=room_plan.channel_id)
                 .order_by("created_at", "id"))
     here = {str(r.id) for r in rows}
-    days = _days(rows, plan)
+    key = None
+    channel = ForumChannel.objects.filter(pk=room_plan.channel_id).first()
+    if channel is not None and channel.is_encrypted:
+        try:
+            key = open_key(channel)
+        except RoomKeyUnavailable:
+            key = None
+    days = _days(rows, plan, key=key)
     for _day, bucket in days:
         for message in bucket:
             # A reply link only when its target is in THIS file; nothing links

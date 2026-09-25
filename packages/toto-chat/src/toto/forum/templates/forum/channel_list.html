@@ -45,25 +45,35 @@
           </button>
         </form>
 
-        {# Create a channel without needing the Django admin #}
-        <form method="post" action="{% url 'forum:channel_create' %}" class="flex w-full gap-2">
+        {# Create a room: who may join, whether it is encrypted, whether it expires. #}
+        <form method="post" action="{% url 'forum:channel_create' %}" x-data="{access: 'open'}"
+              class="w-full space-y-2 rounded-lg border border-current/15 p-3 text-sm" data-testid="room-create">
           {% csrf_token %}
-          <input
-            type="text"
-            name="name"
-            required
-            maxlength="100"
-            placeholder="{% trans 'New channel name' %}"
-            :class="darkMode
-              ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
-              : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
-            class="min-w-0 flex-1 rounded border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20">
-          <button
-            type="submit"
-            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-            class="inline-flex items-center justify-center gap-1.5 rounded border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
-            <i class="fa-solid fa-plus"></i>{% trans "Create" %}
-          </button>
+          <div class="flex gap-2">
+            <input type="text" name="name" required maxlength="100" placeholder="{% trans 'New channel name' %}"
+              :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+              class="min-w-0 flex-1 rounded border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20">
+            <button type="submit" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="inline-flex items-center justify-center gap-1.5 rounded border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+              <i class="fa-solid fa-plus"></i>{% trans "Create" %}</button>
+          </div>
+          <fieldset class="flex flex-wrap gap-3">
+            <legend class="sr-only">{% trans "Who may join" %}</legend>
+            <label class="inline-flex items-center gap-1"><input type="radio" name="access" value="open" x-model="access" checked> <i class="fa-solid fa-door-open" aria-hidden="true"></i> {% trans "Open" %}</label>
+            <label class="inline-flex items-center gap-1"><input type="radio" name="access" value="password" x-model="access"> <i class="fa-solid fa-key" aria-hidden="true"></i> {% trans "Password" %}</label>
+            <label class="inline-flex items-center gap-1"><input type="radio" name="access" value="invite" x-model="access"> <i class="fa-solid fa-user-lock" aria-hidden="true"></i> {% trans "Invite only" %}</label>
+          </fieldset>
+          <input x-show="access === 'password'" x-cloak type="password" name="password" minlength="{{ min_password }}" autocomplete="new-password"
+                 placeholder="{% blocktrans %}Room password (at least {{ min_password }} characters){% endblocktrans %}"
+                 class="w-full rounded border border-current/20 bg-inherit px-3 py-2 text-sm">
+          <label class="flex items-start gap-2"><input type="checkbox" name="encrypted" value="1" class="mt-1">
+            <span><i class="fa-solid fa-lock" aria-hidden="true"></i> {% trans "Encrypt messages at rest" %}
+              <span class="block text-xs opacity-60">{% trans "Stored as ciphertext under a key this platform holds for the room's members. Encrypted rooms are not searchable." %}</span></span></label>
+          <label class="flex items-center gap-2"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> {% trans "Expires" %}
+            <select name="expires_in" class="rounded border border-current/20 bg-inherit px-2 py-1 text-sm">
+              {% for value, label in expiry_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+            </select></label>
+          <p class="text-xs opacity-60">{% trans "A temporary room and everything in it are deleted when it expires, and it cannot be extended. Who may join, encryption and expiry cannot be changed later." %}</p>
         </form>
 
         <a href="{% url 'forum:message_search' %}" class="self-end text-xs underline opacity-70 hover:opacity-100">
@@ -87,6 +97,7 @@
                   {{ channel.name }}
                 </h2>
                 <p class="text-sm opacity-60">{{ channel.slug }}</p>
+                {% with badges=channel.badges %}{% include "forum/_room_badges.html" %}{% endwith %}
               </div>
               <span
                 :class="darkMode ? 'border-accent-1' : 'border-accent-2'"

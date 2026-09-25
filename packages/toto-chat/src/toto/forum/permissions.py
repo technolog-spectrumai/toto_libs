@@ -51,14 +51,64 @@ def can_browse(user):
     return bool(user and getattr(user, "is_authenticated", False))
 
 
+def _live(channel):
+    """The channel row, and whether it is past its expiry (a slug is looked up)."""
+    from .models import ForumChannel
+
+    if isinstance(channel, str):
+        channel = ForumChannel.objects.filter(slug=channel).first()
+    return channel, (channel is not None and channel.is_expired)
+
+
 def can_read(user, channel):
-    """May the user read this channel's message history and search it?"""
-    return is_member(user, channel)
+    """May the user read this channel's message history and search it?
+
+    An expired temporary room refuses everybody from the instant it expires,
+    before the sweep has deleted it — the clock, not the sweep, is the rule.
+    """
+    row, expired = _live(channel)
+    return row is not None and not expired and is_member(user, row)
 
 
 def can_send(user, channel):
     """May the user post to this channel?"""
-    return is_member(user, channel)
+    return can_read(user, channel)
+
+
+def join_verdict(user, channel) -> str:
+    """"open", "password" or "invite" — how (whether) this user may join."""
+    if channel.is_expired:
+        return "closed"
+    if channel.access == "invite":
+        return "invite"
+    if channel.access == "password":
+        return "password"
+    return "open"
+
+
+def can_manage_members(user, channel) -> bool:
+    """The room's creator, or staff, adds and removes members."""
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    return is_operator(user) or (channel.created_by_id is not None
+                                 and channel.created_by_id == user.id)
+
+
+def listable_channels(user):
+    """Channels a person may see listed: invite-only rooms only to their members
+    and staff (a room you cannot join is noise, and its name may be the secret)."""
+    from django.db.models import Q
+
+    from .models import ForumChannel
+
+    qs = ForumChannel.objects.all()
+    if is_operator(user):
+        return qs
+    person = person_for(user)
+    visible = ~Q(access="invite")
+    if person is not None:
+        visible |= Q(forum_members__person=person, forum_members__is_active=True)
+    return qs.filter(visible).distinct()
 
 
 def can_moderate(user, message):

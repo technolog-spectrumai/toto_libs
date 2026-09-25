@@ -53,6 +53,10 @@
         </button>
       </form>
 
+      {% if encrypted_rooms_skipped %}
+        <p class="text-xs opacity-60" data-testid="encrypted-skipped"><i class="fa-solid fa-lock" aria-hidden="true"></i>
+          {% blocktrans count n=encrypted_rooms_skipped %}{{ n }} encrypted room you belong to is not searched.{% plural %}{{ n }} encrypted rooms you belong to are not searched.{% endblocktrans %}</p>
+      {% endif %}
       {% if search_fallback_used and query %}
         {# Mirrors ravioli's effective-mode disclosure: say when a weaker engine ran. #}
         <p class="text-xs opacity-60">

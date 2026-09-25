@@ -50,6 +50,7 @@ urlpatterns = [
     path("<slug:slug>/polls/<slug:poll_slug>/close/", views.room_poll_close, name="room_poll_close"),
     path("<slug:slug>/polls/<slug:poll_slug>/delete/", views.room_poll_delete, name="room_poll_delete"),
     path("<slug:slug>/stats/", views.room_stats, name="room_stats"),
+    path("<slug:slug>/members/", views.room_members, name="room_members"),
     # The Settings tab and its three write endpoints. Staff-only in the view,
     # not merely absent from the tab strip.
     path("<slug:slug>/settings/", views.room_settings, name="room_settings"),

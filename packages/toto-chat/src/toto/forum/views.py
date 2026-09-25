@@ -2,7 +2,9 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.shortcuts import get_object_or_404, redirect
+from django.conf import settings
+from django.http import Http404
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST, require_safe
 from django.views.generic import ListView, DetailView, View
@@ -22,7 +24,9 @@ class ChannelListView(LoginRequiredMixin, ListView):
     ordering = ["name"]
 
     def get_queryset(self):
-        qs = super().get_queryset().annotate(
+        # Invite-only rooms are listed to their members and staff only.
+        ids = permissions.listable_channels(self.request.user).values("pk")
+        qs = super().get_queryset().filter(pk__in=ids).annotate(
             member_count=models.Count(
                 "forum_members",
                 filter=models.Q(forum_members__is_active=True),
@@ -45,6 +49,12 @@ class ChannelListView(LoginRequiredMixin, ListView):
         # always answers 403 is worse than no link — and the page behind it
         # re-checks, because hiding is cosmetic.
         context["is_operator"] = permissions.is_operator(self.request.user)
+        from . import creation
+
+        context["expiry_choices"] = [
+            ("", _("Never")), ("1h", _("1 hour")), ("24h", _("24 hours")),
+            ("7d", _("7 days")), ("30d", _("30 days"))]
+        context["min_password"] = creation.MIN_PASSWORD
         return PageProcessor().decorate(context, self.request)
 
 
@@ -108,9 +118,17 @@ class ChannelDetailView(LoginRequiredMixin, DetailView):
         context["active_tab"] = "chat"
         context["is_participant"] = current_member is not None
 
-        context["can_send_messages"] = current_member is not None
-        context["can_join"] = bool(current_person and not current_member)
+        context["can_send_messages"] = current_member is not None and not channel.is_expired
+        verdict = permissions.join_verdict(self.request.user, channel)
+        context["join_verdict"] = verdict
+        context["can_join"] = bool(current_person and not current_member
+                                   and verdict in ("open", "password"))
+        context["needs_password"] = verdict == "password"
         context["can_leave"] = current_member is not None
+        context["badges"] = channel.badges()
+        context["is_encrypted"] = channel.is_encrypted
+        context["can_manage_members"] = permissions.can_manage_members(self.request.user, channel)
+        context["forum_price_code"] = "forum.encrypt" if channel.is_encrypted else "forum.message"
 
         if not context["can_send_messages"]:
             if context["can_join"]:
@@ -129,22 +147,19 @@ class ChannelDetailView(LoginRequiredMixin, DetailView):
 
 class ChannelJoinView(LoginRequiredMixin, View):
     def post(self, request, slug):
+        from . import creation
+
         channel = get_object_or_404(ForumChannel, slug=slug)
-
-        person = Person.objects.filter(user=request.user).first()
-        if not person:
-            messages.error(request, _("Your user is not linked to a person profile, so you can only observe this channel."))
+        if not permissions.listable_channels(request.user).filter(pk=channel.pk).exists():
+            raise Http404
+        try:
+            created = creation.join(request.user, channel,
+                                    password=request.POST.get("password", ""))
+        except creation.RoomRefused as exc:
+            messages.error(request, str(exc))
             return redirect("forum:channel_detail", slug=channel.slug)
-
-        member, created = ForumMember.objects.get_or_create(
-            channel=channel, person=person, defaults={"is_active": True}
-        )
-        if not member.is_active:
-            member.is_active = True
-            member.save(update_fields=["is_active"])
-
-        msg = f"You {'joined' if created else 'rejoined'} {channel.name} as a member."
-        messages.success(request, msg)
+        messages.success(request, _("You joined %(name)s as a member.") % {"name": channel.name}
+                         if created else _("You are a member of %(name)s.") % {"name": channel.name})
         return redirect("forum:channel_detail", slug=channel.slug)
 
 
@@ -167,56 +182,65 @@ class ChannelLeaveView(LoginRequiredMixin, View):
 
 
 class ChannelCreateView(LoginRequiredMixin, View):
-    """Create a channel from the channel-list page and join it.
+    """Create a room from the channel-list page and join it.
 
-    Until now the only ways to create a channel were the Django admin and a seed
-    command, which made the app unusable without operator access.
+    Who may join (open / password / invite), whether it is encrypted at rest,
+    and whether it expires are chosen here and fixed for the room's life —
+    except the password, which its creator may change. creation.create_room
+    holds every rule; the API door calls the same function.
     """
 
     def post(self, request):
-        from django.utils.text import slugify
+        from toto.quota.api import InArrears, QuotaExceeded
+        from toto.quota.charge import InsufficientFunds
 
-        name = (request.POST.get("name") or "").strip()
-        if not name:
-            messages.error(request, _("A channel needs a name."))
+        from . import creation
+
+        try:
+            channel = creation.create_room(
+                request.user, name=request.POST.get("name", ""),
+                access=request.POST.get("access", "open"),
+                password=request.POST.get("password", ""),
+                encrypted=request.POST.get("encrypted") == "1",
+                expires_in=request.POST.get("expires_in", ""))
+        except creation.RoomRefused as exc:
+            messages.error(request, str(exc))
             return redirect("forum:channel_list")
-
-        slug = slugify(name)[:50]
-        if not slug:
-            messages.error(request, _("That name cannot be turned into a URL slug."))
+        except (QuotaExceeded, InArrears, InsufficientFunds) as exc:
+            messages.error(request, str(exc))
             return redirect("forum:channel_list")
-
-        # The cap, as a MESSAGE. The model raises ValidationError either way —
-        # that is what makes it a real cap — but a 500 is not how a person
-        # should learn the forum is full.
-        if ForumChannel.at_capacity():
-            messages.error(request, _(
-                "This platform holds at most %(n)s rooms, and it has that "
-                "many. Close one before opening another.")
-                % {"n": ForumChannel.max_channels()})
-            return redirect("forum:channel_list")
-
-        if slug in ForumChannel.RESERVED_SLUGS:
-            # The model refuses this too; here it gets a sentence rather than
-            # a validation error, because this is the door people use.
-            messages.error(request, _(
-                "“%(name)s” is one of the forum's own addresses. "
-                "A room with that name could never be opened.")
-                % {"name": name})
-            return redirect("forum:channel_list")
-        if ForumChannel.objects.filter(models.Q(name=name) | models.Q(slug=slug)).exists():
-            messages.error(request, f"A channel called “{name}” already exists.")
-            return redirect("forum:channel_list")
-
-        channel = ForumChannel.objects.create(
-            name=name, slug=slug, created_by=request.user
-        )
-        person = Person.objects.filter(user=request.user).first()
-        if person:
-            ForumMember.objects.create(channel=channel, person=person, is_active=True)
-
-        messages.success(request, f"Created {channel.name}.")
+        messages.success(request, _("Created %(name)s.") % {"name": channel.name})
         return redirect("forum:channel_detail", slug=channel.slug)
+
+
+def room_members(request, slug):
+    """The members of a room, and — for its creator or staff — add and remove."""
+    from django.contrib.auth.views import redirect_to_login
+
+    from . import creation
+
+    if not request.user.is_authenticated:
+        return redirect_to_login(request.get_full_path())
+    channel = get_object_or_404(ForumChannel, slug=slug)
+    if not permissions.can_manage_members(request.user, channel):
+        permissions.require_member(request, channel)
+    if request.method == "POST":
+        try:
+            if request.POST.get("action") == "remove":
+                creation.remove_member(request.user, channel, request.POST.get("member"))
+            elif request.POST.get("action") == "password":
+                creation.change_password(request.user, channel, request.POST.get("password", ""))
+                messages.success(request, _("Password changed."))
+            else:
+                creation.add_member(request.user, channel, request.POST.get("username", ""))
+        except creation.RoomRefused as exc:
+            messages.error(request, str(exc))
+        return redirect("forum:room_members", slug=channel.slug)
+    members = channel.forum_members.filter(is_active=True).select_related("person__user")
+    context = {"channel": channel, "active_tab": "members", "members": members,
+               "badges": channel.badges(),
+               "can_manage_members": permissions.can_manage_members(request.user, channel)}
+    return render(request, "forum/room_members.html", PageProcessor().decorate(context, request))
 
 
 class MessageSearchView(LoginRequiredMixin, ListView):
@@ -243,7 +267,11 @@ class MessageSearchView(LoginRequiredMixin, ListView):
         context = super().get_context_data(**kwargs)
         context["query"] = (self.request.GET.get("q") or "").strip()
         context["channel_slug"] = (self.request.GET.get("channel") or "").strip()
-        context["searchable_channels"] = permissions.readable_channels(self.request.user)
+        context["searchable_channels"] = permissions.readable_channels(
+            self.request.user).filter(is_encrypted=False)
+        from .search import encrypted_rooms_skipped
+
+        context["encrypted_rooms_skipped"] = encrypted_rooms_skipped(self.request.user)
         context.update(search_mode())
         return PageProcessor().decorate(context, self.request)
 

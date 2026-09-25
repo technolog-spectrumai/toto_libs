@@ -52,7 +52,9 @@ def search_messages(user, query, *, channel_slug=None):
     if not query:
         return ForumMessage.objects.none()
 
-    channels = permissions.readable_channels(user)
+    # Encrypted rooms are never searched: their bodies are sealed and `body` is
+    # empty, so a search could only ever miss — the page says so instead.
+    channels = permissions.readable_channels(user).filter(is_encrypted=False)
     if channel_slug:
         channels = channels.filter(slug=channel_slug)
 
@@ -74,3 +76,8 @@ def search_messages(user, query, *, channel_slug=None):
         )
 
     return qs.filter(body__icontains=query).order_by("-created_at")
+
+
+def encrypted_rooms_skipped(user) -> int:
+    """How many encrypted rooms this person belongs to — the ones search skips."""
+    return permissions.readable_channels(user).filter(is_encrypted=True).count()
