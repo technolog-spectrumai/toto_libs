@@ -439,6 +439,28 @@ def _file_response_or_bad_gateway(file_obj):
     )
 
 
+def stream_file(file_obj, *, inline=False, content_type=None):
+    """The vault's one download shape, for another app's door.
+
+    Egress metering, the backend-error sentence and the streaming are
+    `_file_response_or_bad_gateway`'s; a caller that has already made its OWN
+    access decision (the wiki's image route, say) gets the same bytes the same
+    way. ``inline`` serves for display rather than download. Nothing here
+    checks access — the caller must have.
+    """
+    response = _file_response_or_bad_gateway(file_obj)
+    if isinstance(response, FileResponse):
+        if content_type:
+            response["Content-Type"] = content_type
+        if inline:
+            import os as _os
+
+            name = _os.path.basename(file_obj.file.name) or file_obj.key
+            response["Content-Disposition"] = f'inline; filename="{name}"'
+        response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
 class VaultFileDownloadView(View):
     """Download a file, if it is yours to download.
 
