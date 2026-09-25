@@ -4,7 +4,7 @@
          class="rounded-2xl border p-5 shadow-sm sm:p-6" data-testid="mana-profile">
   <div class="mb-4 flex items-center justify-between gap-3">
     <div class="flex items-center gap-3">
-      <i class="{{ profile_plugin_icon }}" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      <i class="{{ profile_plugin_icon }}" :class="darkMode ? 'text-security-dark' : 'text-security-light'"></i>
       <h2 class="text-lg font-bold">{% trans "Mana" %}</h2>
     </div>
     <a href="{% url 'mana:index' %}"

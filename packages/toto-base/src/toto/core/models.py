@@ -73,6 +73,12 @@ class ColorMix(models.Model):
     success_light = ColorField(default="#4CAF50")   # green
     sunken_light = ColorField(default="#F5F5F5")    # subtle grey
     link_light = ColorField(default="#1E88E5")      # blue
+    # The security mana pool (2026-09-25): cyan, its own token so the bar can
+    # never inherit the accent hue a theme happens to pick. `caution` was in
+    # every theme file but never on this model, so the classes it produced
+    # rendered colourless; now it is a field like the others.
+    security_light = ColorField(default="#00ACC1")  # cyan
+    caution_light = ColorField(default="#A07800")   # amber
 
     # Dark mode colors
     primary_bg_dark = ColorField(default="#121212")
@@ -90,6 +96,8 @@ class ColorMix(models.Model):
     success_dark = ColorField(default="#66BB6A")    # lighter green for dark mode
     sunken_dark = ColorField(default="#1A1A1A")     # deeper grey
     link_dark = ColorField(default="#64B5F6")       # lighter blue
+    security_dark = ColorField(default="#26C6DA")   # lighter cyan for dark mode
+    caution_dark = ColorField(default="#F0A820")    # lighter amber
 
     # Accent colors
     accent_1 = ColorField(default="#03A9F4")

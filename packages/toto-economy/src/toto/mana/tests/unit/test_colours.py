@@ -2,8 +2,8 @@
 
 from django.test import SimpleTestCase
 
-from toto.mana.colours import (COLOUR_OF, NOT_MANA, PRICES, REGEN_DEFAULTS,
-                               ROLES, TICKER)
+from toto.mana.colours import (COLOUR_OF, HUE, NOT_MANA, PRICES,
+                               REGEN_DEFAULTS, ROLES, TICKER)
 
 
 class MapTests(SimpleTestCase):
@@ -39,3 +39,42 @@ class MapTests(SimpleTestCase):
         self.assertEqual(set(TICKER), set(ROLES))
         self.assertEqual(set(REGEN_DEFAULTS), set(ROLES))
         self.assertEqual(len(set(TICKER.values())), len(ROLES))
+
+
+#: Where each pool's colour is written out for Tailwind, per template.
+_SECURITY_TEMPLATES = (
+    "mana/plugins/_chip.html",
+    "mana/partials/_bar.html",
+    "mana/colour.html",
+    "quota/partials/_price_hint.html",
+)
+
+
+class HueTests(SimpleTestCase):
+    def test_security_reads_cyan_and_keeps_its_ticker(self):
+        """The rendering moved to cyan (2026-09-25); the ledger unit did not."""
+        self.assertEqual(HUE["security"], "cyan")
+        self.assertEqual(TICKER["security"], "BLUE")
+
+    def test_the_security_branch_uses_its_own_token(self):
+        """Never the theme's accent — that is whatever hue a theme picked."""
+        from django.template.loader import get_template
+
+        for name in _SECURITY_TEMPLATES:
+            with self.subTest(template=name):
+                source = get_template(name).template.source
+                self.assertIn("security-", source)
+                for line in source.splitlines():
+                    if "security" in line and "accent-" in line:
+                        self.fail(f"{name}: security branch names the accent "
+                                  f"token: {line.strip()[:120]}")
+
+    def test_no_pool_is_yellow(self):
+        """No yellow mana: the caution token belongs to warnings, not pools."""
+        from django.template.loader import get_template
+
+        for name in _SECURITY_TEMPLATES:
+            with self.subTest(template=name):
+                source = get_template(name).template.source
+                self.assertNotIn("caution-", source)
+                self.assertNotIn("amber-", source)

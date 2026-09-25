@@ -16,7 +16,7 @@ build-backend = "setuptools.build_meta"
 # root. A PEP 420 host portion belongs to exactly one host, so the split forced
 # the promotion.
 name = "toto-ambrosia"
-version = "1.50"
+version = "1.51"
 description = "toto workspaces: the shared base under the language labs"
 readme = "README.md"
 license = { text = "MIT" }
@@ -30,7 +30,7 @@ requires-python = ">=3.10"
 # do import anastasia and dracena at module scope, which is why they are named
 # by the gate of the host that installs those, not run from here.
 dependencies = [
-    "toto-base==1.50",
+    "toto-base==1.51",
 ]
 
 [tool.setuptools.packages.find]

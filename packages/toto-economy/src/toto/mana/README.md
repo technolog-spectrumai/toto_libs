@@ -1,6 +1,6 @@
 # toto.mana — three pools over the economy
 
-A member sees **security** (accent), **compute** (`warn`, red) and **storage**
+A member sees **security** (`security`, cyan), **compute** (`warn`, red) and **storage**
 (`success`, green) mana: pools that drop when they act, refill every hour up to
 a cap, and — for security — rise when they encrypt. Staff keep the full
 economy. The doctrine, and how this fits it, is `/economy.md#mana`; the

@@ -11,12 +11,12 @@
   <a href="{{ mana_url }}" id="mana-chip" data-testid="mana-chip" :data-band="band()"
      class="flex items-center gap-1.5 rounded-lg px-1.5 py-1 transition hover:opacity-80"
      :aria-label="aria()" :title="aria()">
-    <i class="fa-solid fa-droplet hidden text-xs sm:inline" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" aria-hidden="true"></i>
+    <i class="fa-solid fa-droplet hidden text-xs sm:inline" :class="darkMode ? 'text-security-dark' : 'text-security-light'" aria-hidden="true"></i>
     <span class="flex w-10 flex-col gap-0.5 sm:w-16 lg:w-24">
       <span role="meter" aria-valuemin="0" :aria-valuemax="s.security ? s.security.max : 0" :aria-valuenow="s.security ? s.security.amount : 0" aria-label="{% trans 'Security mana' %}"
             :class="darkMode ? 'bg-white/10' : 'bg-black/10'" class="block h-1 w-full overflow-hidden rounded-full">
         <span class="block h-full rounded-full transition-[width] duration-500" :style="'width:' + (s.security ? s.security.pct : 0) + '%'"
-              :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"></span></span>
+              :class="darkMode ? 'bg-security-dark' : 'bg-security-light'"></span></span>
       <span role="meter" aria-valuemin="0" :aria-valuemax="s.compute ? s.compute.max : 0" :aria-valuenow="s.compute ? s.compute.amount : 0" aria-label="{% trans 'Compute mana' %}"
             :class="darkMode ? 'bg-white/10' : 'bg-black/10'" class="block h-1 w-full overflow-hidden rounded-full">
         <span class="block h-full rounded-full transition-[width] duration-500" :style="'width:' + (s.compute ? s.compute.pct : 0) + '%'"

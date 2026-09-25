@@ -29,6 +29,19 @@ class MintTests(TestCase):
         platform()
         bootstrap_economy()
 
+    def test_a_stale_hue_is_repaired_on_the_next_ingress(self):
+        """Security went blue -> cyan; a row minted before that follows."""
+        from toto.mana.bootstrap import ensure_mana_assets
+        from toto.mana.colours import HUE
+
+        asset = Asset.objects.get(unit_name="BLUE")
+        Asset.objects.filter(pk=asset.pk).update(
+            metadata={**asset.metadata, "hue": "blue"})
+        ensure_mana_assets()
+        asset.refresh_from_db()
+        self.assertEqual(asset.metadata["hue"], HUE["security"])
+        self.assertEqual(asset.metadata["family"], "toto_mana")
+
     def test_three_colours_are_minted_into_the_reserve(self):
         for unit in ("BLUE", "RED", "GREEN"):
             with self.subTest(unit=unit):

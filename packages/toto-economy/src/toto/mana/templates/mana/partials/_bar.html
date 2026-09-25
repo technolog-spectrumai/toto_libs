@@ -4,7 +4,7 @@
    in the browser and only generates what it can read in the page.{% endcomment %}
 <div class="flex items-center justify-between gap-2">
   <span class="flex items-center gap-2 font-semibold {% if big %}text-lg{% else %}text-sm{% endif %}">
-    {% if b.role == "security" %}<i class="{{ b.icon }}" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" aria-hidden="true"></i>
+    {% if b.role == "security" %}<i class="{{ b.icon }}" :class="darkMode ? 'text-security-dark' : 'text-security-light'" aria-hidden="true"></i>
     {% elif b.role == "compute" %}<i class="{{ b.icon }}" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" aria-hidden="true"></i>
     {% else %}<i class="{{ b.icon }}" :class="darkMode ? 'text-success-dark' : 'text-success-light'" aria-hidden="true"></i>{% endif %}
     {% blocktrans with name=b.label %}{{ name }} mana{% endblocktrans %}
@@ -20,7 +20,7 @@
      :class="darkMode ? 'bg-white/10' : 'bg-black/10'"
      class="mt-1.5 {% if big %}h-3{% else %}h-2{% endif %} w-full overflow-hidden rounded-full">
   <div style="width: {{ b.pct }}%" class="h-full rounded-full transition-[width] duration-500"
-       {% if b.role == "security" %}:class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+       {% if b.role == "security" %}:class="darkMode ? 'bg-security-dark' : 'bg-security-light'"
        {% elif b.role == "compute" %}:class="darkMode ? 'bg-warn-dark' : 'bg-warn-light'"
        {% else %}:class="darkMode ? 'bg-success-dark' : 'bg-success-light'"{% endif %}></div>
 </div>

@@ -2,7 +2,7 @@
 
 Three colours, one per family of cost a member can reason about:
 
-* **security** (the theme's accent) — screening, and plaintext left lying
+* **security** (``security``, cyan) — screening, and plaintext left lying
   about. Encrypting a file earns it back.
 * **compute** (``warn``, red) — runs, renders, sends, tokens, time holds.
 * **storage** (``success``, green) — bytes in, bytes out, bytes held.
@@ -24,7 +24,9 @@ from decimal import Decimal
 ROLES = ("security", "compute", "storage")
 
 #: How each pool reads, independent of the theme's actual hex values.
-HUE = {"security": "blue", "compute": "red", "storage": "green"}
+#: The ticker stays BLUE: it is the ledger unit and the mint reference, and
+#: renaming it would not be backward compatible. Only the rendering is cyan.
+HUE = {"security": "cyan", "compute": "red", "storage": "green"}
 
 #: The asset each pool is denominated in, created by ``toto.mana.bootstrap``.
 TICKER = {"security": "BLUE", "compute": "RED", "storage": "GREEN"}

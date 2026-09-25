@@ -10,7 +10,7 @@ the two hosts that never bill. {% endcomment %}
          is written out because tailwind reads the page, not the Python.{% endcomment %}
         <span class="inline-flex items-center gap-0.5 whitespace-nowrap font-bold tabular-nums" data-mana-role="{{ quote.role }}"
               title="{{ quote.label }} — {% if quote.role == 'security' %}{% trans 'security mana' %}{% elif quote.role == 'compute' %}{% trans 'compute mana' %}{% else %}{% trans 'storage mana' %}{% endif %}"
-              {% if quote.role == "security" %}:class="darkMode ? 'text-accent-dark' : 'text-accent-light'"{% elif quote.role == "compute" %}:class="darkMode ? 'text-warn-dark' : 'text-warn-light'"{% else %}:class="darkMode ? 'text-success-dark' : 'text-success-light'"{% endif %}>
+              {% if quote.role == "security" %}:class="darkMode ? 'text-security-dark' : 'text-security-light'"{% elif quote.role == "compute" %}:class="darkMode ? 'text-warn-dark' : 'text-warn-light'"{% else %}:class="darkMode ? 'text-success-dark' : 'text-success-light'"{% endif %}>
           <i class="fa-solid fa-droplet" aria-hidden="true"></i>−{{ quote.price }}{% if quote.per %}<span class="font-normal opacity-70">/{{ quote.per }}</span>{% endif %}</span>
       {% else %}
         <i class="fa-solid fa-coins" aria-hidden="true"></i>

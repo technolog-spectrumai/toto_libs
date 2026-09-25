@@ -53,7 +53,7 @@
         {% if chart %}
         <svg viewBox="0 0 300 64" class="h-20 w-full" role="img" aria-label="{% trans 'Pool level over the last 7 days' %}">
           <polyline points="{{ chart }}" fill="none" stroke-width="2" stroke-linejoin="round"
-            {% if b.role == "security" %}:class="darkMode ? 'stroke-accent-dark' : 'stroke-accent-light'"{% elif b.role == "compute" %}:class="darkMode ? 'stroke-warn-dark' : 'stroke-warn-light'"{% else %}:class="darkMode ? 'stroke-success-dark' : 'stroke-success-light'"{% endif %}/>
+            {% if b.role == "security" %}:class="darkMode ? 'stroke-security-dark' : 'stroke-security-light'"{% elif b.role == "compute" %}:class="darkMode ? 'stroke-warn-dark' : 'stroke-warn-light'"{% else %}:class="darkMode ? 'stroke-success-dark' : 'stroke-success-light'"{% endif %}/>
         </svg>
         <p class="text-xs opacity-60">{% blocktrans with low=chart_low|floatformat:"-1" %}Lowest in these 7 days: {{ low }}.{% endblocktrans %}</p>
         {% endif %}

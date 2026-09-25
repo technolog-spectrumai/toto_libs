@@ -103,6 +103,13 @@ def ensure_mana_assets(*, reporter=None) -> dict:
     for spec in MANA_ASSETS:
         asset = Asset.objects.filter(unit_name=spec.unit_name).first()
         if asset is not None:
+            # The hue is how the row reads, not what it is: repair it when the
+            # colour map moved (security went blue -> cyan on 2026-09-25).
+            hue = spec.metadata["hue"]
+            if (asset.metadata or {}).get("hue") != hue:
+                asset.metadata = {**(asset.metadata or {}), "hue": hue}
+                asset.save(update_fields=["metadata", "updated_at"])
+                _say(reporter, f"  ~ asset {spec.unit_name} hue={hue}")
             present[spec.role] = asset
             continue
         if LedgerTransaction.objects.filter(reference=spec.reference).exists():

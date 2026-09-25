@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "toto-business"
-version = "1.50"
+version = "1.51"
 description = "toto business center: companies, share register, voting, decision ledger"
 readme = "README.md"
 license = { text = "MIT" }
@@ -16,7 +16,7 @@ requires-python = ">=3.10"
 # ForeignKey("people.Person") strings in company/models.py, and
 # company/migrations/0001 depending on vault 0022 + people 0004.
 dependencies = [
-    "toto-base==1.50",
+    "toto-base==1.51",
 ]
 
 [tool.setuptools.packages.find]

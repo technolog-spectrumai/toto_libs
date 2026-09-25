@@ -15,7 +15,7 @@ build-backend = "setuptools.build_meta"
 # zenobia runs one, and it stays a host-owned portion — its migration depends on
 # the app label 'assets', not on which package ships it.
 name = "toto-economy"
-version = "1.50"
+version = "1.51"
 description = "toto economy: double-entry ledger (assets) and metered billing (tariffs)"
 readme = "README.md"
 license = { text = "MIT" }
@@ -23,7 +23,7 @@ requires-python = ">=3.10"
 # Versions are lockstep across the whole toto suite and are rewritten only by
 # scripts/release.py — never edit them by hand.
 dependencies = [
-    "toto-base==1.50",
+    "toto-base==1.51",
 ]
 
 [tool.setuptools.packages.find]
