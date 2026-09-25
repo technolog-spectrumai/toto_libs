@@ -53,6 +53,7 @@ plans:
       - editor
       - kanban
       - locations
+      - places
 
   - key: professional
     name: Professional
@@ -98,6 +99,7 @@ plans:
       - editor
       - kanban
       - locations
+      - places
       - forum
       - bourse
       - aralia
