@@ -65,6 +65,12 @@ class Address(DomainEntity):
         blank=True,
         help_text="Free-text note about this address.",
     )
+    #: Who created it (2026-09-25). Writes to metadata and notes are the
+    #: creator's or staff's; a row from before this column is staff's alone.
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="+",
+    )
 
     def save(self, *args, **kwargs):
         # Keep geometry and the lat/lon floats in sync on a GIS build. Geometry
@@ -199,6 +205,10 @@ class Route(DomainEntity):
     notes = models.TextField(
         blank=True,
         help_text="Free-text notes about this route.",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="+",
     )
 
     def __str__(self):

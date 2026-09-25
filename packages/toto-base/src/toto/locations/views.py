@@ -9,6 +9,7 @@ from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -114,6 +115,12 @@ def _detail_fields(kind, obj):
             ("End address", str(obj.end_address) if obj.end_address else None),
         ]
     return []
+
+
+def _may_write(user, obj):
+    from .access import may_write
+
+    return may_write(user, obj)
 
 
 def _metadata_context(kind, obj):
@@ -348,10 +355,11 @@ def locations_all(request):
     from toto.locations.plugins.sidebar_plugins import LocationSidebarPlugin
     from toto.locations.plugins.context_plugins import LocationContextPlugin
 
-    from toto.vault.models import VaultFile
+    # The GeoJSON files the viewer may read — never every json file on the
+    # platform (until 2026-09-25 this listed every member's file titles).
+    from toto.vault.filetree import accessible_files
     vault_geojson_files = list(
-        VaultFile.objects
-        .filter(file_type="json")
+        accessible_files(request.user, file_types=("json",))
         .select_related("bucket")
         .order_by("-uploaded_at")[:300]
     )
@@ -705,7 +713,9 @@ def address_create(request):
         form = AddressCreateForm(request.POST)
 
         if form.is_valid():
-            address = form.save()
+            address = form.save(commit=False)
+            address.created_by = request.user
+            address.save()
             messages.success(request, _("Address saved."))
             return redirect("locations:address_detail", pk=address.pk)
 
@@ -822,6 +832,7 @@ def route_save(request):
         geometry=route_geometry,
         start_address=start_address,
         end_address=end_address,
+        created_by=request.user,
     )
 
     messages.success(request, f"Route '{route.name}' saved.")
@@ -849,7 +860,13 @@ def location_search_api(request):
 def api_import_layer(request):
     from collections import defaultdict
     from django.contrib.gis.geos import GEOSGeometry
+    from .access import may_import_layer
     from .models import MapLayerPolygon
+
+    # A layer is shared: every member sees it on the map. Importing one is a
+    # staff act (2026-09-25).
+    if not may_import_layer(request.user):
+        return JsonResponse({"error": "Only staff may import map layers."}, status=403)
 
     uploaded = request.FILES.get("file")
     vault_file_id = request.POST.get("vault_file_id", "").strip()
@@ -873,8 +890,12 @@ def api_import_layer(request):
                     return JsonResponse({"error": "Wrong password or file is not encrypted."}, status=400)
             raw = raw_bytes.decode("utf-8")
         else:
+            from toto.vault.access import may_read
             from toto.vault.models import VaultFile
             vf = VaultFile.objects.get(pk=vault_file_id)
+            # The pk arrives from the browser: the vault decides who may read.
+            if not may_read(request.user, vf):
+                raise VaultFile.DoesNotExist
             if vf.is_encrypted:
                 password = request.POST.get("password", "").strip()
                 if not password:
@@ -1006,6 +1027,7 @@ def location_detail(request, kind, pk):
         "note_field": NOTE_FIELDS.get(kind),
         "note_value": getattr(obj, NOTE_FIELDS[kind], "") if kind in NOTE_FIELDS else "",
         "note_save_url": reverse("locations:note_save", args=[kind, pk]) if kind in NOTE_FIELDS else "",
+        "can_edit": _may_write(request.user, obj),
         **_metadata_context(kind, obj),
     }
 
@@ -1025,6 +1047,12 @@ def metadata_save(request, kind, pk):
         raise Http404(f"Unknown location kind '{kind}'.")
 
     obj = get_object_or_404(model, pk=pk)
+    from .access import may_write
+
+    if not may_write(request.user, obj):
+        return JsonResponse(
+            {"status": "error", "error": "Only its creator or staff may change this."},
+            status=403)
     fmt = request.POST.get("format", "json")
 
     try:
@@ -1058,6 +1086,10 @@ def note_save(request, kind, pk):
         raise Http404(f"No note field for kind '{kind}'.")
 
     obj = get_object_or_404(model, pk=pk)
+    from .access import may_write
+
+    if not may_write(request.user, obj):
+        raise PermissionDenied(_("Only its creator or staff may change this note."))
     setattr(obj, field, request.POST.get("note", "").strip())
     obj.save(update_fields=[field])
     messages.success(request, _("Note saved."))

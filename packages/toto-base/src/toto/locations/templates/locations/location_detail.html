@@ -83,6 +83,10 @@
       <h2 class="mb-3 flex items-center gap-2 text-lg font-bold">
         <i class="fa-solid fa-note-sticky opacity-60"></i>{% trans "Note" %}
       </h2>
+      {% if not can_edit %}
+      <p class="whitespace-pre-line text-sm">{{ note_value|default:"—" }}</p>
+      <p class="mt-2 text-xs opacity-60">{% trans "Only its creator or staff may change this." %}</p>
+      {% else %}
       <form method="post" action="{{ note_save_url }}" class="flex flex-col gap-3">
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ request.path }}">
@@ -98,6 +102,7 @@
           </button>
         </div>
       </form>
+      {% endif %}
     </section>
     {% endif %}
 
@@ -120,7 +125,7 @@
                     :class="darkMode ? 'border-accent-1' : 'border-accent-2'">YAML</button>
           </div>
 
-          <button id="meta-save" type="button"
+          <button id="meta-save" type="button" {% if not can_edit %}disabled title="{% trans 'Only its creator or staff may change this.' %}"{% endif %}
             :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
             class="detail-btn">
             <i class="fa-solid fa-floppy-disk"></i>{% trans "Save" %}
