@@ -44,6 +44,9 @@ COLOUR_OF: dict[str, str] = {
     "repo.run": "compute",
     "repo.op": "compute",
     "memo.pdf": "compute",
+    # Back on zenobia 2026-09-25: one render on the pdf worker, billed only
+    # when the PDF is filed.
+    "aralia.render": "compute",
     "memo.save": "compute",
     "cyprian.save": "compute",
     "time.hold": "compute",
@@ -65,7 +68,7 @@ NOT_MANA: frozenset[str] = frozenset({
     "subscription.month",
     "anastasia.execution", "dracena.execute", "texlab.compile",
     "fileservices.run", "manta.job", "ocr.page", "sketch.save",
-    "aralia.render", "primula.save", "polls.pdf",
+    "primula.save", "polls.pdf",
 })
 
 #: Seed prices, in display units of the pool's own asset. A pool holds 100 and
@@ -80,6 +83,7 @@ PRICES: dict[str, Decimal] = {
     "repo.run": Decimal("2"),
     "repo.op": Decimal("0.5"),
     "memo.pdf": Decimal("5"),
+    "aralia.render": Decimal("5"),
     "time.hold": Decimal("1"),
     "jess.send": Decimal("1"),
     "mail.send": Decimal("1"),
