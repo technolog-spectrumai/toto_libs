@@ -93,6 +93,9 @@ _FIXTURE_DIR = None
 _REAL_PLANS_FILE = None
 
 
+_GATE_SETTINGS = None
+
+
 def setUpModule():
     """Point the registry at the fixture ladder for this whole module.
 
@@ -113,12 +116,25 @@ def setUpModule():
     _REAL_PLANS_FILE = getattr(settings, "SUBSCRIPTION_PLANS_FILE", "")
     settings.SUBSCRIPTION_PLANS_FILE = str(path)
     plans.reload()
+    # The gate these modules test is the library's default gate: enforcing,
+    # read-only for reads. A host may run its test suite with enforcement off
+    # or with reads refused (SUBSCRIPTION_ENFORCEMENT / _GATE_READS, 1.51);
+    # that is its policy, not the behaviour under test here.
+    global _GATE_SETTINGS
+    from django.test import override_settings
+
+    _GATE_SETTINGS = override_settings(SUBSCRIPTION_ENFORCEMENT=True,
+                                       SUBSCRIPTION_GATE_READS=False)
+    _GATE_SETTINGS.enable()
 
 
 def tearDownModule():
     import shutil
 
     from django.conf import settings
+
+    if _GATE_SETTINGS is not None:
+        _GATE_SETTINGS.disable()
 
     settings.SUBSCRIPTION_PLANS_FILE = _REAL_PLANS_FILE
     plans.reload()
