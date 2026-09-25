@@ -134,6 +134,13 @@ def beat_schedule(
             "schedule": crontab(hour=forum_cleanup_hour,
                                 minute=forum_cleanup_minute),
         }
+        # Every five minutes: temporary rooms past their expiry. They refuse
+        # reads and sends from the instant they expire (permissions ask the
+        # clock), so this only has to be prompt, not exact.
+        schedule["forum-expire"] = {
+            "task": "toto.forum.tasks.forum_expire",
+            "schedule": crontab(minute="*/5"),
+        }
 
     # 04:50, behind the tax levy and the forum sweep — three long jobs on one
     # queue should not start together. This removes finished runs and the

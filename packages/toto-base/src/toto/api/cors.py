@@ -59,6 +59,9 @@ def _try_bearer_auth(request):
             return
         User = get_user_model()
         request.user = User.objects.get(pk=user_id)
+        # Marked, so a cross-site guard can tell a token from a cookie: a
+        # Bearer header is never sent by a browser on its own.
+        request._toto_bearer_auth = True
     except Exception:
         pass
 
