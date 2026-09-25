@@ -49,6 +49,8 @@ COLOUR_OF: dict[str, str] = {
     "aralia.render": "compute",
     "memo.save": "compute",
     "cyprian.save": "compute",
+    # Sheets are back on zenobia since 2026-09-25: one deliberate save.
+    "primula.save": "compute",
     "time.hold": "compute",
     "jess.send": "compute",
     "mail.send": "compute",
@@ -68,7 +70,7 @@ NOT_MANA: frozenset[str] = frozenset({
     "subscription.month",
     "anastasia.execution", "dracena.execute", "texlab.compile",
     "fileservices.run", "manta.job", "ocr.page", "sketch.save",
-    "primula.save", "polls.pdf",
+    "polls.pdf",
 })
 
 #: Seed prices, in display units of the pool's own asset. A pool holds 100 and
