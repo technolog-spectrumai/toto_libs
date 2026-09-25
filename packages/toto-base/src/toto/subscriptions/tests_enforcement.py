@@ -158,6 +158,30 @@ class GateMatrixTests(MatrixTestCase):
                     self.assertIsNone(response)
                     self.assertIs(request.plan_locked, not entitled)
 
+    def test_reads_are_refused_when_the_host_gates_reads(self):
+        """SUBSCRIPTION_GATE_READS (1.51): outside the plan, not even a GET."""
+        from django.test import override_settings
+
+        with override_settings(SUBSCRIPTION_GATE_READS=True):
+            for code in ("cyprian", "aralia"):
+                for combo, _plan, _state in COMBOS:
+                    entitled = expected(code, combo)
+                    with self.subTest(code=code, combo=combo):
+                        response, _ = self._run(self.users[combo], code, "get")
+                        if entitled:
+                            self.assertIsNone(response)
+                        else:
+                            self.assertEqual(response.status_code, 402)
+
+    def test_enforcement_can_be_switched_off_while_installed(self):
+        """SUBSCRIPTION_ENFORCEMENT=False (1.51): everything passes."""
+        from django.test import override_settings
+
+        with override_settings(SUBSCRIPTION_ENFORCEMENT=False, SUBSCRIPTION_GATE_READS=True):
+            response, request = self._run(self.users["never-subscribed"], "aralia", "post")
+        self.assertIsNone(response)
+        self.assertFalse(request.plan_locked)
+
     def test_free_and_unknown_codes_are_never_touched(self):
         for code in ("vault", "workflows", "no-such-app", "assets"):
             for combo, _plan, _state in COMBOS:

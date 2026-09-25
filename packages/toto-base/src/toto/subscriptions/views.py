@@ -45,7 +45,7 @@ def plans(request):
     # answers "sign in to choose" where the buttons would be. Eligibility
     # scopes what a logged-in person may BUY, not what a stranger may read.
     catalogue = (services.eligible_plans(user) if user.is_authenticated
-                 else plans_registry.all_plans())
+                 else plans_registry.public_plans())
     for plan in catalogue:
         quote = services.quote(user, plan)
         quote["entitlements"] = plan.feature_rows()

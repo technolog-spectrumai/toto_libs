@@ -314,6 +314,13 @@ def plan_for(user):
     """
     if user is None or not getattr(user, "is_authenticated", False):
         return default_plan()
+    if getattr(user, "is_superuser", False):
+        # A ladder with an admin_only plan puts superusers on it (1.51).
+        from .plans import admin_plan
+
+        reserved = admin_plan()
+        if reserved is not None:
+            return reserved
     subscription = Subscription.objects.filter(user=user).first()
     if subscription is None or not subscription.is_paying:
         return default_plan()

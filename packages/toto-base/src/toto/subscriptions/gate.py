@@ -133,7 +133,13 @@ class SubscriptionGateMiddleware:
         return self.get_response(request)
 
     def process_view(self, request, view_func, view_args, view_kwargs):
+        from django.conf import settings
+
         request.plan_locked = False
+        # Installed but switched off: a host may turn enforcement off for a
+        # test run while keeping it obligatory everywhere else (1.51).
+        if not getattr(settings, "SUBSCRIPTION_ENFORCEMENT", True):
+            return None
 
         user = getattr(request, "user", None)
         if user is None or not getattr(user, "is_authenticated", False):
@@ -152,10 +158,12 @@ class SubscriptionGateMiddleware:
         if entitled:
             return None
 
-        if request.method in SAFE_METHODS:
+        if request.method in SAFE_METHODS and not getattr(settings, "SUBSCRIPTION_GATE_READS", False):
             # Visible, and inert. The template can say so; nothing here does.
             request.plan_locked = True
             return None
+        # SUBSCRIPTION_GATE_READS (1.51): an app outside the plan is not opened
+        # at all — for a host whose plans sell access, not only writing.
 
         return self.refuse(request, code)
 

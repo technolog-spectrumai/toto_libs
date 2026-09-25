@@ -46,7 +46,7 @@ KEY_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 
 _ALLOWED_TOP = {"version", "plans"}
 _ALLOWED_PLAN = {"key", "name", "description", "units", "features",
-                 "default", "order"}
+                 "default", "order", "admin_only", "all_features"}
 _SCHEMA_VERSION = 1
 
 
@@ -73,9 +73,15 @@ class Plan:
     features: tuple[str, ...] = ()
     is_default: bool = False
     order: int = 100
+    #: Only superusers see it, may hold it, and are put on it (1.51). Left out
+    #: of every plan listing and the subscribe door for anyone else — refused
+    #: on the server, not merely hidden.
+    admin_only: bool = False
+    #: Grants every feature, present and future, without listing them (1.51).
+    all_features: bool = False
 
     def grants(self, feature_key: str) -> bool:
-        return feature_key in self.features
+        return self.all_features or feature_key in self.features
 
     def feature_rows(self) -> list:
         """The paid features this HOST actually serves, in card order.
@@ -87,7 +93,7 @@ class Plan:
 
         listed = set(self.features)
         return [e for e in registry.installed()
-                if e.feature_key in listed and not e.free]
+                if (self.all_features or e.feature_key in listed) and not e.free]
 
 
 _REGISTRY: dict[str, Plan] = {}
@@ -159,8 +165,11 @@ def _problems(raw: dict, path: Path) -> list[str]:
         for numeric in ("units", "order"):
             if numeric in entry and not isinstance(entry[numeric], int):
                 found.append(f"{where}: {numeric} must be a whole number")
-        if "default" in entry and not isinstance(entry["default"], bool):
-            found.append(f"{where}: default must be true or false")
+        for flag in ("default", "admin_only", "all_features"):
+            if flag in entry and not isinstance(entry[flag], bool):
+                found.append(f"{where}: {flag} must be true or false")
+        if entry.get("default") and entry.get("admin_only"):
+            found.append(f"{where}: the default plan cannot be admin_only")
         if entry.get("default"):
             defaults.append(str(key))
             if int(entry.get("units", 0) or 0) > 0:
@@ -210,6 +219,8 @@ def _build(raw: dict) -> dict[str, Plan]:
             features=tuple(entry.get("features", []) or ()),
             is_default=bool(entry.get("default", False)),
             order=int(entry.get("order", 100) or 100),
+            admin_only=bool(entry.get("admin_only", False)),
+            all_features=bool(entry.get("all_features", False)),
         )
         plans[plan.key] = plan
     return plans
@@ -264,6 +275,16 @@ def get(key: str) -> Plan | None:
 def all_plans() -> tuple[Plan, ...]:
     return tuple(sorted(_ensure().values(),
                         key=lambda p: (p.order, p.units, p.name)))
+
+
+def public_plans() -> tuple[Plan, ...]:
+    """Every plan anybody who is not a superuser may be shown."""
+    return tuple(p for p in all_plans() if not p.admin_only)
+
+
+def admin_plan() -> Plan | None:
+    """The plan superusers are put on, or None when the ladder has none."""
+    return next((p for p in all_plans() if p.admin_only), None)
 
 
 def keys() -> frozenset[str]:

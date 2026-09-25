@@ -15,7 +15,7 @@ import tempfile
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
-from django.test import SimpleTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from toto.subscriptions import plans
 
@@ -351,3 +351,67 @@ class TheFreeTierIsWhatItClaimsTests(SimpleTestCase):
                          if not e.free and e.feature_key not in granted)
         self.assertEqual(orphans, [],
                          f"{orphans} are sold by no plan and so reach nobody")
+
+
+class AdminOnlyAndAllFeaturesTests(TestCase):
+    """1.51: a Superuser tier — admin_only + all_features."""
+
+    LADDER = """version: 1
+plans:
+  - key: free
+    name: Free
+    default: true
+  - key: standard
+    name: Standard
+    features: [editor]
+  - key: superuser
+    name: Superuser
+    admin_only: true
+    all_features: true
+"""
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+
+        from django.test import override_settings
+
+        from . import plans
+
+        folder = Path(tempfile.mkdtemp())
+        (folder / "plans.yaml").write_text(self.LADDER)
+        self.override = override_settings(SUBSCRIPTION_PLANS_FILE=str(folder / "plans.yaml"))
+        self.override.enable()
+        plans.reload()
+        self.addCleanup(plans.reload)
+        self.addCleanup(self.override.disable)
+
+    def test_the_admin_plan_grants_everything_and_hides_from_everyone_else(self):
+        from django.contrib.auth import get_user_model
+
+        from . import plans, services
+        from .models import plan_for
+
+        User = get_user_model()
+        admin = User.objects.create_superuser("root", password="x")
+        staff = User.objects.create_user("st", password="x", is_staff=True)
+        member = User.objects.create_user("m", password="x")
+        top = plans.plan("superuser")
+        self.assertTrue(top.grants("anything-at-all"))
+        self.assertEqual([p.key for p in plans.public_plans()], ["free", "standard"])
+        self.assertEqual(plan_for(admin).key, "superuser")
+        self.assertEqual(plan_for(member).key, "free")
+        self.assertFalse(services.is_eligible(staff, "superuser"))
+        self.assertFalse(services.is_eligible(member, "superuser"))
+        self.assertTrue(services.is_eligible(admin, "superuser"))
+        self.assertNotIn("superuser", [p.key for p in services.eligible_plans(staff)])
+
+    def test_the_default_plan_cannot_be_admin_only(self):
+        import tempfile
+        from pathlib import Path
+
+        from . import plans
+
+        path = Path(tempfile.mkdtemp()) / "bad.yaml"
+        path.write_text("version: 1\nplans:\n  - key: free\n    name: Free\n    default: true\n    admin_only: true\n")
+        self.assertTrue(any("admin_only" in p for p in plans.validate(path)))

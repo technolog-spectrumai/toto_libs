@@ -39,6 +39,8 @@ plans:
     units: 200                # signed quantity per month. Not money.
     order: 20                 # card order, low first. Default 100.
     default: false            # exactly one plan in the file sets true
+    admin_only: false         # 1.51: only superusers see, hold or are put on it
+    all_features: false       # 1.51: grants every feature without listing them
     features:                 # registered, non-free feature keys
       - editor
       - kanban
@@ -187,3 +189,25 @@ audiences are destroyed; the journals in `toto.quota` and the balances in
 `toto.assets` are untouched. After migrating, run
 `manage.py ingress_subscriptions` to offer the default plan to every community,
 and re-create the paid offers.
+
+
+## Admin-only and all-features plans (1.51)
+
+`admin_only: true` makes a plan that only superusers can see, subscribe to or
+hold — refused on the server (`services.is_eligible`), left out of every
+listing (`plans.public_plans()` for visitors and staff), and **the plan every
+superuser resolves to** (`plan_for`). It cannot be the default plan.
+
+`all_features: true` grants every feature, present and future, without
+listing them. Together they make a "Superuser" tier. A ladder whose only
+all-features plan is admin_only still gets `subscriptions.W001` for any paid
+feature no buyable plan lists.
+
+## Enforcement switches (1.51)
+
+`SubscriptionGateMiddleware` reads two settings at request time:
+
+| Setting | Default | Effect |
+|---|---|---|
+| `SUBSCRIPTION_ENFORCEMENT` | `True` | `False` lets every request through while the middleware stays installed — for a host that makes enforcement obligatory in deployments but runs its app test suites without it. |
+| `SUBSCRIPTION_GATE_READS` | `False` | `True` refuses safe methods too: an app outside the plan is not opened at all (402, the locked page), instead of read-only. |

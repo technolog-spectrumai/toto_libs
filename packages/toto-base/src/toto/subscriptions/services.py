@@ -182,6 +182,9 @@ def is_eligible(user, plan_key: str) -> bool:
     plan = plans.get(plan_key)
     if plan is None:
         return False
+    if plan.admin_only:
+        # Superusers only — staff are not admins (1.51).
+        return bool(getattr(user, "is_superuser", False))
     if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
         return True
     if not getattr(user, "is_authenticated", False):
@@ -200,8 +203,10 @@ def eligible_plans(user) -> tuple:
     """
     from . import plans
 
-    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+    if getattr(user, "is_superuser", False):
         return plans.all_plans()
+    if getattr(user, "is_staff", False):
+        return plans.public_plans()
     if not getattr(user, "is_authenticated", False):
         return ()
     offered = _offered_keys(user)

@@ -35,9 +35,13 @@ def check_subscription_plans(app_configs, **kwargs):
 
     findings = []
     granted = {key for plan in plans.all_plans() for key in plan.features}
+    # An all_features plan grants everything — but one only superusers can
+    # hold (admin_only) leaves a feature nobody else can buy, which is still
+    # worth the warning.
+    sold_whole = any(p.all_features and not p.admin_only for p in plans.all_plans())
 
     for entitlement in registry.all():
-        if entitlement.free or entitlement.feature_key in granted:
+        if entitlement.free or entitlement.feature_key in granted or sold_whole:
             continue
         findings.append(Warning(
             f"{entitlement.feature_key!r} is declared paid but no plan grants "
