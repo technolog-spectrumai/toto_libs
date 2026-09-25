@@ -4,9 +4,14 @@ from toto.gervazy.models import UserStrongbox
 
 
 class Command(IngressCommand):
-    help = "Seed Gervazy app with a demo UserStrongbox"
+    help = "Seed Gervazy app with a demo UserStrongbox (full mode only)"
 
     def process(self):
+        # Nothing is compulsory here: a strongbox appears when a person (or the
+        # desktop app) first asks for one. The demo box is demonstration data.
+        if not self.full:
+            self.stdout.write("Gervazy: nothing to seed outside full mode.")
+            return
         username = "admin"
         try:
             user = User.objects.get(username=username)

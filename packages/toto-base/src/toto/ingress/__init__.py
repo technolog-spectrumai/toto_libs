@@ -2,12 +2,25 @@ import json
 import os
 
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from toto.conf import data_dir
+from toto.features import (INGRESS_FULL, INGRESS_MODES, INGRESS_NONE,
+                           INGRESS_REALISTIC, ingress_mode)
 
 
 class IngressCommand(BaseCommand):
+    """Base of every ``ingress_<app>`` command.
+
+    Three modes since 2026-09-25 (``toto.features.INGRESS_MODES``):
+    ``none`` seeds nothing and returns before the economy bootstrap;
+    ``realistic`` — the default — seeds the compulsory rows a working platform
+    needs, which is what every command's non-``--full`` branch always was;
+    ``full`` adds the comprehensive demonstration data. ``--full`` is kept as
+    the spelling of ``--mode full`` and ``self.full`` stays the alias every
+    command reads, so a seeder needs no change to keep working — it only needs
+    to keep its demo rows under ``if self.full:``.
+    """
     help = "Base command that optionally accepts a JSON string"
 
     DATA_ROOT = str(data_dir(os.path.join(settings.BASE_DIR, "../..", "data")))
@@ -26,14 +39,22 @@ class IngressCommand(BaseCommand):
 
     def __init__(self):
         super().__init__()
+        self.mode = INGRESS_REALISTIC
         self.full = False
         self.rich = False
 
     def add_arguments(self, parser):
         parser.add_argument(
+            "--mode",
+            choices=INGRESS_MODES,
+            default=None,
+            help="none: seed nothing; realistic (default): the compulsory rows a "
+                 "working platform needs; full: the comprehensive demonstration data",
+        )
+        parser.add_argument(
             "--full",
             action="store_true",
-            help="If set, run full data fill; otherwise, only process indispensable data",
+            help="The same as --mode full, kept for older callers",
         )
         # Rich vs. thin ingress. Default comes from settings.RAVIOLI_RICH_INGRESS;
         # --rich / --thin force it for a single run.
@@ -51,8 +72,29 @@ class IngressCommand(BaseCommand):
             help="Force thin ingress (skip heavy Neo4j seeding — fast).",
         )
 
+    @staticmethod
+    def resolve_mode(options) -> str:
+        """The mode this run seeds: ``--mode``, else ``--full``, else settings."""
+        mode = options.get("mode")
+        full = options.get("full", False)
+        if mode is None:
+            if full:
+                return INGRESS_FULL
+            configured = getattr(settings, "INGRESS_MODE", None)
+            if configured in INGRESS_MODES:
+                return configured
+            return ingress_mode(lambda name: getattr(settings, name, None))
+        if full and mode != INGRESS_FULL:
+            raise CommandError(f"--full and --mode {mode} disagree; pass one of them")
+        return mode
+
     def handle(self, *args, **options):
-        self.full = options.get("full", False)
+        self.mode = self.resolve_mode(options)
+        self.full = self.mode == INGRESS_FULL
+        if self.mode == INGRESS_NONE:
+            self.stdout.write(f"{self.__class__.__module__.rsplit('.', 1)[-1]}: "
+                              f"skipped (ingress mode none)")
+            return
         rich_opt = options.get("rich", None)
         self.rich = (
             getattr(settings, "RAVIOLI_RICH_INGRESS", False)

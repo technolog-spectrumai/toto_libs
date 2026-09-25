@@ -23,6 +23,60 @@ class FeatureConfigError(ValueError):
     """A requested BUILD_* combination is contradictory (raised at build/startup)."""
 
 
+# ---------------------------------------------------------------------------
+# Ingress modes (2026-09-25)
+# ---------------------------------------------------------------------------
+#: What the first start seeds. ``none`` seeds nothing beyond what
+#: ``init_platform`` makes (migrations, the admin, the Platform row);
+#: ``realistic`` — the default — seeds only the compulsory rows a working
+#: platform needs; ``full`` adds the comprehensive demonstration data every
+#: ``ingress_*`` command used to put behind ``--full``.
+INGRESS_NONE = "none"
+INGRESS_REALISTIC = "realistic"
+INGRESS_FULL = "full"
+INGRESS_MODES = (INGRESS_NONE, INGRESS_REALISTIC, INGRESS_FULL)
+#: Digits are accepted as spellings of the words, never written by tooling.
+INGRESS_MODE_ALIASES = {"0": INGRESS_NONE, "1": INGRESS_REALISTIC, "2": INGRESS_FULL}
+
+
+class IngressModeError(FeatureConfigError):
+    """``INGRESS_MODE`` names no mode, or disagrees with ``FULL_INGRESS``."""
+
+
+def ingress_mode(get) -> str:
+    """Resolve the ingress mode from ``INGRESS_MODE`` and the older ``FULL_INGRESS``.
+
+    ``INGRESS_MODE`` is canonical. Absent, the boolean decides: ``FULL_INGRESS=1``
+    is ``full`` and anything else is ``realistic`` — exactly what those values
+    meant before modes existed, so an old config deploys unchanged. Both present
+    and disagreeing is refused rather than silently resolved: a config that says
+    one thing while the deployment does another is the failure this prevents.
+    ``FULL_INGRESS=0`` beside ``none`` is not a disagreement (neither is full).
+    """
+    raw = get("INGRESS_MODE")
+    legacy = get("FULL_INGRESS")
+    # A host settings module holds the derived bool; a config holds "0"/"1".
+    legacy_full = legacy is True or (legacy is not None and str(legacy).strip() == "1")
+    if raw is None or str(raw).strip() == "":
+        return INGRESS_FULL if legacy_full else INGRESS_REALISTIC
+    word = str(raw).strip().lower()
+    mode = INGRESS_MODE_ALIASES.get(word, word)
+    if mode not in INGRESS_MODES:
+        raise IngressModeError(
+            f"INGRESS_MODE={raw!r} names no mode; use one of "
+            f"{', '.join(INGRESS_MODES)}")
+    if legacy is not None and str(legacy).strip() != "":
+        if legacy_full and mode != INGRESS_FULL:
+            raise IngressModeError(
+                f"INGRESS_MODE={mode!r} and FULL_INGRESS={legacy!r} disagree; "
+                f"keep one of them")
+        if not legacy_full and mode == INGRESS_FULL:
+            raise IngressModeError(
+                f"INGRESS_MODE={mode!r} and FULL_INGRESS={legacy!r} disagree; "
+                f"keep one of them")
+    return mode
+
+
 @dataclass(frozen=True)
 class Features:
     # Realtime-group features (default to the realtime tier).

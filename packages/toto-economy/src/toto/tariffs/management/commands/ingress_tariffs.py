@@ -316,6 +316,7 @@ class Command(IngressCommand):
         mana_codes, pool_assets = _mana_pooled()
 
         priced = 0
+        kept = 0
         for metric_spec in registry.all():
             # The mirror rows exist whether or not the metric is priced, so the
             # billing side keeps a complete catalogue of what could be charged.
@@ -328,13 +329,21 @@ class Command(IngressCommand):
                 # Metered but not priced — free, and deliberately so.
                 self.stdout.write(f"  ·   {metric_spec.code} is metered but free")
                 continue
+            # Seed ONCE. After that the number is staff's: a redeploy that
+            # re-wrote every price would undo a rate-desk edit silently (the
+            # same rule ingress_mana follows for the pool prices).
+            billing_metric = rate_card.billing_metric_for(metric_spec)
+            if TariffItem.objects.filter(tariff=tariff, metric=billing_metric).exists():
+                kept += 1
+                self.stdout.write(f"  ✓   price {metric_spec.code} kept as staff set it")
+                continue
             # One implementation, shared with the staff rate desk: if this ever
             # diverges from what a human typing a number gets, the two screens
             # start disagreeing about what anybody pays.
             rate_card.upsert_price(metric_spec, price)
             priced += 1
             self.stdout.write(
-                f"  +/✓ price {metric_spec.code} = {price} {ticker}/{metric_spec.unit}"
+                f"  +   price {metric_spec.code} = {price} {ticker}/{metric_spec.unit}"
             )
 
         # A price whose metric this host does not meter is simply not seeded.
@@ -360,7 +369,8 @@ class Command(IngressCommand):
 
         if not self.full:
             self.stdout.write(self.style.SUCCESS(
-                f"✅  Rate card seeded: {priced} of {len(registry)} metrics priced in {ticker}."
+                f"✅  Rate card seeded: {priced} priced, {kept} kept, "
+                f"of {len(registry)} metrics, in {ticker}."
             ))
             return
 

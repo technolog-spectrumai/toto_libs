@@ -50,6 +50,16 @@ class Command(IngressCommand):
         else:
             self.stdout.write(self.style.WARNING(f"Kernel already exists: {kernel.name}"))
 
+        # The kernel and its dependencies are what a notebook needs to exist;
+        # the starter notebook, the sample file and the two public-API
+        # connectors are demonstration data and seed only under full.
+        if not self.full:
+            self.stdout.write(self.style.WARNING(
+                "Skipping the starter notebook, connectors and demo "
+                "workflows/runs/reports (ingress mode realistic)."
+            ))
+            return
+
         notebook, nb_created = Notebook.objects.get_or_create(
             slug="getting-started",
             defaults={"title": "Getting Started", "kernel": kernel},
@@ -100,18 +110,10 @@ print("files in notebook-demo/:", files.list("notebook-demo"))
             self.stdout.write(self.style.WARNING(f"Notebook already exists: {notebook.title}"))
 
         self._seed_connectors()
-        # Demo workflows + their sample run history and reports are illustrative
-        # only — they pollute a minimal bring-up. Seed them solely under full
-        # ingress (FULL_INGRESS=1). Functional workflows live in their own apps.
-        if self.full:
-            report_templates = self._seed_report_templates()
-            self._seed_workflows(report_templates)
-            self._seed_runs()
-            self._seed_reports(report_templates)
-        else:
-            self.stdout.write(self.style.WARNING(
-                "Skipping demo workflows/runs/reports (FULL_INGRESS=0)."
-            ))
+        report_templates = self._seed_report_templates()
+        self._seed_workflows(report_templates)
+        self._seed_runs()
+        self._seed_reports(report_templates)
 
     # ------------------------------------------------------------------
     #  Connector seeds
@@ -135,7 +137,7 @@ print("files in notebook-demo/:", files.list("notebook-demo"))
             )
 
     def _seed_api_connector(self):
-        api_connector, created = ApiConnector.objects.update_or_create(
+        api_connector, created = ApiConnector.objects.get_or_create(
             slug="httpbin-demo",
             defaults={
                 "name": "HTTPBin Demo",
@@ -154,7 +156,7 @@ print("files in notebook-demo/:", files.list("notebook-demo"))
         return api_connector
 
     def _seed_weather_api_connector(self):
-        api_connector, created = ApiConnector.objects.update_or_create(
+        api_connector, created = ApiConnector.objects.get_or_create(
             slug="open-meteo-forecast",
             defaults={
                 "name": "Open-Meteo Forecast",
