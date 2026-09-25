@@ -18,7 +18,10 @@ class Command(IngressCommand):
     def process(self):
         self._ensure_signing_key()
         User = get_user_model()
-        users = [
+        # The dev sign-in account is demonstration data, and full mode only:
+        # until 2026-09-25 it was created — and its password RESET to a
+        # published default — on every start of every deployment.
+        users = [] if not self.full else [
             {"username": "sso1", "password": os.environ.get("SSO1_PASSWORD", "sso1")},
         ]
         for spec in users:
