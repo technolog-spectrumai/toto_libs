@@ -92,7 +92,7 @@ class ModelTests(FaucetTestCase):
             faucet=self.make_faucet(), user=self.ada, amount_per_hour=Decimal("1"))
         FaucetPayout.objects.create(member=member, period_label="hourly:2026-08-26T11")
         FaucetPayout.objects.create(member=member, period_label="hourly:2026-08-26T12")
-        self.assertEqual(FaucetPayout.objects.count(), 2)
+        self.assertEqual(FaucetPayout.objects.filter(member__isnull=False).count(), 2)
 
 
 class StaffManagementTests(FaucetTestCase):

@@ -1,0 +1,81 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+{% comment %}One faucet's payouts (2026-09-26): source, amount, recipient, time,
+the run and the transaction behind each. A manual mana faucet carries the
+grant form for whoever may operate the mint.{% endcomment %}
+{% block assets_title %}{{ faucet.name }}{% endblock %}
+{% block tab_faucets %}border-b-2 border-current -mb-px{% endblock %}
+{% block assets_content %}
+<div class="space-y-6">
+  <header>
+    <p class="text-sm"><a class="underline" href="{% url 'assets:faucet_list' %}">{% trans "Faucets" %}</a></p>
+    <h1 class="text-2xl font-bold">{{ faucet.name }}</h1>
+    <p class="mt-1 text-sm opacity-70">{{ faucet.get_source_display }} · {{ faucet.asset.unit_name }}
+      · {% if faucet.community %}{{ faucet.community.name }}{% else %}{% trans "platform-wide" %}{% endif %}
+      · {% if faucet.active %}{% trans "on" %}{% else %}{% trans "switched off" %}{% endif %}</p>
+    {% if faucet.note %}<p class="mt-1 max-w-prose text-sm opacity-75">{{ faucet.note }}</p>{% endif %}
+  </header>
+
+  {% if grant_form %}
+  <form method="post" action="{% url 'assets:faucet_grant' faucet.pk %}" data-testid="faucet-grant-form"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="flex flex-wrap items-end gap-2 rounded-lg border p-4 text-sm">
+    {% csrf_token %}
+    <label><span class="mb-1 block text-xs font-semibold opacity-70">{% trans "Recipient" %}</span>
+      <select name="user" required :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-lg border px-3 py-2 text-sm">
+        {% for u in grant_form.users %}<option value="{{ u.pk }}">{{ u.get_username }}</option>{% endfor %}
+      </select></label>
+    <label><span class="mb-1 block text-xs font-semibold opacity-70">{% trans "Amount" %}</span>
+      <input type="number" name="amount" step="any" min="0" required :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="w-28 rounded-lg border px-3 py-2 text-sm"></label>
+    <label class="grow"><span class="mb-1 block text-xs font-semibold opacity-70">{% trans "Reason (required)" %}</span>
+      <input type="text" name="reason" maxlength="300" required :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="w-full rounded-lg border px-3 py-2 text-sm"></label>
+    <button type="submit" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'" class="rounded-lg px-4 py-2 text-sm font-semibold">{% trans "Grant" %}</button>
+    <p class="w-full text-xs opacity-60">{% trans "Toward the pool's maximum, never past it. Recorded here with your name and the reason." %}</p>
+  </form>
+  {% endif %}
+
+  <section>
+    <h2 class="mb-2 text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Payouts" %}</h2>
+    <table class="w-full text-sm" data-testid="faucet-payouts">
+      <thead class="text-xs uppercase tracking-wide opacity-60"><tr>
+        <th class="py-1 text-left">{% trans "When" %}</th><th class="py-1 text-left">{% trans "Source" %}</th>
+        <th class="py-1 text-left">{% trans "Recipient" %}</th><th class="py-1 text-right">{% trans "Amount" %}</th>
+        <th class="py-1 text-left">{% trans "Period / key" %}</th><th class="py-1 text-left">{% trans "State" %}</th></tr></thead>
+      <tbody>
+        {% for payout in payouts %}
+        <tr class="border-t border-current/10">
+          <td class="py-1 text-xs opacity-70">{{ payout.created_at|date:"Y-m-d H:i" }}</td>
+          <td class="py-1">{{ payout.get_source_display }}{% if payout.granted_by %} <span class="opacity-60">· {{ payout.granted_by.get_username }}</span>{% endif %}</td>
+          <td class="py-1">{{ payout.recipient.get_username|default:"—" }}</td>
+          <td class="py-1 text-right font-mono">{{ payout.amount_base_units }} <span class="opacity-60">{% trans "base units" %}</span></td>
+          <td class="py-1 font-mono text-xs">{{ payout.period_label }}</td>
+          <td class="py-1">{{ payout.get_status_display }}{% if payout.reason %} <span class="opacity-60">— {{ payout.reason }}</span>{% endif %}{% if payout.detail %} <span class="opacity-60">— {{ payout.detail }}</span>{% endif %}
+            {% if payout.transaction_id %} <a class="underline hover:opacity-80" href="{% url 'assets:transaction_detail' payout.transaction_id %}">{% trans "transaction" %}</a>{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="py-3 text-center text-sm opacity-60">{% trans "Nothing paid yet." %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  {% if runs %}
+  <section>
+    <h2 class="mb-2 text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Runs" %}</h2>
+    <table class="w-full text-sm">
+      <thead class="text-xs uppercase tracking-wide opacity-60"><tr>
+        <th class="py-1 text-left">{% trans "Period" %}</th><th class="py-1 text-left">{% trans "Ran" %}</th>
+        <th class="py-1 text-right">{% trans "Paid" %}</th><th class="py-1 text-right">{% trans "Already done" %}</th><th class="py-1 text-right">{% trans "Failed" %}</th></tr></thead>
+      <tbody>
+        {% for run in runs %}
+        <tr class="border-t border-current/10"><td class="py-1 font-mono text-xs">{{ run.period_label }}</td>
+          <td class="py-1 text-xs opacity-70">{{ run.started_at|date:"Y-m-d H:i" }}</td>
+          <td class="py-1 text-right">{{ run.paid }}</td><td class="py-1 text-right opacity-70">{{ run.skipped }}</td>
+          <td class="py-1 text-right">{{ run.failed }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

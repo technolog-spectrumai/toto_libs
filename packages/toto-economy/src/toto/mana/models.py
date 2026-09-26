@@ -98,6 +98,10 @@ class ManaGrant(models.Model):
     transaction = models.ForeignKey("assets.LedgerTransaction", null=True,
                                     blank=True, on_delete=models.SET_NULL,
                                     related_name="mana_grants")
+    #: The visible faucet payout this claim produced (2026-09-26); empty for a
+    #: claim that paid nothing.
+    payout = models.ForeignKey("assets.FaucetPayout", null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name="mana_grants")
     detail = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

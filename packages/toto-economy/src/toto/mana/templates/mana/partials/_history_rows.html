@@ -2,8 +2,8 @@
 <li class="flex items-center justify-between gap-3 border-b border-current/10 py-1.5 text-sm">
   <span class="min-w-0">
     <span class="block truncate">
-      {% if row.kind == "regen" %}{% trans "Refilled" %}{% elif row.kind == "signup" %}{% trans "Opening fill" %}{% elif row.kind == "reward" %}{% trans "Earned" %}{% elif row.kind == "levy" %}{% trans "Daily levy" %}{% elif row.kind == "refund" %}{% trans "Refund" %}{% elif row.kind == "charge" %}{% trans "Spent" %}{% else %}{% trans "Transfer" %}{% endif %}
-      <span class="opacity-60">· {{ row.label }}</span></span>
+      {% if row.kind == "regen" %}{% trans "Refilled" %}{% elif row.kind == "signup" %}{% trans "Opening fill" %}{% elif row.kind == "reward" %}{% trans "Earned" %}{% elif row.kind == "manual" %}{% trans "Granted" %}{% elif row.kind == "levy" %}{% trans "Daily levy" %}{% elif row.kind == "refund" %}{% trans "Refund" %}{% elif row.kind == "charge" %}{% trans "Spent" %}{% else %}{% trans "Transfer" %}{% endif %}
+      <span class="opacity-60">· {{ row.label }}{% if row.faucet %} · {{ row.faucet }}{% endif %}{% if row.reason %} — {{ row.reason }}{% endif %}</span></span>
     <span class="block text-xs opacity-50">{{ row.at|date:"M d, H:i" }}</span>
   </span>
   <span class="shrink-0 font-mono font-bold tabular-nums"

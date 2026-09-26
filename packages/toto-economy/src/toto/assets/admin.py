@@ -64,7 +64,14 @@ class AssetHoldingAdmin(admin.ModelAdmin):
     list_display = ("account", "asset", "balance_base_units", "balance_display", "updated_at")
     list_filter = ("asset",)
     search_fields = ("account__code", "asset__unit_name")
-    readonly_fields = ("created_at", "updated_at", "balance_display")
+    # The balance is the ledger's sum and is not edited here (2026-09-26): a
+    # number typed into this form was an increase nothing recorded. Money
+    # moves through transfers, faucets and the mint, each of which leaves a row.
+    readonly_fields = ("account", "asset", "balance_base_units", "created_at", "updated_at",
+                       "balance_display")
+
+    def has_add_permission(self, request):
+        return False
     raw_id_fields = ("asset", "account")
 
     @staticmethod

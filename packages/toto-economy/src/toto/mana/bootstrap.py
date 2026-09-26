@@ -164,8 +164,11 @@ def ensure_mana(*, reporter=None) -> dict:
     """
     try:
         retire_legacy_mana(reporter=reporter)
-        return ensure_pools(ensure_mana_assets(reporter=reporter),
-                            reporter=reporter)
+        pools = ensure_pools(ensure_mana_assets(reporter=reporter), reporter=reporter)
+        from . import faucets
+
+        faucets.ensure_faucets(pools, reporter=reporter)
+        return pools
     except Exception as exc:                            # noqa: BLE001
         _say(reporter, f"  ⚠ mana bootstrap skipped: {exc}")
         return {}

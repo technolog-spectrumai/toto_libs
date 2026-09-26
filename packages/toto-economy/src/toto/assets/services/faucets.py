@@ -74,17 +74,19 @@ class RunReport:
 
 
 def due_members(faucet=None):
-    """Everybody a run would consider: active members of active faucets.
+    """Everybody a run would consider: active members of active MEMBERS
+    faucets (the other sources pay through their own doors, mana's above all).
 
     A zero rate is included and pays nothing — it is a member who is on the list
     and currently gets nothing, which is a state staff can set on purpose and
     should be able to see a payout history for.
     """
-    from toto.assets.models import FaucetMember
+    from toto.assets.models import Faucet, FaucetMember
 
     members = (FaucetMember.objects
                .filter(active=True, faucet__active=True,
-                       faucet__asset__active=True)
+                       faucet__asset__active=True,
+                       faucet__source=Faucet.Source.MEMBERS)
                .select_related("faucet", "faucet__asset", "user"))
     if faucet is not None:
         members = members.filter(faucet=faucet)
@@ -105,7 +107,7 @@ def run_hour(*, at=None, faucet=None, record=True) -> RunReport:
 
     label = period_label(at)
     report = RunReport(label=label)
-    run = FaucetRun.objects.create(period_label=label) if record else None
+    run = FaucetRun.objects.create(period_label=label, faucet=faucet) if record else None
 
     # try/finally, so the audit row is written even if the loop dies. It used to
     # be written only on the way out, which meant an exception mid-run left a
@@ -152,7 +154,9 @@ def pay_member(member, label: str) -> str:
     try:
         with transaction.atomic():
             payout = FaucetPayout.objects.create(
-                member=member, period_label=label,
+                member=member, faucet=member.faucet, recipient=member.user,
+                source=member.faucet.source, community=member.faucet.community,
+                period_label=label,
                 amount_base_units=to_base_units(amount, asset.decimals),
                 status=FaucetPayoutStatus.PENDING)
     except IntegrityError:
@@ -227,7 +231,7 @@ def _reconcile(member, label: str) -> None:
                                     LedgerTransaction)
 
     payout = FaucetPayout.objects.filter(
-        member=member, period_label=label,
+        faucet=member.faucet, recipient=member.user, period_label=label,
         status=FaucetPayoutStatus.PENDING).first()
     if payout is None:
         return                          # already PAID or FAILED; nothing to fix

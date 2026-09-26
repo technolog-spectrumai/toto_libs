@@ -73,14 +73,14 @@ class OneHourTests(PayoutTestCase):
         self.add(self.bob, "3")
         report = faucets.run_hour()
         self.assertEqual(report.paid, 2)
-        self.assertEqual(FaucetPayout.objects.count(), 2)
+        self.assertEqual(FaucetPayout.objects.filter(member__isnull=False).count(), 2)
 
     def test_every_payout_is_an_ordinary_asset_transaction(self):
         """No faucet-shaped ledger entry — it shows up wherever any transfer
         does, which is what the Assets UI renders."""
         self.add(self.ada, "2")
         faucets.run_hour()
-        payout = FaucetPayout.objects.get()
+        payout = FaucetPayout.objects.get(member__isnull=False)
         self.assertEqual(payout.status, FaucetPayoutStatus.PAID)
         self.assertIsNotNone(payout.transaction_id)
         self.assertEqual(self.paid_transactions().count(), 1)
@@ -90,7 +90,7 @@ class OneHourTests(PayoutTestCase):
         rewrite what Monday says it paid."""
         member = self.add(self.ada, "2")
         faucets.run_hour()
-        payout = FaucetPayout.objects.get()
+        payout = FaucetPayout.objects.get(member__isnull=False)
         self.assertEqual(payout.amount_base_units,
                          2 * 10 ** self.asr.decimals)
 
@@ -110,7 +110,7 @@ class IdempotencyTests(PayoutTestCase):
 
         self.assertEqual((first.paid, first.skipped), (1, 0))
         self.assertEqual((second.paid, second.skipped), (0, 1))
-        self.assertEqual(FaucetPayout.objects.count(), 1)
+        self.assertEqual(FaucetPayout.objects.filter(member__isnull=False).count(), 1)
         self.assertEqual(self.paid_transactions().count(), 1)
 
     def test_a_retry_moves_no_money(self):
@@ -130,7 +130,7 @@ class IdempotencyTests(PayoutTestCase):
         now = timezone.now()
         faucets.run_hour(at=now)
         faucets.run_hour(at=now + timezone.timedelta(hours=1))
-        self.assertEqual(FaucetPayout.objects.count(), 2)
+        self.assertEqual(FaucetPayout.objects.filter(member__isnull=False).count(), 2)
         self.assertEqual(self.paid_transactions().count(), 2)
 
     def test_two_overlapping_workers_pay_once_between_them(self):
@@ -144,7 +144,7 @@ class IdempotencyTests(PayoutTestCase):
         second = faucets.pay_member(member, label)
 
         self.assertEqual({first, second}, {"paid", "skipped"})
-        self.assertEqual(FaucetPayout.objects.count(), 1)
+        self.assertEqual(FaucetPayout.objects.filter(member__isnull=False).count(), 1)
         self.assertEqual(self.paid_transactions().count(), 1)
 
     def test_the_hour_label_is_utc_and_hour_aligned(self):
@@ -163,7 +163,7 @@ class SafetyTests(PayoutTestCase):
         self.faucet.active = False
         self.faucet.save(update_fields=["active"])
         self.assertEqual(faucets.run_hour().paid, 0)
-        self.assertFalse(FaucetPayout.objects.exists())
+        self.assertFalse(FaucetPayout.objects.filter(member__isnull=False).exists())
 
     def test_a_removed_member_is_not_paid(self):
         member = self.add(self.ada, "2")
@@ -183,7 +183,7 @@ class SafetyTests(PayoutTestCase):
         self.add(self.ada, "0")
         report = faucets.run_hour()
         self.assertEqual(report.paid, 1)
-        payout = FaucetPayout.objects.get()
+        payout = FaucetPayout.objects.get(member__isnull=False)
         self.assertEqual(payout.status, FaucetPayoutStatus.PAID)
         self.assertIsNone(payout.transaction_id)
         self.assertEqual(self.paid_transactions().count(), 0)
@@ -222,7 +222,7 @@ class SafetyTests(PayoutTestCase):
                                     amount_per_hour=Decimal("5"))
 
         faucets.run_hour()
-        self.assertIn("reserve", FaucetPayout.objects.get().detail.lower())
+        self.assertIn("reserve", FaucetPayout.objects.get(member__isnull=False).detail.lower())
 
     def test_a_failed_payout_is_not_retried_into_a_double_payment(self):
         """A failed hour stays failed. Re-running claims the hour again and
@@ -242,7 +242,7 @@ class SafetyTests(PayoutTestCase):
         report = faucets.run_hour()
 
         self.assertEqual(report.skipped, 1)
-        self.assertEqual(FaucetPayout.objects.count(), 1)
+        self.assertEqual(FaucetPayout.objects.filter(member__isnull=False).count(), 1)
 
 
 class AuditTests(PayoutTestCase):
@@ -286,7 +286,7 @@ class TaskTests(PayoutTestCase):
         self.add(self.ada, "2")
         result = run_faucet_hour()
         self.assertEqual(result["paid"], 1)
-        self.assertEqual(FaucetPayout.objects.count(), 1)
+        self.assertEqual(FaucetPayout.objects.filter(member__isnull=False).count(), 1)
 
     def test_firing_the_task_twice_pays_once(self):
         """What a beat actually does when it misfires."""
@@ -381,7 +381,7 @@ class CrashRecoveryTests(PayoutTestCase):
         faucets.run_hour()
 
         self.assertEqual(self.paid_transactions().count(), 1)
-        self.assertEqual(FaucetPayout.objects.count(), 1)
+        self.assertEqual(FaucetPayout.objects.filter(member__isnull=False).count(), 1)
 
     def test_the_next_run_reconciles_the_row_from_the_ledger(self):
         """Reading the LEDGER rather than trusting the row — the same rule the
@@ -392,7 +392,7 @@ class CrashRecoveryTests(PayoutTestCase):
 
         faucets.run_hour()
 
-        payout = FaucetPayout.objects.get()
+        payout = FaucetPayout.objects.get(member__isnull=False)
         self.assertEqual(payout.status, FaucetPayoutStatus.PAID)
         self.assertEqual(payout.transaction_id, tx.pk)
         self.assertIn("reconciled", payout.detail)
@@ -407,7 +407,7 @@ class CrashRecoveryTests(PayoutTestCase):
 
         faucets.run_hour()
 
-        payout = FaucetPayout.objects.get()
+        payout = FaucetPayout.objects.get(member__isnull=False)
         self.assertEqual(payout.status, FaucetPayoutStatus.PENDING)
         self.assertIsNone(payout.transaction_id)
         self.assertEqual(self.paid_transactions().count(), 0)
@@ -434,7 +434,7 @@ class CrashRecoveryTests(PayoutTestCase):
 
         faucets.run_hour()
 
-        payout = FaucetPayout.objects.get()
+        payout = FaucetPayout.objects.get(member__isnull=False)
         self.assertEqual(payout.status, FaucetPayoutStatus.FAILED)
         self.assertEqual(payout.detail, "reserve empty")
 

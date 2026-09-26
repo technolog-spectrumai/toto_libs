@@ -162,12 +162,15 @@ def balance_base_units(user, pool, *, lock=False) -> int:
     return holding.balance_base_units if holding else 0
 
 
-def top_up(user, pool, *, key: str, cap=None) -> str:
+def top_up(user, pool, *, key: str, cap=None, reason: str = "", granted_by=None) -> str:
     """Move a member's pool toward its maximum. Never raises.
 
     ``cap`` (display units) bounds this one grant — the hourly regen; ``None``
     fills to the maximum — the opening fill. Returns ``"paid"``, ``"full"``,
     ``"skipped"`` (this key was already claimed) or a reason for the failure.
+    Every paid grant is also a faucet payout (faucets.py): the transfer and
+    the payout are written in one transaction, so the visible record and the
+    ledger cannot disagree.
     """
     from django.db import IntegrityError, transaction
 
@@ -190,7 +193,8 @@ def top_up(user, pool, *, key: str, cap=None) -> str:
         return f"{user}: {exc}"
 
     try:
-        amount = _pay(user, pool, grant, key=key, cap=cap, maximum=maximum)
+        amount = _pay(user, pool, grant, key=key, cap=cap, maximum=maximum,
+                      reason=reason, granted_by=granted_by)
     except Exception as exc:                            # noqa: BLE001
         grant.detail = str(exc)[:255]
         grant.save(update_fields=["detail"])
@@ -199,8 +203,10 @@ def top_up(user, pool, *, key: str, cap=None) -> str:
     return "paid" if amount else "full"
 
 
-def _pay(user, pool, grant, *, key, cap, maximum) -> int:
+def _pay(user, pool, grant, *, key, cap, maximum, reason="", granted_by=None) -> int:
     from django.db import transaction
+
+    from . import faucets
 
     from toto.assets.models import AssetHolding, from_base_units, to_base_units
     from toto.assets.prepaid import get_or_create_prepaid_account
@@ -228,7 +234,9 @@ def _pay(user, pool, grant, *, key, cap, maximum) -> int:
         )
         grant.amount_base_units = want
         grant.transaction = tx
-        grant.save(update_fields=["amount_base_units", "transaction"])
+        grant.payout = faucets.record_payout(pool, user, key=key, amount_base_units=want, tx=tx,
+                                             reason=reason, granted_by=granted_by)
+        grant.save(update_fields=["amount_base_units", "transaction", "payout"])
     return want
 
 
@@ -282,7 +290,12 @@ def regenerate_hour(*, at=None) -> RunReport:
     """
     from django.contrib.auth import get_user_model
 
+    from django.utils import timezone as dj_timezone
+
+    from toto.assets.models import FaucetRun
     from toto.assets.services.faucets import period_label
+
+    from . import faucets
 
     label = period_label(at)
     report = RunReport(label=label)
@@ -290,18 +303,64 @@ def regenerate_hour(*, at=None) -> RunReport:
     for pool in pools().values():
         if not _payable(pool) or not pool.regen_per_hour:
             continue
-        for user in users.iterator():
-            outcome = top_up(user, pool, key=label, cap=pool.regen_per_hour)
-            if outcome == "paid":
-                report.paid += 1
-            elif outcome == "full":
-                report.full += 1
-            elif outcome == "skipped":
-                report.skipped += 1
-            else:
-                report.failed += 1
-                report.failures.append(f"{pool.role}: {outcome}")
+        # One FaucetRun per pool per execution: the hourly faucet's own log,
+        # where a retry reads "0 paid, N already done" (the faucets' rule).
+        run = FaucetRun.objects.create(period_label=label, faucet=faucets.faucet_for(pool, "hourly"))
+        paid = full = skipped = failed = 0
+        failures = []
+        try:
+            for user in users.iterator():
+                outcome = top_up(user, pool, key=label, cap=pool.regen_per_hour)
+                if outcome == "paid":
+                    paid += 1
+                elif outcome == "full":
+                    full += 1
+                elif outcome == "skipped":
+                    skipped += 1
+                else:
+                    failed += 1
+                    failures.append(f"{pool.role}: {outcome}")
+        finally:
+            run.paid, run.skipped, run.failed = paid, skipped + full, failed
+            run.detail = "\n".join(failures)[:20000]
+            run.finished_at = dj_timezone.now()
+            run.save(update_fields=["paid", "skipped", "failed", "detail", "finished_at"])
+        report.paid += paid
+        report.full += full
+        report.skipped += skipped
+        report.failed += failed
+        report.failures.extend(failures)
     return report
+
+
+class GrantRefused(Exception):
+    """A manual grant the rules turned down: no reason, no such pool, not a
+    positive amount, or the pool cannot pay."""
+
+
+def grant_manual(user, pool, amount, *, reason: str, granted_by) -> str:
+    """A grant by hand: toward the pool's maximum, at most ``amount``, with a
+    reason and the grantor on the payout (source ``manual``). The ONE door for
+    putting mana on somebody's account outside the clock and the rewards — the
+    asset's Distribute button refuses mana and points here. Returns
+    ``top_up``'s outcome ("paid", "full", or a failure)."""
+    import uuid
+
+    from decimal import Decimal
+
+    if not (reason or "").strip():
+        raise GrantRefused("A manual grant needs a reason.")
+    try:
+        amount = Decimal(str(amount))
+    except Exception:  # noqa: BLE001
+        raise GrantRefused("The amount is not a number.") from None
+    if amount <= 0:
+        raise GrantRefused("The amount must be above zero.")
+    if not _payable(pool):
+        raise GrantRefused(f"The {pool.role} pool cannot pay: its asset is inactive or has no reserve.")
+    return top_up(user, pool, key=f"manual:{uuid.uuid4().hex[:12]}", cap=amount,
+                  reason=reason.strip(), granted_by=granted_by)
+
 
 
 # ---------------------------------------------------------------------------
@@ -376,9 +435,12 @@ def _reward_encrypt(vault_file, *, at=None):
             metadata={"kind": "mana", "role": pool.role, "user_pk": owner.pk,
                       "reward": "encrypt", "file_pk": vault_file.pk},
         )
+        from . import faucets
+
         grant.amount_base_units = gained
         grant.transaction = tx
-        grant.save(update_fields=["amount_base_units", "transaction"])
+        grant.payout = faucets.record_payout(pool, owner, key=key, amount_base_units=gained, tx=tx)
+        grant.save(update_fields=["amount_base_units", "transaction", "payout"])
     return tx
 
 
@@ -579,17 +641,26 @@ def history(user, role=None, limit: int = 50) -> list:
                .filter(account=account, asset_id__in=list(by_asset))
                .select_related("transaction")
                .order_by("-created_at", "-pk")[:limit])
+    from toto.assets.models import FaucetPayout
+
+    payouts = {p.transaction_id: p for p in FaucetPayout.objects
+               .filter(transaction_id__in=[e.transaction_id for e in entries])
+               .select_related("faucet")}
     rows = []
     for entry in entries:
         pool = by_asset[entry.asset_id]
         tx = entry.transaction
         scale = Decimal(10) ** pool.asset.decimals
+        payout = payouts.get(tx.pk)
         rows.append({
             "at": entry.created_at, "role": pool.role,
             "delta": Decimal(entry.amount_base_units) / scale,
-            "kind": _kind(tx, pool.role),
+            "kind": "manual" if payout is not None and payout.source == "manual" else _kind(tx, pool.role),
             "label": tx.description or "",
             "metric_code": (tx.metadata or {}).get("metric_code", ""),
+            # The faucet that paid it (2026-09-26): every increase has one.
+            "faucet": payout.faucet.name if payout is not None and payout.faucet_id else "",
+            "reason": payout.reason if payout is not None else "",
         })
     return rows
 

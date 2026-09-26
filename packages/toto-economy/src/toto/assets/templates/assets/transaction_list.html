@@ -43,6 +43,22 @@
         </select>
       </div>
 
+      <div>
+        <label class="mb-1 block text-sm font-semibold">{% trans "Community" %}</label>
+        <select
+          name="community"
+          :class="darkMode
+            ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
+            : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+          class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+          <option value="">{% trans "Every community" %}</option>
+          {% for community in communities %}
+            <option value="{{ community.pk }}" {% if community_filter == community.pk %}selected{% endif %}>{{ community.name }}</option>
+          {% endfor %}
+        </select>
+        <p class="mt-1 text-xs opacity-60">{% trans "Transactions touching a member's account." %}</p>
+      </div>
+
       {% comment %}The period. Optional for browsing, REQUIRED for an export —
       an export with no window is a claim about "everything", which stops being
       true the moment the next transaction posts.{% endcomment %}
@@ -101,10 +117,10 @@
           <p class="mt-1 text-xs opacity-65">
             {% blocktrans %}These {{ total_count }} transactions, as a file you keep.{% endblocktrans %}</p>
           <div class="mt-2 flex gap-2">
-            <a href="?asset={{ asset_filter|urlencode }}&amp;type={{ tx_type_filter|urlencode }}&amp;from={{ since|urlencode }}&amp;to={{ until|urlencode }}&amp;export=html"
+            <a href="?asset={{ asset_filter|urlencode }}&amp;type={{ tx_type_filter|urlencode }}&amp;from={{ since|urlencode }}&amp;to={{ until|urlencode }}&amp;community={{ community_filter|urlencode }}&amp;export=html"
                class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-85">
               <i class="fa-solid fa-file-code"></i>{% trans "HTML" %}</a>
-            <a href="?asset={{ asset_filter|urlencode }}&amp;type={{ tx_type_filter|urlencode }}&amp;from={{ since|urlencode }}&amp;to={{ until|urlencode }}&amp;export=xml"
+            <a href="?asset={{ asset_filter|urlencode }}&amp;type={{ tx_type_filter|urlencode }}&amp;from={{ since|urlencode }}&amp;to={{ until|urlencode }}&amp;community={{ community_filter|urlencode }}&amp;export=xml"
                class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-85">
               <i class="fa-solid fa-code"></i>{% trans "XML" %}</a>
           </div>

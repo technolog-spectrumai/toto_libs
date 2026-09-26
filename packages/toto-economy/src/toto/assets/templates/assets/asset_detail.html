@@ -140,6 +140,12 @@
     {{ section.html }}
   {% endfor %}
 
+  {% if is_mana %}
+  <section class="rounded-lg border border-current/20 p-4 text-sm" data-testid="mana-no-distribute">
+    <p>{% trans "This is a mana pool. Mana is regenerated, never distributed by hand: the hourly refill, the opening fill, the rewards and any grant made by hand are faucet payouts, each with a source, a recipient and a time." %}
+      <a class="underline" href="{% url 'assets:faucet_list' %}">{% trans "Faucets" %}</a></p>
+  </section>
+  {% endif %}
   {% if can_distribute %}
   <!-- Distribution (staff or reserve account owner) -->
   <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"

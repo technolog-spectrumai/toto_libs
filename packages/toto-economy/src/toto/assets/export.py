@@ -81,8 +81,16 @@ def parse_day(raw: str):
     return naive
 
 
+def in_community(transactions, community):
+    """Only transactions touching an account of a member of ``community``
+    (2026-09-26): the person link is ``LedgerAccount.user``, membership is
+    ``Person.communities``. Platform accounts (no user) never match."""
+    return transactions.filter(
+        entries__account__user__community_profile__communities=community).distinct()
+
+
 def filtered_transactions(*, asset: str = "", tx_type: str = "",
-                          since=None, until=None):
+                          since=None, until=None, community=None):
     """The queryset the transactions page shows, in a total order.
 
     Shared with the view rather than reimplemented, so the export and the page
@@ -111,6 +119,8 @@ def filtered_transactions(*, asset: str = "", tx_type: str = "",
         transactions = transactions.filter(created_at__gte=since)
     if until is not None:
         transactions = transactions.filter(created_at__lt=until + timedelta(days=1))
+    if community is not None:
+        transactions = in_community(transactions, community)
     return transactions
 
 

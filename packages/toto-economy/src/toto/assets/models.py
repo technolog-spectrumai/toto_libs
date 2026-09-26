@@ -1118,10 +1118,28 @@ class Faucet(models.Model):
     a real and visible state, rather than silent inflation.
     """
 
+    class Source(models.TextChoices):
+        #: Named members paid an amount an hour — the original faucet.
+        MEMBERS = "members", "Named members, hourly"
+        #: Every active member, on the clock: the mana pools' hourly refill.
+        SCHEDULED = "scheduled", "Scheduled regeneration"
+        #: Fired by something a person did: the opening fill, a reward.
+        AUTOMATIC = "automatic", "Automatic grant"
+        #: A person with the right pressed a button and gave a reason.
+        MANUAL = "manual", "Manual grant"
+
     name = models.CharField(max_length=120)
     slug = models.SlugField(max_length=140, unique=True)
     asset = models.ForeignKey("Asset", on_delete=models.PROTECT,
                               related_name="faucets")
+    #: Where the money it pays comes from, as a kind (2026-09-26): the mana
+    #: pools' regeneration, opening fills, rewards and hand grants are faucets
+    #: too, so every increase of a balance is visible in one place.
+    source = models.CharField(max_length=12, choices=Source.choices, default=Source.MEMBERS)
+    #: The Community this faucet serves, or none for the whole platform. Only
+    #: a label for grouping and filtering; it grants nothing.
+    community = models.ForeignKey("socialhub.Community", null=True, blank=True,
+                                  on_delete=models.SET_NULL, related_name="faucets")
     #: Off by default is deliberate. A faucet is created, then filled with
     #: people and amounts, and only then switched on — the alternative is a
     #: faucet that starts paying the moment somebody is added to it, before
@@ -1255,11 +1273,26 @@ class FaucetPayout(models.Model):
     Tuesday must not rewrite what Monday says it paid.
     """
 
+    #: The membership paid, for a MEMBERS faucet; empty for the other sources,
+    #: whose payouts name the recipient directly (2026-09-26).
     member = models.ForeignKey(FaucetMember, on_delete=models.CASCADE,
-                               related_name="payouts")
-    #: Hour-aligned and UTC, e.g. ``hourly:2026-08-26T11``. The step is one hour
-    #: and is not configurable — see toto.assets.services.faucets.
-    period_label = models.CharField(max_length=40, db_index=True)
+                               related_name="payouts", null=True, blank=True)
+    faucet = models.ForeignKey(Faucet, on_delete=models.CASCADE,
+                               related_name="payouts", null=True, blank=True)
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                  related_name="faucet_payouts", null=True, blank=True)
+    source = models.CharField(max_length=12, choices=Faucet.Source.choices,
+                              default=Faucet.Source.MEMBERS)
+    community = models.ForeignKey("socialhub.Community", null=True, blank=True,
+                                  on_delete=models.SET_NULL, related_name="faucet_payouts")
+    #: A manual grant's reason and who gave it; empty otherwise.
+    reason = models.CharField(max_length=300, blank=True)
+    granted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    #: Hour-aligned and UTC, e.g. ``hourly:2026-08-26T11`` — or the grant's
+    #: own key (``signup``, ``encrypt:<file>:<day>``, ``manual:<uuid>``). The
+    #: step is one hour and is not configurable — see services.faucets.
+    period_label = models.CharField(max_length=64, db_index=True)
     amount_base_units = models.BigIntegerField(default=0)
     status = models.CharField(max_length=10, choices=FaucetPayoutStatus.choices,
                               default=FaucetPayoutStatus.PENDING)
@@ -1274,13 +1307,26 @@ class FaucetPayout(models.Model):
     class Meta:
         ordering = ["-created_at", "-id"]
         constraints = [
-            models.UniqueConstraint(fields=["member", "period_label"],
-                                    name="assets_one_payout_per_member_hour"),
+            # One payout per person per faucet per period, whatever the source.
+            models.UniqueConstraint(fields=["faucet", "recipient", "period_label"],
+                                    name="assets_one_payout_per_recipient_period"),
         ]
-        indexes = [models.Index(fields=["status", "period_label"])]
+        indexes = [models.Index(fields=["status", "period_label"]),
+                   models.Index(fields=["faucet", "-created_at"])]
 
     def __str__(self):
-        return f"{self.member_id} / {self.period_label} — {self.status}"
+        return f"{self.faucet_id}/{self.recipient_id} / {self.period_label} — {self.status}"
+
+    def save(self, *args, **kwargs):
+        # A payout made through a membership names its faucet and recipient
+        # itself, so the uniqueness (faucet, recipient, period) holds for it
+        # too and a row written by hand cannot dodge it with two NULLs.
+        if self.member_id and (self.faucet_id is None or self.recipient_id is None):
+            self.faucet_id = self.member.faucet_id
+            self.recipient_id = self.member.user_id
+            if not self.community_id:
+                self.community_id = self.member.faucet.community_id
+        super().save(*args, **kwargs)
 
 
 class FaucetRun(models.Model):
@@ -1297,7 +1343,11 @@ class FaucetRun(models.Model):
     hour, which on a retry should be everybody.
     """
 
-    period_label = models.CharField(max_length=40, db_index=True)
+    period_label = models.CharField(max_length=64, db_index=True)
+    #: The faucet this run paid, when it paid one (the mana pools run one
+    #: faucet per pool per hour); empty for the members' sweep over all.
+    faucet = models.ForeignKey(Faucet, on_delete=models.CASCADE, null=True, blank=True,
+                               related_name="runs")
     started_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     paid = models.PositiveIntegerField(default=0)

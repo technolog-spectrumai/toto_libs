@@ -19,10 +19,28 @@ it hides is also refused by the view behind it.
   <header>
     <h1 class="text-2xl font-bold">{% trans "Faucets" %}</h1>
     <p class="mt-1 max-w-prose text-sm opacity-70">
-      {% blocktrans %}A faucet pays named people a set amount every hour, out of its
-      currency's reserve. It grants nothing and confers no standing — it is a list
-      of names, an amount each, and a clock.{% endblocktrans %}</p>
+      {% blocktrans %}A faucet pays people out of its currency's reserve, and every increase of a
+      balance is one: named members paid by the hour, the mana pools' scheduled refill,
+      the automatic opening fill and rewards, and grants made by hand with a reason.
+      It grants nothing and confers no standing — it is a source, a list of payouts,
+      and a clock.{% endblocktrans %}</p>
   </header>
+
+  {% if can_manage %}
+  <form method="get" class="flex flex-wrap items-end gap-2 text-sm" data-testid="faucet-filters">
+    <label><span class="mb-1 block text-xs font-semibold opacity-70">{% trans "Community" %}</span>
+      <select name="community" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-lg border px-3 py-2 text-sm">
+        <option value="">{% trans "Every community" %}</option>
+        {% for community in communities %}<option value="{{ community.pk }}" {% if community_filter == community.pk %}selected{% endif %}>{{ community.name }}</option>{% endfor %}
+      </select></label>
+    <label><span class="mb-1 block text-xs font-semibold opacity-70">{% trans "Source" %}</span>
+      <select name="source" :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'" class="rounded-lg border px-3 py-2 text-sm">
+        <option value="">{% trans "Every source" %}</option>
+        {% for value, label in sources %}<option value="{{ value }}" {% if source_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select></label>
+    <button type="submit" class="rounded-lg border px-3 py-2 text-sm font-semibold">{% trans "Show" %}</button>
+  </form>
+  {% endif %}
 
   {% comment %}---- what I am on, and what it has paid me ----{% endcomment %}
   <section class="space-y-3">
@@ -164,13 +182,17 @@ it hides is also refused by the view behind it.
         </details>
       {% endif %}
 
-      {% for faucet in faucets %}
+      {% for group in groups %}
+      <h3 class="text-sm font-semibold uppercase tracking-wide opacity-60" data-testid="faucet-group">
+        {% if group.community %}{{ group.community }}{% else %}{% trans "Platform-wide" %}{% endif %}</h3>
+      {% for faucet in group.faucets %}
         <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-                 class="space-y-3 rounded-lg border p-4">
+                 class="space-y-3 rounded-lg border p-4" data-source="{{ faucet.source }}">
           <div class="flex flex-wrap items-center gap-3">
-            <h3 class="text-lg font-bold">{{ faucet.name }}</h3>
+            <h3 class="text-lg font-bold"><a class="hover:underline" href="{% url 'assets:faucet_detail' faucet.pk %}">{{ faucet.name }}</a></h3>
             <span class="rounded bg-current/10 px-2 py-0.5 font-mono text-xs">
               {{ faucet.asset.unit_name }}</span>
+            <span class="rounded bg-current/10 px-2 py-0.5 text-xs">{{ faucet.get_source_display }}</span>
             <span class="text-xs {% if faucet.active %}opacity-70{% else %}text-warn-light{% endif %}">
               {% if faucet.active %}{% trans "paying every hour" %}
               {% else %}{% trans "switched off" %}{% endif %}</span>
@@ -185,6 +207,7 @@ it hides is also refused by the view behind it.
           </div>
           {% if faucet.note %}<p class="text-sm opacity-75">{{ faucet.note }}</p>{% endif %}
 
+          {% if faucet.source == "members" %}
           <table class="w-full text-sm">
             <tbody>
               {% for member in faucet.members.all %}
@@ -211,6 +234,9 @@ it hides is also refused by the view behind it.
               {% endfor %}
             </tbody>
           </table>
+          {% else %}
+          <p class="text-sm opacity-70">{% trans "Pays through its own door; the payouts are on its page." %}</p>
+          {% endif %}
 
           {% comment %}Adding somebody is picking an EXISTING wallet, never
           typing a name. A typed username invites a name that does not exist, or
@@ -287,6 +313,7 @@ it hides is also refused by the view behind it.
       {% empty %}
         <p class="rounded-lg border border-dashed p-6 text-center text-sm opacity-70">
           {% trans "No faucets yet." %}</p>
+      {% endfor %}
       {% endfor %}
     </section>
   {% endif %}

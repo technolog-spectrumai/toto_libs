@@ -282,7 +282,8 @@ def asset_detail(request, pk):
     is_reserve_owner = (
         reserve and reserve.user_id and reserve.user_id == request.user.pk
     ) if request.user.is_authenticated else False
-    can_distribute = request.user.is_staff or is_reserve_owner
+    can_distribute = (request.user.is_staff or is_reserve_owner) and not _is_mana(asset)
+    context["is_mana"] = _is_mana(asset)
     if can_distribute:
         context["can_distribute"] = True
         context["ledger_accounts"] = LedgerAccount.objects.filter(active=True).order_by("code")
@@ -299,6 +300,13 @@ def asset_distribute(request, pk):
     is_reserve_owner = reserve and reserve.user_id and reserve.user_id == request.user.pk
     if not request.user.is_staff and not is_reserve_owner:
         return HttpResponseForbidden()
+    if _is_mana(asset):
+        # Mana is regenerated, never distributed: every increase of a pool is a
+        # faucet payout with a source, a recipient and a reason (2026-09-26).
+        messages.error(request, _("%(unit)s is a mana pool. Mana is not distributed by hand: "
+                                  "grant it from its manual faucet on the Faucets page, "
+                                  "with a reason.") % {"unit": asset.unit_name})
+        return redirect("assets:asset_detail", pk=pk)
     if request.method == "POST":
         import uuid as _uuid
 
@@ -404,9 +412,10 @@ def transaction_list(request):
     since_raw = (request.GET.get("from") or "").strip()
     until_raw = (request.GET.get("to") or "").strip()
     since, until = parse_day(since_raw), parse_day(until_raw)
+    community = _community_filter(request)
 
     txs = filtered_transactions(asset=asset_filter, tx_type=tx_type_filter,
-                                since=since, until=until)
+                                since=since, until=until, community=community)
 
     export = (request.GET.get("export") or "").strip().lower()
     if export:
@@ -428,6 +437,8 @@ def transaction_list(request):
         "transaction_types": TransactionType.choices,
         "asset_filter": asset_filter,
         "tx_type_filter": tx_type_filter,
+        "communities": _communities(),
+        "community_filter": community.pk if community else "",
         "since": since_raw,
         "until": until_raw,
         "has_span": bool(since and until),
@@ -802,6 +813,11 @@ def ledger_flow_data(request):
         txs = txs.filter(transaction_type=tx_type_filter)
     if account_filter:
         txs = txs.filter(entries__account__code__iexact=account_filter).distinct()
+    community = _community_filter(request)
+    if community is not None:
+        from .export import in_community
+
+        txs = in_community(txs, community)
 
     # Build account nodes from entries that appear in the filtered txs
     account_ids_seen = set()
@@ -1073,6 +1089,33 @@ def _staff_or_403(request):
     return None
 
 
+def _is_mana(asset) -> bool:
+    """One of the mana pools' assets, where toto.mana is installed."""
+    from django.apps import apps
+
+    if not apps.is_installed("toto.mana"):
+        return False
+    from toto.mana.services import is_mana_asset
+
+    return is_mana_asset(asset) is not None
+
+
+def _communities():
+    from toto.socialhub.models import Community
+
+    return list(Community.objects.order_by("name").only("pk", "name", "slug"))
+
+
+def _community_filter(request):
+    """``?community=<pk>`` → the Community row, or None."""
+    raw = (request.GET.get("community") or "").strip()
+    if not raw.isdigit():
+        return None
+    from toto.socialhub.models import Community
+
+    return Community.objects.filter(pk=int(raw)).first()
+
+
 @login_required
 def faucet_list(request):
     """The Faucets tab. Two different pages behind one URL, by design.
@@ -1086,12 +1129,27 @@ def faucet_list(request):
 
     is_staff = request.user.is_staff
     if is_staff:
-        faucets = (Faucet.objects.select_related("asset")
+        faucets = (Faucet.objects.select_related("asset", "community")
                    .prefetch_related("members__user"))
     else:
-        faucets = (Faucet.objects.select_related("asset")
+        faucets = (Faucet.objects.select_related("asset", "community")
                    .filter(members__user=request.user, members__active=True)
                    .distinct())
+    # Grouped by Community (platform-wide first) and filtered by it and by
+    # source, so every way a balance grows is one list (2026-09-26).
+    community = _community_filter(request)
+    source = (request.GET.get("source") or "").strip()
+    if community is not None:
+        faucets = faucets.filter(community=community)
+    if source in dict(Faucet.Source.choices):
+        faucets = faucets.filter(source=source)
+    faucets = faucets.order_by("community__name", "source", "name")
+    groups = []
+    for faucet in faucets:
+        key = faucet.community.name if faucet.community_id else ""
+        if not groups or groups[-1]["community"] != key:
+            groups.append({"community": key, "faucets": []})
+        groups[-1]["faucets"].append(faucet)
 
     mine = (FaucetMember.objects
             .filter(user=request.user)
@@ -1103,6 +1161,11 @@ def faucet_list(request):
 
     return assets_render(request, "assets/faucet_list.html", {
         "faucets": faucets,
+        "groups": groups,
+        "communities": _communities(),
+        "community_filter": community.pk if community else "",
+        "source_filter": source,
+        "sources": Faucet.Source.choices,
         "my_memberships": mine,
         "my_payouts": my_payouts,
         "can_manage": is_staff,
@@ -1112,6 +1175,91 @@ def faucet_list(request):
         "runs": FaucetRun.objects.all()[:24] if is_staff else None,
         "assets": Asset.objects.filter(active=True, is_mirror=False),
     })
+
+
+@login_required
+def faucet_detail(request, pk):
+    """One faucet's payouts: source, amount, recipient, time, the run and the
+    transaction behind each — the visible record of every increase it made.
+    Staff see all of it; a member sees their own rows."""
+    from .models import Faucet, FaucetPayout
+
+    faucet = get_object_or_404(Faucet.objects.select_related("asset", "community"), pk=pk)
+    payouts = (FaucetPayout.objects.filter(faucet=faucet)
+               .select_related("recipient", "transaction", "granted_by"))
+    if not request.user.is_staff:
+        payouts = payouts.filter(recipient=request.user)
+    grant_form = None
+    if faucet.source == Faucet.Source.MANUAL and _may_grant(request.user):
+        from django.contrib.auth import get_user_model
+
+        grant_form = {"users": get_user_model().objects.filter(is_active=True).order_by("username")}
+    return assets_render(request, "assets/faucet_detail.html", {
+        "faucet": faucet,
+        "payouts": payouts[:200],
+        "runs": faucet.runs.all()[:24] if request.user.is_staff else None,
+        "can_manage": request.user.is_staff,
+        "grant_form": grant_form,
+    })
+
+
+def _may_grant(user) -> bool:
+    """Staff, superusers, or the mint privilege — the same people the Mint
+    admits."""
+    if user.is_staff or user.is_superuser:
+        return True
+    from toto.socialhub.privileges import has_privilege
+
+    return bool(has_privilege(user, "may_operate_mint"))
+
+
+@login_required
+@require_POST
+def faucet_grant(request, pk):
+    """A manual mana grant (2026-09-26): the one door for putting mana on an
+    account by hand. Needs the right, a recipient, an amount and a REASON,
+    and pays through the pool's manual faucet, toward the maximum."""
+    from django.http import HttpResponseForbidden
+
+    from .models import Faucet
+
+    faucet = get_object_or_404(Faucet, pk=pk, source=Faucet.Source.MANUAL)
+    if not _may_grant(request.user):
+        return HttpResponseForbidden()
+    from django.apps import apps
+
+    if not apps.is_installed("toto.mana"):
+        messages.error(request, _("This host has no mana pools."))
+        return redirect("assets:faucet_detail", pk=pk)
+    from django.contrib.auth import get_user_model
+
+    from toto.mana.models import ManaPool
+    from toto.mana.services import GrantRefused, grant_manual
+
+    pool = ManaPool.objects.filter(asset=faucet.asset).first()
+    raw_user = (request.POST.get("user") or "").strip()
+    recipient = (get_user_model().objects.filter(pk=int(raw_user), is_active=True).first()
+                 if raw_user.isdigit() else None)
+    if pool is None:
+        messages.error(request, _("This faucet is not a mana pool's."))
+    elif recipient is None:
+        messages.error(request, _("Choose who receives it."))
+    else:
+        try:
+            outcome = grant_manual(recipient, pool, request.POST.get("amount"),
+                                   reason=request.POST.get("reason") or "",
+                                   granted_by=request.user)
+        except GrantRefused as exc:
+            messages.error(request, str(exc))
+        else:
+            if outcome == "paid":
+                messages.success(request, _("Granted to %(user)s.") % {"user": recipient.get_username()})
+            elif outcome == "full":
+                messages.info(request, _("%(user)s's pool is already full; nothing moved.")
+                              % {"user": recipient.get_username()})
+            else:
+                messages.error(request, outcome)
+    return redirect("assets:faucet_detail", pk=pk)
 
 
 @require_POST

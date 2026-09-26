@@ -21,6 +21,8 @@ urlpatterns = [
     path("settlement/", views.settlement_choose, name="settlement_choose"),
     path("faucets/", views.faucet_list, name="faucet_list"),
     path("faucets/new/", views.faucet_create, name="faucet_create"),
+    path("faucets/<int:pk>/", views.faucet_detail, name="faucet_detail"),
+    path("faucets/<int:pk>/grant/", views.faucet_grant, name="faucet_grant"),
     path("faucets/<int:pk>/toggle/", views.faucet_toggle, name="faucet_toggle"),
     # The picker's own door: a read that lists the wallets a faucet could pay,
     # loaded into the modal on demand so the page does not carry every wallet
