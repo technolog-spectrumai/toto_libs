@@ -203,9 +203,13 @@ class DefaultFaucetTests(TestCase):
         bootstrap_economy()
 
     def faucets(self):
+        """The members' faucets — the arrangements bootstrap makes for people.
+        The mana pools' faucets (source scheduled/automatic/manual, on, with
+        no members) are the regeneration's labels and are asserted in
+        toto.mana.tests.unit.test_faucets."""
         from toto.assets.models import Faucet
 
-        return Faucet.objects.all()
+        return Faucet.objects.filter(source=Faucet.Source.MEMBERS)
 
     def test_it_creates_one_faucet_per_payable_currency(self):
         self.assertEqual(
@@ -293,7 +297,8 @@ class DefaultFaucetTests(TestCase):
         Faucet.objects.all().delete()
         call_command("ingress_quota", stdout=StringIO(), stderr=StringIO())
         self.assertEqual(
-            set(Faucet.objects.values_list("asset__unit_name", flat=True)),
+            set(Faucet.objects.filter(source=Faucet.Source.MEMBERS)
+                .values_list("asset__unit_name", flat=True)),
             {"ASR"})
 
 

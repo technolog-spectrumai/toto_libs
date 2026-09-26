@@ -22,6 +22,22 @@ class UnknownVisibilityTests(TestCase):
         User = get_user_model()
         self.member = User.objects.create_user("member", password="pw")
         self.root = User.objects.create_superuser("root", password="pw")
+        # A "superuser" tile needs the account AND, on a host that sells an
+        # admin-only plan, that plan (toto.subscriptions, 2026-09-26). The
+        # bootstrap is what any account-creating door runs.
+        from django.apps import apps
+
+        if apps.is_installed("toto.subscriptions"):
+            from io import StringIO
+
+            from django.core.management import call_command
+
+            from toto.core.models import Platform
+
+            Platform.objects.get_or_create(active=True, defaults={
+                "site_name": "Test", "author": "t", "publication_year": 2026})
+            call_command("bootstrap_plans", stdout=StringIO())
+            self.root = User.objects.get(pk=self.root.pk)
 
     def test_an_unknown_word_hides_the_tile_from_everyone(self):
         for word in ("authenticated", "staf", "", None, 7):
