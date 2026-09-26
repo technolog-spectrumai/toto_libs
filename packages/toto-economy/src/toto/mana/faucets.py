@@ -81,5 +81,5 @@ def ensure_faucets(pools: dict, *, reporter=None) -> int:
                 faucet_for(pool, kind)
                 made += 1
                 if reporter is not None:
-                    reporter(f"  + faucet {slug_for(pool.role, kind)}")
+                    reporter.write(f"  + faucet {slug_for(pool.role, kind)}")
     return made

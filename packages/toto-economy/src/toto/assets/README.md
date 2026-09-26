@@ -21,6 +21,18 @@ An admin mints an `Asset` (ticker, decimals, total supply). Users hold balances 
 | Transaction | `LedgerTransaction` + `LedgerEntry` rows |
 | Clawback / freeze | Not implemented |
 
+## Faucets are the record of every increase (2026-09-26)
+
+A `Faucet` has a `source` — `members` (named people paid by the hour, the
+original), `scheduled`, `automatic` or `manual` — and an optional `community`
+it serves. A `FaucetPayout` names its `faucet`, `recipient`, `source`,
+period or key, amount, transaction and, for a manual grant, the `reason` and
+who gave it; it is unique per (faucet, recipient, period). The mana pools use
+this for their regeneration (`toto.mana.faucets`), so the Faucets page —
+grouped by Community, filtered by Community and source, each faucet with its
+payouts and runs — shows every way a balance grows. The transactions page and
+the flow data take `?community=` too: rows touching a member's account.
+
 ## Amounts
 
 All amounts are stored as **integer base units** internally, exactly like Algorand.

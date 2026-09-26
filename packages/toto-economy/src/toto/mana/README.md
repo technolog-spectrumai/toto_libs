@@ -14,7 +14,8 @@ campaign checklist is `/todo.md`.
 | `status.py` | Pure rules: fill, band (`empty`/`low`/`ok`), trend, ETA, the encrypt pre-selection. |
 | `models.py` | `ManaPool` (role → asset, PROTECT; the two dials) and `ManaGrant` (the idempotency claim). No balances. |
 | `bootstrap.py` | `ensure_mana`: retire MANA, mint BLUE/RED/GREEN once, bind the pools once. Runs inside `bootstrap_economy`, i.e. before every ingress. |
-| `services.py` | Everything else: bindings, prices, refill (`top_up`, `regenerate_hour`, `fill_pools`), the encrypt reward, the read side (`balances_of`, `history`, `series`, `plain_files`) and the refusal sentence. |
+| `services.py` | Everything else: bindings, prices, refill (`top_up`, `regenerate_hour`, `fill_pools`), the encrypt reward, the manual grant (`grant_manual`), the read side (`balances_of`, `history`, `series`, `plain_files`) and the refusal sentence. |
+| `faucets.py` | Every increase as a faucet payout (2026-09-26): four `assets.Faucet` rows per pool — `mana-<role>-{hourly,signup,encrypt-reward,manual}` — and `record_payout`, written beside the transfer in the same transaction. |
 | `management/commands/ingress_mana.py` | Seed/repair prices, clamp-then-arm the two levies, fill members who predate the pools. |
 | `tasks.py` | The hourly refill, from the clock. |
 | `views.py`, `urls.py`, `templates/mana/` | L1 `/mana/`, L2 `/mana/<colour>/`, L3 `/mana/about/`, and `api/balances/` for the chip. |
@@ -29,6 +30,7 @@ Outside this directory, the pieces it relies on: `HeaderPlugin` (toto.core),
 
 - **The ledger is the balance.** Never store a pool level here; read the holding.
 - **Every write is claimed first.** A `ManaGrant` row the database referees, then a transfer with a unique reference. Never pay without the claim.
+- **Every increase is a faucet payout.** The hourly refill, the opening fill, the encrypt reward and a grant by hand each leave a `FaucetPayout` (source, recipient, amount, time, the transaction) on the pool's faucet, and the refill leaves a `FaucetRun` per pool per execution. Nothing else puts mana on an account: the asset's Distribute button refuses a pool asset and points at the manual faucet, which needs the mint right and a reason; the admin cannot type a balance. A refund of failed metered work is a reversal, labelled as such, not regeneration.
 - **A pool levy is clamped.** A levy priced in a pool must have `clamp_to_balance`, set *before* it is armed — or an empty pool freezes every metered write on the platform.
 - **Guards key on the asset, not the code.** "Priced in a pool asset" is the question; a host with the app but no pools yet still bills in gas.
 - **Every colour class is written out literally** in templates: tailwind reads the page, not the Python.
