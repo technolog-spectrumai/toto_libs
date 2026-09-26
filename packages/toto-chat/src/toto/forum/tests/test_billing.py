@@ -83,3 +83,35 @@ class BillingTests(TestCase):
         self.assertEqual(COLOUR_OF["forum.message"], "security")
         self.assertEqual(COLOUR_OF["forum.encrypt"], "compute")
         self.assertEqual(COLOUR_OF["forum.room_key"], "compute")
+
+
+@override_settings(**FAST)
+class PricedChargeTests(TestCase):
+    """With a price, the ledger's own charge_user is reached — with ITS
+    signature (autospec). Without a price nothing is charged at all, which is
+    how a stray `source_label` keyword 500'd /forum/create/ on every priced
+    host while every test here passed."""
+
+    def setUp(self):
+        from toto.people.models import Person
+
+        cache.clear()
+        self.user = User.objects.create_user("ada", password="x")
+        Person.objects.create(user=self.user, display_name="Ada")
+
+    def test_priced_room_creation_and_messages_reach_charge_user_cleanly(self):
+        with mock.patch("toto.forum.billing.price_for", return_value=object()), \
+                mock.patch("toto.forum.billing.check_funds"), \
+                mock.patch("toto.tariffs.charge.charge_user", autospec=True) as charge_user:
+            for encrypted in (False, True):
+                room = creation.create_room(self.user, name=f"Priced {encrypted}",
+                                            encrypted=encrypted)
+                key = rooms.open_key(room) if room.is_encrypted else None
+                with transaction.atomic():
+                    row = store.store_message(room, msg_type="chat_message", body="hi",
+                                              sender=self.user, key=key)
+                    billing.settle_message(self.user, row)
+        self.assertGreaterEqual(charge_user.call_count, 3)
+        for call in charge_user.call_args_list:
+            self.assertNotIn("source_label", call.kwargs)
+            self.assertIn("description", call.kwargs)

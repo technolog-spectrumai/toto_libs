@@ -53,12 +53,14 @@ def _settle(user, code, source_id, label, unit) -> bool:
     from .models import ForumUsageEvent
 
     source = {"source_type": "forum.ForumMessage" if code != ROOM_KEY else "forum.ForumChannel",
-              "source_id": str(source_id), "source_label": label}
+              "source_id": str(source_id)}
     event = record_usage(ForumUsageEvent, code, 1, user, unit=unit,
-                         idempotency_key=f"{code}:{source_id}", **source)
+                         idempotency_key=f"{code}:{source_id}", source_label=label, **source)
     if event is None:
         return False
-    charge(user, price_for(user, APP), code, 1, unit=unit, **source)
+    # The ledger's charge takes a `description`, not the usage event's
+    # `source_label` — passing that 500'd every priced room creation.
+    charge(user, price_for(user, APP), code, 1, unit=unit, description=label, **source)
     return True
 
 
