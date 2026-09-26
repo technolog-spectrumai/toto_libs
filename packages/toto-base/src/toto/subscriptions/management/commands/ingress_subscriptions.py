@@ -40,7 +40,16 @@ class Command(IngressCommand):
             raise CommandError(
                 "plans.yaml is not usable:\n  - " + "\n  - ".join(problems))
 
+        from django.core.management import call_command
+
         from toto.socialhub.models import Community
+
+        # The operators' Community and the superusers' plan, every run
+        # (bootstrap_plans is idempotent): a host is never left with admins
+        # on Free because nobody ran the command by hand.
+        call_command("bootstrap_plans", stdout=self.stdout)
+        if self.full:
+            self._seed_demo_communities()
 
         communities = list(Community.objects.order_by("pk"))
         if not communities:
@@ -72,6 +81,24 @@ class Command(IngressCommand):
             f"subscriptions: {first.name} offered "
             f"{', '.join(plan.key for plan in paid) or 'nothing else'}")
         self._seed_demo_discount(first)
+
+    def _seed_demo_communities(self):
+        """Three Communities that make eligibility observable in a demo and in
+        tests: `toto` (a company) with the child `toto-dev`, which alone is
+        offered Standard and Developer — a member of toto-dev may buy them, a
+        member of toto only may not — and `quiet-harbour`, offered nothing but
+        the default (the isolated case)."""
+        from toto.socialhub.models import Community
+
+        toto, _ = Community.objects.get_or_create(
+            slug="toto", defaults={"name": "toto", "org_type": "company"})
+        dev, _ = Community.objects.get_or_create(
+            slug="toto-dev", defaults={"name": "toto-dev", "org_type": "company", "parent": toto})
+        Community.objects.get_or_create(slug="quiet-harbour", defaults={"name": "Quiet Harbour"})
+        for key in ("standard", "developer"):
+            if plans.get(key) is not None:
+                CommunityPlanOffer.objects.get_or_create(community=dev, plan_key=key)
+        self.stdout.write("subscriptions: toto → toto-dev (standard, developer) and Quiet Harbour seeded")
 
     def _seed_demo_discount(self, community):
         _, was_new = CommunityDiscount.objects.update_or_create(

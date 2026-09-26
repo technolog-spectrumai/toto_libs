@@ -191,12 +191,41 @@ audiences are destroyed; the journals in `toto.quota` and the balances in
 and re-create the paid offers.
 
 
-## Admin-only and all-features plans (1.51)
+## Admin-only and all-features plans (1.51, tightened 2026-09-26)
 
 `admin_only: true` makes a plan that only superusers can see, subscribe to or
 hold — refused on the server (`services.is_eligible`), left out of every
-listing (`plans.public_plans()` for visitors and staff), and **the plan every
-superuser resolves to** (`plan_for`). It cannot be the default plan.
+listing (`plans.public_plans()` for visitors and staff). It cannot be the
+default plan. **It is not granted by the privilege alone**: a superuser holds
+it through their own subscription, which needs a Community of theirs to offer
+it — `bootstrap_plans` makes the `operators` Community, offers every plan to
+it and puts every superuser on the admin-only plan, and every door that
+creates accounts (`bootstrap_users`, so the build scripts, `deploy.py users`
+and the Operator's Users tab) runs it. Nor does the plan grant anything by
+itself: `plan_for` ignores an admin-only key on an ordinary account, the admin
+form and `subscribe(force=True)` refuse to write one, and the billing sweep
+lapses any such row with the reason `not-superuser`. Superuser functionality —
+`visibility: superuser` tiles, views wearing `gate.superuser_plan_required` —
+asks `models.superuser_plan_active(user)`: **both**, the account and the plan.
+
+## Community-defined and checked live (2026-09-26)
+
+Plans are personal; what a person may hold is what a Community they belong to
+offers (`CommunityPlanOffer`), and offers **inherit down the tree**: a member
+of `toto-dev` (`parent=toto`) may choose what `toto` offers plus what
+`toto-dev` adds — a child adds, never removes. The check is not made once at
+purchase but on every `plan_for`: leaving the Community, an offer withdrawn, a
+`Subscription.expires_at` in the past or a key that left the file all resolve
+to the default plan on the next request, and the daily `run_billing` lapses
+the row with the reason (`withdrawn`, `expired`, `unknown-plan`,
+`not-superuser`, `overdue`) so the Current plan page can say why. Two
+exceptions, both deliberate: staff and superusers may hold any buyable plan
+without an offer (they administer the ladder), and an **operator's grant**
+(`subscribe(force=True)`, recorded as `Subscription.forced`) needs no offer —
+it was given, not bought — though it still expires and still refuses the
+admin-only plan to a non-superuser. Only real superusers change offers,
+discounts or subscription rows: the two tabs answer 403 to staff, and the
+admin section is superusers' alone.
 
 `all_features: true` grants every feature, present and future, without
 listing them. Together they make a "Superuser" tier. A ladder whose only

@@ -189,6 +189,18 @@ class Subscription(models.Model):
     anchor_date = models.DateField()
     #: When the first unpaid month failed. Cleared the moment one goes through.
     arrears_since = models.DateTimeField(null=True, blank=True)
+    #: Optional end (2026-09-26): past it the row grants nothing, whatever its
+    #: state says, and the billing sweep marks it lapsed with the reason.
+    expires_at = models.DateTimeField(null=True, blank=True)
+    #: Why the sweep lapsed it: expired, withdrawn (no community of theirs
+    #: offers the plan any more), not-superuser (an admin-only plan on an
+    #: account that is not one), overdue (arrears ran out). Blank while active.
+    lapse_reason = models.CharField(max_length=20, blank=True)
+    #: An operator's grant (`subscribe(force=True)`): the plan was given, not
+    #: bought, so no Community need offer it — the one exception to the live
+    #: offer check, and it still expires and still needs a superuser for an
+    #: admin-only plan. Nothing a request can set.
+    forced = models.BooleanField(default=False)
     changed_at = models.DateTimeField(auto_now=True)
 
     @property
@@ -215,6 +227,9 @@ class Subscription(models.Model):
         does not blink out the first time a wallet is empty.
         """
         return self.state in (SubscriptionState.ACTIVE, SubscriptionState.ARREARS)
+
+    def is_expired(self, now=None) -> bool:
+        return self.expires_at is not None and self.expires_at <= (now or timezone.now())
 
 
 class SubscriptionCharge(models.Model):
@@ -306,25 +321,50 @@ def default_plan():
 
 
 def plan_for(user):
-    """The plan actually in force for this user.
+    """The plan actually in force for this user — checked live (2026-09-26).
 
     A lapsed or cancelled subscription resolves to the default plan, not to its
     own: the row records what they chose, this answers what they currently get.
-    A key the file no longer defines resolves the same way.
+    So does a key the file no longer defines, a row past its `expires_at`, a
+    plan no Community of theirs offers any more (`services.is_eligible`, the
+    same predicate the purchase passed — leaving the community or withdrawing
+    the offer takes the plan away on the next request, not next month), and
+    an admin-only plan on an account that is not a superuser: **the plan alone
+    grants nothing**. Superusers get no plan for free either: they hold the
+    admin-only plan through their own row, which needs a Community that
+    offers it (`bootstrap_plans` makes one).
     """
     if user is None or not getattr(user, "is_authenticated", False):
         return default_plan()
-    if getattr(user, "is_superuser", False):
-        # A ladder with an admin_only plan puts superusers on it (1.51).
-        from .plans import admin_plan
-
-        reserved = admin_plan()
-        if reserved is not None:
-            return reserved
     subscription = Subscription.objects.filter(user=user).first()
-    if subscription is None or not subscription.is_paying:
+    if subscription is None or not subscription.is_paying or subscription.is_expired():
         return default_plan()
-    return subscription.plan or default_plan()
+    plan = subscription.plan
+    if plan is None:
+        return default_plan()
+    if plan.admin_only and not getattr(user, "is_superuser", False):
+        return default_plan()
+    from .services import is_eligible
+
+    if not plan.is_default and not subscription.forced and not is_eligible(user, plan.key):
+        return default_plan()
+    return plan
+
+
+def superuser_plan_active(user) -> bool:
+    """Both, never one: a real superuser AND the admin-only plan in force.
+
+    Superuser functionality (the dashboard's "superuser" tiles, views wearing
+    `gate.superuser_plan_required`) asks this. `is_superuser` alone is not
+    enough on a host with an admin-only plan, and the plan alone is nothing
+    (`plan_for` refuses it to anybody else)."""
+    if user is None or not getattr(user, "is_superuser", False):
+        return False
+    from .plans import admin_plan
+
+    if admin_plan() is None:
+        return True                     # no admin plan on this ladder: privilege alone
+    return bool(plan_for(user).admin_only)
 
 
 def period_label(day=None) -> str:

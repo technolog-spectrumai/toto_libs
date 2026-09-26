@@ -399,11 +399,20 @@ plans:
         top = plans.plan("superuser")
         self.assertTrue(top.grants("anything-at-all"))
         self.assertEqual([p.key for p in plans.public_plans()], ["free", "standard"])
+        # The privilege alone puts nobody on the plan (2026-09-26): a
+        # Community must offer it and the superuser must hold it.
+        self.assertEqual(plan_for(admin).key, "free")
+        self.assertFalse(services.is_eligible(admin, "superuser"))
+        from django.core.management import call_command
+        from io import StringIO
+
+        call_command("bootstrap_plans", stdout=StringIO())
+        admin = User.objects.get(pk=admin.pk)        # a Person was made for it
+        self.assertTrue(services.is_eligible(admin, "superuser"))
         self.assertEqual(plan_for(admin).key, "superuser")
         self.assertEqual(plan_for(member).key, "free")
         self.assertFalse(services.is_eligible(staff, "superuser"))
         self.assertFalse(services.is_eligible(member, "superuser"))
-        self.assertTrue(services.is_eligible(admin, "superuser"))
         self.assertNotIn("superuser", [p.key for p in services.eligible_plans(staff)])
 
     def test_the_default_plan_cannot_be_admin_only(self):

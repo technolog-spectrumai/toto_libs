@@ -162,6 +162,23 @@ def _plan_allows(user, link) -> bool:
 DASHBOARD_VISIBILITIES = ("public", "private", "staff", "superuser")
 
 
+def _superuser_with_plan(user) -> bool:
+    """Superuser functionality needs the account AND, where the host sells an
+    admin-only plan, that plan in force (toto.subscriptions, 2026-09-26)."""
+    from django.apps import apps
+
+    if not user.is_superuser:
+        return False
+    if not apps.is_installed("toto.subscriptions"):
+        return True
+    try:
+        from toto.subscriptions.models import superuser_plan_active
+
+        return superuser_plan_active(user)
+    except Exception:  # noqa: BLE001 - a dashboard must render whatever breaks
+        return True
+
+
 def _resolve_dashboard_item(item, user):
     visibility = item.get("visibility", "public")
     authenticated = user.is_authenticated
@@ -180,7 +197,7 @@ def _resolve_dashboard_item(item, user):
     # "superuser" cards (e.g. the Grafana "Monitoring" link) are hidden from
     # everyone but superusers. This is cosmetic — the target enforces its own
     # access — but keeps ops tools out of ordinary users' dashboards.
-    if visibility == "superuser" and not (authenticated and user.is_superuser):
+    if visibility == "superuser" and not (authenticated and _superuser_with_plan(user)):
         return None
     # "staff" cards (e.g. the Gitea "Code" link) show for staff AND superusers —
     # is_superuser does not imply is_staff in Django. Cosmetic like above; Gitea

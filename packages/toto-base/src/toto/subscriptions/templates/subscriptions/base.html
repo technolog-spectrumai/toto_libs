@@ -64,7 +64,7 @@
            {% if active_tab == 'mine' %}aria-current="page"{% endif %}>
           <i class="fa-solid fa-receipt"></i>{% trans "Current plan" %}</a>
       {% endif %}
-      {% if user.is_staff or user.is_superuser %}
+      {% if user.is_superuser %}
         {% url 'subscriptions:discounts' as discounts_url %}
         <a href="{{ discounts_url }}"
            :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"

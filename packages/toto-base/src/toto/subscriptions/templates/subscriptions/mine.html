@@ -9,6 +9,16 @@
 {% comment %}Arrears first, because it is the only thing on this page somebody
    has to act on — and the wording has one job: say that nothing has been lost.
 {% endcomment %}
+{% if needs_bootstrap %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="flex items-start gap-3 rounded-xl border px-4 py-3 text-sm" data-testid="needs-bootstrap">
+    <i class="fa-solid fa-key mt-0.5" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+    <div>
+      <p class="font-semibold">{% blocktrans with plan=admin_plan.name %}You are a superuser without the {{ plan }} plan.{% endblocktrans %}</p>
+      <p class="mt-1 opacity-75">{% trans "Superuser functionality needs both: the account and the plan, which a Community of yours must offer. On a fresh host run" %} <code>manage.py bootstrap_plans</code>{% trans ", which makes the operators' Community, offers every plan to it and puts every superuser on this one." %}</p>
+    </div>
+  </div>
+{% endif %}
 {% if subscription and subscription.state == "arrears" %}
   <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
        class="flex items-start gap-3 rounded-xl border px-4 py-3 text-sm">
@@ -32,7 +42,7 @@
        class="flex items-start gap-3 rounded-xl border px-4 py-3 text-sm">
     <i class="fa-solid fa-lock mt-0.5" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
     <div>
-      <p class="font-semibold">{% trans "Your plan has lapsed." %}</p>
+      <p class="font-semibold">{% trans "Your plan has lapsed." %}{% if subscription.lapse_reason == "expired" %} {% trans "It reached its end date." %}{% elif subscription.lapse_reason == "withdrawn" %} {% trans "No Community of yours offers it any more." %}{% elif subscription.lapse_reason == "not-superuser" %} {% trans "It is for superusers only." %}{% endif %}</p>
       <p class="mt-1 opacity-75">
         {% trans "The paid apps are read-only. Everything you made is exactly where you left it, and choosing a plan again restores access immediately — there is nothing to restore and nothing was back-billed." %}
       </p>

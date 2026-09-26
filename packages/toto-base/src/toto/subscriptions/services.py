@@ -153,8 +153,34 @@ def _offered_keys(user) -> frozenset:
         return frozenset()
     return frozenset(
         CommunityPlanOffer.objects
-        .filter(community__in=person.communities.all())
+        .filter(community_id__in=_community_ids_with_parents(person))
         .values_list("plan_key", flat=True))
+
+
+#: How far up a Community tree an offer is looked for. Trees are shallow;
+#: this is a guard against a cycle written by hand, not a design limit.
+MAX_TREE_DEPTH = 20
+
+
+def _community_ids_with_parents(person) -> set:
+    """The person's Communities and every ancestor of theirs (2026-09-26):
+    an offer made to `toto` reaches a member of `toto-dev`. A sub-community
+    can only add offers, never take a parent's away."""
+    rows = {pk: parent for pk, parent in person.communities.values_list("pk", "parent_id")}
+    ids = set(rows)
+    frontier = {parent for parent in rows.values() if parent}
+    from toto.socialhub.models import Community
+
+    depth = 0
+    while frontier and depth < MAX_TREE_DEPTH:
+        frontier -= ids
+        if not frontier:
+            break
+        ids |= frontier
+        frontier = {parent for parent in Community.objects.filter(pk__in=frontier)
+                    .values_list("parent_id", flat=True) if parent}
+        depth += 1
+    return ids
 
 
 def is_eligible(user, plan_key: str) -> bool:
@@ -183,8 +209,10 @@ def is_eligible(user, plan_key: str) -> bool:
     if plan is None:
         return False
     if plan.admin_only:
-        # Superusers only — staff are not admins (1.51).
-        return bool(getattr(user, "is_superuser", False))
+        # Superusers only — staff are not admins (1.51) — AND only where a
+        # Community of theirs offers it (2026-09-26): the plan is the
+        # Community's to grant, the privilege is the account's; both are needed.
+        return bool(getattr(user, "is_superuser", False)) and plan_key in _offered_keys(user)
     if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
         return True
     if not getattr(user, "is_authenticated", False):
@@ -399,6 +427,10 @@ def subscribe(user, plan, *, approved_by=None, force=False) -> Subscription:
             f"Plan {plan.key!r} pays its holder ({plan.units} units per period). "
             "Assigning it needs an accountable approver: pass approved_by, or "
             "create it through an accepted Offer in toto.jobs.")
+    if getattr(plan, "admin_only", False) and not getattr(user, "is_superuser", False):
+        # Not even `force` puts this plan on an ordinary account: the plan
+        # must never grant the privilege (2026-09-26).
+        raise IneligiblePlan(f"{plan.key!r} is for superusers only.")
     if not force and not is_eligible(user, plan.key):
         raise IneligiblePlan(
             f"{plan.key!r} is not offered to any community this person is in.")
@@ -411,12 +443,14 @@ def subscribe(user, plan, *, approved_by=None, force=False) -> Subscription:
         # create_defaults, so the two cases are written out.
         return Subscription.objects.create(
             user=user, plan_key=plan.key, state=SubscriptionState.ACTIVE,
-            anchor_date=today.replace(day=1))
+            anchor_date=today.replace(day=1), forced=bool(force))
 
     subscription.plan_key = plan.key
     subscription.state = SubscriptionState.ACTIVE
     subscription.arrears_since = None
-    fields = ["plan_key", "state", "arrears_since", "changed_at"]
+    subscription.lapse_reason = ""
+    subscription.forced = bool(force)
+    fields = ["plan_key", "state", "arrears_since", "lapse_reason", "forced", "changed_at"]
     if subscription.anchor_date is None:
         subscription.anchor_date = today.replace(day=1)
         fields.append("anchor_date")
@@ -647,8 +681,47 @@ def lapse_if_overdue(subscription, *, now=None) -> bool:
     now = now or timezone.now()
     if (now - subscription.arrears_since).days < grace_days():
         return False
+    _lapse(subscription, "overdue")
+    return True
+
+
+def _lapse(subscription, reason: str) -> None:
     subscription.state = SubscriptionState.LAPSED
-    subscription.save(update_fields=["state", "changed_at"])
+    subscription.lapse_reason = reason
+    subscription.save(update_fields=["state", "lapse_reason", "changed_at"])
+
+
+def ineligibility_reason(subscription, *, now=None) -> str:
+    """Why a paying row no longer grants its plan, or "" while it does.
+
+    The same facts `plan_for` reads on every request, named so the sweep can
+    write them down and the page can say them: `expired`, `withdrawn` (no
+    Community of theirs offers the plan), `not-superuser` (an admin-only plan
+    on an ordinary account), `unknown-plan` (the key left the file)."""
+    if not subscription.is_paying:
+        return ""
+    if subscription.is_expired(now):
+        return "expired"
+    plan = subscription.plan
+    if plan is None:
+        return "unknown-plan"
+    if plan.is_default:
+        return ""
+    user = subscription.user
+    if plan.admin_only and not getattr(user, "is_superuser", False):
+        return "not-superuser"
+    if not subscription.forced and not is_eligible(user, plan.key):
+        return "withdrawn"
+    return ""
+
+
+def lapse_if_ineligible(subscription, *, now=None) -> bool:
+    """Write down what `plan_for` already enforces: a paying row that no
+    longer grants its plan is lapsed, with the reason (2026-09-26)."""
+    reason = ineligibility_reason(subscription, now=now)
+    if not reason:
+        return False
+    _lapse(subscription, reason)
     return True
 
 
@@ -673,7 +746,7 @@ def run_billing(*, now=None) -> dict:
                     status__in=(ChargeStatus.DUE, ChargeStatus.FAILED)):
                 settled = settle(charge)
                 counts["charged" if settled.is_settled else "failed"] += 1
-            if lapse_if_overdue(subscription, now=now):
+            if lapse_if_overdue(subscription, now=now) or lapse_if_ineligible(subscription, now=now):
                 counts["lapsed"] += 1
         except Exception:  # noqa: BLE001 - one bad row must not end the sweep
             counts["failed"] += 1

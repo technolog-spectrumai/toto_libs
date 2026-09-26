@@ -87,10 +87,17 @@ def mine(request):
         charges = list(subscription.charges.all()[:24])
 
     plan = plan_for(request.user)
+    from .plans import admin_plan
+
+    reserved = admin_plan()
     return _render(request, "subscriptions/mine.html", {
         "active_tab": "mine",
         "subscription": subscription,
         "plan": plan,
+        # A superuser not on the admin plan: say what turns it on, once.
+        "needs_bootstrap": bool(request.user.is_superuser and reserved is not None
+                                and not plan.admin_only),
+        "admin_plan": reserved,
         "quote": services.quote(request.user, plan),
         "entitlements": plan.feature_rows() if plan else [],
         "charges": charges,
@@ -129,8 +136,10 @@ def cancel(request):
 
 
 def _is_operator(user) -> bool:
-    """``is_superuser`` does not imply ``is_staff`` in Django. Both count."""
-    return bool(user.is_staff or user.is_superuser)
+    """Who may change what a Community offers and what it takes off: real
+    superusers only (2026-09-26). Staff administer many things, but which
+    plans reach whom is the ladder itself, and the ladder is the admin's."""
+    return bool(user.is_superuser)
 
 
 @login_required
@@ -151,7 +160,7 @@ def audience(request):
     from django.http import HttpResponseForbidden
 
     if not _is_operator(request.user):
-        return HttpResponseForbidden(_("Plan audiences are set by staff."))
+        return HttpResponseForbidden(_("Plan audiences are set by superusers."))
 
     from toto.socialhub.models import Community
 
@@ -205,7 +214,7 @@ def discounts(request):
     from django.http import HttpResponseForbidden
 
     if not _is_operator(request.user):
-        return HttpResponseForbidden(_("Community discounts are set by staff."))
+        return HttpResponseForbidden(_("Community discounts are set by superusers."))
 
     from toto.socialhub.models import Community
 

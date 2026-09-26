@@ -123,6 +123,26 @@ def _wants_json(request) -> bool:
     return request.content_type == "application/json"
 
 
+def superuser_plan_required(view):
+    """A view for superuser functionality: a real superuser on the admin-only
+    plan (both, `models.superuser_plan_active`), 403 for anybody else —
+    including a superuser whose Community has not granted them the plan."""
+    from functools import wraps
+
+    from django.core.exceptions import PermissionDenied
+
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        from .models import superuser_plan_active
+
+        if not superuser_plan_active(getattr(request, "user", None)):
+            raise PermissionDenied("This needs a superuser on the Superuser plan.")
+        return view(request, *args, **kwargs)
+
+    wrapped.superuser_plan_required = True
+    return wrapped
+
+
 class SubscriptionGateMiddleware:
     """Read-only without the plan, 402 on a write."""
 

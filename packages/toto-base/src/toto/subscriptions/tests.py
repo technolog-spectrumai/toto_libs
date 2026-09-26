@@ -369,14 +369,19 @@ class EligibilityTests(TestCase):
         self.assertFalse(services.is_eligible(self.insider, "ghost"))
         self.assertNotIn("ghost", self._keys(self.insider))
 
-    def test_leaving_the_community_does_not_cancel_the_subscription(self):
-        """The one PlanAudience promise that survives the inversion: an offer
-        gates the OFFER, never a subscription that already exists. Otherwise a
-        community head could unsubscribe people by expelling them."""
+    def test_leaving_the_community_takes_the_plan_away_but_keeps_the_row(self):
+        """Since 2026-09-26 the offer gates the PLAN IN FORCE, not only the
+        purchase: a Community's plans are its members', so leaving it (or an
+        offer withdrawn) drops the person to the default plan on the next
+        request. The row is not cancelled — coming back restores it — and the
+        billing sweep writes the reason down (`withdrawn`)."""
         offer(self.professional, self.guild)
         services.subscribe(self.insider, self.professional)
         self.insider.community_profile.communities.remove(self.guild)
         self.assertFalse(services.is_eligible(self.insider, "professional"))
+        self.assertEqual(plan_for(self.insider).key, "free")
+        self.assertEqual(Subscription.objects.get(user=self.insider).state, SubscriptionState.ACTIVE)
+        self.insider.community_profile.communities.add(self.guild)
         self.assertEqual(plan_for(self.insider).key, "professional")
 
     def test_the_service_refuses_an_ineligible_plan_too(self):
@@ -420,8 +425,9 @@ class OfferTabTests(TestCase):
                                 publication_year=2026, active=True)
         cls.free, cls.standard, cls.professional = make_plans()
         cls.guild = Community.objects.create(name="Guild", slug="guild")
+        # The tabs are superusers' since 2026-09-26 (plans are the admin's).
         cls.staff = User.objects.create_user("tab_staff", "ts@example.com", "pw",
-                                             is_staff=True)
+                                             is_staff=True, is_superuser=True)
         cls.plain = User.objects.create_user("tab_plain", "tp@example.com", "pw")
 
     def setUp(self):
@@ -1122,8 +1128,12 @@ class IngressTests(TestCase):
         self._seed()
         self.assertEqual(CommunityPlanOffer.objects.count(), before)
 
-    def test_it_says_so_when_there_is_nothing_to_offer(self):
-        self.assertIn("no communities", self._seed())
+    def test_the_operators_community_is_made_before_anything_is_offered(self):
+        """bootstrap_plans runs first (2026-09-26), so there is always at least
+        one Community — the operators' — and "no communities" is unreachable."""
+        out = self._seed()
+        self.assertIn("Operators", out)
+        self.assertTrue(Community.objects.filter(slug="operators").exists())
 
     def test_full_offers_the_paid_ladder_to_the_first_community(self):
         guild = Community.objects.create(name="Guild", slug="ingress-guild3")
@@ -1311,8 +1321,8 @@ class DiscountTabTests(TestCase):
         cls.founders = Community.objects.create(name="Founders")
         cls.member_user = member("plain")
         cls.staff = User.objects.create_user("staffer", password="pw")
-        cls.staff.is_staff = True
-        cls.staff.save(update_fields=["is_staff"])
+        cls.staff.is_staff = cls.staff.is_superuser = True     # the tabs are superusers' (2026-09-26)
+        cls.staff.save(update_fields=["is_staff", "is_superuser"])
 
     def test_members_cannot_open_it(self):
         self.client.force_login(self.member_user)

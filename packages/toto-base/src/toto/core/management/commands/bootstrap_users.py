@@ -40,6 +40,7 @@ from __future__ import annotations
 import json
 import sys
 
+from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand
@@ -184,6 +185,18 @@ class Command(BaseCommand):
                 User.objects.create_user(username=username, password=password,
                                          email=email, is_active=True)
             self.stdout.write(f"{username}: created ({level})")
+
+        # A superuser is nothing on the plans ladder until a Community grants
+        # the admin-only plan (toto.subscriptions, 2026-09-26). Every door that
+        # makes accounts — the build scripts, deploy.py users, the Operator's
+        # Users tab — comes through here, so this is where that grant follows.
+        if apps.is_installed("toto.subscriptions"):
+            from django.core.management import call_command
+
+            try:
+                call_command("bootstrap_plans", stdout=self.stdout)
+            except Exception as exc:  # noqa: BLE001 - accounts exist; say what did not
+                self.stderr.write(f"bootstrap_plans failed: {exc}")
 
         if failed:
             # Good rows are still created; the exit code still reports that
