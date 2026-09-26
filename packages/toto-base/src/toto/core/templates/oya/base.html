@@ -42,6 +42,11 @@
     body {
       font-family: '{{ font.name }}', {{ font.style_family|default:"sans-serif" }};
     }
+    /* Dark map tiles, for every Leaflet page (2026-09-26). CARTO's dark
+       basemap now answers "API key required", so the dark layer is
+       OpenStreetMap's own tiles, darkened here. A layer opts in with
+       L.tileLayer(url, {className: "toto-dark-tiles"}). */
+    .toto-dark-tiles { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
   </style>
 
 <script src="{% static 'vendor/htmx/htmx.min.js' %}"></script>

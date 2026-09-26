@@ -128,7 +128,7 @@ function mapWidget_{{ widget.id }}() {
       this.map = L.map(id).setView(center, zoom);
 
       const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png");
-      const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png");
+      const darkTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { className: "toto-dark-tiles" });
 
       (isDark ? darkTiles : lightTiles).addTo(this.map);
 

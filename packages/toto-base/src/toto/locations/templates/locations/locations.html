@@ -1392,9 +1392,9 @@
       attribution: "&copy; OpenStreetMap contributors"
     });
 
-    const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    const darkTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { className: "toto-dark-tiles",
       maxZoom: 19,
-      attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
+      attribution: "&copy; OpenStreetMap contributors"
     });
 
     map = L.map("map", {

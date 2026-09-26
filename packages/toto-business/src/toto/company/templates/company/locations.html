@@ -223,10 +223,8 @@
   }
   var isDark = localStorage.getItem('darkMode') === 'true';
   var map = L.map('company-map');
-  L.tileLayer(isDark
-      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    {maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'}).addTo(map);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {maxZoom: 19, className: isDark ? 'toto-dark-tiles' : '', attribution: '&copy; OpenStreetMap contributors'}).addTo(map);
 
   var everything = [];
   if (data.origin) {
@@ -272,10 +270,8 @@
     var lonInput = document.getElementById('id_hq-longitude');
     var start = [latInput.value || 52.2297, lonInput.value || 21.0122];
     var pick = L.map('hq-pick-map').setView(start, latInput.value ? 11 : 5);
-    L.tileLayer(isDark
-        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      {maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'}).addTo(pick);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {maxZoom: 19, className: isDark ? 'toto-dark-tiles' : '', attribution: '&copy; OpenStreetMap contributors'}).addTo(pick);
     var pin = null;
     function place(lat, lon) {
       if (pin) { pick.removeLayer(pin); }

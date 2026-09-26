@@ -159,7 +159,7 @@
   const geometry = JSON.parse('{{ geometry_json|escapejs }}');
   const detailMap = L.map("detail-map", { zoomControl: true, scrollWheelZoom: false }).setView([52, 19], 5);
   const tiles = darkMode
-    ? L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19, attribution: "&copy; OSM &copy; CARTO" })
+    ? L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { className: "toto-dark-tiles", maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" })
     : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" });
   tiles.addTo(detailMap);
   const accent = darkMode ? "#7c8fd4" : "#2f3d63";

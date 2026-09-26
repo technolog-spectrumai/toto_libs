@@ -517,10 +517,8 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
       var lonInput = document.getElementById('address-lon');
       var start = [latInput.value || 52.2297, lonInput.value || 21.0122];
       pick = L.map('address-pick-map').setView(start, latInput.value ? 12 : 5);
-      L.tileLayer(isDark
-          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-          : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        {maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'}).addTo(pick);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        {maxZoom: 19, className: isDark ? 'toto-dark-tiles' : '', attribution: '&copy; OpenStreetMap contributors'}).addTo(pick);
       if (latInput.value && lonInput.value) {
         place(parseFloat(latInput.value), parseFloat(lonInput.value));
       }
