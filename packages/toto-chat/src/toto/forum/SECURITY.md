@@ -46,7 +46,7 @@ Chosen when a room is made, fixed for its life (only a password may change):
 |---|---|---|---|
 | open (every room from before) | any member | plaintext | yes |
 | password | whoever knows the password | plaintext unless encrypted | yes unless encrypted |
-| invite only | whoever the creator or staff add; not listed to others | plaintext unless encrypted | yes unless encrypted |
+| invite only (legacy) | whoever the creator or staff add; not listed to others. No new room is made invite-only since 2026-09-26; existing ones keep this rule | plaintext unless encrypted | yes unless encrypted |
 | **encrypted** (any of the above) | as above | AES-256-GCM ciphertext | **no** |
 | **temporary** (any of the above) | as above | as above | as above; the room and everything in it are deleted at expiry |
 

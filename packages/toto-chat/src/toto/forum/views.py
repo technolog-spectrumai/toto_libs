@@ -184,7 +184,7 @@ class ChannelLeaveView(LoginRequiredMixin, View):
 class ChannelCreateView(LoginRequiredMixin, View):
     """Create a room from the channel-list page and join it.
 
-    Who may join (open / password / invite), whether it is encrypted at rest,
+    Who may join (open / password), whether it is encrypted at rest,
     and whether it expires are chosen here and fixed for the room's life —
     except the password, which its creator may change. creation.create_room
     holds every rule; the API door calls the same function.

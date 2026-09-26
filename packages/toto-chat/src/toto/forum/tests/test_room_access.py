@@ -1,4 +1,5 @@
-"""Who joins what: open, password (rate limited), invite; and what is listed."""
+"""Who joins what: open, password (rate limited), legacy invite rooms; and
+what is listed. No NEW room is invite-only since 2026-09-26."""
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -36,6 +37,28 @@ class AccessTests(TestCase):
     def room(self, **kw):
         return creation.create_room(self.owner, **kw)
 
+    def legacy_invite_room(self, name):
+        """An invite-only room as one made before 2026-09-26: no new room can
+        be one, but existing rows keep their rule."""
+        room = creation.create_room(self.owner, name=name)
+        ForumChannel.objects.filter(pk=room.pk).update(access="invite")
+        room.refresh_from_db()
+        return room
+
+    def test_a_new_room_cannot_be_invite_only(self):
+        with self.assertRaises(creation.RoomRefused):
+            self.room(name="Board", access="invite")
+        self.client.force_login(self.owner)
+        self.client.post(reverse("forum:channel_create"), {"name": "Board", "access": "invite"})
+        self.assertFalse(ForumChannel.objects.filter(name="Board").exists())
+
+    def test_the_create_form_is_a_modal_without_invite_only(self):
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("forum:channel_list"))
+        self.assertContains(response, 'data-testid="room-create-open"')
+        self.assertContains(response, 'role="dialog"')
+        self.assertNotContains(response, 'value="invite"')
+
     def test_joining_a_password_room_needs_the_password(self):
         room = self.room(name="Secret", access="password", password="correct horse")
         self.client.force_login(self.bob)
@@ -54,7 +77,7 @@ class AccessTests(TestCase):
         self.assertEqual(caught.exception.status, 429)
 
     def test_an_invite_room_is_joined_only_by_invitation_and_hidden_otherwise(self):
-        room = self.room(name="Board", access="invite")
+        room = self.legacy_invite_room("Board")
         with self.assertRaises(creation.RoomRefused):
             creation.join(self.bob, room)
         self.client.force_login(self.bob)
@@ -64,7 +87,7 @@ class AccessTests(TestCase):
         self.assertContains(self.client.get(reverse("forum:channel_list")), "Board")
 
     def test_only_the_owner_or_staff_manage_members(self):
-        room = self.room(name="Board", access="invite")
+        room = self.legacy_invite_room("Board")
         with self.assertRaises(creation.RoomRefused):
             creation.add_member(self.bob, room, "staff")
         creation.add_member(self.staff, room, "bob")

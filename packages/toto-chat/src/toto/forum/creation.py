@@ -18,6 +18,8 @@ from django.utils.translation import gettext as _
 EXPIRY_CHOICES = {"": None, "1h": timedelta(hours=1), "24h": timedelta(hours=24),
                   "7d": timedelta(days=7), "30d": timedelta(days=30)}
 MIN_PASSWORD = 8
+#: What a NEW room may be. "invite" is legacy: existing rows keep it.
+NEW_ROOM_ACCESS = ("open", "password")
 
 #: (limit, window seconds). Password attempts are the costly ones — each is an
 #: Argon2id derivation at 64 MiB — so they are limited per person per room and
@@ -61,8 +63,11 @@ def create_room(user, *, name: str, access: str = "open", password: str = "",
     if ForumChannel.at_capacity():
         raise RoomRefused(_("This platform holds at most %(n)s rooms, and it has that many. "
                             "Close one before opening another.") % {"n": ForumChannel.max_channels()}, 409)
-    if access not in ("open", "password", "invite"):
-        raise RoomRefused(_("Choose who may join: open, password or invite only."))
+    # Two kinds of access since 2026-09-26: open, or a password. Invite-only
+    # rooms are no longer made; the ones that exist keep their rule (they are
+    # still joined only by being added), so nobody's private room opens up.
+    if access not in NEW_ROOM_ACCESS:
+        raise RoomRefused(_("Choose who may join: open or password."))
     if access == "password" and len(password or "") < MIN_PASSWORD:
         raise RoomRefused(_("A room password is at least %(n)s characters.") % {"n": MIN_PASSWORD})
     if expires_in not in EXPIRY_CHOICES:

@@ -104,7 +104,9 @@ class ForumChannel(models.Model):
     # permanent room: the migration's defaults ARE the old behaviour.
     # See SECURITY.md.
     #: Who may join: anybody (open), whoever knows the password, or only
-    #: whoever the owner or staff add (invite).
+    #: whoever the owner or staff add (invite). "invite" is LEGACY since
+    #: 2026-09-26: no new room is made invite-only (creation.NEW_ROOM_ACCESS),
+    #: but existing ones keep the rule, so none opens up by itself.
     access = models.CharField(max_length=8, choices=[
         ("open", _("Open")), ("password", _("Password")), ("invite", _("Invite only"))],
         default="open")
