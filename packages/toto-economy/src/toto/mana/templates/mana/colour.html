@@ -1,5 +1,5 @@
 {% extends "oya/base.html" %}
-{% load i18n %}
+{% load i18n quota_tags %}
 {% block title %}{% blocktrans with name=b.label %}{{ name }} mana{% endblocktrans %} - {{ platform.site_name }}{% endblock %}
 {% block content %}
 <div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'" class="min-h-screen px-4 py-8">
@@ -71,7 +71,7 @@
             <li class="flex justify-between gap-3 border-b border-current/10 py-1">
               <span>{% if p.kind == "earn" %}{% trans "Encrypting a file" %}{% else %}{{ p.label }}{% endif %}
                 {% if p.kind == "levy" %}<span class="text-xs opacity-60">{% trans "per GB, daily" %}</span>{% endif %}</span>
-              <span class="font-mono font-bold tabular-nums" {% if p.kind == "earn" %}:class="darkMode ? 'text-success-dark' : 'text-success-light'"{% else %}:class="darkMode ? 'text-warn-dark' : 'text-warn-light'"{% endif %}>{% if p.kind == "earn" %}+{% else %}−{% endif %}{{ p.amount|floatformat:"-2" }}</span>
+              <span class="font-mono font-bold tabular-nums" {% if p.kind == "earn" %}:class="darkMode ? 'text-success-dark' : 'text-success-light'"{% else %}:class="darkMode ? 'text-warn-dark' : 'text-warn-light'"{% endif %}>{% if p.kind == "earn" %}+{% else %}−{% endif %}{{ p.amount|sig3 }}</span>
             </li>
           {% empty %}
             <li class="italic opacity-60">{% trans "Nothing is priced in this pool." %}</li>

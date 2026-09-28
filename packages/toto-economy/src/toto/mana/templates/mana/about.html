@@ -1,5 +1,5 @@
 {% extends "oya/base.html" %}
-{% load i18n %}
+{% load i18n quota_tags %}
 {% block title %}{% trans "How mana works" %} - {{ platform.site_name }}{% endblock %}
 {% block content %}
 <div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'" class="min-h-screen px-4 py-8">
@@ -35,7 +35,7 @@
             <td class="py-1">{% if p.kind == "earn" %}{% trans "Encrypting a file" %}{% else %}{{ p.label }}{% endif %}
               {% if p.kind == "levy" %}<span class="text-xs opacity-60">{% trans "per GB, daily" %}</span>{% endif %}</td>
             <td class="py-1 text-xs opacity-70">{% if p.role == "security" %}{% trans "Security" %}{% elif p.role == "compute" %}{% trans "Compute" %}{% else %}{% trans "Storage" %}{% endif %}</td>
-            <td class="py-1 text-right font-mono font-bold tabular-nums">{% if p.kind == "earn" %}+{% else %}−{% endif %}{{ p.amount|floatformat:"-2" }}</td>
+            <td class="py-1 text-right font-mono font-bold tabular-nums">{% if p.kind == "earn" %}+{% else %}−{% endif %}{{ p.amount|sig3 }}</td>
           </tr>
         {% empty %}
           <tr><td class="py-2 italic opacity-60">{% trans "Nothing is priced yet." %}</td></tr>

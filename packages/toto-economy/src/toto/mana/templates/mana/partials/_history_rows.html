@@ -1,4 +1,4 @@
-{% load i18n %}{% comment %}Ledger rows for one pool: when, what, and the signed amount.{% endcomment %}
+{% load i18n quota_tags %}{% comment %}Ledger rows for one pool: when, what, and the signed amount.{% endcomment %}
 <li class="flex items-center justify-between gap-3 border-b border-current/10 py-1.5 text-sm">
   <span class="min-w-0">
     <span class="block truncate">
@@ -8,5 +8,5 @@
   </span>
   <span class="shrink-0 font-mono font-bold tabular-nums"
         {% if row.delta >= 0 %}:class="darkMode ? 'text-success-dark' : 'text-success-light'"{% else %}:class="darkMode ? 'text-warn-dark' : 'text-warn-light'"{% endif %}>
-    {% if row.delta >= 0 %}+{% endif %}{{ row.delta|floatformat:"-2" }}</span>
+    {% if row.delta >= 0 %}+{% endif %}{{ row.delta|sig3 }}</span>
 </li>

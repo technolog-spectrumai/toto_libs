@@ -1,7 +1,7 @@
-{% load i18n %}{% comment %}The one sentence L1 shows per pool: what moves it.{% endcomment %}
+{% load i18n quota_tags %}{% comment %}The one sentence L1 shows per pool: what moves it.{% endcomment %}
 <p class="text-xs opacity-70">
 {% if b.role == "security" %}
-  {% if b.plain_total %}{% blocktrans with drain=b.drain_per_day|floatformat:"-1" regen=b.regen_per_day|floatformat:"-1" count files=b.plain_total %}{{ files }} unencrypted file uses {{ drain }} a day; {{ regen }} a day comes back.{% plural %}{{ files }} unencrypted files use {{ drain }} a day; {{ regen }} a day comes back.{% endblocktrans %}
+  {% if b.plain_total %}{% blocktrans with drain=b.drain_per_day|sig3 regen=b.regen_per_day|floatformat:"-1" count files=b.plain_total %}{{ files }} unencrypted file uses {{ drain }} a day; {{ regen }} a day comes back.{% plural %}{{ files }} unencrypted files use {{ drain }} a day; {{ regen }} a day comes back.{% endblocktrans %}
   {% else %}{% blocktrans with regen=b.regen_per_hour|floatformat:"-1" %}Scans use it; encrypting files earns it; +{{ regen }} an hour comes back.{% endblocktrans %}{% endif %}
 {% elif b.role == "compute" %}
   {% blocktrans with regen=b.regen_per_hour|floatformat:"-1" %}Runs, renders and sends use it; +{{ regen }} an hour comes back.{% endblocktrans %}

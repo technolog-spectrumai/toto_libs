@@ -1,5 +1,5 @@
 {% extends "quota/base.html" %}
-{% load i18n %}
+{% load i18n quota_tags %}
 
 {% comment %}ONE metered thing, and everything about it.
 
@@ -69,7 +69,7 @@
     {% endif %}
     {% if row.spent %}
       <div>
-        <div class="text-lg font-semibold">{{ row.spent.amount|floatformat:"-9" }}
+        <div class="text-lg font-semibold">{{ row.spent.amount|sig3 }}
           <span class="text-xs opacity-60">{{ row.spent.asset }}</span></div>
         <div class="text-xs opacity-60">{% trans "paid so far" %}</div>
       </div>
@@ -198,7 +198,7 @@
         <p class="text-[11px] opacity-55">{% trans "Leave it empty to make this free. Free is the absence of a price, not a zero." %}</p>
       </form>
     {% elif row.price %}
-      <p class="font-mono text-2xl font-bold">{{ row.price.price_display }}
+      <p class="font-mono text-2xl font-bold">{{ row.price.price_display|sig3 }}
         <span class="text-sm opacity-60">{{ row.price.asset }}</span></p>
       <p class="text-xs opacity-60">{% trans "per" %} {{ row.price.unit_quantity|default:1 }} {{ metric.unit }}</p>
     {% else %}

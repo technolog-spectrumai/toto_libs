@@ -1,5 +1,5 @@
 {% extends "oya/base.html" %}
-{% load i18n %}
+{% load i18n quota_tags %}
 
 {% block title %}{% trans "Assistant" %} | {{ platform.site_name }}{% endblock %}
 
@@ -90,13 +90,13 @@ Nothing the assistant proposes is ever applied on its own. You accept it or you 
                class="space-y-2 rounded-2xl border p-5 shadow-sm text-sm">
         <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "What it costs you" %}</h2>
         {% if price_request %}
-          <p>{% trans "Per request" %}: <span class="font-semibold tabular-nums">{{ price_request.price_display }} {{ price_request.asset }}</span></p>
+          <p>{% trans "Per request" %}: <span class="font-semibold tabular-nums">{{ price_request.price_display|sig3 }} {{ price_request.asset }}</span></p>
         {% endif %}
         {% if price_tokens %}
-          <p>{% trans "Per 1000 tokens" %}: <span class="font-semibold tabular-nums">{{ price_tokens.price_display }} {{ price_tokens.asset }}</span></p>
+          <p>{% trans "Per 1000 tokens" %}: <span class="font-semibold tabular-nums">{{ price_tokens.price_display|sig3 }} {{ price_tokens.asset }}</span></p>
         {% endif %}
         {% if balance %}
-          <p class="opacity-70">{% blocktrans with amount=balance.amount asset=balance.asset %}Your balance is {{ amount }} {{ asset }}.{% endblocktrans %}</p>
+          <p class="opacity-70">{% blocktrans with amount=balance.amount|sig3 asset=balance.asset %}Your balance is {{ amount }} {{ asset }}.{% endblocktrans %}</p>
         {% endif %}
       </article>
     {% endif %}

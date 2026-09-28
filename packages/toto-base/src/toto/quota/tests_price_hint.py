@@ -112,6 +112,42 @@ def _tariffs_shipped() -> bool:
     return True
 
 
+class SignificantDigitsTests(SimpleTestCase):
+    """Every cost is shown with three significant digits (2026-09-28): the
+    forum's "−0.200000000000000000/message" was the stored Decimal, printed."""
+
+    def test_three_significant_digits_trailing_zeros_dropped(self):
+        from toto.quota.rates import significant
+
+        for value, shown in (("0.200000000000000000", "0.2"), ("0.123456", "0.123"),
+                             ("0.000123456", "0.000123"), ("0.0002", "0.0002"),
+                             ("5.000000000", "5"), ("1.23456", "1.23"), ("0.1235", "0.124"),
+                             ("-0.20000", "-0.2"), (0, "0"), ("0E-9", "0")):
+            with self.subTest(value=value):
+                self.assertEqual(significant(value), shown)
+
+    def test_the_whole_number_part_is_never_rounded_away(self):
+        from toto.quota.rates import significant
+
+        self.assertEqual(significant("1234.5"), "1235")
+        self.assertEqual(significant("120.04"), "120")
+        self.assertEqual(significant("99.95"), "100")
+
+    def test_nothing_and_non_numbers_pass_through(self):
+        from toto.quota.rates import significant
+
+        self.assertEqual((significant(None), significant("")), ("", ""))
+        self.assertEqual(significant("n/a"), "n/a")
+
+    def test_the_filter_and_the_hint_use_it(self):
+        self.assertEqual(render("{{ v|sig3 }}", v="0.20000000000"), "0.2")
+        card = {"forum.message": {"price_display": "0.200000000000000000", "asset": "RED"}}
+        with mock.patch("toto.quota.rates.rate_card", return_value=card):
+            out = render('{% price_hint "forum.message" %}')
+        self.assertIn("0.2", out)
+        self.assertNotIn("0.20", out)
+
+
 class PriceHintResilienceTests(SimpleTestCase):
     @unittest.skipUnless(_tariffs_shipped(), "toto.tariffs is not shipped on this host")
     def test_an_unmigrated_database_is_silent_rather_than_a_500(self):

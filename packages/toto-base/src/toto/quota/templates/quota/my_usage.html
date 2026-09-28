@@ -1,5 +1,5 @@
 {% extends "quota/base.html" %}
-{% load i18n static %}
+{% load i18n static quota_tags %}
 
 {% block start_script %}
 {{ block.super }}
@@ -107,7 +107,7 @@
            :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
         <span class="opacity-60">
           {% if row.price %}
-            {% blocktrans with price=row.price.price_display|floatformat:-9 asset=row.price.asset unit=row.metric.unit %}
+            {% blocktrans with price=row.price.price_display|sig3 asset=row.price.asset unit=row.metric.unit %}
               {{ price }} {{ asset }} per {{ unit }}
             {% endblocktrans %}
           {% else %}
@@ -115,7 +115,7 @@
           {% endif %}
         </span>
         {% if row.spent %}
-          <span class="font-mono">{{ row.spent.amount|floatformat:"-9" }} {{ row.spent.asset }}</span>
+          <span class="font-mono">{{ row.spent.amount|sig3 }} {{ row.spent.asset }}</span>
         {% endif %}
       </div>
     {% endif %}

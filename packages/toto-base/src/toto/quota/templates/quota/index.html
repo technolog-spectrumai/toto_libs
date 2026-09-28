@@ -1,5 +1,5 @@
 {% extends "quota/base.html" %}
-{% load i18n %}
+{% load i18n quota_tags %}
 
 {% comment %}The collection view: every metered thing, one row each.
 
@@ -229,7 +229,7 @@ A levy is never charged for being a member. What you pay to be here is a subscri
               {% if pricing_enabled %}
               <td class="px-5 py-3">
                 {% if row.price %}
-                  <span class="font-mono">{{ row.price.price_display }}</span>
+                  <span class="font-mono">{{ row.price.price_display|sig3 }}</span>
                 {% else %}
                   <span class="text-xs opacity-55">{% trans "free" %}</span>
                 {% endif %}
@@ -248,7 +248,7 @@ A levy is never charged for being a member. What you pay to be here is a subscri
                     <span class="font-mono text-xs">{{ row.used|default:"0"|floatformat:"-2" }}{% if row.limit %}<span class="opacity-50">/{{ row.limit|floatformat:"-2" }}</span>{% endif %}</span>
                   </div>
                   {% if row.spent %}
-                    <div class="mt-0.5 text-[10px] opacity-55">{% trans "paid" %} {{ row.spent.amount|floatformat:"-9" }} {{ row.spent.asset }}</div>
+                    <div class="mt-0.5 text-[10px] opacity-55">{% trans "paid" %} {{ row.spent.amount|sig3 }} {{ row.spent.asset }}</div>
                   {% endif %}
                 {% else %}
                   <span class="text-xs opacity-40">{% trans "not recorded" %}</span>

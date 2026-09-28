@@ -1,10 +1,10 @@
-{% load i18n %}{% comment %}Encrypt some files: the costliest plaintext, pre-ticked with the fewest
+{% load i18n quota_tags %}{% comment %}Encrypt some files: the costliest plaintext, pre-ticked with the fewest
    files that stop the drain (status.preselect, Morion's rule). Posts each file
    to the vault's own encrypt door and polls async runs exactly as the vault
    page does; the reward arrives through the file_encrypted signal.{% endcomment %}
 <div x-data="manaPrompt({{ preselected|default:'[]' }}, '{% url 'vault:encrypt_file' %}', '{% url 'vault:encrypt_status' %}', '{% url 'mana:api_balances' %}')"
      class="space-y-3">
-  <p class="text-sm opacity-80">{% blocktrans with drain=b.drain_per_day|floatformat:"-1" regen=b.regen_per_day|floatformat:"-1" %}Unencrypted files here use {{ drain }} a day, and {{ regen }} a day comes back. Encrypting a file stops its drain and earns security mana. The ticked files are the fewest that turn the pool around.{% endblocktrans %}</p>
+  <p class="text-sm opacity-80">{% blocktrans with drain=b.drain_per_day|sig3 regen=b.regen_per_day|floatformat:"-1" %}Unencrypted files here use {{ drain }} a day, and {{ regen }} a day comes back. Encrypting a file stops its drain and earns security mana. The ticked files are the fewest that turn the pool around.{% endblocktrans %}</p>
   <ul class="space-y-1">
     {% for f in plain_files %}
       <li class="flex items-center gap-3 text-sm">
@@ -12,7 +12,7 @@
                class="h-4 w-4">
         <label for="mana-f-{{ f.pk }}" class="min-w-0 flex-1 truncate" title="{{ f.title }}">{{ f.title }}
           <span class="opacity-50">· {{ f.bytes|filesizeformat }}</span></label>
-        <span class="shrink-0 font-mono text-xs tabular-nums opacity-70">{{ f.drain_per_day|floatformat:"-2" }}/{% trans "day" %}</span>
+        <span class="shrink-0 font-mono text-xs tabular-nums opacity-70">{{ f.drain_per_day|sig3 }}/{% trans "day" %}</span>
       </li>
     {% endfor %}
   </ul>

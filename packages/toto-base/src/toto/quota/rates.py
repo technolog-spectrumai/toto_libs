@@ -27,6 +27,38 @@ from __future__ import annotations
 from django.db import DatabaseError
 
 
+#: How many significant digits a price or an amount paid is SHOWN with
+#: (2026-09-28). Stored values keep their precision; this is display only.
+DISPLAY_DIGITS = 3
+
+
+def significant(value, digits: int = DISPLAY_DIGITS) -> str:
+    """A cost as a person reads it: `digits` significant digits, rounded half
+    up, trailing zeros dropped — 0.200000000 → "0.2", 0.000123456 → "0.000123".
+    The whole-number part is never rounded away (1234.5 → "1235", not
+    "1.23e3" or "1230"): a price that reads as a different number is worse
+    than one digit too many. "" for None or "", the value itself for anything
+    that is not a number.
+    """
+    from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+
+    if value is None or value == "":
+        return ""
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return str(value)
+    if not number.is_finite():
+        return str(value)
+    if number == 0:
+        return "0"
+    places = max(digits - 1 - number.adjusted(), 0)
+    text = format(number.quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP), "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return "0" if text in ("-0", "") else text
+
+
 def economy_hidden_from(user) -> bool:
     """Whether this host shows this person mana instead of the economy.
 

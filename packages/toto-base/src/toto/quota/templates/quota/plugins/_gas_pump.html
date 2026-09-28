@@ -1,4 +1,4 @@
-{% load i18n %}
+{% load i18n quota_tags %}
 {% comment %}The gas pump. Read-only, live, and only on apps that meter.
 
    Rendered by GasPumpPlugin through {% render_floating_plugins %} in
@@ -56,7 +56,7 @@
                 <span class="font-semibold">{{ row.metric.label }}</span>
                 {% if row.price %}
                   <span class="tabular-nums opacity-70">
-                    {{ row.price.price_display }} {{ row.price.asset }}<span class="opacity-60">/{{ row.price.unit_code }}</span>
+                    {{ row.price.price_display|sig3 }} {{ row.price.asset }}<span class="opacity-60">/{{ row.price.unit_code }}</span>
                   </span>
                 {% elif gas_priced %}
                   <span class="text-xs uppercase tracking-wide opacity-50">{% trans "free" %}</span>
@@ -87,7 +87,7 @@
 
               {% if row.spent %}
                 <p class="text-xs opacity-60">
-                  {% blocktrans with amount=row.spent.amount asset=row.spent.asset %}You have paid {{ amount }} {{ asset }} for this{% endblocktrans %}
+                  {% blocktrans with amount=row.spent.amount|sig3 asset=row.spent.asset %}You have paid {{ amount }} {{ asset }} for this{% endblocktrans %}
                 </p>
               {% endif %}
             </li>
@@ -103,7 +103,7 @@
 
         {% if gas_balance %}
           <p class="text-xs opacity-70">
-            {% blocktrans with amount=gas_balance.amount asset=gas_balance.asset %}Your balance is {{ amount }} {{ asset }}.{% endblocktrans %}
+            {% blocktrans with amount=gas_balance.amount|sig3 asset=gas_balance.asset %}Your balance is {{ amount }} {{ asset }}.{% endblocktrans %}
           </p>
         {% endif %}
       </div>

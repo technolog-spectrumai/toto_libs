@@ -50,6 +50,15 @@ def quota_tab(context, app_label, label=None):
             "icon": "fa-solid fa-gauge-high"}
 
 
+@register.filter
+def sig3(value):
+    """`{{ price|sig3 }}` — a cost with three significant digits
+    (`rates.significant`). Display only; forms keep the exact value."""
+    from toto.quota.rates import significant
+
+    return significant(value)
+
+
 @register.inclusion_tag("quota/partials/_price_hint.html", takes_context=True)
 def price_hint(context, *metric_codes, label=None):
     """What this button is about to cost, next to the button.
@@ -114,7 +123,7 @@ def price_hint(context, *metric_codes, label=None):
         quotes.append({
             "code": code,
             "label": metric.label if metric else code,
-            "price": price,
+            "price": rates.significant(price),
             "asset": row.get("asset", ""),
             "per": per,
             # Which mana pool this draws on, when it is priced in one — the
