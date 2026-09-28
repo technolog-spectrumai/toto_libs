@@ -3,7 +3,7 @@
 {% comment %}Who has written here, and how much data each person sent
 (2026-09-28). People who joined and never wrote are counted under the table,
 not listed. No invitations: a password will do — its creator or staff set
-it below.{% endcomment %}
+it on the Security tab.{% endcomment %}
 {% block room_content %}
 <section class="space-y-4">
   <div class="flex flex-wrap items-center gap-2">{% include "forum/_room_badges.html" %}</div>
@@ -44,16 +44,9 @@ it below.{% endcomment %}
   <p class="text-sm opacity-70" data-testid="silent-members">{% blocktrans count n=silent_members %}{{ n }} more member has not written anything yet.{% plural %}{{ n }} more members have not written anything yet.{% endblocktrans %}</p>
   {% endif %}
 
-  {% if can_manage_members and channel.access == "password" %}
-  {% if needs_first_password %}
-  <p class="text-sm font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "This room has no password yet, so nobody new can join. Set one below." %}</p>
-  {% endif %}
-  <form method="post" class="flex flex-wrap items-end gap-2">{% csrf_token %}
-    <input type="hidden" name="action" value="password">
-    <label class="text-sm font-semibold">{% if needs_first_password %}{% trans "Room password" %}{% else %}{% trans "New room password" %}{% endif %}
-      <input type="password" name="password" required minlength="8" autocomplete="new-password" class="mt-1 block rounded border border-current/20 bg-inherit px-2 py-1 text-sm"></label>
-    <button type="submit" class="rounded border px-3 py-1.5 text-sm font-semibold">{% if needs_first_password %}{% trans "Set password" %}{% else %}{% trans "Change password" %}{% endif %}</button>
-  </form>
+  {% if can_manage_members and needs_first_password %}
+  <p class="text-sm font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "This room has no password yet, so nobody new can join." %}
+    <a class="underline" href="{% url 'forum:room_security' channel.slug %}">{% trans "Set one on the Security tab." %}</a></p>
   {% endif %}
 </section>
 {% endblock %}

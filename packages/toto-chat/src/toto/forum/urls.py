@@ -51,6 +51,8 @@ urlpatterns = [
     path("<slug:slug>/polls/<slug:poll_slug>/delete/", views.room_poll_delete, name="room_poll_delete"),
     path("<slug:slug>/stats/", views.room_stats, name="room_stats"),
     path("<slug:slug>/members/", views.room_members, name="room_members"),
+    # Security (2026-09-28): access, the password, encryption, costs.
+    path("<slug:slug>/security/", views.room_security, name="room_security"),
     # The Settings tab and its three write endpoints. Staff-only in the view,
     # not merely absent from the tab strip.
     path("<slug:slug>/settings/", views.room_settings, name="room_settings"),

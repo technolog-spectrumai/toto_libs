@@ -268,10 +268,11 @@ def _writers(channel):
 
 def room_members(request, slug):
     """Who has written in the room and how much data each sent; for its
-    creator or staff, remove a writer and set the room password.
+    creator or staff, remove a writer.
 
-    There are no invitations (2026-09-28): a password will do. People who
-    joined and never wrote are counted, not listed.
+    There are no invitations (2026-09-28): a password will do, and it is set
+    on the Security tab. People who joined and never wrote are counted, not
+    listed.
     """
     from django.contrib.auth.views import redirect_to_login
 
@@ -287,9 +288,6 @@ def room_members(request, slug):
             action = request.POST.get("action")
             if action == "remove":
                 creation.remove_member(request.user, channel, request.POST.get("member"))
-            elif action == "password":
-                creation.change_password(request.user, channel, request.POST.get("password", ""))
-                messages.success(request, _("Password changed."))
             else:
                 raise creation.RoomRefused(_("Members join with the room password; "
                                              "nobody is added by name."))
@@ -306,6 +304,57 @@ def room_members(request, slug):
                "needs_first_password": channel.access == "password" and not channel.password_verifier,
                "can_manage_members": permissions.can_manage_members(request.user, channel)}
     return render(request, "forum/room_members.html", PageProcessor().decorate(context, request))
+
+
+def room_security(request, slug):
+    """Everything about how this room is protected, in one place (2026-09-28):
+    who may join and how, the password (its creator or staff set it here),
+    encryption at rest and the room key, the room's lifetime, and what
+    sending here costs in mana. Members read it; POST is the password only.
+    """
+    from django.contrib.auth.views import redirect_to_login
+
+    from . import creation, rooms
+    from .models import ForumRetentionPolicy, ForumRoomKey
+
+    if not request.user.is_authenticated:
+        return redirect_to_login(request.get_full_path())
+    channel = get_object_or_404(ForumChannel, slug=slug)
+    may_manage = permissions.can_manage_members(request.user, channel)
+    if not may_manage:
+        permissions.require_member(request, channel)
+    if request.method == "POST":
+        if not may_manage:
+            raise PermissionDenied(_("Only the room's creator or staff change the password."))
+        try:
+            if request.POST.get("action") != "password":
+                raise creation.RoomRefused(_("Nothing to do."))
+            first = not channel.password_verifier
+            creation.change_password(request.user, channel, request.POST.get("password", ""))
+            messages.success(request, _("Password set.") if first else _("Password changed."))
+        except creation.RoomRefused as exc:
+            messages.error(request, str(exc))
+        return redirect("forum:room_security", slug=channel.slug)
+
+    key = ForumRoomKey.objects.filter(channel=channel).first() if channel.is_encrypted else None
+    limits = creation.limits()
+    kdf = rooms.kdf_params()
+    policy = ForumRetentionPolicy.current(channel)
+    context = {
+        "channel": channel, "active_tab": "security", "badges": channel.badges(),
+        "can_manage_members": may_manage,
+        "has_password": bool(channel.password_verifier),
+        "needs_first_password": channel.access == "password" and not channel.password_verifier,
+        "min_password": creation.MIN_PASSWORD,
+        "password_limits": {"user": limits["password_user"], "room": limits["password_room"]},
+        "kdf": {"memory_mib": kdf["memory_cost"] // 1024, "iterations": kdf["iterations"],
+                "lanes": kdf["lanes"]},
+        "room_key": key,
+        "password_wraps_key": bool(key and key.password_wrapped),
+        "retention": policy,
+        "message_price_code": "forum.encrypt" if channel.is_encrypted else "forum.message",
+    }
+    return render(request, "forum/room_security.html", PageProcessor().decorate(context, request))
 
 
 class MessageSearchView(LoginRequiredMixin, ListView):

@@ -54,7 +54,13 @@ members stayed, nobody new joins until the creator or staff set one:
 
 The UI says which on the room list, the room header and the create form
 (`_room_badges.html`); an encrypted room shows a notice, hides the search box,
-and the search page counts the encrypted rooms it skipped.
+and the search page counts the encrypted rooms it skipped. Each room's
+**Security** tab (2026-09-28, `room_security.html`) says all of it to its
+members in one place — who may join and how, whether a password is set, the
+KDF costs and the guessing limits, encryption at rest and the room key's
+version, the room's lifetime, the mana a message costs, what protects it in
+transit — and is where the room's creator or staff set or change the
+password (the Members tab no longer does).
 
 ## 4. Keys
 

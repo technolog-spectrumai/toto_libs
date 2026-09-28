@@ -98,7 +98,10 @@ class AccessTests(TestCase):
         self.client.force_login(self.owner)
         page = self.client.get(reverse("forum:room_members", args=[room.slug]))
         self.assertContains(page, "no password yet")
-        self.client.post(reverse("forum:room_members", args=[room.slug]),
+        self.assertContains(page, reverse("forum:room_security", args=[room.slug]))
+        self.assertContains(self.client.get(reverse("forum:room_security", args=[room.slug])),
+                            'data-testid="no-password-yet"')
+        self.client.post(reverse("forum:room_security", args=[room.slug]),
                          {"action": "password", "password": "correct horse"})
         room.refresh_from_db()
         self.assertTrue(creation.join(self.bob, room, password="correct horse"))
@@ -255,3 +258,81 @@ class RoomLayoutTests(TestCase):
     def test_tab_labels_fold_into_icons_on_a_narrow_screen(self):
         page = self.client.get(reverse("forum:channel_detail", args=[self.room.slug])).content.decode()
         self.assertIn('<span class="sr-only sm:not-sr-only">Members</span>', page)
+
+
+@override_settings(**FAST)
+class SecurityTabTests(TestCase):
+    """Everything about how a room is protected, on its own tab (2026-09-28);
+    the password is changed there, not among the members."""
+
+    def setUp(self):
+        from toto.core.models import Platform
+
+        cache.clear()
+        Platform.objects.get_or_create(active=True, defaults={
+            "site_name": "T", "author": "t", "publication_year": 2026})
+        self.owner = User.objects.create_user("owner", password="x")
+        self.bob = User.objects.create_user("bob", password="x")
+        self.carol = User.objects.create_user("carol", password="x")
+        for u, n in ((self.owner, "Owner"), (self.bob, "Bob"), (self.carol, "Carol")):
+            _person(u, n)
+        self.room = creation.create_room(self.owner, name="Vault", access="password",
+                                         password="correct horse", encrypted=True)
+        creation.join(self.bob, self.room, password="correct horse")
+        self.url = reverse("forum:room_security", args=[self.room.slug])
+
+    def test_a_member_reads_every_section_and_gets_no_password_form(self):
+        self.client.force_login(self.bob)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        for section in ("security-access", "security-encryption", "security-lifetime",
+                        "security-costs", "security-transit"):
+            self.assertContains(response, f'data-testid="{section}"')
+        self.assertContains(response, "AES-256-GCM")
+        self.assertContains(response, "also wrapped under the room password")
+        self.assertContains(response, "A password is set.")
+        self.assertNotContains(response, 'data-testid="security-password-form"')
+        self.assertContains(response, 'data-testid="room-security-tab"')
+
+    def test_a_non_member_is_kept_out(self):
+        self.client.force_login(self.carol)
+        self.assertEqual(self.client.get(self.url).status_code, 403)
+
+    def test_only_the_creator_or_staff_change_the_password(self):
+        self.client.force_login(self.bob)
+        self.assertEqual(self.client.post(self.url, {"action": "password",
+                                                     "password": "new horse battery"}).status_code, 403)
+        self.client.force_login(self.owner)
+        page = self.client.get(self.url)
+        self.assertContains(page, 'data-testid="security-password-form"')
+        response = self.client.post(self.url, {"action": "password", "password": "new horse battery"},
+                                    follow=True)
+        self.assertContains(response, "Password changed.")
+        self.room.refresh_from_db()
+        from toto.forum import rooms
+
+        self.assertTrue(rooms.verify_password(self.room, "new horse battery"))
+        self.assertFalse(rooms.verify_password(self.room, "correct horse"))
+
+    def test_a_short_password_is_refused_with_a_sentence(self):
+        self.client.force_login(self.owner)
+        response = self.client.post(self.url, {"action": "password", "password": "short"}, follow=True)
+        self.assertContains(response, "at least")
+
+    def test_the_members_tab_no_longer_changes_the_password(self):
+        self.client.force_login(self.owner)
+        members = reverse("forum:room_members", args=[self.room.slug])
+        self.assertNotContains(self.client.get(members), 'name="password"')
+        self.client.post(members, {"action": "password", "password": "new horse battery"})
+        self.room.refresh_from_db()
+        from toto.forum import rooms
+
+        self.assertTrue(rooms.verify_password(self.room, "correct horse"))
+
+    def test_an_open_plaintext_room_says_so(self):
+        room = creation.create_room(self.owner, name="Lobby")
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("forum:room_security", args=[room.slug]))
+        self.assertContains(response, "Any member of the platform may join")
+        self.assertContains(response, "Not encrypted.")
+        self.assertNotContains(response, 'data-testid="security-password-form"')
