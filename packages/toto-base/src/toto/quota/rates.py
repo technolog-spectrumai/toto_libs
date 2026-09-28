@@ -30,9 +30,9 @@ from django.db import DatabaseError
 def economy_hidden_from(user) -> bool:
     """Whether this host shows this person mana instead of the economy.
 
-    True on a host that installs ``toto.mana``, for anybody who is not staff:
-    there a member sees three pools, and the wallet, the gas pump, usage and
-    the rate card are operator views. A host without mana is unchanged — the
+    True on a host that installs ``toto.mana``, for anybody who is not an
+    economy operator (`economy_operator`): there a member sees three pools,
+    and the wallet, the gas pump, usage and the rate card are operator views. A host without mana is unchanged — the
     decision belongs to the host that made it, which is why the test is the
     app and not a flag.
     """
@@ -45,7 +45,22 @@ def economy_hidden_from(user) -> bool:
     # setting, one meaning (zenobia's ECONOMY_STAFF_ONLY; absent means on).
     if not getattr(settings, "ECONOMY_STAFF_ONLY", True):
         return False
-    return not (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False))
+    return not economy_operator(user)
+
+
+def economy_operator(user) -> bool:
+    """Who sees the economy desks (2026-09-28): a superuser on the Superuser
+    plan where the host sells one (`toto.subscriptions`), a superuser
+    otherwise. Staff are members here: they see their mana and nothing else."""
+    from django.apps import apps
+
+    if not getattr(user, "is_authenticated", False) or not getattr(user, "is_superuser", False):
+        return False
+    if apps.is_installed("toto.subscriptions"):
+        from toto.subscriptions.models import superuser_plan_active
+
+        return superuser_plan_active(user)
+    return True
 
 
 def pricing_enabled() -> bool:
