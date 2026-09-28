@@ -120,7 +120,12 @@ def calculate_tariff_charge(
                 "unit": unit or "",
             },
         ))
-    return drafts
+    # The member's community discount, when they have one and the charge is
+    # in a mana pool (see discounts.py): here, and only here, so the check,
+    # the posted charge and the refusal sentence all read the same amount.
+    from . import discounts
+
+    return discounts.apply(drafts, payer_account_id, metric_code)
 
 
 # ---------------------------------------------------------------------------
@@ -264,9 +269,13 @@ def post_usage_record(
         rate_usage_record(usage_record)
         usage_record.refresh_from_db()
 
-    charges = list(
+    # A charge a 100 % community discount brought to zero moves nothing — the
+    # ledger refuses a zero entry — but its row stays, recording the discount.
+    charges = [
+        charge for charge in
         usage_record.charges.select_related("charged_asset", "payer_account", "receiving_account")
-    )
+        if charge.amount_base_units
+    ]
     if not charges:
         # FREE, not failed — and the two halves of the pipeline now agree.
         #

@@ -155,6 +155,11 @@ def get_tariff_for_user(user, app_label: str) -> "Tariff | None":
     would put a second, thinner rating mechanism beside this one and make "what
     does this cost" a question with no single answer.
 
+    A member's community discount (2026-09-28) does not change this: the card
+    keeps the one price, and ``discounts.apply`` takes the percent off AFTER
+    rating, recording both on the charge — a list price and a member's price,
+    never two rate cards.
+
     History worth knowing: there WAS a community branch, and it was dead code
     from the day it was written. It filtered ``person.communities.filter(
     is_active=True)`` — a field ``Community`` has never had — so it raised
