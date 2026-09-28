@@ -67,9 +67,11 @@ def on_login(sender, request, user, **kwargs):
 
 
 def on_logout(sender, request, user, **kwargs):
-    from .services import SYSTEM
-
-    _record("logout", user, actor_user=user if user is not None else SYSTEM, request=request)
+    # Django sends this for a visitor who was never signed in too: that ends
+    # no session, and a record of nobody leaving is noise.
+    if user is None or not getattr(user, "pk", None):
+        return
+    _record("logout", user, actor_user=user, request=request)
 
 
 def on_login_failed(sender, credentials, request=None, **kwargs):

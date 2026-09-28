@@ -46,6 +46,10 @@ class IdentityTests(TestCase):
         logout(request)
         self.assertEqual(self.records("AUTH.LOGOUT").get().actor_user, self.ada)
 
+    def test_signing_out_a_visitor_who_never_signed_in_records_nothing(self):
+        logout(_request())
+        self.assertFalse(self.records("AUTH.LOGOUT").exists())
+
     def test_a_refused_sign_in_names_the_username_and_never_the_password(self):
         self.assertIsNone(authenticate(_request(), username="ada", password="wrong-guess"))
         record = self.records("AUTH.LOGIN_FAILED").get()
