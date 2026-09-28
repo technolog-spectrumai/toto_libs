@@ -13,6 +13,7 @@ from django.urls import reverse
 
 from toto.core.models import Platform
 
+from ..context import suppress_audit
 from ..services import record
 from ..views import PER_PAGE
 
@@ -200,17 +201,24 @@ class EmptyStateTests(AuditPageTestCase):
 
 
 class EmptyTrailTests(TestCase):
-    """Its own class: the shared fixture always writes one record."""
+    """Its own class: the shared fixture always writes one record. And since
+    accounts and sign-ins are on the chain (identity.py, 2026-09-28), the
+    staff account's making and its login are kept off it here — the empty
+    trail is the subject."""
 
     @classmethod
     def setUpTestData(cls):
         Platform.objects.create(site_name="Test Platform", author="Tests",
                                 publication_year=2026, active=True)
-        cls.staff = User.objects.create_user("keeper", password="pw",
-                                             is_staff=True)
+        with suppress_audit():
+            cls.staff = User.objects.create_user("keeper", password="pw",
+                                                 is_staff=True)
+
+    def setUp(self):
+        with suppress_audit():
+            self.client.force_login(self.staff)
 
     def test_an_empty_trail_says_nothing_recorded_yet(self):
-        self.client.force_login(self.staff)
         response = self.client.get(reverse("audit:index"))
         self.assertContains(response, "Nothing recorded yet.")
         self.assertNotContains(response, "Nothing matches that.")
@@ -218,7 +226,6 @@ class EmptyTrailTests(TestCase):
     def test_verifying_an_empty_chain_claims_nothing(self):
         """`verify_chain()` answers ok=True/checked=0 with no chain at all, and
         "Healthy. 0 records verified" is a claim about nothing."""
-        self.client.force_login(self.staff)
         response = self.client.get(reverse("audit:verify"))
         self.assertContains(response, "There is nothing to verify.")
         self.assertNotContains(response, "Healthy.")
