@@ -40,7 +40,10 @@ class PeopleReadConnector(ReadOnlyModelConnector):
 
         community_slug = self.configured_value("community_slug", "community_slug_field", input_data, default=None)
         if community_slug:
-            qs = qs.filter(communities__slug=community_slug)
+            # Never a circle: who is in one is not a connector's to read
+            # (2026-09-28). One filter() call, so both conditions hold on the
+            # same membership row.
+            qs = qs.filter(communities__slug=community_slug, communities__is_circle=False)
 
         return {
             "data": {
@@ -64,7 +67,7 @@ class PeopleReadConnector(ReadOnlyModelConnector):
             "address": serialize_address(person.address) if person.address else None,
             "communities": [
                 {"id": community.id, "uid": str(community.uid), "name": community.name, "slug": community.slug}
-                for community in person.communities.all()
+                for community in person.communities.all() if not community.is_circle
             ],
         }
         if self.config.get("include_contact"):

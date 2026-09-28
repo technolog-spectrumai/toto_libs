@@ -19,9 +19,15 @@ def require_news_manager(request, community):
         raise PermissionDenied(_("Only senior community members can manage community news."))
 
 
+def _posts_for(user):
+    # A circle's news is as hidden as the circle: 404 to a member (2026-09-28).
+    return CommunityNewsPost.objects.select_related("community").filter(
+        community__in=Community.objects.listed_for(user))
+
+
 @login_required
 def community_news_create(request, community_slug):
-    community = get_object_or_404(Community, slug=community_slug)
+    community = get_object_or_404(Community.objects.listed_for(request.user), slug=community_slug)
     require_news_manager(request, community)
 
     initial = {"author": current_person(request)}
@@ -49,7 +55,7 @@ def community_news_create(request, community_slug):
 
 @login_required
 def community_news_update(request, pk):
-    post = get_object_or_404(CommunityNewsPost.objects.select_related("community"), pk=pk)
+    post = get_object_or_404(_posts_for(request.user), pk=pk)
     require_news_manager(request, post.community)
 
     if request.method == "POST":
@@ -73,7 +79,7 @@ def community_news_update(request, pk):
 
 @login_required
 def community_news_delete(request, pk):
-    post = get_object_or_404(CommunityNewsPost.objects.select_related("community"), pk=pk)
+    post = get_object_or_404(_posts_for(request.user), pk=pk)
     community = post.community
     require_news_manager(request, community)
 

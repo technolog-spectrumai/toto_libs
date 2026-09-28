@@ -172,14 +172,18 @@
 
                 <td class="px-5 py-4 align-top">
                   <div class="flex flex-wrap gap-2">
-                    {% for community in member.communities.all %}
+                    {% for community in member.listed_communities %}
                       <a
                         href="{% url 'socialhub:community_detail' community.slug %}"
                         :class="darkMode
                           ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
                           : 'border-accent-2 bg-primary-bg-light text-accent-light'"
                         class="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition hover:opacity-85">
-                        <i class="fa-solid fa-people-group text-[10px]"></i>
+                        {% if community.is_circle %}
+                          <i class="fa-solid fa-circle-nodes text-[10px]" title="{% trans 'Circle' context 'community kind' %}"></i>
+                        {% else %}
+                          <i class="fa-solid fa-people-group text-[10px]"></i>
+                        {% endif %}
                         {{ community.name }}
                       </a>
                     {% empty %}
@@ -291,14 +295,18 @@
               <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Communities" %}</p>
 
               <div class="flex flex-wrap gap-2">
-                {% for community in member.communities.all %}
+                {% for community in member.listed_communities %}
                   <a
                     href="{% url 'socialhub:community_detail' community.slug %}"
                     :class="darkMode
                       ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
                       : 'border-accent-2 bg-primary-bg-light text-accent-light'"
                     class="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition hover:opacity-85">
-                    <i class="fa-solid fa-people-group text-[10px]"></i>
+                    {% if community.is_circle %}
+                      <i class="fa-solid fa-circle-nodes text-[10px]" title="{% trans 'Circle' context 'community kind' %}"></i>
+                    {% else %}
+                      <i class="fa-solid fa-people-group text-[10px]"></i>
+                    {% endif %}
                     {{ community.name }}
                   </a>
                 {% empty %}

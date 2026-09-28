@@ -299,12 +299,12 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
             : 'border-accent-2 bg-sunken-light'"
           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
           <i class="fa-solid fa-users"></i>
-          {{ profile.communities.all|length }} communit{% if profile.communities.all|length == 1 %}y{% else %}ies{% endif %}
+          {{ profile.listed_communities|length }} communit{% if profile.listed_communities|length == 1 %}y{% else %}ies{% endif %}
         </div>
       </div>
 
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {% for community in profile.communities.all %}
+        {% for community in profile.listed_communities %}
           <div
             :class="darkMode
               ? 'border-accent-1 bg-sunken-dark'
@@ -315,7 +315,11 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
               href="{% url 'socialhub:community_detail' community.slug %}"
               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
               class="flex flex-1 min-w-0 items-center gap-2 text-sm font-semibold transition hover:opacity-85">
-              <i class="fa-solid fa-users text-xs"></i>
+              {% if community.is_circle %}
+                <i class="fa-solid fa-circle-nodes text-xs" title="{% trans 'Circle' context 'community kind' %}"></i>
+              {% else %}
+                <i class="fa-solid fa-users text-xs"></i>
+              {% endif %}
               <span class="truncate">{{ community.name }}</span>
               <i class="fa-solid fa-arrow-right text-xs opacity-50 ml-auto"></i>
             </a>

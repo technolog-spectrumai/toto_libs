@@ -1,10 +1,16 @@
+from django import forms
 from django.contrib import admin
+from django.contrib.admin.widgets import FilteredSelectMultiple
+from django.core.exceptions import ValidationError
+from django.forms.models import BaseInlineFormSet
 from django.utils.translation import gettext_lazy as _
 
 from toto.core.base_admin import TotoModelAdmin
+from toto.people.models import Person
 from toto.verbena.admin import make_section_form
 
 from .models import (
+    CIRCLE_GRANTS_NO_PRIVILEGE,
     Community,
     CommunityForum,
     CommunityNewsPost,
@@ -15,11 +21,60 @@ from .models import (
 )
 
 
+class CommunityPrivilegeFormSet(BaseInlineFormSet):
+    """A circle grants nothing. The community on this page may be becoming a
+    circle in the very request that adds its grant, before either is saved —
+    so the formset reads the posted community, which the model cannot yet."""
+
+    def clean(self):
+        super().clean()
+        if not getattr(self.instance, "is_circle", False):
+            return
+        for form in self.forms:
+            data = getattr(form, "cleaned_data", None) or {}
+            if data and not data.get("DELETE") and (form.instance.pk or form.has_changed()):
+                raise ValidationError(CIRCLE_GRANTS_NO_PRIVILEGE)
+
+
 class CommunityPrivilegeInline(admin.StackedInline):
-    """The grant, editable where the community is edited."""
+    """The grant, editable where the community is edited — for a functional
+    community only; `CommunityAdmin.get_inline_instances` leaves it off a
+    circle's page."""
     model = CommunityPrivilege
+    formset = CommunityPrivilegeFormSet
     can_delete = True
     extra = 0
+
+
+class CircleAdminForm(forms.ModelForm):
+    """Who is in a circle, edited on the circle's own page (2026-09-28).
+
+    A circle is joined through the admin and nowhere else, so its page lists
+    its members. Written through ``community.members.set`` — the relation's
+    own door, so a change here is the same ``m2m_changed`` as one made on the
+    person. A functional community has no such field: members come in by
+    application, and a person's communities are edited on the person.
+    """
+
+    members = forms.ModelMultipleChoiceField(
+        queryset=Person.objects.order_by("display_name"),
+        required=False,
+        label=_("Members"),
+        widget=FilteredSelectMultiple(_("Members"), is_stacked=False),
+    )
+
+    class Meta:
+        model = Community
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk:
+            self.fields["members"].initial = self.instance.members.all()
+
+    def _save_m2m(self):
+        super()._save_m2m()
+        self.instance.members.set(self.cleaned_data["members"])
 
 
 @admin.register(Community)
@@ -28,6 +83,7 @@ class CommunityAdmin(TotoModelAdmin):
         'name',
         'slug',
         'org_type',
+        'is_circle',
         'established_year',
         'head_display',
         'parent',
@@ -44,6 +100,7 @@ class CommunityAdmin(TotoModelAdmin):
     )
 
     list_filter = (
+        'is_circle',
         'org_type',
         'established_year',
         'location',
@@ -54,6 +111,20 @@ class CommunityAdmin(TotoModelAdmin):
     filter_horizontal = ('senior_members',)
     autocomplete_fields = ('parent',)
     inlines = (CommunityPrivilegeInline,)
+
+    def get_form(self, request, obj=None, change=False, **kwargs):
+        # A circle's page carries its members; see CircleAdminForm.
+        if obj is not None and obj.is_circle and self.has_change_permission(request, obj):
+            kwargs["form"] = CircleAdminForm
+        return super().get_form(request, obj, change=change, **kwargs)
+
+    def get_inline_instances(self, request, obj=None):
+        # A circle grants nothing, so its page offers no grant to fill in.
+        inlines = super().get_inline_instances(request, obj)
+        if obj is not None and obj.is_circle:
+            inlines = [inline for inline in inlines
+                       if not isinstance(inline, CommunityPrivilegeInline)]
+        return inlines
 
     def head_display(self, obj):
         return obj.head.display_name if obj.head else "-"

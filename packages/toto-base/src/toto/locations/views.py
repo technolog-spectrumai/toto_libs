@@ -1336,10 +1336,13 @@ def people(request):
     centre, centre_label = _search_centre(request, viewer)
     radius_km = _requested_radius(request)
 
+    # Only what the viewer may see listed: a circle is not a filter a member
+    # can pick or type (2026-09-28) — it would say who is in it.
+    listed = Community.objects.listed_for(request.user)
     community = None
     community_id = (request.GET.get("community") or "").strip()
     if community_id.isdigit():
-        community = Community.objects.filter(pk=int(community_id)).first()
+        community = listed.filter(pk=int(community_id)).first()
 
     results = []
     if centre is not None:
@@ -1362,7 +1365,7 @@ def people(request):
         "centre_label": centre_label,
         "radius_km": radius_km,
         "radius_choices": RADIUS_CHOICES_KM,
-        "communities": Community.objects.order_by("name"),
+        "communities": listed.order_by("name"),
         "selected_community": community,
         # Whether the VIEWER is on the map themselves. A page that lets you
         # search for others while you are invisible is worth saying out loud,

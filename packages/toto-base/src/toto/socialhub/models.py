@@ -10,6 +10,8 @@ from django.utils.html import strip_tags
 from django.utils import timezone
 from django.utils.text import Truncator
 from django.utils.text import slugify
+from django.utils.translation import gettext_lazy as _
+from django.utils.translation import pgettext_lazy
 
 from toto.core.domain import DomainEntity
 from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
@@ -18,6 +20,51 @@ from toto.locations.models import Address, Territory
 from toto.people.models import Person  # re-exported for backward compat  # noqa: F401
 from toto.verbena.models import AbstractSection, AbstractTag
 from toto.verbena.utils import unique_slug
+
+
+#: What the two axes refuse each other (2026-09-28), worded once — see
+#: ``Community.is_circle`` and the README, "Functional communities and circles".
+CIRCLE_NOT_JOINABLE = _(
+    "A circle is not joined by application: a superuser adds its members.")
+CIRCLE_GRANTS_NO_PRIVILEGE = _(
+    "A circle grants no privileges: it decides who reads, never what anybody may do.")
+CIRCLE_CARRIES_NOTHING = _(
+    "A circle carries no plan offers, discounts or privileges: remove this "
+    "community's before making it a circle.")
+CIRCLE_STANDS_ALONE = _(
+    "A circle stands alone: it has no parent and is no community's parent.")
+
+#: The rows that put a community on the money axis: its privilege here and,
+#: where ``toto.subscriptions`` is installed, its plan offers and discount.
+#: Reverse accessor names rather than imports — socialhub does not depend on
+#: subscriptions, and a relation this host does not have is simply skipped.
+MONEY_AXIS_RELATIONS = ("privilege", "plan_offers", "subscription_discount")
+
+
+class CommunityQuerySet(models.QuerySet):
+    """The two kinds of community, told apart in one place (2026-09-28).
+
+    Every query that serves one axis names its kind: the money axis asks for
+    ``functional()``, the reading axis for ``circles()``, and a page listing
+    communities to a person asks ``listed_for(user)``.
+    """
+
+    def functional(self):
+        """Communities that carry plans, offers, discounts and privileges."""
+        return self.filter(is_circle=False)
+
+    def circles(self):
+        """Communities that carry wiki reading, and nothing else."""
+        return self.filter(is_circle=True)
+
+    def listed_for(self, user):
+        """What ``user`` may see listed or open: everything for a superuser,
+        the functional communities for anybody else. A circle is hidden from
+        members wherever communities are shown — the directory, a profile, the
+        map, the API — and its page answers 404, as a missing one does."""
+        if getattr(user, "is_superuser", False):
+            return self
+        return self.functional()
 
 
 class Community(DomainEntity):
@@ -104,6 +151,27 @@ class Community(DomainEntity):
             "Retiring it is an aurelian follow-up."
         ),
     )
+    #: A CIRCLE (2026-09-28) — ``seniors``, ``newcomers``, ``board`` — decides
+    #: who may READ a wiki page, and nothing else. A functional community —
+    #: ``devs``, ``testers`` — carries plan offers, discounts and privileges,
+    #: and never reading. Orthogonal on purpose: one membership list,
+    #: ``Person.communities``, serves both axes, and each axis refuses the
+    #: other in several layers (README, "Functional communities and circles").
+    #: A circle is hidden from members, joined only through the admin, and
+    #: read by direct membership — it has no parent and is nobody's.
+    is_circle = models.BooleanField(
+        pgettext_lazy("community kind", "circle"),
+        default=False,
+        db_index=True,
+        help_text=_(
+            "A circle decides who may read wiki pages, and nothing else: no "
+            "plan offers, no discounts, no privileges. Hidden from members; "
+            "a superuser adds its members."
+        ),
+    )
+
+    objects = CommunityQuerySet.as_manager()
+
     def __str__(self):
         return self.name
 
@@ -117,6 +185,39 @@ class Community(DomainEntity):
                 counter += 1
             self.slug = slug
         super().save(*args, **kwargs)
+
+    def clean(self):
+        """A community changes axis only when nothing of the other one holds it.
+
+        Making a community a circle is refused while it carries a plan offer,
+        a discount or a privilege: the money axis would quietly stop honouring
+        them (every resolver skips circles), and its members would lose a plan
+        on their next request. A circle has no parent and is no parent: read
+        by direct membership, a tree would promise an inheritance that is not
+        there.
+        """
+        super().clean()
+        if self.is_circle and self.carries_the_money_axis():
+            raise ValidationError({"is_circle": CIRCLE_CARRIES_NOTHING})
+        if self.is_circle and self.parent_id:
+            raise ValidationError({"parent": CIRCLE_STANDS_ALONE})
+        if self.is_circle and self.pk and self.children.exists():
+            raise ValidationError({"is_circle": CIRCLE_STANDS_ALONE})
+        if self.parent_id and Community.objects.circles().filter(pk=self.parent_id).exists():
+            raise ValidationError({"parent": CIRCLE_STANDS_ALONE})
+
+    def carries_the_money_axis(self) -> bool:
+        """Whether a privilege, a plan offer or a discount names this community."""
+        if not self.pk:
+            return False
+        for relation in type(self)._meta.related_objects:
+            if relation.get_accessor_name() not in MONEY_AXIS_RELATIONS:
+                continue
+            rows = relation.related_model._default_manager.filter(
+                **{relation.field.name: self.pk})
+            if rows.exists():
+                return True
+        return False
 
     parent = models.ForeignKey(
         "self",
@@ -173,13 +274,19 @@ class CommunityPrivilege(models.Model):
     A community without a row grants nothing — the commoner default, free to
     resolve.
 
+    **A circle grants nothing** (2026-09-28): circles carry wiki reading and no
+    rights. A row naming one is refused here (``clean`` and ``save``), the
+    admin offers no inline for it, and ``privileges.has_privilege`` skips
+    circles should a row exist anyway — three layers, one rule.
+
     Each flag is honoured somewhere concrete — ``PRIVILEGES.md`` maps every
     field to the gate that reads it, and :mod:`toto.socialhub.privileges` is the
     ONE resolver everything asks.
     """
 
     community = models.OneToOneField(
-        Community, on_delete=models.CASCADE, related_name="privilege")
+        Community, on_delete=models.CASCADE, related_name="privilege",
+        limit_choices_to={"is_circle": False})
 
     may_see_community_chain = models.BooleanField(
         default=False,
@@ -214,6 +321,19 @@ class CommunityPrivilege(models.Model):
 
     def __str__(self):
         return f"privileges of {self.community.name}"
+
+    def _refuse_a_circle(self):
+        if self.community_id and Community.objects.circles().filter(
+                pk=self.community_id).exists():
+            raise ValidationError({"community": CIRCLE_GRANTS_NO_PRIVILEGE})
+
+    def clean(self):
+        super().clean()
+        self._refuse_a_circle()
+
+    def save(self, *args, **kwargs):
+        self._refuse_a_circle()
+        super().save(*args, **kwargs)
 
 
 class CommunityNewsTopic(AbstractTag):
@@ -288,7 +408,11 @@ def generate_code(k=6):
 
 class MembershipApplication(models.Model):
     email = models.EmailField(unique=True)
-    community = models.ForeignKey(Community, on_delete=models.CASCADE, related_name='applications')
+    # A functional community only: a circle is joined through the admin, never
+    # by application (2026-09-28). The form offers none, `clean` refuses one,
+    # and accepting a reference refuses it again (ReferenceRequest.save).
+    community = models.ForeignKey(Community, on_delete=models.CASCADE, related_name='applications',
+                                  limit_choices_to={"is_circle": False})
     code = models.CharField(max_length=10, unique=True, default=generate_code)
     verified_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -302,6 +426,11 @@ class MembershipApplication(models.Model):
         ('rejected', 'Rejected'),
     ]
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+
+    def clean(self):
+        super().clean()
+        if self.community_id and Community.objects.circles().filter(pk=self.community_id).exists():
+            raise ValidationError({"community": CIRCLE_NOT_JOINABLE})
 
     def is_expired(self):
         return timezone.now() > self.expires_at
@@ -334,6 +463,15 @@ class ReferenceRequest(models.Model):
     def __str__(self):
         return f"Reference by {self.referrer.display_name} for {self.application.email}"
 
+    def _applies_to_a_circle(self) -> bool:
+        return bool(self.application_id and Community.objects.circles().filter(
+            applications=self.application_id).exists())
+
+    def clean(self):
+        super().clean()
+        if self.status == "accepted" and self._applies_to_a_circle():
+            raise ValidationError(CIRCLE_NOT_JOINABLE)
+
     def save(self, *args, **kwargs):
         status_changed_to_accepted = False
 
@@ -341,6 +479,12 @@ class ReferenceRequest(models.Model):
             old = ReferenceRequest.objects.get(pk=self.pk)
             if old.status != "accepted" and self.status == "accepted":
                 status_changed_to_accepted = True
+
+        # Accepting is the one door a member walks through into a community,
+        # and a circle is never behind it: refused before anything is written,
+        # whoever calls — the view, the admin or a script.
+        if status_changed_to_accepted and self._applies_to_a_circle():
+            raise ValidationError(CIRCLE_NOT_JOINABLE)
 
         super().save(*args, **kwargs)
 

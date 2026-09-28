@@ -42,10 +42,13 @@ class SocialhubReadConnector(ReadOnlyModelConnector):
 
         raise ValueError(f"Unsupported socialhub resource: {resource}")
 
+    # A connector runs for nobody in particular, so it reads what a member
+    # sees: functional communities, never a circle or a circle's news
+    # (2026-09-28).
     def _execute_community(self, input_data: dict) -> dict:
         from toto.socialhub.models import Community
 
-        qs = Community.objects.select_related("location", "territory", "head")
+        qs = Community.objects.functional().select_related("location", "territory", "head")
         if self.config.get("action", "list") == "get":
             community = get_object_by_config(qs, self, input_data, default_lookup="slug")
             return {"data": {"community": serialize_community(community)}}
@@ -56,7 +59,8 @@ class SocialhubReadConnector(ReadOnlyModelConnector):
     def _execute_news_post(self, input_data: dict) -> dict:
         from toto.socialhub.models import CommunityNewsPost
 
-        qs = CommunityNewsPost.objects.select_related("community", "author").prefetch_related("topics")
+        qs = (CommunityNewsPost.objects.filter(community__is_circle=False)
+              .select_related("community", "author").prefetch_related("topics"))
         community_slug = self.configured_value("community_slug", "community_slug_field", input_data, default=None)
         if community_slug:
             qs = qs.filter(community__slug=community_slug)

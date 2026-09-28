@@ -3,6 +3,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
+from django.db.models import Prefetch
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import translation
@@ -14,6 +15,14 @@ from toto.people.models import Person
 from toto.socialhub.models import Community
 from toto.socialhub.plugins.profile_plugins import ProfilePlugin
 from toto.ui import PageProcessor
+
+
+def listed_communities(user):
+    """The chips a profile shows ``user``: no circle for a member (2026-09-28)
+    — the directory's rule, so a chip never links to a page that 404s."""
+    return Prefetch("communities",
+                    queryset=Community.objects.listed_for(user).order_by("name"),
+                    to_attr="listed_communities")
 
 
 class ProfileListView(LoginRequiredMixin, ListView):
@@ -30,6 +39,10 @@ class ProfileListView(LoginRequiredMixin, ListView):
     context_object_name = "profiles"
     paginate_by = 10
 
+    def get_queryset(self):
+        return (super().get_queryset()
+                .prefetch_related(listed_communities(self.request.user)))
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         return PageProcessor().decorate(context, self.request)
@@ -44,7 +57,7 @@ class ProfileDetailView(LoginRequiredMixin, DetailView):
         return (
             super()
             .get_queryset()
-            .prefetch_related("communities")
+            .prefetch_related(listed_communities(self.request.user))
             .select_related(
                 "address",
                 "user",

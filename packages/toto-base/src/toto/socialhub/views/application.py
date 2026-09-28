@@ -2,7 +2,8 @@ from django.contrib.auth import get_user_model
 from toto.core.models import Platform
 from django.shortcuts import render, redirect, get_object_or_404
 from toto.people.models import Person
-from toto.socialhub.models import Community, MembershipApplication, generate_code, ReferenceRequest
+from toto.socialhub.models import (CIRCLE_NOT_JOINABLE, Community, MembershipApplication,
+                                   ReferenceRequest, generate_code)
 from toto.ui import PageProcessor
 from django.utils import timezone
 from django.contrib.auth.models import User
@@ -222,6 +223,11 @@ def reference_accept(request, ref_id):
     # Only the referrer can accept
     if ref.referrer.user != request.user:
         raise PermissionDenied(_("You cannot modify this reference request."))
+
+    # A circle is joined through the admin, never by application — the model
+    # refuses it too (ReferenceRequest.save); this says so instead of a 500.
+    if ref.application.community.is_circle:
+        raise PermissionDenied(CIRCLE_NOT_JOINABLE)
 
     ref.status = "accepted"
     ref.responded_at = timezone.now()

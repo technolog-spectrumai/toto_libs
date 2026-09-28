@@ -25,8 +25,12 @@ class CommunityListView(ListView):
         desk. An unknown value narrows to nothing rather than silently
         listing everything — a filter that quietly ignores itself is worse
         than an empty page.
+
+        Circles are not listed to members (2026-09-28): a circle decides who
+        reads, it is joined through the admin, and a superuser alone sees it
+        here — marked, beside the functional communities.
         """
-        queryset = super().get_queryset()
+        queryset = Community.objects.listed_for(self.request.user).order_by("name")
         wanted = (self.request.GET.get("org_type") or "").strip()
         if wanted:
             queryset = queryset.filter(org_type=wanted)
@@ -45,6 +49,11 @@ class CommunityDetailView(DetailView):
     context_object_name = "community"
     slug_field = "slug"
     slug_url_kwarg = "slug"
+
+    def get_queryset(self):
+        # A circle's page is a 404 to a member, the same answer as a missing
+        # community: its existence is not theirs to learn here.
+        return Community.objects.listed_for(self.request.user)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -70,7 +79,7 @@ class CommunityDetailView(DetailView):
 
 
 def community_org_chart_data_by_slug(request, company_slug):
-    community = get_object_or_404(Community, slug=company_slug)
+    community = get_object_or_404(Community.objects.listed_for(request.user), slug=company_slug)
 
     # Members belonging to this community
     members = Person.objects.filter(
@@ -98,7 +107,11 @@ def community_chain_graph_data(request, slug):
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden()
 
-    all_communities = Community.objects.select_related("parent", "head").all()
+    # The chain is the hierarchy of what a viewer may open: circles stand
+    # outside every tree and are drawn for a superuser alone.
+    all_communities = list(Community.objects.listed_for(request.user)
+                           .select_related("parent", "head"))
+    drawn = {c.pk for c in all_communities}
 
     nodes = []
     edges = []
@@ -112,7 +125,7 @@ def community_chain_graph_data(request, slug):
             "shape": "roundrectangle",
             "url": reverse("socialhub:community_detail", kwargs={"slug": c.slug}),
         })
-        if c.parent_id:
+        if c.parent_id in drawn:
             edges.append({
                 "source": f"c-{c.parent_id}",
                 "target": f"c-{c.pk}",
@@ -153,6 +166,9 @@ class AdministrataView(DetailView):
             from django.http import HttpResponseForbidden
             return HttpResponseForbidden()
         return super().dispatch(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return Community.objects.listed_for(self.request.user)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

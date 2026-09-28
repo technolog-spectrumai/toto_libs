@@ -27,6 +27,11 @@ Before this the platform had the idea twice as single booleans —
 and three ad-hoc re-implementations of "get from a user to their communities",
 one of which had never worked at all.
 
+**A circle grants nothing** (2026-09-28). Circles decide who reads wiki pages
+and are joined through the admin, not by application; a right is held through
+a functional community only, so :func:`has_privilege` skips circles even where
+a privilege row names one (the model refuses to save such a row).
+
 **Everything degrades to the commoner.** No person, anonymous, a database
 mid-migrate — every failure answers "no rights, no headroom" and never raises. A
 gate failing open on a missing row would be privilege escalation.
@@ -84,7 +89,7 @@ def has_privilege(user, right: str) -> bool:
     if person is None:
         return False
     try:
-        return person.communities.filter(
+        return person.communities.functional().filter(
             **{f"privilege__{right}": True}).exists()
     except DatabaseError:
         return False

@@ -437,7 +437,7 @@ def transaction_list(request):
         "transaction_types": TransactionType.choices,
         "asset_filter": asset_filter,
         "tx_type_filter": tx_type_filter,
-        "communities": _communities(),
+        "communities": _communities(request),
         "community_filter": community.pk if community else "",
         "since": since_raw,
         "until": until_raw,
@@ -1100,20 +1100,24 @@ def _is_mana(asset) -> bool:
     return is_mana_asset(asset) is not None
 
 
-def _communities():
+def _communities(request):
+    """The filter's choices: what the viewer may see listed — no circle for
+    anybody but a superuser (2026-09-28), as everywhere communities are shown."""
     from toto.socialhub.models import Community
 
-    return list(Community.objects.order_by("name").only("pk", "name", "slug"))
+    return list(Community.objects.listed_for(request.user)
+                .order_by("name").only("pk", "name", "slug"))
 
 
 def _community_filter(request):
-    """``?community=<pk>`` → the Community row, or None."""
+    """``?community=<pk>`` → the Community row, or None — never a circle the
+    viewer may not see listed."""
     raw = (request.GET.get("community") or "").strip()
     if not raw.isdigit():
         return None
     from toto.socialhub.models import Community
 
-    return Community.objects.filter(pk=int(raw)).first()
+    return Community.objects.listed_for(request.user).filter(pk=int(raw)).first()
 
 
 @login_required
@@ -1162,7 +1166,7 @@ def faucet_list(request):
     return assets_render(request, "assets/faucet_list.html", {
         "faucets": faucets,
         "groups": groups,
-        "communities": _communities(),
+        "communities": _communities(request),
         "community_filter": community.pk if community else "",
         "source_filter": source,
         "sources": Faucet.Source.choices,
