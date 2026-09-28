@@ -1,5 +1,6 @@
 import os
 import random
+from decimal import Decimal
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.text import slugify
@@ -104,6 +105,7 @@ class Command(IngressCommand):
         self.stdout.write(self.style.SUCCESS(f"✔ Created child community: {child_b.name}"))
 
         self.create_company(address)
+        self.ensure_circles(tester_person, members)
 
         self.stdout.write(self.style.SUCCESS("✅ SocialHub ingress complete."))
 
@@ -375,6 +377,38 @@ class Command(IngressCommand):
         )
         member.communities.add(community)
         return member
+
+    # ---------------------------------------------------------
+    # Circles — who reads what, and how fast mana refills (2026-09-28)
+    # ---------------------------------------------------------
+
+    #: (slug, name, speed per hour for every pool or None). The speeds are
+    #: placeholders to tune; newcomers set none, so they keep the pool's own.
+    CIRCLES = [
+        ("seniors", "seniors", Decimal("8")),
+        ("board", "board", Decimal("12")),
+        ("newcomers", "newcomers", None),
+    ]
+
+    def ensure_circles(self, tester_person, members):
+        """The demo circles beside the functional community: the tester is a
+        senior, the head sits on the board, the last two members are new.
+        Idempotent: found by slug, speeds and membership only ever added."""
+        found = {}
+        for slug, name, speed in self.CIRCLES:
+            circle, created = Community.objects.get_or_create(
+                slug=slug, defaults={"name": name, "is_circle": True})
+            if created and speed is not None:
+                circle.regen_security = circle.regen_compute = circle.regen_storage = speed
+                circle.save()
+            found[slug] = circle
+        if tester_person:
+            tester_person.communities.add(found["seniors"])
+        if members:
+            members[0].communities.add(found["board"])
+            for person in members[-2:]:
+                person.communities.add(found["newcomers"])
+        self.stdout.write(self.style.SUCCESS("✔ Circles: seniors (8/h), board (12/h), newcomers"))
 
     def assign_senior_members(self, community, tester_person, members):
         senior_members = [tester_person, *members[:2]]
