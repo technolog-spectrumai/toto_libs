@@ -1,0 +1,18 @@
+{% load i18n %}
+<div class="overflow-x-auto">
+  <table class="w-full">
+    <thead class="text-left text-xs uppercase opacity-60">
+      <tr><th class="py-1 pr-3">{% trans "Circle" %}</th>{% for r in roles %}<th class="py-1 pr-3 text-right">{{ r.label }}</th>{% endfor %}{% if members %}<th class="py-1 text-right">{% trans "Members" %}</th>{% endif %}</tr>
+    </thead>
+    <tbody>
+    {% for c in circles %}
+      <tr class="border-t border-current/10">
+        <td class="py-1.5 pr-3 font-semibold">{{ c.name }}</td>
+        {% for speed in c.speeds %}<td class="py-1.5 pr-3 text-right font-mono tabular-nums">{% if speed is None %}<span class="opacity-50" title="{% trans 'the platform default' %}">—</span>{% else %}+{{ speed|floatformat:"-2" }}{% endif %}</td>{% endfor %}
+        {% if members %}<td class="py-1.5 text-right tabular-nums">{{ c.members }}</td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="mt-2 text-xs opacity-60">{% trans "Per hour. — means the circle sets no speed for that pool." %}</p>

@@ -157,6 +157,43 @@ def colour(request, colour):
 
 
 @login_required
+def regeneration(request):
+    """How fast each pool refills for this member, and why (2026-09-28).
+
+    Their speed per pool and the circle it comes from; their own circles with
+    the speeds each sets. A superuser also sees every circle — a member sees
+    only their own, because circles are hidden from members everywhere else
+    and this page must not become the list of them.
+    """
+    from django.apps import apps
+
+    balances = services.balances_of(request.user) or {}
+    rows = [{"role": role, "label": services.label_of(role), "icon": services.ICON[role],
+             "rate": b["regen_per_hour"], "per_day": b["regen_per_day"],
+             "max": b["max"], "circle": b["regen_circle"], "default": b["regen_default"]}
+            for role in colours.ROLES if (b := balances.get(role)) is not None]
+    mine, every = [], []
+    if apps.is_installed("toto.socialhub"):
+        from toto.socialhub.models import Community
+
+        def speeds(circle):
+            return [getattr(circle, f"regen_{role}") for role in colours.ROLES]
+
+        circles = Community.objects.circles().order_by("name")
+        mine = [{"name": c.name, "speeds": speeds(c)}
+                for c in circles.filter(members__user=request.user).distinct()]
+        if request.user.is_superuser:
+            every = [{"name": c.name, "speeds": speeds(c), "members": c.members.count()}
+                     for c in circles]
+    return _render(request, "mana/regeneration.html", {
+        "rows": rows, "mine": mine, "every": every,
+        "roles": [{"role": role, "label": services.label_of(role)} for role in colours.ROLES],
+        "next_tick_at": services.next_tick_at(),
+        "active_tab": "regeneration",
+    })
+
+
+@login_required
 def about(request):
     balances = services.balances_of(request.user) or {}
     staff_links = []

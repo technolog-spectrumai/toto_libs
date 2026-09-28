@@ -10,6 +10,7 @@ app_name = "mana"
 urlpatterns = [
     path("", views.index, name="index"),
     path("about/", views.about, name="about"),
+    path("regeneration/", views.regeneration, name="regeneration"),
     path("api/balances/", views.api_balances, name="api_balances"),
     path("<slug:colour>/", views.colour, name="colour"),
 ]

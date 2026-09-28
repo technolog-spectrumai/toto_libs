@@ -17,6 +17,7 @@
           {% elif b.role == "compute" %}<p class="opacity-80">{% trans "Compute: runs, renders, sends and assistant requests draw on it." %}</p>
           {% else %}<p class="opacity-80">{% trans "Storage: uploads, bytes moved and the space your files hold draw on it." %}</p>{% endif %}
           <p class="text-xs opacity-60">{% blocktrans with regen=b.regen_per_hour|floatformat:"-1" max=b.max|floatformat:"-1" %}Refills {{ regen }} an hour, up to {{ max }}.{% endblocktrans %}</p>
+          {% if b.regen_circle %}<p class="text-xs opacity-60" data-testid="regen-circle">{% url 'mana:regeneration' as regen_url %}{% blocktrans with circle=b.regen_circle %}Your circle {{ circle }} sets this speed.{% endblocktrans %}{% if regen_url %} <a href="{{ regen_url }}" class="underline">{% trans "Regeneration" %}</a>{% endif %}</p>{% endif %}
         </article>
       {% endfor %}
     </section>

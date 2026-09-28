@@ -1,0 +1,61 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Regeneration" %} - {{ platform.site_name }}{% endblock %}
+{% block content %}
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'" class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-5xl space-y-6">
+    <header>
+      <h1 class="flex items-center gap-3 text-3xl font-extrabold">
+        <i class="fa-solid fa-rotate" :class="darkMode ? 'text-security-dark' : 'text-security-light'" aria-hidden="true"></i>{% trans "Regeneration" %}</h1>
+      <p class="mt-1 max-w-prose text-sm opacity-70">
+        {% trans "Every pool refills by itself once an hour, never past its maximum. How fast depends on your circles: the fastest speed any of your circles sets for a pool is yours; with no circle, or circles that set none, the pool's own speed applies. A change of circle counts from the next hourly refill." %}</p>
+    </header>
+
+    {% include "oya/_economy_tabs.html" with active_tab="regeneration" %}
+
+    {% comment %}Circles are hidden from members everywhere else, so a member
+       sees only the circles they are in; the full list is for superusers.{% endcomment %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 text-sm shadow-sm" aria-labelledby="regen-mine" data-testid="regen-mine">
+      <h2 id="regen-mine" class="mb-3 font-bold">{% trans "Your speed" %}</h2>
+      {% if rows %}
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead class="text-left text-xs uppercase opacity-60">
+            <tr><th class="py-1 pr-3">{% trans "Pool" %}</th><th class="py-1 pr-3 text-right">{% trans "Per hour" %}</th><th class="py-1 pr-3 text-right">{% trans "Per day" %}</th><th class="py-1 pr-3 text-right">{% trans "Maximum" %}</th><th class="py-1">{% trans "Set by" %}</th></tr>
+          </thead>
+          <tbody>
+          {% for r in rows %}
+            <tr class="border-t border-current/10" data-role="{{ r.role }}">
+              <td class="py-1.5 pr-3"><i class="{{ r.icon }}" aria-hidden="true"></i> {{ r.label }}</td>
+              <td class="py-1.5 pr-3 text-right font-mono font-bold tabular-nums">+{{ r.rate|floatformat:"-2" }}</td>
+              <td class="py-1.5 pr-3 text-right font-mono tabular-nums opacity-80">+{{ r.per_day|floatformat:"-2" }}</td>
+              <td class="py-1.5 pr-3 text-right font-mono tabular-nums opacity-80">{{ r.max|floatformat:"-1" }}</td>
+              <td class="py-1.5">{% if r.circle %}{% blocktrans with circle=r.circle %}circle {{ circle }}{% endblocktrans %}{% else %}<span class="opacity-70">{% blocktrans with rate=r.default|floatformat:"-2" %}the platform's default ({{ rate }}/h){% endblocktrans %}</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-3 text-xs opacity-60">{% blocktrans with at=next_tick_at|date:"H:i" %}Next refill at {{ at }} UTC.{% endblocktrans %}</p>
+      {% else %}
+      <p class="opacity-70">{% trans "Mana is not set up on this platform yet." %}</p>
+      {% endif %}
+    </section>
+
+    {% if mine %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 text-sm shadow-sm" data-testid="regen-circles">
+      <h2 class="mb-3 font-bold">{% trans "Your circles" %}</h2>
+      {% include "mana/partials/_regen_circles.html" with circles=mine %}
+    </section>
+    {% endif %}
+
+    {% if every %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 text-sm shadow-sm" data-testid="regen-every">
+      <h2 class="font-bold">{% trans "Every circle" %}</h2>
+      <p class="mb-3 text-xs opacity-60">{% trans "Only superusers see this list: a member sees the circles they are in. Speeds are set on the circle's admin page." %}</p>
+      {% include "mana/partials/_regen_circles.html" with circles=every members=True %}
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

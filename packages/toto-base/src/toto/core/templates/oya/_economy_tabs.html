@@ -1,7 +1,7 @@
 {% load i18n app_tags %}
 {% comment %}ONE strip for the whole economy — wallet, usage and everything under it.
 
-   Caller passes active_tab = mana | budget | assets | usage | bourse
+   Caller passes active_tab = mana | regeneration | budget | assets | usage | bourse
                             | subscriptions | metered | records.
 
    `plans` is still accepted as an alias for `subscriptions` — the subscriptions
@@ -66,6 +66,20 @@
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
      {% endif %}>
     <i class="fa-solid fa-droplet"></i>{% trans "Mana" %}</a>
+  {% endif %}{% endif %}
+
+  {% comment %}REGENERATION (2026-09-28): how fast each of the member's pools
+     refills and which circle sets it — beside Mana, for every member, on the
+     same guard.{% endcomment %}
+  {% if "toto.mana"|app_installed %}{% url 'mana:regeneration' as regen_url %}{% if regen_url %}
+  <a href="{{ regen_url }}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'regeneration' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-rotate"></i>{% trans "Regeneration" %}</a>
   {% endif %}{% endif %}
 
   {% comment %}BUDGET (2026-09-25). A host-owned app — zenobia's record of the
