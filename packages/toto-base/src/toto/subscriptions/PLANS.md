@@ -145,8 +145,9 @@ row in `people.Person.communities` — there is no status field anywhere in the
 suite, and the model docstring says so rather than inventing one.
 
 **Functional communities only** (2026-09-28). A circle (`Community.is_circle`
-— `seniors`, `board`) decides who reads wiki pages and nothing else: it is
-offered no plan and gives no discount. An offer or a discount naming one is
+— `seniors`, `board`) decides who reads wiki pages and how fast its members'
+mana refills, and nothing on this axis: it is offered no plan and gives no
+discount. Plans do not set refill speed either — circles do (2026-09-28). An offer or a discount naming one is
 refused on save, the Communities and Discounts tabs list none, and eligibility,
 the parent walk and `best_discount` skip circles, so a row left on a community
 that became one counts for nothing. The two kinds are orthogonal on purpose —

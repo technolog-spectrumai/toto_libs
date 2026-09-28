@@ -15,7 +15,7 @@ Since 2026-09-28 a community is one of two kinds, told apart by one column,
 | | Functional community | Circle |
 |---|---|---|
 | Examples | `devs`, `testers` | `seniors`, `newcomers`, `board`, `c-suite` |
-| Carries | plan offers, discounts, privileges | who may **read** wiki pages — nothing else |
+| Carries | plan offers, discounts, privileges | who may **read** wiki pages, and how fast its members' **mana refills** (`regen_security`/`regen_compute`/`regen_storage`, per hour; blank = the pool's own) |
 | Joined | by application, accepted by a referee | through the admin, by a superuser |
 | Shown to members | yes — directory, profiles, map, API | never; its page is a 404 to them |
 | Tree (`parent`) | offers inherit down it | none: a circle has no parent and is no parent |
@@ -23,7 +23,8 @@ Since 2026-09-28 a community is one of two kinds, told apart by one column,
 A person is usually in one of each. A senior engineer is in `devs` and
 `seniors`; the CTO in `devs` and `board`; a junior tester in `testers` and
 `newcomers`. What they may buy and do comes from the first, what they may read
-from the second, and neither says anything about the other.
+— and how fast their mana comes back — from the second, and neither says
+anything about the other.
 
 **A design feature.** One list of people serves both axes —
 `Person.communities` — so nothing is copied into a second membership table, no
@@ -43,7 +44,8 @@ layers, so no single forgotten check crosses them:
 | Services | `subscriptions.set_offers` and `set_discounts` ignore a circle's field, as they ignore an unknown one |
 | Resolvers | `_offered_keys` and its parent walk, `best_discount`, `offering_communities` and `privileges.has_privilege` read functional communities only, so a row left on a circle grants nothing |
 | Pages | the plans' Communities and Discounts tabs list no circle |
-| Changing kind | `Community.clean` refuses making a community a circle while it carries an offer, a discount or a privilege, and refuses a tree that mixes the kinds |
+| Changing kind | `Community.clean` refuses making a community a circle while it carries an offer, a discount or a privilege, refuses a tree that mixes the kinds, and refuses a refill speed on a functional community (so a circle with speeds cannot quietly become one) |
+| Refill speed | only a circle's speeds are read (`toto.mana.services.circle_speeds` filters `is_circle`), so a speed written on a functional community by hand refills nobody faster |
 
 The reading half is the wiki's: a page names its circles and is read by the
 members of any one of them, and a functional community grants no page. It is
