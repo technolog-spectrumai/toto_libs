@@ -53,7 +53,11 @@ def plans(request):
         # Why this card is here — the communities that brought the offer.
         # Empty for the default plan, and for staff seeing a plan nobody is
         # offered; the template says which rather than implying "public".
-        quote["audience"] = services.offering_communities(user, plan)
+        # Empty for the plan for admins too: the account brings that card,
+        # never an offer (2026-09-28), and "Offered through Operators" on it
+        # would say the opposite of the rule.
+        quote["audience"] = ([] if plan.admin_only
+                             else services.offering_communities(user, plan))
         rows.append(quote)
 
     subscription = None

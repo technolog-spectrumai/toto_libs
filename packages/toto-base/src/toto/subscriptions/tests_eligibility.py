@@ -364,6 +364,16 @@ class SuperuserPlanTests(EligibilityBase):
         services.run_billing()
         self.assertEqual(flags()["developer"], True)
 
+    def test_the_admin_card_is_never_offered_through_a_community(self):
+        """bootstrap_plans offers every plan to Operators, the admin plan
+        included; the card still names no Community — the account brings it."""
+        root = User.objects.create_superuser("root", password="pw")
+        call_command("bootstrap_plans", stdout=StringIO())
+        self.client.force_login(root)
+        rows = {row["plan"].key: row for row in self.client.get("/plans/").context["rows"]}
+        self.assertEqual(rows["superuser"]["audience"], [])
+        self.assertTrue(rows["developer"]["audience"])       # an ordinary offer still says so
+
     def test_bootstrap_keeps_a_plan_a_superuser_chose(self):
         root = member("root", self.dev, is_superuser=True, is_staff=True)
         services.subscribe(root, plans.plan("developer"))
