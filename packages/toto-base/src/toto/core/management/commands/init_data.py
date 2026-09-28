@@ -106,9 +106,10 @@ class Command(BaseCommand):
 
         self._create_admin_person(admin_username)
         # The admin is a superuser with the admin panel; on a host that sells
-        # plans it must also be ELIGIBLE for the Superuser plan (a Community's
-        # offer) and hold it — bootstrap_plans makes the operators' Community,
-        # offers every plan to it and subscribes every superuser (2026-09-28).
+        # plans it must also HOLD the Superuser plan (every superuser may, no
+        # Community offer needed since 2026-09-28) — bootstrap_plans makes the
+        # operators' Community, offers every plan to it and subscribes every
+        # superuser.
         from django.apps import apps as django_apps
 
         if django_apps.is_installed("toto.subscriptions"):

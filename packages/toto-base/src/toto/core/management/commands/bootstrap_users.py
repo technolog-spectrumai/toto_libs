@@ -186,10 +186,12 @@ class Command(BaseCommand):
                                          email=email, is_active=True)
             self.stdout.write(f"{username}: created ({level})")
 
-        # A superuser is nothing on the plans ladder until a Community grants
-        # the admin-only plan (toto.subscriptions, 2026-09-26). Every door that
-        # makes accounts — the build scripts, deploy.py users, the Operator's
-        # Users tab — comes through here, so this is where that grant follows.
+        # A superuser is nothing on the plans ladder until they hold the plan
+        # for admins (toto.subscriptions, 2026-09-26). No Community offer is
+        # needed since 2026-09-28 — every superuser may take it — and
+        # bootstrap_plans puts every superuser on it. Every door that makes
+        # accounts — the build scripts, deploy.py users, the Operator's Users
+        # tab — comes through here, so this is where that follows.
         if apps.is_installed("toto.subscriptions"):
             from django.core.management import call_command
 
