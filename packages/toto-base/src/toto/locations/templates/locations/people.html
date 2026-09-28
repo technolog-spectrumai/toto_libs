@@ -151,8 +151,7 @@
     {% endif %}
 
     const map = L.map("people-map").setView(centre, {% if centre %}11{% else %}5{% endif %});
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-                {maxZoom: 19, attribution: "© OpenStreetMap"}).addTo(map);
+    window.totoTileLayer(map);   // dark with the page (oya/base.html)
 
     // The pin IS the control: drag it and search again from there.
     // Literal template text, NOT a variable of quoted strings: variable

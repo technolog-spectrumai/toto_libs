@@ -48,6 +48,33 @@
        L.tileLayer(url, {className: "toto-dark-tiles"}). */
     .toto-dark-tiles { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
   </style>
+  <script>
+    /* totoTileLayer(map[, options]) — the OpenStreetMap layer for any Leaflet
+       map, dark when the page is dark and switching live with the header's
+       Dark Mode toggle (2026-09-28: the people map stayed light in dark mode).
+       One layer whose container carries `toto-dark-tiles` or not, so there is
+       no second layer to swap. Leaflet is the page's own; this only needs `L`
+       at call time. */
+    window.totoTileLayer = function (map, options) {
+      var layer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        Object.assign({maxZoom: 19, attribution: "&copy; OpenStreetMap contributors"}, options || {}))
+        .addTo(map);
+      function apply(dark) {
+        var box = layer.getContainer();
+        if (box) { box.classList.toggle("toto-dark-tiles", !!dark); }
+      }
+      var stored = false;
+      try { stored = localStorage.getItem("darkMode") === "true"; } catch (e) { stored = false; }
+      apply(stored);
+      function follow() {
+        if (!(window.Alpine && Alpine.effect && Alpine.$data)) { return false; }
+        Alpine.effect(function () { apply(Alpine.$data(document.documentElement).darkMode); });
+        return true;
+      }
+      if (!follow()) { document.addEventListener("alpine:initialized", follow, {once: true}); }
+      return layer;
+    };
+  </script>
 
 <script src="{% static 'vendor/htmx/htmx.min.js' %}"></script>
   <script defer src="{% static 'oya/functional_zones.js' %}"></script>

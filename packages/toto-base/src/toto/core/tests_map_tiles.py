@@ -28,6 +28,27 @@ class MapTileTests(SimpleTestCase):
                     offenders.append(str(template))
         self.assertEqual(offenders, [])
 
+    def test_every_map_follows_dark_mode(self):
+        """A page that draws tiles either uses the shared `totoTileLayer`
+        (dark with the page, live) or carries its own `toto-dark-tiles` layer.
+        The people map drew light tiles in dark mode (2026-09-28)."""
+        from django.apps import apps
+
+        offenders = []
+        for config in apps.get_app_configs():
+            for template in (Path(config.path) / "templates").glob("**/*.html"):
+                text = template.read_text(encoding="utf-8", errors="replace")
+                if "L.tileLayer(" in text and "toto-dark-tiles" not in text \
+                        and "totoTileLayer" not in text:
+                    offenders.append(str(template))
+        self.assertEqual(offenders, [])
+
+    def test_the_base_template_offers_the_shared_tile_layer(self):
+        source = Path(get_template("oya/base.html").origin.name).read_text(encoding="utf-8")
+        self.assertIn("window.totoTileLayer = function (map, options)", source)
+        self.assertIn('box.classList.toggle("toto-dark-tiles"', source)
+        self.assertIn("Alpine.effect", source)
+
     def test_the_base_template_carries_the_dark_tile_filter(self):
         source = Path(get_template("oya/base.html").origin.name).read_text(encoding="utf-8")
         self.assertIn(".toto-dark-tiles", source)
