@@ -1,0 +1,254 @@
+"""Communities, circles and who is in them, on the audit chain (2026-09-28).
+
+Signals, not view patches, so every writer is covered — the admin, the
+membership flow, the wiki's Circles page, the ingress, a shell:
+
+| action | when |
+|---|---|
+| `SOCIALHUB.COMMUNITY_CREATED` / `_CHANGED` / `_DELETED` | a community or circle is made, edited (the fields that change, before and after), removed |
+| `SOCIALHUB.MEMBER_ADDED` / `_REMOVED` | a person joins or leaves a community or circle — `Person.communities`, from either side, a `clear()` included |
+| `SOCIALHUB.SENIOR_ADDED` / `_REMOVED` | a senior member named or dropped |
+| `SOCIALHUB.PRIVILEGE_CHANGED` / `_REMOVED` | a community's grants (`may_*`) set or cleared |
+| `SOCIALHUB.APPLICATION_SUBMITTED` | somebody applies to join a community |
+| `SOCIALHUB.APPLICATION_<STATUS>` | the application moves: verified, endorsed, invited, rejected |
+| `SOCIALHUB.REFERENCE_REQUESTED` / `_GIVEN` / `_DECLINED` | a reference asked of a member, and their answer (given = the applicant admitted) |
+
+Every community record says whether it is a **circle**: the two kinds are
+orthogonal on purpose (README), and the chain is where a wrong crossing would
+show. The actor is whoever is at the keyboard (the audit context); nothing is
+recorded where ``toto.audit`` is not installed, and a record that cannot be
+written never fails the change it describes.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from django.apps import apps
+from django.db.models.signals import m2m_changed, post_delete, post_save, pre_save
+
+log = logging.getLogger("toto.socialhub")
+
+APP_LABEL = "socialhub"
+
+#: The community fields whose change is worth a record.
+TRACKED = ("name", "slug", "org_type", "parent_id", "head_id", "is_circle",
+           "regen_security", "regen_compute", "regen_storage")
+
+
+def installed() -> bool:
+    return apps.is_installed("toto.audit")
+
+
+def _record(action, *, object_type, object_id, description, **kwargs):
+    if not installed():
+        return None
+    from django.db import transaction
+
+    from toto.audit.services import record
+
+    try:
+        with transaction.atomic():      # a failed insert must not poison the caller's
+            return record(f"socialhub.{action}", app_label=APP_LABEL,
+                          object_type=object_type, object_id=str(object_id),
+                          description=str(description)[:500], **kwargs)
+    except Exception:  # noqa: BLE001 - the chain never breaks a membership change
+        log.exception("audit: could not record socialhub.%s", action)
+        return None
+
+
+def _community(community, action, **metadata):
+    return _record(action, object_type="socialhub.community", object_id=community.pk,
+                   description=community.name,
+                   metadata={"community": community.slug, "name": community.name,
+                             "is_circle": bool(community.is_circle), **metadata})
+
+
+def _person(person) -> dict:
+    return {"person": person.slug, "display_name": person.display_name,
+            "user": person.user_id}
+
+
+# ---------------------------------------------------------------------------
+# Communities
+# ---------------------------------------------------------------------------
+
+
+def _community_before(sender, instance, **kwargs):
+    instance._audit_before = (type(instance).objects.filter(pk=instance.pk).values(*TRACKED).first()
+                              if instance.pk else None)
+
+
+def _community_after(sender, instance, created, **kwargs):
+    if created:
+        _community(instance, "community_created", org_type=instance.org_type,
+                   parent=instance.parent_id)
+        return
+    before = getattr(instance, "_audit_before", None)
+    instance._audit_before = None
+    if not before:
+        return
+    changed = {field for field in TRACKED if before[field] != getattr(instance, field)}
+    if not changed:
+        return
+    _community(instance, "community_changed",
+               changed=sorted(changed),
+               before={f: str(before[f]) if before[f] is not None else None for f in sorted(changed)},
+               after={f: (str(getattr(instance, f)) if getattr(instance, f) is not None else None)
+                      for f in sorted(changed)})
+
+
+def _community_deleted(sender, instance, **kwargs):
+    _community(instance, "community_deleted")
+
+
+# ---------------------------------------------------------------------------
+# Who is in them — both sides of one list
+# ---------------------------------------------------------------------------
+
+
+def _membership_handler(added: str, removed: str, *, forward_manager: str, reverse_manager: str):
+    """An m2m_changed receiver for a Person ↔ Community list.
+
+    ``add`` reports only the rows it created (Django filters the ones already
+    there); ``remove`` is given whatever the caller passed, so the members it
+    really removes are read first; ``clear`` names nobody, so they are read
+    before it runs. One record per (person, community) change.
+    """
+
+    def handler(sender, instance, action, reverse, model, pk_set, **kwargs):
+        from toto.people.models import Person
+
+        from .models import Community
+
+        if action in ("pre_remove", "pre_clear"):
+            manager = getattr(instance, reverse_manager if reverse else forward_manager)
+            current = set(manager.values_list("pk", flat=True))
+            instance._audit_leaving = current & set(pk_set) if action == "pre_remove" else current
+            return
+        if action == "post_add":
+            pks, what = set(pk_set or ()), added
+        elif action in ("post_remove", "post_clear"):
+            pks, what = getattr(instance, "_audit_leaving", set()), removed
+            instance._audit_leaving = set()
+        else:
+            return
+        if not pks:
+            return
+        if reverse:           # instance is a Community; the pks are people
+            for person in Person.objects.filter(pk__in=pks):
+                _community(instance, what, **_person(person))
+        else:                 # instance is a Person; the pks are communities
+            for community in Community.objects.filter(pk__in=pks):
+                _community(community, what, **_person(instance))
+
+    return handler
+
+
+_members = _membership_handler("member_added", "member_removed",
+                               forward_manager="communities", reverse_manager="members")
+_seniors = _membership_handler("senior_added", "senior_removed",
+                               forward_manager="senior_communities",
+                               reverse_manager="senior_members")
+
+
+def _seniors_changed(sender, instance, action, reverse, model, pk_set, **kwargs):
+    # senior_members is declared on Community, so its "forward" side is the
+    # community: the generic handler's sides are Person-first, hence the flip.
+    return _seniors(sender, instance, action, not reverse, model, pk_set, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Grants
+# ---------------------------------------------------------------------------
+
+
+def _grants(privilege) -> dict:
+    return {f.name: bool(getattr(privilege, f.name))
+            for f in privilege._meta.concrete_fields if f.name.startswith("may_")}
+
+
+def _privilege_saved(sender, instance, created, **kwargs):
+    _community(instance.community, "privilege_changed", grants=_grants(instance))
+
+
+def _privilege_deleted(sender, instance, **kwargs):
+    from .models import Community
+
+    community = Community.objects.filter(pk=instance.community_id).first()
+    if community is not None:
+        _community(community, "privilege_removed")
+
+
+# ---------------------------------------------------------------------------
+# Applications and references
+# ---------------------------------------------------------------------------
+
+
+def _status_before(sender, instance, **kwargs):
+    instance._audit_status = (type(instance).objects.filter(pk=instance.pk)
+                              .values_list("status", flat=True).first() if instance.pk else None)
+
+
+def _application_facts(application) -> dict:
+    community = application.community
+    return {"email": application.email, "community": community.slug,
+            "name": community.name, "is_circle": bool(community.is_circle)}
+
+
+def _application_saved(sender, instance, created, **kwargs):
+    before = getattr(instance, "_audit_status", None)
+    if created:
+        action = "application_submitted"
+    elif before is not None and before != instance.status:
+        action = f"application_{instance.status}"
+    else:
+        return
+    _record(action, object_type="socialhub.membershipapplication", object_id=instance.pk,
+            description=instance.email, metadata={**_application_facts(instance),
+                                                  "before": before, "status": instance.status})
+
+
+def _reference_saved(sender, instance, created, **kwargs):
+    before = getattr(instance, "_audit_status", None)
+    if created:
+        action = "reference_requested"
+    elif before != instance.status and instance.status == "accepted":
+        action = "reference_given"
+    elif before != instance.status and instance.status == "declined":
+        action = "reference_declined"
+    else:
+        return
+    _record(action, object_type="socialhub.referencerequest", object_id=instance.pk,
+            description=instance.application.email,
+            metadata={**_application_facts(instance.application),
+                      "referrer": instance.referrer.slug,
+                      "referrer_name": instance.referrer.display_name,
+                      "admitted": instance.status == "accepted"})
+
+
+def connect() -> None:
+    from toto.people.models import Person
+
+    from .models import Community, CommunityPrivilege, MembershipApplication, ReferenceRequest
+
+    uid = "toto.socialhub.audit."
+    pre_save.connect(_community_before, sender=Community, weak=False, dispatch_uid=uid + "c_before")
+    post_save.connect(_community_after, sender=Community, weak=False, dispatch_uid=uid + "c_after")
+    post_delete.connect(_community_deleted, sender=Community, weak=False,
+                        dispatch_uid=uid + "c_deleted")
+    m2m_changed.connect(_members, sender=Person.communities.through, weak=False,
+                        dispatch_uid=uid + "members")
+    m2m_changed.connect(_seniors_changed, sender=Community.senior_members.through, weak=False,
+                        dispatch_uid=uid + "seniors")
+    post_save.connect(_privilege_saved, sender=CommunityPrivilege, weak=False,
+                      dispatch_uid=uid + "privilege_saved")
+    post_delete.connect(_privilege_deleted, sender=CommunityPrivilege, weak=False,
+                        dispatch_uid=uid + "privilege_deleted")
+    for model, name in ((MembershipApplication, "application"), (ReferenceRequest, "reference")):
+        pre_save.connect(_status_before, sender=model, weak=False,
+                         dispatch_uid=uid + name + "_before")
+    post_save.connect(_application_saved, sender=MembershipApplication, weak=False,
+                      dispatch_uid=uid + "application_after")
+    post_save.connect(_reference_saved, sender=ReferenceRequest, weak=False,
+                      dispatch_uid=uid + "reference_after")
