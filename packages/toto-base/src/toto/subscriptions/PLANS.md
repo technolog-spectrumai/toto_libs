@@ -139,6 +139,14 @@ least one community that offers it**. "Active membership" is the existence of a
 row in `people.Person.communities` — there is no status field anywhere in the
 suite, and the model docstring says so rather than inventing one.
 
+**Functional communities only** (2026-09-28). A circle (`Community.is_circle`
+— `seniors`, `board`) decides who reads wiki pages and nothing else: it is
+offered no plan and gives no discount. An offer or a discount naming one is
+refused on save, the Communities and Discounts tabs list none, and eligibility,
+the parent walk and `best_discount` skip circles, so a row left on a community
+that became one counts for nothing. The two kinds are orthogonal on purpose —
+`socialhub/README.md`, "Functional communities and circles".
+
 Four exceptions, each narrow:
 
 * **A plan for admins** (`for_admins: true`) is outside the offer rule

@@ -13,6 +13,14 @@ expelling them *is* the revocation. It cannot hand one named individual a right
 their successor will not inherit, which is the property the whole design
 preserves.
 
+**A circle grants nothing** (2026-09-28). A circle (`Community.is_circle`)
+decides who reads wiki pages and is joined through the admin, not by
+application — so it must not be a way to hand out a right. A privilege row
+naming one is refused (`clean`, `save`, the admin shows a circle no grant), and
+`privileges.has_privilege` asks functional communities only, so a row left on a
+community that became a circle grants nothing. Why the two kinds never cross:
+[README.md](README.md), "Functional communities and circles".
+
 ## There used to be two
 
 `Station` — a "Special Role" — was the second: an office that granted the same
