@@ -1,20 +1,22 @@
-"""The one safe way onto the Superuser plan (2026-09-26). Idempotent.
+"""Every superuser onto the Superuser plan at once (2026-09-26). Idempotent.
 
-A superuser is put on the admin-only plan by nobody: `plan_for` no longer
-hands it out for the privilege alone, and `is_eligible` wants a Community
-that offers it. So a fresh host has admins on Free until this runs — they
-can still reach /admin/ and /plans/, which are always free, and the Current
-plan page tells them to run this. The build scripts run it right after they
-make the `admin` account.
+The privilege alone puts nobody on the plan for admins: `plan_for` answers
+from the person's own Subscription row. Since 2026-09-28 a superuser may take
+it themselves — `is_eligible` asks for the account and nothing else, no
+Community offer — by choosing it on the plans page; this does it for all of
+them in one go, so a fresh host does not have admins on Free. The build
+scripts run it right after they make the `admin` account, and the Current
+plan page names it to a superuser who is not on the plan.
 
 What it does, every time it runs, changing only what is missing:
 
 * the Community ``operators`` ("Operators", the platform's own), headed by
   the first superuser;
-* an offer of EVERY plan in the ladder to it, the admin-only one included;
+* an offer of EVERY plan in the ladder to it (the offer of the plan for
+  admins is inert since 2026-09-28 — admins need none — and harmless);
 * every active superuser made a member (a Person is created for one who has
-  none) and subscribed to the admin-only plan, when the ladder has one and
-  the account is not on it already.
+  none) and subscribed to the plan for admins, when the ladder has one and
+  the account is not on a live plan already.
 
 Nothing is taken away: a superuser already on some other plan keeps it (an
 admin who chose Developer to test the ladder is not moved). Nothing here
@@ -78,7 +80,7 @@ class Command(BaseCommand):
             placed += 1
         if reserved is None:
             self.stdout.write(self.style.WARNING(
-                "The ladder has no admin-only plan; superusers were made members and nothing else."))
+                "The ladder has no plan for admins; superusers were made members and nothing else."))
         else:
             self.stdout.write(self.style.SUCCESS(
                 f"{len(superusers)} superuser(s) in '{NAME}', {placed} put on '{reserved.key}'."))

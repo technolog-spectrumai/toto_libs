@@ -191,11 +191,16 @@ def is_eligible(user, plan_key: str) -> bool:
     early refusal and a late one can never disagree.
 
     The rule inverts what PlanAudience did: a plan offered to no community is
-    offered to NOBODY, rather than to everyone. Two carve-outs, both
-    deliberate:
+    offered to NOBODY, rather than to everyone. A plan for admins
+    (`for_admins: true`) is the one plan outside that rule, and three
+    carve-outs are deliberate:
 
-    * **Staff and superusers see everything.** They administer the offers, and
-      a dial you cannot see is a dial you cannot check.
+    * **A plan for admins is every Django superuser's, and nobody else's**
+      (2026-09-28). No Community offer is asked for — only admins, and all
+      admins. Staff are not admins; an offer reaching an ordinary member
+      changes nothing.
+    * **Staff and superusers see every other plan.** They administer the
+      offers, and a dial you cannot see is a dial you cannot check.
     * **The default plan is always eligible for a signed-in person.** Without
       it, somebody whose communities offer nothing would be shown an empty
       plans page while `plan_for()` still puts them on the free tier — a page
@@ -209,10 +214,12 @@ def is_eligible(user, plan_key: str) -> bool:
     if plan is None:
         return False
     if plan.admin_only:
-        # Superusers only — staff are not admins (1.51) — AND only where a
-        # Community of theirs offers it (2026-09-26): the plan is the
-        # Community's to grant, the privilege is the account's; both are needed.
-        return bool(getattr(user, "is_superuser", False)) and plan_key in _offered_keys(user)
+        # Django superusers, every one of them, and nobody else — staff are
+        # not admins (1.51). No offer asked for (2026-09-28, which undid the
+        # 2026-09-26 "and a Community must offer it"): the owner's rule is
+        # "only admins", and a superuser outside every Community is an admin.
+        return bool(getattr(user, "is_authenticated", False)
+                    and getattr(user, "is_superuser", False))
     if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
         return True
     if not getattr(user, "is_authenticated", False):
@@ -238,8 +245,11 @@ def eligible_plans(user) -> tuple:
     if not getattr(user, "is_authenticated", False):
         return ()
     offered = _offered_keys(user)
+    # Never a plan for admins here, even where a Community of theirs happens
+    # to offer one (the operators' Community offers every plan): the card
+    # would lead to a 404.
     return tuple(plan for plan in plans.all_plans()
-                 if plan.is_default or plan.key in offered)
+                 if not plan.admin_only and (plan.is_default or plan.key in offered))
 
 
 def offering_communities(user, plan) -> list:
@@ -429,8 +439,9 @@ def subscribe(user, plan, *, approved_by=None, force=False) -> Subscription:
             "create it through an accepted Offer in toto.jobs.")
     if getattr(plan, "admin_only", False) and not getattr(user, "is_superuser", False):
         # Not even `force` puts this plan on an ordinary account: the plan
-        # must never grant the privilege (2026-09-26).
-        raise IneligiblePlan(f"{plan.key!r} is for superusers only.")
+        # must never grant the privilege (2026-09-26). The model refuses the
+        # row too (Subscription.save), for every path that skips this one.
+        raise IneligiblePlan(f"{plan.key!r} is for administrators (superusers) only.")
     if not force and not is_eligible(user, plan.key):
         raise IneligiblePlan(
             f"{plan.key!r} is not offered to any community this person is in.")
@@ -652,7 +663,24 @@ def _settle_credit(charge, subscription, user, plan, units) -> SubscriptionCharg
     return charge
 
 
+def _no_longer_an_admin(subscription) -> bool:
+    """A plan for admins on an account that is not a superuser any more.
+
+    Read from the plan, as `Subscription.save` reads it, not from the stored
+    flag — the two can only differ after the ladder changed, and the save is
+    what would refuse."""
+    plan = subscription.plan
+    return bool(plan is not None and plan.admin_only
+                and not getattr(subscription.user, "is_superuser", False))
+
+
 def _enter_arrears(subscription) -> None:
+    if _no_longer_an_admin(subscription):
+        # Arrears would keep the row live, and a live row on a plan for
+        # admins is a superuser's or nobody's (Subscription.save refuses it).
+        # The row already grants nothing (`plan_for`); write down why.
+        _lapse(subscription, "not-superuser")
+        return
     fields = ["state", "changed_at"]
     subscription.state = SubscriptionState.ARREARS
     if subscription.arrears_since is None:
@@ -663,6 +691,10 @@ def _enter_arrears(subscription) -> None:
 
 def _clear_arrears(subscription) -> None:
     if subscription.state == SubscriptionState.ARREARS or subscription.arrears_since:
+        if _no_longer_an_admin(subscription):
+            # Clearing would make the row live again; see _enter_arrears.
+            _lapse(subscription, "not-superuser")
+            return
         subscription.state = SubscriptionState.ACTIVE
         subscription.arrears_since = None
         subscription.save(update_fields=["state", "arrears_since", "changed_at"])
@@ -696,8 +728,9 @@ def ineligibility_reason(subscription, *, now=None) -> str:
 
     The same facts `plan_for` reads on every request, named so the sweep can
     write them down and the page can say them: `expired`, `withdrawn` (no
-    Community of theirs offers the plan), `not-superuser` (an admin-only plan
-    on an ordinary account), `unknown-plan` (the key left the file)."""
+    Community of theirs offers the plan), `not-superuser` (a plan for admins
+    on an account that is not a superuser, or no longer one), `unknown-plan`
+    (the key left the file)."""
     if not subscription.is_paying:
         return ""
     if subscription.is_expired(now):

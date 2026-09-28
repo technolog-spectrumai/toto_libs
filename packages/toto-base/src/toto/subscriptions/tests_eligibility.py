@@ -1,6 +1,8 @@
 """Plans are personal; what a person may hold is the Communities' to offer —
-checked live, with the superuser plan needing both the account and the grant
-(2026-09-26). Run under a host's settings, like tests_enforcement.
+checked live (2026-09-26). The plan for admins is the exception: every Django
+superuser may take it, no offer needed, and nobody else ever (2026-09-28);
+superuser functionality still needs both the account and the plan. Run under
+a host's settings, like tests_enforcement.
 
     DJANGO_SETTINGS_MODULE=zenobia.settings manage.py test toto.subscriptions.tests_eligibility
 """
@@ -9,8 +11,11 @@ from datetime import timedelta
 from io import StringIO
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
+from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from toto.core.models import Platform
@@ -39,9 +44,11 @@ plans:
     features: [editor, gitea]
   - key: superuser
     name: Superuser
-    admin_only: true
+    for_admins: true
     all_features: true
 """
+
+SUBSCRIBE_SUPERUSER = "/plans/subscribe/superuser/"
 
 
 def setUpModule():
@@ -166,36 +173,154 @@ class CommunityScopeTests(EligibilityBase):
 
 
 class SuperuserPlanTests(EligibilityBase):
-    def test_the_privilege_alone_is_free_and_the_plan_alone_is_nothing(self):
+    """The plan for admins: every superuser's, nobody else's (2026-09-28)."""
+
+    def fresh(self, user):
+        return User.objects.get(pk=user.pk)
+
+    def test_the_privilege_alone_is_free_until_the_plan_is_taken(self):
         root = member("root", self.toto, is_superuser=True, is_staff=True)
         self.assertEqual(plan_for(root).key, "free")
         self.assertFalse(superuser_plan_active(root))
-        self.assertFalse(services.is_eligible(root, "superuser"))     # nobody offers it yet
-        with self.assertRaises(services.IneligiblePlan):
-            services.subscribe(root, plans.plan("superuser"))
-        # An ordinary account with the row anyway: the plan grants nothing.
-        plain = member("plain", self.toto)
-        Subscription.objects.create(user=plain, plan_key="superuser",
-                                    anchor_date=timezone.now().date())
-        self.assertEqual(plan_for(plain).key, "free")
-        self.assertFalse(superuser_plan_active(plain))
-        with self.assertRaises(services.IneligiblePlan):
-            services.subscribe(plain, plans.plan("superuser"), force=True)
-        services.run_billing()
-        self.assertEqual(Subscription.objects.get(user=plain).lapse_reason, "not-superuser")
-
-    def test_a_community_offer_plus_the_account_is_both(self):
-        root = member("root", self.toto, is_superuser=True, is_staff=True)
-        CommunityPlanOffer.objects.create(community=self.toto, plan_key="superuser")
+        # Eligible with no Community offering it: the account is the rule.
+        self.assertFalse(CommunityPlanOffer.objects.filter(plan_key="superuser").exists())
         self.assertTrue(services.is_eligible(root, "superuser"))
-        services.subscribe(root, plans.plan("superuser"))
+        row = services.subscribe(root, plans.plan("superuser"))
+        self.assertTrue(row.for_admins)
         self.assertTrue(superuser_plan_active(root))
         self.assertTrue(plan_for(root).grants("anything"))
-        # Staff in the same Community: offered, still refused.
+
+    def test_a_superuser_in_no_community_takes_it_from_the_plans_page(self):
+        root = User.objects.create_superuser("root", password="pw")     # no Person, no Community
+        self.client.force_login(root)
+        page = self.client.get(reverse("subscriptions:plans")).content.decode()
+        self.assertIn('data-testid="for-admins"', page)
+        self.assertIn("For administrators", page)
+        self.assertIn(f'action="{SUBSCRIBE_SUPERUSER}"', page)
+        response = self.client.post(SUBSCRIBE_SUPERUSER)
+        self.assertRedirects(response, reverse("subscriptions:mine"), fetch_redirect_response=False)
+        row = Subscription.objects.get(user=root)
+        self.assertEqual((row.plan_key, row.for_admins, row.forced), ("superuser", True, False))
+        self.assertEqual(plan_for(root).key, "superuser")
+        self.assertTrue(superuser_plan_active(root))
+        self.assertEqual(services.ineligibility_reason(row), "")
+
+    def test_staff_and_members_never_see_or_take_it_even_where_it_is_offered(self):
+        # An offer reaching them changes nothing: the plan is the account's.
+        CommunityPlanOffer.objects.create(community=self.toto, plan_key="superuser")
         staff = member("staff", self.toto, is_staff=True)
-        self.assertFalse(services.is_eligible(staff, "superuser"))
-        self.client.force_login(staff)
-        self.assertEqual(self.client.post("/plans/subscribe/superuser/").status_code, 404)
+        plain = member("plain", self.toto)
+        for user in (staff, plain):
+            with self.subTest(user=user.username):
+                self.assertFalse(services.is_eligible(user, "superuser"))
+                self.assertNotIn("superuser", [p.key for p in services.eligible_plans(user)])
+                self.client.force_login(user)
+                page = self.client.get(reverse("subscriptions:plans")).content.decode()
+                self.assertNotIn(SUBSCRIBE_SUPERUSER, page)
+                self.assertNotIn('data-testid="for-admins"', page)
+                self.assertEqual(self.client.post(SUBSCRIBE_SUPERUSER).status_code, 404)
+                self.assertFalse(Subscription.objects.filter(user=user).exists())
+        self.assertFalse(services.is_eligible(AnonymousUser(), "superuser"))
+
+    def test_force_does_not_put_an_ordinary_account_on_it(self):
+        plain = member("plain", self.toto)
+        staff = member("staff", self.toto, is_staff=True)
+        for user in (plain, staff):
+            with self.subTest(user=user.username):
+                with self.assertRaises(services.IneligiblePlan):
+                    services.subscribe(user, plans.plan("superuser"), force=True)
+                with self.assertRaises(services.IneligiblePlan):
+                    services.subscribe(user, plans.plan("superuser"), force=True, approved_by=user)
+                self.assertFalse(Subscription.objects.filter(user=user).exists())
+
+    def test_the_model_refuses_a_live_admin_row_for_an_ordinary_account(self):
+        plain = member("plain", self.toto)
+        anchor = timezone.now().date()
+        row = Subscription(user=plain, plan_key="superuser", anchor_date=anchor)
+        with self.assertRaises(ValidationError) as caught:
+            row.full_clean()
+        self.assertIn("plan_key", caught.exception.message_dict)
+        # save() refuses too — a script, a fixture or a shell cannot bypass it.
+        with self.assertRaises(ValidationError):
+            Subscription.objects.create(user=plain, plan_key="superuser", anchor_date=anchor)
+        self.assertFalse(Subscription.objects.filter(user=plain).exists())
+        # Nor by switching an existing row with a partial save.
+        row = services.subscribe(plain, plans.plan("standard"))
+        row.plan_key = "superuser"
+        with self.assertRaises(ValidationError):
+            row.save(update_fields=["plan_key"])
+        row.refresh_from_db()
+        self.assertEqual((row.plan_key, row.for_admins), ("standard", False))
+        # The flag is the plan's, never the caller's.
+        row.for_admins = True
+        row.save()
+        row.refresh_from_db()
+        self.assertFalse(row.for_admins)
+
+    def test_demoting_a_superuser_takes_the_plan_away_and_the_sweep_says_why(self):
+        root = member("root", self.harbour, is_superuser=True, is_staff=True)
+        services.subscribe(root, plans.plan("superuser"))
+        self.assertTrue(superuser_plan_active(root))
+        root.is_superuser = False
+        root.save(update_fields=["is_superuser"])
+        root = self.fresh(root)
+        self.assertEqual(plan_for(root).key, "free")
+        self.assertFalse(superuser_plan_active(root))
+        self.assertFalse(services.is_eligible(root, "superuser"))
+        row = Subscription.objects.get(user=root)
+        self.assertEqual(services.ineligibility_reason(row), "not-superuser")
+        # The row is still live, so it cannot be written as live again...
+        with self.assertRaises(ValidationError):
+            row.save()
+        # ...but the sweep can write it down, with the reason.
+        counts = services.run_billing()
+        self.assertEqual(counts["lapsed"], 1)
+        row.refresh_from_db()
+        self.assertEqual((row.state, row.lapse_reason, row.for_admins),
+                         (SubscriptionState.LAPSED, "not-superuser", True))
+        with self.assertRaises(services.IneligiblePlan):
+            services.subscribe(root, plans.plan("superuser"))
+
+    def test_a_month_on_it_never_keeps_a_demoted_row_live(self):
+        """Arrears keep a row live; a demoted holder's row is lapsed instead."""
+        root = member("root", self.harbour, is_superuser=True, is_staff=True)
+        row = services.subscribe(root, plans.plan("superuser"))
+        User.objects.filter(pk=root.pk).update(is_superuser=False)
+        row = Subscription.objects.select_related("user").get(pk=row.pk)
+        services._enter_arrears(row)
+        row.refresh_from_db()
+        self.assertEqual((row.state, row.lapse_reason), (SubscriptionState.LAPSED, "not-superuser"))
+        row.arrears_since = timezone.now()
+        row.save(update_fields=["arrears_since"])        # lapsed: not live, so allowed
+        services._clear_arrears(row)
+        row.refresh_from_db()
+        self.assertEqual(row.state, SubscriptionState.LAPSED)
+
+    def test_the_flag_follows_the_plan_down_to_developer_and_back(self):
+        root = User.objects.create_superuser("root", password="pw")     # in no Community
+        self.client.force_login(root)
+        steps = (("superuser", True, "superuser"), ("developer", False, "developer"),
+                 ("superuser", True, "superuser"))
+        for key, flag, in_force in steps:
+            with self.subTest(step=key):
+                self.assertEqual(self.client.post(f"/plans/subscribe/{key}/").status_code, 302)
+                row = Subscription.objects.get(user=root)
+                self.assertEqual((row.plan_key, row.for_admins), (key, flag))
+                self.assertEqual(plan_for(self.fresh(root)).key, in_force)
+        self.assertEqual(Subscription.objects.filter(user=root).count(), 1)
+
+    def test_the_admin_shows_the_flag_read_only_and_filters_by_it(self):
+        root = User.objects.create_superuser("root", password="pw")
+        row = services.subscribe(root, plans.plan("superuser"))
+        self.client.force_login(root)
+        listing = self.client.get("/admin/subscriptions/subscription/")
+        self.assertEqual(listing.status_code, 200)
+        self.assertContains(listing, "column-for_admins")
+        self.assertContains(listing, "for_admins__exact=1")
+        change = self.client.get(f"/admin/subscriptions/subscription/{row.pk}/change/")
+        self.assertEqual(change.status_code, 200)
+        self.assertContains(change, "field-for_admins")
+        self.assertNotContains(change, 'name="for_admins"')
 
     def test_bootstrap_puts_every_superuser_on_the_plan_once(self):
         root = User.objects.create_superuser("root", password="pw")     # no Person yet
@@ -243,6 +368,11 @@ class SuperuserPlanTests(EligibilityBase):
                                       "anchor_date": anchor})
         self.assertFalse(form.is_valid())
         self.assertIn("superusers only", str(form.errors))
+        self.assertNotIn("for_admins", form.fields)          # the plan decides, never a form
+        staff = member("staff", self.toto, is_staff=True)
+        form = SubscriptionAdminForm({"user": staff.pk, "plan_key": "superuser", "state": "active",
+                                      "anchor_date": anchor})
+        self.assertFalse(form.is_valid())
         form = SubscriptionAdminForm({"user": plain.pk, "plan_key": "developer", "state": "active",
                                       "anchor_date": anchor})
         self.assertFalse(form.is_valid())
@@ -250,10 +380,11 @@ class SuperuserPlanTests(EligibilityBase):
         form = SubscriptionAdminForm({"user": plain.pk, "plan_key": "free", "state": "active",
                                       "anchor_date": anchor})
         self.assertTrue(form.is_valid(), form.errors)
-        CommunityPlanOffer.objects.create(community=self.toto, plan_key="superuser")
+        # A superuser needs no offer (2026-09-28), and the saved row says so.
         form = SubscriptionAdminForm({"user": root.pk, "plan_key": "superuser", "state": "active",
                                       "anchor_date": anchor})
         self.assertTrue(form.is_valid(), form.errors)
+        self.assertTrue(form.save().for_admins)
 
     def test_the_decorator_and_the_dashboard_arm_ask_for_both(self):
         from django.core.exceptions import PermissionDenied
@@ -274,7 +405,6 @@ class SuperuserPlanTests(EligibilityBase):
         with self.assertRaises(PermissionDenied):
             view(request)
         self.assertIsNone(_resolve_dashboard_item(tile, root))
-        CommunityPlanOffer.objects.create(community=self.toto, plan_key="superuser")
         services.subscribe(root, plans.plan("superuser"))
         self.assertEqual(view(request), "ok")
         self.assertIsNotNone(_resolve_dashboard_item(tile, root))

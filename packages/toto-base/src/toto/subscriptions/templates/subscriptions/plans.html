@@ -41,6 +41,13 @@ Your communities decide what you pay. Each one may take a percentage off a plan,
               <i class="fa-solid fa-circle-check"></i> {% trans "Your plan" %}</span>
           {% endif %}
         </div>
+        {% if row.plan.for_admins %}
+          {% comment %}Only a superuser ever gets this card (the view filters
+             it, the subscribe door 404s everybody else), and every superuser
+             may choose it — no Community offer needed (2026-09-28).{% endcomment %}
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-70" data-testid="for-admins">
+            <i class="fa-solid fa-user-shield"></i> {% trans "For administrators" %}</p>
+        {% endif %}
 
         {% comment %}Three different sentences, because three different things
            are true: nothing is priced here / this plan is free / this is what

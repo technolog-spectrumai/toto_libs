@@ -16,6 +16,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -193,14 +194,25 @@ class Subscription(models.Model):
     #: state says, and the billing sweep marks it lapsed with the reason.
     expires_at = models.DateTimeField(null=True, blank=True)
     #: Why the sweep lapsed it: expired, withdrawn (no community of theirs
-    #: offers the plan any more), not-superuser (an admin-only plan on an
+    #: offers the plan any more), not-superuser (a plan for admins on an
     #: account that is not one), overdue (arrears ran out). Blank while active.
     lapse_reason = models.CharField(max_length=20, blank=True)
     #: An operator's grant (`subscribe(force=True)`): the plan was given, not
     #: bought, so no Community need offer it — the one exception to the live
-    #: offer check, and it still expires and still needs a superuser for an
-    #: admin-only plan. Nothing a request can set.
+    #: offer check, and it still expires and still needs a superuser for a
+    #: plan for admins. Nothing a request can set.
     forced = models.BooleanField(default=False)
+    #: Whether the plan is one for administrators (`for_admins: true` in
+    #: plans.yaml), stored so the admin can list and filter by it
+    #: (2026-09-28). The PLAN decides, never a form: `save()` sets it from
+    #: the plan every time, and the field is not editable anywhere. While the
+    #: row is live (active or in arrears) it may belong to a Django superuser
+    #: only — `clean()` and `save()` both refuse anything else, so neither the
+    #: admin nor a script can put an ordinary account on an admin plan.
+    for_admins = models.BooleanField(
+        _("for admins"), default=False, editable=False, help_text=_(
+            "Set from the plan: only Django superusers may hold a plan for "
+            "administrators."))
     changed_at = models.DateTimeField(auto_now=True)
 
     @property
@@ -218,6 +230,42 @@ class Subscription(models.Model):
 
     def __str__(self):
         return f"{self.user} — {self.plan} ({self.state})"
+
+    def _plan_is_for_admins(self) -> bool:
+        plan = self.plan
+        return bool(plan is not None and plan.admin_only)
+
+    def _refuse_admin_plan_to_ordinary_account(self) -> None:
+        """A LIVE row on an admin plan belongs to a superuser, or nobody.
+
+        Only live rows: a holder who stops being a superuser keeps a row
+        that grants nothing (`plan_for` ignores it) until the billing sweep
+        writes it down as lapsed with the reason ``not-superuser`` — and that
+        write, and a cancel, must go through.
+        """
+        if not (self.for_admins and self.is_paying and self.user_id):
+            return
+        if getattr(self.user, "is_superuser", False):
+            return
+        plan = self.plan
+        raise ValidationError({"plan_key": _(
+            "%(plan)s is for administrators: only a Django superuser may hold it.")
+            % {"plan": plan.name if plan is not None else self.plan_key}})
+
+    def clean(self):
+        super().clean()
+        self.for_admins = self._plan_is_for_admins()
+        self._refuse_admin_plan_to_ordinary_account()
+
+    def save(self, *args, **kwargs):
+        # The plan decides, on EVERY save — a partial one included, so a
+        # plan switch written with update_fields carries the flag with it.
+        self.for_admins = self._plan_is_for_admins()
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            kwargs["update_fields"] = {*update_fields, "for_admins"}
+        self._refuse_admin_plan_to_ordinary_account()
+        super().save(*args, **kwargs)
 
     @property
     def is_paying(self) -> bool:
@@ -329,10 +377,12 @@ def plan_for(user):
     plan no Community of theirs offers any more (`services.is_eligible`, the
     same predicate the purchase passed — leaving the community or withdrawing
     the offer takes the plan away on the next request, not next month), and
-    an admin-only plan on an account that is not a superuser: **the plan alone
-    grants nothing**. Superusers get no plan for free either: they hold the
-    admin-only plan through their own row, which needs a Community that
-    offers it (`bootstrap_plans` makes one).
+    a plan for admins on an account that is not a superuser: **the plan alone
+    grants nothing**, and a holder who stops being a superuser is back on the
+    default on the next request. Superusers get no plan for free either: they
+    hold the admin plan through their own row. Since 2026-09-28 no Community
+    need offer it — every superuser may take it from the plans page, and
+    `bootstrap_plans` puts every superuser on it.
     """
     if user is None or not getattr(user, "is_authenticated", False):
         return default_plan()

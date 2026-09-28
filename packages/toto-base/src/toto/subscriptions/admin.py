@@ -52,9 +52,11 @@ class _SuperusersOnly:
 
 class SubscriptionAdminForm(forms.ModelForm):
     """`plan_key` is a choice from the ladder, and the same two refusals
-    `services.subscribe` makes: an admin-only plan needs a superuser, a paid
+    `services.subscribe` makes: a plan for admins needs a superuser, a paid
     plan needs an offer from a Community of the person's (staff and
-    superusers excepted, as `is_eligible` says)."""
+    superusers excepted, as `is_eligible` says). `for_admins` is not a field
+    here at all: the model sets it from the plan, and `Subscription.clean`
+    refuses a live admin plan on an ordinary account a second time."""
 
     class Meta:
         model = Subscription
@@ -76,7 +78,8 @@ class SubscriptionAdminForm(forms.ModelForm):
         if plan is None:
             raise forms.ValidationError({"plan_key": "No such plan in plans.yaml."})
         if plan.admin_only and not user.is_superuser:
-            raise forms.ValidationError({"plan_key": f"{plan.name} is for superusers only."})
+            raise forms.ValidationError({"plan_key": (
+                f"{plan.name} is for administrators: superusers only.")})
         if not plan.is_default and not services.is_eligible(user, key):
             raise forms.ValidationError({"plan_key": (
                 f"No Community {user} belongs to offers {plan.name}. Offer it on the "
@@ -97,13 +100,16 @@ class CommunityDiscountAdmin(_SuperusersOnly, admin.ModelAdmin):
 @admin.register(Subscription)
 class SubscriptionAdmin(_SuperusersOnly, admin.ModelAdmin):
     form = SubscriptionAdminForm
-    list_display = ("user", "plan_key", "state", "anchor_date", "expires_at", "lapse_reason")
-    list_filter = ("state", "plan_key")
+    list_display = ("user", "plan_key", "for_admins", "state", "anchor_date", "expires_at",
+                    "lapse_reason")
+    list_filter = ("state", "for_admins", "plan_key")
     search_fields = ("user__username", "user__email", "plan_key")
     autocomplete_fields = ("user",)
     # Frozen after creation: the anchor defines every period label, which is
     # half the idempotency key of every charge this subscription will ever have.
-    readonly_fields = ("anchor_date", "started_at", "changed_at", "lapse_reason", "forced")
+    # for_admins follows the plan (Subscription.save sets it); shown, never set.
+    readonly_fields = ("anchor_date", "started_at", "changed_at", "lapse_reason", "forced",
+                       "for_admins")
 
 
 @admin.register(SubscriptionCharge)

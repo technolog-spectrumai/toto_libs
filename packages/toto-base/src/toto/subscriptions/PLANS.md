@@ -9,6 +9,7 @@ ladder this suite ships; `plans.example.yaml` is a commented copy to start from.
 | **The ladder** (what exists, what it costs, what it unlocks) | `plans.yaml` | editing a file, no migration |
 | **Who may buy which tier** | `CommunityPlanOffer` rows | admin, or `ingress_subscriptions` |
 | **Who is on which tier** | `Subscription` rows | `services.subscribe` |
+| **Whose row is on a plan for admins** | `Subscription.for_admins` | the plan, on every save — never a form |
 
 The split is the design. A plan is a decision about the *product*; a
 subscription is *user state*. Only the second belongs in the database.
@@ -39,7 +40,8 @@ plans:
     units: 200                # signed quantity per month. Not money.
     order: 20                 # card order, low first. Default 100.
     default: false            # exactly one plan in the file sets true
-    admin_only: false         # 1.51: only superusers see, hold or are put on it
+    for_admins: false         # only Django superusers see, take or hold it
+                              # (admin_only: the older spelling, same flag)
     all_features: false       # 1.51: grants every feature without listing them
     features:                 # registered, non-free feature keys
       - editor
@@ -81,7 +83,9 @@ rather than the first. Errors, in the order they are reported:
 | **duplicate `plan_key`** | `plans[N]: duplicate plan_key '...'` |
 | missing name | `plans[N]: name is required` |
 | `units`/`order` not whole numbers | `plans[N]: units must be a whole number` |
-| `default` not a boolean | `plans[N]: default must be true or false` |
+| `default`, `for_admins`, `admin_only` or `all_features` not a boolean | `plans[N]: default must be true or false` |
+| **`for_admins` and `admin_only` both set, and different** | `plans[N]: for_admins and admin_only are one flag and disagree — write for_admins only` |
+| a default plan for admins | `plans[N]: the default plan cannot be for_admins (admin_only)` |
 | a default plan that costs units | `plans[N]: the default plan cannot cost units` |
 | `features` not a list | `plans[N]: features must be a list` |
 | the same feature listed twice | `plans[N]: features lists the same key twice` |
@@ -135,10 +139,13 @@ least one community that offers it**. "Active membership" is the existence of a
 row in `people.Person.communities` — there is no status field anywhere in the
 suite, and the model docstring says so rather than inventing one.
 
-Three exceptions, each narrow:
+Four exceptions, each narrow:
 
-* **Staff** are eligible for everything, so an administrator can place someone
-  on a tier no community offers yet.
+* **A plan for admins** (`for_admins: true`) is outside the offer rule
+  altogether: every Django superuser is eligible for it and nobody else ever
+  is — staff included, whatever a Community offers (2026-09-28).
+* **Staff** are eligible for everything else, so an administrator can place
+  someone on a tier no community offers yet.
 * **The default plan is always eligible** for a signed-in person. It is what
   `plan_for()` puts them on, and a page that denied the plan you are already on
   would be incoherent.
@@ -191,22 +198,45 @@ audiences are destroyed; the journals in `toto.quota` and the balances in
 and re-create the paid offers.
 
 
-## Admin-only and all-features plans (1.51, tightened 2026-09-26)
+## Plans for admins and all-features plans (1.51; 2026-09-26; 2026-09-28)
 
-`admin_only: true` makes a plan that only superusers can see, subscribe to or
-hold — refused on the server (`services.is_eligible`), left out of every
-listing (`plans.public_plans()` for visitors and staff). It cannot be the
-default plan. **It is not granted by the privilege alone**: a superuser holds
-it through their own subscription, which needs a Community of theirs to offer
-it — `bootstrap_plans` makes the `operators` Community, offers every plan to
-it and puts every superuser on the admin-only plan, and every door that
-creates accounts (`bootstrap_users`, so the build scripts, `deploy.py users`
-and the Operator's Users tab) runs it. Nor does the plan grant anything by
-itself: `plan_for` ignores an admin-only key on an ordinary account, the admin
-form and `subscribe(force=True)` refuse to write one, and the billing sweep
-lapses any such row with the reason `not-superuser`. Superuser functionality —
-`visibility: superuser` tiles, views wearing `gate.superuser_plan_required` —
-asks `models.superuser_plan_active(user)`: **both**, the account and the plan.
+`for_admins: true` makes a plan for administrators — only Django superusers
+can see it, subscribe to it or hold it. `admin_only: true` is the older
+spelling of the same flag and is still read; a plan that states both must
+state the same value, or the ladder is refused. In Python the flag is
+`Plan.admin_only`, with `Plan.for_admins` as its readable alias.
+
+**Who may take it: every superuser, and nobody else** (2026-09-28). A
+superuser needs no Community offer — `services.is_eligible` asks for the
+account alone — so a superuser in no Community at all sees the card on the
+plans page, marked *For administrators*, and its button works. Staff and
+members never see the card (`services.eligible_plans` leaves it out even
+where a Community of theirs offers the plan) and get a 404 from the subscribe
+door; `subscribe(force=True)` refuses them too. It cannot be the default plan.
+
+**The row says so.** `Subscription.for_admins` is set from the plan on every
+save (a switch down to Developer clears it, a switch back sets it) and is
+editable nowhere; the admin lists and filters by it and shows it read-only.
+The model refuses a live row (active or in arrears) on a plan for admins for
+an account that is not a superuser — `Subscription.clean()` raises a
+`ValidationError` and `save()` refuses the same way — so neither the admin
+nor a script can bypass `services.subscribe`. Writing such a row down as
+lapsed or cancelled is always allowed. Migration `0003` marks the rows that
+exist: it asks the plan registry the host runs, and falls back to the key
+`superuser` if the registry cannot load at migrate time.
+
+**It is not granted by the privilege alone**: a superuser holds it through
+their own subscription. `bootstrap_plans` puts every superuser on it in one
+go (it also makes the `operators` Community and offers every plan to it), and
+every door that creates accounts (`bootstrap_users`, so the build scripts,
+`deploy.py users` and the Operator's Users tab) runs it. Nor does the plan
+grant anything by itself: `plan_for` ignores it on an account that is not a
+superuser — a holder who is demoted is on the default plan on the next
+request — and the billing sweep lapses such a row with the reason
+`not-superuser` (a failed or cleared month on it lapses it the same way
+rather than keeping it live). Superuser functionality — `visibility:
+superuser` tiles, views wearing `gate.superuser_plan_required` — asks
+`models.superuser_plan_active(user)`: **both**, the account and the plan.
 
 ## Community-defined and checked live (2026-09-26)
 
@@ -222,14 +252,15 @@ the row with the reason (`withdrawn`, `expired`, `unknown-plan`,
 exceptions, both deliberate: staff and superusers may hold any buyable plan
 without an offer (they administer the ladder), and an **operator's grant**
 (`subscribe(force=True)`, recorded as `Subscription.forced`) needs no offer —
-it was given, not bought — though it still expires and still refuses the
-admin-only plan to a non-superuser. Only real superusers change offers,
+it was given, not bought — though it still expires and still refuses a plan
+for admins to a non-superuser. Since 2026-09-28 a plan for admins needs no
+offer at all (above). Only real superusers change offers,
 discounts or subscription rows: the two tabs answer 403 to staff, and the
 admin section is superusers' alone.
 
 `all_features: true` grants every feature, present and future, without
 listing them. Together they make a "Superuser" tier. A ladder whose only
-all-features plan is admin_only still gets `subscriptions.W001` for any paid
+all-features plan is for admins still gets `subscriptions.W001` for any paid
 feature no buyable plan lists.
 
 ## Enforcement switches (1.51)

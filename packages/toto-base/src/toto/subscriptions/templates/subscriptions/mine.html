@@ -15,7 +15,8 @@
     <i class="fa-solid fa-key mt-0.5" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
     <div>
       <p class="font-semibold">{% blocktrans with plan=admin_plan.name %}You are a superuser without the {{ plan }} plan.{% endblocktrans %}</p>
-      <p class="mt-1 opacity-75">{% trans "Superuser functionality needs both: the account and the plan, which a Community of yours must offer. On a fresh host run" %} <code>manage.py bootstrap_plans</code>{% trans ", which makes the operators' Community, offers every plan to it and puts every superuser on this one." %}</p>
+      {% url 'subscriptions:plans' as plans_url %}
+      <p class="mt-1 opacity-75">{% blocktrans %}Superuser functionality needs both: the account and the plan. Every superuser may take the plan, with no Community offer needed: <a href="{{ plans_url }}" class="font-semibold underline">choose it on the plans page</a>, or run <code>manage.py bootstrap_plans</code> to put every superuser on it.{% endblocktrans %}</p>
     </div>
   </div>
 {% endif %}

@@ -398,11 +398,12 @@ plans:
         member = User.objects.create_user("m", password="x")
         top = plans.plan("superuser")
         self.assertTrue(top.grants("anything-at-all"))
+        self.assertTrue(top.admin_only and top.for_admins)   # the older spelling, read
         self.assertEqual([p.key for p in plans.public_plans()], ["free", "standard"])
-        # The privilege alone puts nobody on the plan (2026-09-26): a
-        # Community must offer it and the superuser must hold it.
+        # The privilege alone puts nobody on the plan: the superuser must hold
+        # it. Eligible without any Community offer since 2026-09-28.
         self.assertEqual(plan_for(admin).key, "free")
-        self.assertFalse(services.is_eligible(admin, "superuser"))
+        self.assertTrue(services.is_eligible(admin, "superuser"))
         from django.core.management import call_command
         from io import StringIO
 
