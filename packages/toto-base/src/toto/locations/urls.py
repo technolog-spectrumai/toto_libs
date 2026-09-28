@@ -40,6 +40,8 @@ urlpatterns = [
     path("metadata/convert/", views.metadata_convert, name="metadata_convert"),
     path("note/<str:kind>/<int:pk>/save/", views.note_save, name="note_save"),
     path("locations/search/", views.location_search_api, name="location_search_api"),
+    path("geocode/search/", views.geocode_search, name="geocode_search"),
+    path("geocode/reverse/", views.geocode_reverse, name="geocode_reverse"),
     path("layers/import/", views.api_import_layer, name="api_import_layer"),
 ]
 
@@ -51,7 +53,13 @@ urlpatterns = [
 # return 404 — so a geometry-less host degrades cleanly instead of 500-ing on an
 # AttributeError/FieldError. A host that wants the UI gone entirely simply omits
 # the include (as faros does). No-op on a GIS build.
+#
+# Geocoding is the exception (2026-09-28): it answers with text and floats,
+# needs no geometry column, and socialhub and the host's Places app use it on
+# any build.
 from django.conf import settings as _settings  # noqa: E402
+
+GIS_FREE = {"geocode_search", "geocode_reverse"}
 
 if not getattr(_settings, "HAS_GIS", True):
     from django.http import Http404
@@ -60,4 +68,5 @@ if not getattr(_settings, "HAS_GIS", True):
         raise Http404("The locations map UI requires a GIS build (BUILD_GEO=1).")
 
     for _pattern in urlpatterns:
-        _pattern.callback = _gis_disabled
+        if _pattern.name not in GIS_FREE:
+            _pattern.callback = _gis_disabled

@@ -61,6 +61,9 @@ COLOUR_OF: dict[str, str] = {
     # an encrypted room (2026-09-25).
     "forum.encrypt": "compute",
     "forum.room_key": "compute",
+    # A place name or map point resolved by the host's geocoding provider
+    # (2026-09-28). Clicking the map is free; asking the server is not.
+    "locations.geocode": "compute",
     # -- security -----------------------------------------------------------
     "antivirus.scan": "security",
     # Talking in the clear (2026-09-25): an ordinary forum message draws on
@@ -104,6 +107,8 @@ PRICES: dict[str, Decimal] = {
     "forum.message": Decimal("0.1"),
     "forum.encrypt": Decimal("0.2"),
     "forum.room_key": Decimal("5"),
+    # A search or an address from a pin: a day's refill buys about 200.
+    "locations.geocode": Decimal("0.5"),
     "security.plain_gb_day": Decimal("20"),
 }
 

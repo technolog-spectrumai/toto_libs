@@ -1,9 +1,13 @@
+import http.client
 import json
-from urllib.error import HTTPError, URLError
+import logging
+import math
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_GEOCODING_SETTINGS = {
@@ -16,6 +20,42 @@ DEFAULT_GEOCODING_SETTINGS = {
     "fail_silently": True,
     "search_limit": 5,
 }
+
+
+#: Everything a provider call can fail with (2026-09-28). URLError, HTTPError
+#: and timeouts are all OSError; a connection dropped mid-answer is an
+#: HTTPException; a body that is not the JSON asked for is a ValueError
+#: (JSONDecodeError, UnicodeDecodeError, and the normalisers below refusing an
+#: odd payload). The fail-silent helpers used to catch only HTTPError,
+#: URLError, TimeoutError and JSONDecodeError, so a reset connection, a
+#: truncated body (IncompleteRead) or a non-list answer was a 500.
+PROVIDER_ERRORS = (OSError, http.client.HTTPException, ValueError)
+
+#: The address fields a reverse lookup fills, in AddressCreateForm's names.
+ADDRESS_FIELDS = (
+    "country_name",
+    "state_or_province_name",
+    "locality_name",
+    "street",
+    "building",
+)
+
+
+class GeocodingUnavailable(Exception):
+    """The provider could not be reached, or answered with something unusable.
+
+    Raised only by the raising variants (`search_places`, `describe_point`),
+    which the charged service in `toto.locations.geocoding` uses: it must tell
+    a failure from an empty answer, because an answer is charged and a failure
+    is not. The fail-silent helpers still answer [] / {} as before.
+    """
+
+
+def log_provider_failure(kind, exc):
+    # The query and the point stay out of the log: where a member looked is
+    # theirs. The exception's own text names the network or parse failure.
+    logger.warning("geocoding: %s provider failed: %s: %s",
+                   kind, type(exc).__name__, exc)
 
 
 def geocoding_settings():
@@ -68,12 +108,18 @@ def fetch_reverse_geocode_payload(latitude, longitude, config):
         return json.loads(response.read().decode("utf-8"))
 
 
-def normalize_reverse_geocode_payload(payload):
-    address = payload.get("address") or {}
+def normalize_reverse_geocode_payload(payload, building_default="Map point"):
+    if not isinstance(payload, dict):
+        raise ValueError("reverse geocoding answered with something other than an object")
+
+    address = payload.get("address")
+    if not isinstance(address, dict):
+        address = {}
 
     return {
+        "label": first_present(payload.get("display_name")),
         "country_name": first_present(
-            (address.get("country_code") or "").upper(),
+            str(address.get("country_code") or "").upper(),
         ),
         "state_or_province_name": first_present(
             address.get("state"),
@@ -107,7 +153,7 @@ def normalize_reverse_geocode_payload(payload):
             address.get("tourism"),
             address.get("historic"),
             payload.get("name"),
-            default="Map point",
+            default=building_default,
         ),
     }
 
@@ -118,6 +164,7 @@ def reverse_geocode_address(latitude, longitude):
 
     Returns:
         dict: {
+            "label": "...",           # the provider's display name
             "country_name": "...",
             "state_or_province_name": "...",
             "locality_name": "...",
@@ -140,11 +187,46 @@ def reverse_geocode_address(latitude, longitude):
         payload = fetch_reverse_geocode_payload(latitude, longitude, config)
         return normalize_reverse_geocode_payload(payload)
 
-    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+    except PROVIDER_ERRORS as exc:
+        log_provider_failure("reverse", exc)
         if config.get("fail_silently", True):
             return {}
 
         raise
+
+
+def describe_point(latitude, longitude, config=None):
+    """Reverse geocoding that says when it failed (2026-09-28).
+
+    For the charged service: raises GeocodingUnavailable (logged) where
+    `reverse_geocode_address` answers {}. A point the provider has no address
+    for (open sea, Nominatim's {"error": "Unable to geocode"}) is an answer,
+    not a failure: found=False with blank fields.
+
+    Returns:
+        dict: {"label": "...", "fields": {ADDRESS_FIELDS...}, "found": bool}
+
+    The fields carry no "Map point" placeholder: they fill a form, and a
+    building number that reads "Map point" is not an address.
+    """
+    config = config or geocoding_settings()
+
+    try:
+        payload = fetch_reverse_geocode_payload(latitude, longitude, config)
+        normalized = normalize_reverse_geocode_payload(payload, building_default="")
+
+    except PROVIDER_ERRORS as exc:
+        log_provider_failure("reverse", exc)
+        raise GeocodingUnavailable("reverse") from exc
+
+    if payload.get("error") or not payload.get("address"):
+        return {"label": "", "fields": dict.fromkeys(ADDRESS_FIELDS, ""), "found": False}
+
+    return {
+        "label": normalized["label"],
+        "fields": {key: str(normalized[key]) for key in ADDRESS_FIELDS},
+        "found": True,
+    }
 
 
 # ---------------------------------------------------------------------
@@ -170,8 +252,19 @@ def fetch_forward_geocode_payload(query, config):
         return json.loads(response.read().decode("utf-8"))
 
 
+def coordinate_or_none(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+
+    return number if math.isfinite(number) else None
+
+
 def normalize_forward_geocode_item(item):
-    address = item.get("address") or {}
+    address = item.get("address")
+    if not isinstance(address, dict):
+        address = {}
 
     return {
         "label": first_present(
@@ -190,15 +283,15 @@ def normalize_forward_geocode_item(item):
             item.get("display_name"),
             default="Search result",
         ),
-        "lat": item.get("lat"),
-        "lng": item.get("lon"),
+        "lat": coordinate_or_none(item.get("lat")),
+        "lng": coordinate_or_none(item.get("lon")),
         "type": first_present(
             item.get("type"),
             item.get("class"),
             default="place",
         ),
         "country_name": first_present(
-            (address.get("country_code") or "").upper(),
+            str(address.get("country_code") or "").upper(),
         ),
         "state_or_province_name": first_present(
             address.get("state"),
@@ -218,12 +311,18 @@ def normalize_forward_geocode_item(item):
 
 
 def normalize_forward_geocode_payload(payload):
+    if not isinstance(payload, list):
+        raise ValueError("forward geocoding answered with something other than a list")
+
     results = []
 
     for item in payload:
+        if not isinstance(item, dict):
+            continue
+
         normalized = normalize_forward_geocode_item(item)
 
-        if normalized["lat"] in (None, "") or normalized["lng"] in (None, ""):
+        if normalized["lat"] is None or normalized["lng"] is None:
             continue
 
         results.append(normalized)
@@ -240,8 +339,8 @@ def forward_geocode_locations(query):
             {
                 "label": "...",
                 "name": "...",
-                "lat": "...",
-                "lng": "...",
+                "lat": 52.40,           # floats since 2026-09-28
+                "lng": 16.93,
                 "type": "...",
                 ...
             }
@@ -261,8 +360,28 @@ def forward_geocode_locations(query):
         payload = fetch_forward_geocode_payload(query, config)
         return normalize_forward_geocode_payload(payload)
 
-    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+    except PROVIDER_ERRORS as exc:
+        log_provider_failure("search", exc)
         if config.get("fail_silently", True):
             return []
 
         raise
+
+
+def search_places(query, config=None):
+    """Forward geocoding that says when it failed (2026-09-28).
+
+    For the charged service: raises GeocodingUnavailable (logged) where
+    `forward_geocode_locations` answers []. An empty list here means the
+    provider answered and found nothing — which is charged; a failure is not.
+    The caller has already validated the query and checked `enabled`.
+    """
+    config = config or geocoding_settings()
+
+    try:
+        payload = fetch_forward_geocode_payload(query, config)
+        return normalize_forward_geocode_payload(payload)
+
+    except PROVIDER_ERRORS as exc:
+        log_provider_failure("search", exc)
+        raise GeocodingUnavailable("search") from exc

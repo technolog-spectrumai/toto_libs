@@ -27,6 +27,7 @@ from .models import (
     Territory,
     Zone,
 )
+from . import geocoding
 from .forms import AddressCreateForm
 from .geocode import reverse_geocode_address, forward_geocode_locations
 
@@ -839,16 +840,48 @@ def route_save(request):
     return redirect("locations:route_detail", pk=route.pk)
 
 
+# ---------------------------------------------------------------------
+# Geocoding (2026-09-28): charged per lookup, so POST with CSRF and never
+# GET — a link, a prefetch or a crawler must not spend a member's mana.
+# Both work on a GIS-off host too (urls.py exempts them).
+# ---------------------------------------------------------------------
+
+def _geocoding_refusal(exc):
+    response = JsonResponse({"error": str(exc)}, status=exc.status_code)
+    if getattr(exc, "retry_after", None):
+        response["Retry-After"] = str(exc.retry_after)
+    return response
+
+
+@require_POST
 @login_required
-def location_search_api(request):
-    query = request.GET.get("q", "").strip()
+def geocode_search(request):
+    """Places by name or address: POST q -> {"results": [...], "cached"}."""
+    try:
+        answer = geocoding.search_answer(request.user, request.POST.get("q", ""))
+    except geocoding.REFUSALS as exc:
+        return _geocoding_refusal(exc)
 
-    if len(query) < 2:
-        return JsonResponse({"results": []})
+    return JsonResponse({"results": answer.value, "cached": answer.cached})
 
-    return JsonResponse({
-        "results": forward_geocode_locations(query),
-    })
+
+@require_POST
+@login_required
+def geocode_reverse(request):
+    """The address at a pin: POST lat, lng -> {"lat", "lng", "label",
+    "fields", "found", "cached"}."""
+    try:
+        answer = geocoding.reverse_answer(
+            request.user, request.POST.get("lat"), request.POST.get("lng"))
+    except geocoding.REFUSALS as exc:
+        return _geocoding_refusal(exc)
+
+    return JsonResponse({**answer.value, "cached": answer.cached})
+
+
+#: The map page's old search door keeps its URL and name, but it was a free
+#: GET that sent every query to the provider; it is the charged search now.
+location_search_api = geocode_search
 
 
 # ---------------------------------------------------------------------

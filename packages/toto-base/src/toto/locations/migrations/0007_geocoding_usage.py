@@ -1,0 +1,83 @@
+# Metering for server-side geocoding (2026-09-28): the usage-event and
+# quota-policy pair `locations.geocode` is recorded and capped in. Plain
+# columns only, so the file is the same on both graphs.
+# Identical in migrations/ and migrations_nogis/, as every locations migration is.
+
+from django.conf import settings
+from django.db import migrations, models
+import django.db.models.deletion
+import django.utils.timezone
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+        ("locations", "0006_created_by"),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name="LocationsQuotaPolicy",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("name", models.CharField(blank=True, max_length=255)),
+                ("metric_code", models.CharField(db_index=True, max_length=100)),
+                ("limit", models.DecimalField(decimal_places=10, max_digits=30)),
+                ("unit", models.CharField(blank=True, max_length=100)),
+                ("period", models.CharField(choices=[("daily", "Daily"), ("weekly", "Weekly"), ("monthly", "Monthly"), ("yearly", "Yearly"), ("lifetime", "Lifetime")], default="daily", max_length=20)),
+                ("mode", models.CharField(choices=[("track", "Track only"), ("warn", "Warn"), ("block", "Block")], default="block", max_length=10)),
+                ("active", models.BooleanField(default=True)),
+                ("starts_at", models.DateTimeField(blank=True, null=True)),
+                ("ends_at", models.DateTimeField(blank=True, null=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+            ],
+            options={
+                "verbose_name": "Locations quota policy",
+                "verbose_name_plural": "Locations quota policies",
+                "ordering": ["metric_code"],
+                "abstract": False,
+            },
+        ),
+        migrations.CreateModel(
+            name="LocationsUsageEvent",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("metric_code", models.CharField(max_length=100)),
+                ("quantity", models.DecimalField(decimal_places=10, max_digits=30)),
+                ("unit", models.CharField(blank=True, max_length=100)),
+                ("source_type", models.CharField(blank=True, max_length=100)),
+                ("source_id", models.CharField(blank=True, max_length=255)),
+                ("source_label", models.CharField(blank=True, max_length=255)),
+                ("idempotency_key", models.CharField(blank=True, max_length=512)),
+                ("status", models.CharField(choices=[("recorded", "Recorded"), ("voided", "Voided")], default="recorded", max_length=20)),
+                ("occurred_at", models.DateTimeField(default=django.utils.timezone.now)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("metadata", models.JSONField(blank=True, default=dict)),
+                ("user", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name="+", to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                "verbose_name": "Locations usage event",
+                "verbose_name_plural": "Locations usage events",
+                "ordering": ["-occurred_at"],
+                "abstract": False,
+            },
+        ),
+        migrations.AddConstraint(
+            model_name="locationsquotapolicy",
+            constraint=models.UniqueConstraint(fields=("metric_code",), name="locations_locationsquotapolicy_one_per_metric"),
+        ),
+        migrations.AddIndex(
+            model_name="locationsusageevent",
+            index=models.Index(fields=["metric_code", "occurred_at"], name="locationsusageevent_mtime"),
+        ),
+        migrations.AddIndex(
+            model_name="locationsusageevent",
+            index=models.Index(fields=["user", "metric_code"], name="locationsusageevent_umetric"),
+        ),
+        migrations.AddConstraint(
+            model_name="locationsusageevent",
+            constraint=models.UniqueConstraint(condition=models.Q(("idempotency_key", ""), _negated=True), fields=("idempotency_key",), name="locations_locationsusageevent_idem"),
+        ),
+    ]

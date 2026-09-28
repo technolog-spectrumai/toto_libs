@@ -304,3 +304,23 @@ class MapLayerPolygon(DomainEntity):
         return self.name or f"{self.layer.name} Polygon {self.pk}"
 
 
+
+
+# Metering (2026-09-28): server-side geocoding is charged per lookup, and the
+# pair lives here so its rows go away with the app. Plain columns only — the
+# same tables on a GIS and a GIS-off build (toto/locations/geocoding.py).
+from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent  # noqa: E402
+
+
+class LocationsUsageEvent(AbstractUsageEvent):
+    class Meta(AbstractUsageEvent.Meta):
+        verbose_name = "Locations usage event"
+        verbose_name_plural = "Locations usage events"
+
+
+class LocationsQuotaPolicy(AbstractQuotaPolicy):
+    events = LocationsUsageEvent
+
+    class Meta(AbstractQuotaPolicy.Meta):
+        verbose_name = "Locations quota policy"
+        verbose_name_plural = "Locations quota policies"
