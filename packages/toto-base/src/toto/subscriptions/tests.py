@@ -1095,7 +1095,14 @@ class IngressTests(TestCase):
         tile from everybody, superusers included, and 402s its writes wherever
         enforcement is on. That has happened twice — to the compute tier, and
         to ocr/fileservices — and both times it was found by audit. Asserted
-        against the SHIPPED file, not the fixture."""
+        against the SHIPPED file, not the fixture.
+
+        Only for the catalogue's OWN declarations (2026-09-28): a host app may
+        declare its own entitlement (`<app>/entitlements.py`, zenobia's books
+        are the first) and sell it in the host's ladder, which replaces this
+        file there — `subscriptions.W001` checks that ladder. The shipped file
+        cannot know a host's apps, and naming one would make it unusable on
+        every host without that app (an unknown feature key is E001)."""
         from pathlib import Path
 
         shipped = plans.DEFAULT_PLANS_FILE
@@ -1105,7 +1112,7 @@ class IngressTests(TestCase):
 
         raw = yaml.safe_load(Path(shipped).read_text())
         granted = {key for plan in raw["plans"] for key in plan.get("features", [])}
-        for entitlement in registry.all():
+        for entitlement in catalogue._DEFAULTS:
             if entitlement.free:
                 continue
             with self.subTest(feature=entitlement.feature_key):
