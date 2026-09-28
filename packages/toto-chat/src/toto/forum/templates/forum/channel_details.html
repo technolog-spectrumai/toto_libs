@@ -907,8 +907,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     <section
       :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
       class="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border shadow-md">
-      {# Row 1: everything above the messages, in one box, so a notice that
-         appears or not never shifts the messages or the composer. #}
+      {% comment %}Row 1: everything above the messages, in one box, so a notice
+         that appears or not never shifts the messages or the composer.{% endcomment %}
       <div class="min-w-0">
 
       {# The room's tab strip — chat is one of four surfaces now. #}
