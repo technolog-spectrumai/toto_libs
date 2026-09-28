@@ -1,5 +1,6 @@
 from django import forms
 from django.contrib import admin
+from django.utils.text import capfirst
 
 from .models import (
     CommunityDiscount,
@@ -159,7 +160,10 @@ class CommunityPlanOfferAdmin(_SuperusersOnly, admin.ModelAdmin):
 
     def formfield_for_dbfield(self, db_field, request, **kwargs):
         if db_field.name == "plan_key":
-            kwargs["widget"] = admin.widgets.AdminRadioSelect()
-            kwargs["choices"] = _plan_key_choices()
-            return db_field.formfield(**kwargs)
+            # Built here rather than by `db_field.formfield(choices=...)`: a
+            # SlugField's form field takes no choices, and handing it some
+            # raised TypeError on every add and change page of this model.
+            return forms.ChoiceField(
+                choices=_plan_key_choices(), widget=admin.widgets.AdminRadioSelect(),
+                label=capfirst(db_field.verbose_name), help_text=db_field.help_text)
         return super().formfield_for_dbfield(db_field, request, **kwargs)

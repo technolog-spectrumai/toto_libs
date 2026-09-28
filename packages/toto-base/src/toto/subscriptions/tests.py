@@ -493,6 +493,29 @@ class OfferTabTests(TestCase):
         self.assertEqual((added, removed), (0, 0))
 
 
+class OfferAdminPageTests(TestCase):
+    """The offer admin's plan field is a choice from the ladder. It was made
+    by handing `choices` to a SlugField's form field, which takes none, so
+    every add and change page raised TypeError (found 2026-09-28)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        Platform.objects.create(site_name="T", author="t",
+                                publication_year=2026, active=True)
+        cls.free, cls.standard, cls.professional = make_plans()
+        cls.guild = Community.objects.create(name="Guild", slug="guild")
+        cls.root = User.objects.create_superuser("offer_root", "or@example.com", "pw")
+
+    def test_the_add_and_change_pages_render(self):
+        self.client.force_login(self.root)
+        offer = CommunityPlanOffer.objects.create(community=self.guild, plan_key=self.free.key)
+        add = self.client.get(reverse("admin:subscriptions_communityplanoffer_add"))
+        change = self.client.get(reverse("admin:subscriptions_communityplanoffer_change",
+                                         args=[offer.pk]))
+        self.assertEqual((add.status_code, change.status_code), (200, 200))
+        self.assertContains(add, f'value="{self.standard.key}"')
+
+
 class DiscountTests(TestCase):
     @classmethod
     def setUpTestData(cls):
