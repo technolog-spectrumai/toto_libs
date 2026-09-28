@@ -1,6 +1,7 @@
 {% extends "locations/base.html" %}
 {% load static %}
 {% load i18n %}
+{% load quota_tags %}
 
 {% block title %}{% trans "Add Address" %} | {{ platform.site_name }}{% endblock %}
 
@@ -167,6 +168,32 @@
             {% endif %}
           </div>
         </div>
+
+        {% if geocoding_enabled %}
+          {% comment %}Asking the provider what is at the point is a charged
+             place lookup, so it is this button, priced, and never the page
+             opening. It fills only the fields still empty.{% endcomment %}
+          <div x-data="addressFromPoint()" class="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              data-testid="fill-from-point"
+              @click="fill()"
+              :disabled="busy"
+              :class="darkMode
+                ? 'border-accent-1 bg-bubble-bg-dark'
+                : 'border-accent-2 bg-bubble-bg-light'"
+              class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-85 disabled:opacity-40">
+              <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>{% trans "Fill from the map point" %}</button>
+            {% price_hint "locations.geocode" %}
+            <p
+              x-show="message"
+              x-cloak
+              x-text="message"
+              role="status"
+              :class="failed ? (darkMode ? 'text-warn-dark' : 'text-warn-light') : 'opacity-70'"
+              class="w-full text-xs"></p>
+          </div>
+        {% endif %}
       </section>
 
       <div class="flex flex-wrap items-center justify-end gap-3 pt-2">
@@ -192,4 +219,81 @@
     </form>
   </div>
 </section>
+
+{% if geocoding_enabled %}
+<script>
+  function addressFromPoint() {
+    return {
+      busy: false,
+      failed: false,
+      message: "",
+
+      async fill() {
+        const form = this.$el.closest("form");
+        const lat = form.elements.latitude.value.trim();
+        const lng = form.elements.longitude.value.trim();
+
+        if (!lat || !lng) {
+          this.failed = true;
+          this.message = "Set the latitude and longitude first.";
+          return;
+        }
+
+        this.busy = true;
+        this.failed = false;
+        this.message = "";
+
+        try {
+          const body = new FormData();
+          body.append("lat", lat);
+          body.append("lng", lng);
+
+          const response = await fetch("{% url 'locations:geocode_reverse' %}", {
+            method: "POST",
+            body,
+            credentials: "same-origin",
+            headers: {
+              "Accept": "application/json",
+              "X-CSRFToken": "{{ csrf_token }}",
+              "X-Requested-With": "XMLHttpRequest",
+            },
+          });
+          const payload = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            this.failed = true;
+            this.message = payload.error || "Could not look this point up right now.";
+            return;
+          }
+
+          if (!payload.found) {
+            this.message = "No address is known at this point.";
+            return;
+          }
+
+          // What the person typed stays: only empty fields are filled.
+          let filled = 0;
+          Object.entries(payload.fields || {}).forEach(([name, value]) => {
+            const input = form.elements[name];
+
+            if (input && value && !input.value.trim()) {
+              input.value = value;
+              filled += 1;
+            }
+          });
+
+          this.message = filled
+            ? `Filled from: ${payload.label}`
+            : `Found ${payload.label}; every field already had a value, so nothing changed.`;
+        } catch (error) {
+          this.failed = true;
+          this.message = "Could not look this point up right now.";
+        } finally {
+          this.busy = false;
+        }
+      },
+    };
+  }
+</script>
+{% endif %}
 {% endblock %}

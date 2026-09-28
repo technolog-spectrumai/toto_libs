@@ -1,6 +1,7 @@
 {% extends "locations/base.html" %}
 {% load static %}
 {% load i18n %}
+{% load quota_tags %}
 
 {% block locations_title %}Map{% endblock %}
 {% block tab_locations %}bg-accent-dark/10 opacity-100{% endblock %}
@@ -30,7 +31,11 @@
 <script>
   window.locationsPayload = JSON.parse(`{{ locations_json|escapejs }}`);
   window.mapLayersPayload = JSON.parse(`{{ map_layers_json|escapejs }}`);
-  window.locationSearchUrl = "{% url 'locations:location_search_api' %}";
+  // Web search is a charged place lookup (2026-09-28): a POST with the CSRF
+  // token, on Enter or the Search button, never as-you-type.
+  window.geocodeSearchUrl = "{% url 'locations:geocode_search' %}";
+  window.geocodingEnabled = {{ geocoding_enabled|yesno:"true,false" }};
+  window.locationsCsrfToken = "{{ csrf_token }}";
   window.vaultGeojsonFiles = JSON.parse(`{{ vault_files_json|escapejs }}`);
 
   function locationsExplorer() {
@@ -40,7 +45,13 @@
       mapSearchRemoteResults: [],
       mapSearchLoading: false,
       mapSearchError: "",
-      mapSearchDebounce: null,
+      // A web search finished for the text in the box ("No location found."
+      // means something only then), the text it is running for, and a
+      // counter so an older answer cannot land over a newer one.
+      mapSearchDone: false,
+      mapSearchPending: "",
+      mapSearchSeq: 0,
+      geocodingEnabled: window.geocodingEnabled === true,
 
       sidebarOpen: false,
       visibilityOpen: false,
@@ -91,8 +102,13 @@
             this.visibleTypes[type] = true;
           });
 
-        this.$watch("mapSearch", (value) => {
-          this.queueRemoteMapSearch(value);
+        // Typing filters this map's own locations, for free. It asks the
+        // server nothing: a web search costs a lookup, so it waits for Enter
+        // or the Search button, and new text retires the old answer.
+        this.$watch("mapSearch", () => {
+          this.mapSearchRemoteResults = [];
+          this.mapSearchError = "";
+          this.mapSearchDone = false;
         });
 
         const defaultLayer = this.mapLayers[0];
@@ -177,7 +193,9 @@
           results.push(item);
         });
 
-        return results.slice(0, 8);
+        // The web results are few (the host's search_limit) and paid for:
+        // none is cut to make room for local matches.
+        return results;
       },
 
       selectType(type) {
@@ -244,39 +262,55 @@
         this.sidebarOpen = false;
       },
 
-      queueRemoteMapSearch(value) {
-        const query = value.trim();
+      async searchPlaces() {
+        const query = this.mapSearch.trim();
 
-        window.clearTimeout(this.mapSearchDebounce);
-
-        if (query.length < 2) {
-          this.mapSearchRemoteResults = [];
-          this.mapSearchError = "";
-          this.mapSearchLoading = false;
+        if (!this.geocodingEnabled) {
+          // No web search on this host: Enter is "the first match here".
+          if (this.mapSearchResults.length) {
+            this.moveMapToLocation(this.mapSearchResults[0]);
+          }
           return;
         }
 
-        this.mapSearchDebounce = window.setTimeout(() => {
-          this.fetchRemoteMapSearch(query);
-        }, 350);
-      },
+        // A second Enter on the same text while it runs would pay twice.
+        if (!query || (this.mapSearchLoading && query === this.mapSearchPending)) {
+          return;
+        }
 
-      async fetchRemoteMapSearch(query) {
+        const seq = ++this.mapSearchSeq;
+        this.mapSearchPending = query;
         this.mapSearchLoading = true;
         this.mapSearchError = "";
 
         try {
-          const response = await fetch(`${window.locationSearchUrl}?q=${encodeURIComponent(query)}`, {
+          const body = new FormData();
+          body.append("q", query);
+
+          const response = await fetch(window.geocodeSearchUrl, {
+            method: "POST",
+            body,
+            credentials: "same-origin",
             headers: {
+              "Accept": "application/json",
+              "X-CSRFToken": window.locationsCsrfToken,
               "X-Requested-With": "XMLHttpRequest",
             },
           });
 
-          if (!response.ok) {
-            throw new Error("Search failed.");
+          const payload = await response.json().catch(() => ({}));
+
+          if (seq !== this.mapSearchSeq) {
+            return;   // a newer search owns the list
           }
 
-          const payload = await response.json();
+          if (!response.ok) {
+            // The server's own sentence: out of compute mana, too many
+            // lookups, lookup unavailable, no plan for this app.
+            this.mapSearchRemoteResults = [];
+            this.mapSearchError = payload.error || "Could not search online right now.";
+            return;
+          }
 
           this.mapSearchRemoteResults = (payload.results || []).map((item) => ({
             ...item,
@@ -286,15 +320,26 @@
             type: item.type || "Place",
             detail: item.locality_name || item.state_or_province_name || item.country_name || "Web result",
           }));
+          this.mapSearchDone = true;
+
+          // Straight to the best match; the list stays open for the others.
+          if (this.mapSearchRemoteResults.length) {
+            this.moveMapToLocation(this.mapSearchRemoteResults[0], { keepOpen: true });
+          }
         } catch (error) {
-          this.mapSearchRemoteResults = [];
-          this.mapSearchError = "Could not search online right now.";
+          if (seq === this.mapSearchSeq) {
+            this.mapSearchRemoteResults = [];
+            this.mapSearchError = "Could not search online right now.";
+          }
         } finally {
-          this.mapSearchLoading = false;
+          if (seq === this.mapSearchSeq) {
+            this.mapSearchLoading = false;
+            this.mapSearchPending = "";
+          }
         }
       },
 
-      moveMapToLocation(location) {
+      moveMapToLocation(location, { keepOpen = false } = {}) {
         if (!location) {
           return;
         }
@@ -307,16 +352,20 @@
           return;
         }
 
-        if (location.lat && location.lng) {
-          moveMapToCoordinates(
-            Number(location.lat),
-            Number(location.lng),
-            location.label || location.name || "Search result"
-          );
+        // Numbers since 2026-09-28, and 0 is a coordinate (the equator), so
+        // not a truthiness test.
+        const lat = Number(location.lat ?? NaN);
+        const lng = Number(location.lng ?? NaN);
+
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          moveMapToCoordinates(lat, lng, location.label || location.name || "Search result");
 
           clearFeatureHighlight();
           this.selectedName = location.label || location.name || "";
-          this.mapSearch = "";
+
+          if (!keepOpen) {
+            this.mapSearch = "";
+          }
         }
       },
 
@@ -600,29 +649,48 @@
               : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
             class="rounded-lg border p-2 shadow-sm backdrop-blur">
 
-            <label class="relative block">
-              <span class="sr-only">{% trans "Move map to location" %}</span>
-              <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs opacity-50"></i>
+            <div class="flex items-center gap-2">
+              <label class="relative block min-w-0 flex-1">
+                <span class="sr-only">{% trans "Move map to location" %}</span>
+                <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs opacity-50"></i>
 
-              <input
-                x-model="mapSearch"
-                type="search"
-                readonly
-                @focus="$el.removeAttribute('readonly')"
-                autocomplete="off"
-                autocorrect="off"
-                autocapitalize="off"
-                spellcheck="false"
-                data-1p-ignore
-                data-lpignore="true"
-                name="map-target-search"
-                placeholder="{% trans 'Move map to ...' %}"
-                @keydown.enter.prevent="mapSearchResults.length && moveMapToLocation(mapSearchResults[0])"
-                :class="darkMode
-                  ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/50'
-                  : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/50'"
-                class="w-full rounded-lg border py-2 pl-8 pr-3 text-xs font-semibold outline-none transition focus:ring-2 focus:ring-current/20" />
-            </label>
+                <input
+                  x-model="mapSearch"
+                  type="search"
+                  readonly
+                  @focus="$el.removeAttribute('readonly')"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                  spellcheck="false"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  name="map-target-search"
+                  placeholder="{% trans 'Move map to ...' %}"
+                  @keydown.enter.prevent="searchPlaces()"
+                  @keydown.escape="mapSearch = ''"
+                  :class="darkMode
+                    ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/50'
+                    : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/50'"
+                  class="w-full rounded-lg border py-2 pl-8 pr-3 text-xs font-semibold outline-none transition focus:ring-2 focus:ring-current/20" />
+              </label>
+
+              {% if geocoding_enabled %}
+                {% comment %}The one door to the web search: it costs a place
+                   lookup, quoted beside it; typing alone never asks.{% endcomment %}
+                <button
+                  type="button"
+                  data-testid="map-web-search"
+                  @click.stop="searchPlaces()"
+                  :disabled="!mapSearch.trim() || (mapSearchLoading && mapSearch.trim() === mapSearchPending)"
+                  :class="darkMode
+                    ? 'bg-accent-dark text-primary-bg-dark'
+                    : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-40">
+                  <i class="fa-solid fa-globe" aria-hidden="true"></i>{% trans "Search" %}</button>
+                {% price_hint "locations.geocode" %}
+              {% endif %}
+            </div>
 
             <div
               x-show="mapSearch.trim().length > 0"
@@ -631,15 +699,25 @@
 
               <div
                 x-show="mapSearchLoading"
-                class="rounded-lg border border-current/10 px-3 py-2 text-xs opacity-70">{% trans "Searching map..." %}</div>
+                class="rounded-lg border border-current/10 px-3 py-2 text-xs opacity-70">{% trans "Searching places..." %}</div>
 
               <div
                 x-show="mapSearchError"
-                class="mt-1 rounded-lg border border-dashed border-current/15 px-3 py-2 text-xs opacity-70"
+                role="alert"
+                :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+                class="mt-1 rounded-lg border border-dashed px-3 py-2 text-xs"
                 x-text="mapSearchError">
               </div>
 
-              <template x-if="!mapSearchLoading && mapSearchResults.length === 0">
+              {% if geocoding_enabled %}
+                <template x-if="!mapSearchDone && !mapSearchLoading && !mapSearchError">
+                  <div class="mb-1 px-3 py-1 text-xs opacity-60">{% trans "Press Enter to search places and addresses." %}</div>
+                </template>
+              {% endif %}
+
+              {% comment %}Only after an answer: typing a name the map does not
+                 hold yet is not "nothing found" until somebody has looked.{% endcomment %}
+              <template x-if="!mapSearchLoading && !mapSearchError && mapSearchResults.length === 0 && (mapSearchDone || !geocodingEnabled)">
                 <div class="rounded-lg border border-dashed border-current/15 px-3 py-2 text-xs opacity-70">{% trans "No location found." %}</div>
               </template>
 
@@ -647,7 +725,7 @@
                 <template x-for="location in mapSearchResults" :key="`map-search-${location.source || 'db'}-${location.label || location.name}-${location.lat || ''}-${location.lng || ''}`">
                   <button
                     type="button"
-                    @click.stop="moveMapToLocation(location)"
+                    @click.stop="moveMapToLocation(location, { keepOpen: location.source === 'web' })"
                     class="w-full rounded-lg px-3 py-2 text-left text-xs transition hover:bg-current/10">
 
                     <span class="flex items-start justify-between gap-2">
@@ -1387,16 +1465,6 @@
     const isDark = localStorage.getItem("darkMode") === "true";
     const features = window.locationsPayload || [];
 
-    const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "&copy; OpenStreetMap contributors"
-    });
-
-    const darkTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { className: "toto-dark-tiles",
-      maxZoom: 19,
-      attribution: "&copy; OpenStreetMap contributors"
-    });
-
     map = L.map("map", {
       zoomControl: false,
       scrollWheelZoom: true
@@ -1418,7 +1486,7 @@
     });
 
     L.control.zoom({ position: "bottomright" }).addTo(map);
-    (isDark ? darkTiles : lightTiles).addTo(map);
+    window.totoTileLayer(map);   // dark with the page (oya/base.html)
 
     features.forEach((item) => {
       const name = item.name;
