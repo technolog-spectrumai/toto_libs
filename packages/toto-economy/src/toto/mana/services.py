@@ -281,12 +281,69 @@ def fill_pools(user, *, reason: str = "signup") -> int:
     return moved
 
 
+def circle_speeds(user_ids=None) -> dict:
+    """``{user_id: {role: (per hour, circle name)}}`` — for each person, the
+    fastest refill speed any of their circles sets, pool by pool (2026-09-28).
+
+    One query, however many members: the hourly run reads it once. Circles
+    only — a functional community's speed columns are refused on save
+    (socialhub ``Community.clean``) and never read here, so a stray one grants
+    nothing. Empty on a host without socialhub.
+    """
+    from django.apps import apps
+
+    if not apps.is_installed("toto.socialhub"):
+        return {}
+    from toto.people.models import Person
+
+    rows = Person.communities.through.objects.filter(
+        community__is_circle=True, person__user__isnull=False)
+    if user_ids is not None:
+        rows = rows.filter(person__user_id__in=list(user_ids))
+    columns = [f"community__regen_{role}" for role in colours.ROLES]
+    out: dict = {}
+    for user_id, name, *speeds in rows.values_list("person__user_id", "community__name", *columns):
+        for role, speed in zip(colours.ROLES, speeds):
+            if speed is None:
+                continue
+            best = out.setdefault(user_id, {}).get(role)
+            if best is None or speed > best[0]:
+                out[user_id][role] = (speed, name)
+    return out
+
+
+def regen_for(user, pool, speeds=None) -> tuple:
+    """``(per hour, circle name)``: how fast this member's pool refills.
+
+    The fastest speed the member's circles set for the pool, naming that
+    circle; the pool's own rate (and "") when none sets one — a person in no
+    circle keeps the platform's speed. A circle may set a slower speed too,
+    and a member whose only speed is 0 is not refilled at all. The pool's own
+    rate stays the operator's off switch: at 0 nobody is refilled, whatever
+    any circle says. ``speeds`` is this member's slice of
+    :func:`circle_speeds`, passed in by callers that already read it.
+    """
+    from decimal import Decimal
+
+    if not pool.regen_per_hour:
+        return Decimal(0), ""
+    if speeds is None:
+        pk = getattr(user, "pk", None)
+        speeds = circle_speeds([pk]).get(pk, {}) if pk else {}
+    found = speeds.get(pool.role)
+    if found is None:
+        return pool.regen_per_hour, ""
+    return Decimal(found[0]), found[1]
+
+
 def regenerate_hour(*, at=None) -> RunReport:
-    """Top every active member up by one hour's refill, toward the maximum.
+    """Top every active member up by one hour's refill, toward the maximum —
+    at their own speed: their circles', or the pool's (:func:`regen_for`).
 
     The hour comes from the clock (or ``at``), hour-aligned in UTC — the
     faucet's own label, so the two sweeps can never disagree about which hour
-    it is. A missed hour is never backfilled.
+    it is. A missed hour is never backfilled. The circles are read once for
+    the whole run, before the first pool.
     """
     from django.contrib.auth import get_user_model
 
@@ -300,6 +357,7 @@ def regenerate_hour(*, at=None) -> RunReport:
     label = period_label(at)
     report = RunReport(label=label)
     users = get_user_model().objects.filter(is_active=True).order_by("pk")
+    speeds = circle_speeds()
     for pool in pools().values():
         if not _payable(pool) or not pool.regen_per_hour:
             continue
@@ -310,7 +368,11 @@ def regenerate_hour(*, at=None) -> RunReport:
         failures = []
         try:
             for user in users.iterator():
-                outcome = top_up(user, pool, key=label, cap=pool.regen_per_hour)
+                rate, _circle = regen_for(user, pool, speeds.get(user.pk, {}))
+                if rate <= 0:
+                    skipped += 1
+                    continue
+                outcome = top_up(user, pool, key=label, cap=rate)
                 if outcome == "paid":
                     paid += 1
                 elif outcome == "full":
@@ -491,11 +553,12 @@ def explain_shortfall(user, asset, needed_base_units: int,
         return sentence + " " + _(
             "That is more than a full pool holds (%(max)s), so it cannot be "
             "paid by waiting.") % {"max": _amount(pool.max_pool)}
-    if pool.regen_per_hour > 0:
-        hours = max(1, math.ceil((needed - have) / pool.regen_per_hour))
+    rate, _circle = regen_for(user, pool)
+    if rate > 0:
+        hours = max(1, math.ceil((needed - have) / rate))
         sentence += " " + _(
             "It refills %(regen)s an hour — enough again in about %(hours)s h."
-        ) % {"regen": _amount(pool.regen_per_hour), "hours": hours}
+        ) % {"regen": _amount(rate), "hours": hours}
     return sentence
 
 
@@ -580,6 +643,7 @@ def balances_of(user) -> dict | None:
     found = pools()
     if not found:
         return None
+    speeds = circle_speeds([user.pk]).get(user.pk, {})
     out = {}
     for role in colours.ROLES:
         pool = found.get(role)
@@ -588,7 +652,8 @@ def balances_of(user) -> dict | None:
         scale = Decimal(10) ** pool.asset.decimals
         amount = Decimal(balance_base_units(user, pool)) / scale
         drain = drain_per_day(user, role)
-        regen_day = pool.regen_per_hour * 24
+        regen, circle = regen_for(user, pool, speeds)
+        regen_day = regen * 24
         net_day = regen_day - drain
         full_h, empty_h = status.eta_hours(amount, pool.max_pool, net_day / 24)
         out[role] = {
@@ -598,7 +663,8 @@ def balances_of(user) -> dict | None:
             "pct": status.pct_of(amount, pool.max_pool),
             "band": status.band_of(amount, pool.max_pool),
             "trend": status.trend_of(amount, pool.max_pool, net_day),
-            "regen_per_hour": pool.regen_per_hour, "regen_per_day": regen_day,
+            "regen_per_hour": regen, "regen_per_day": regen_day,
+            "regen_circle": circle, "regen_default": pool.regen_per_hour,
             "drain_per_day": drain, "net_per_day": net_day,
             "eta_full_hours": full_h, "eta_empty_hours": empty_h,
         }
