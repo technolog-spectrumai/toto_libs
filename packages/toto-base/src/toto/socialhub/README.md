@@ -74,3 +74,17 @@ community above or below it.
 `Community.objects.functional()` and `.circles()` name the two kinds in
 queries; `is_circle` defaults to False, so every community that existed before
 it is functional.
+
+## On the audit chain
+
+Since 2026-09-28 every community and circle operation is a record on the
+platform's audit chain (`audit.py`, signals — so the admin, the membership
+flow, the wiki's Circles page and a shell are all covered): a community made,
+changed (the fields, before and after) or removed; a person added to or taken
+out of a community or circle, from either side of `Person.communities` and
+through a `clear()`; senior members; privileges; an application submitted and
+each of its steps; a reference asked for, given (the applicant admitted) or
+declined. Every record says whether the community is a **circle** — the chain
+is where a crossing of the two axes would show. Sign-ins, sign-outs and
+accounts are recorded by `toto.audit.identity`. See `toto/audit/README.md`.
+
