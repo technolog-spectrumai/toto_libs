@@ -1,8 +1,10 @@
-"""The staff gate, request by request, on zenobia's own urlconf.
+"""The economy gate, request by request, on zenobia's own urlconf.
 
-A member meets 403 at every economy desk and 200 at mana; staff meet the
-desks as before. Also every member-facing surface that used to show the
-economy: the dashboard, the strip, the gas pump, the usage tab.
+A member meets 403 at every economy desk and 200 at mana. Since 2026-09-28 the
+desks belong to an OPERATOR — a superuser on the Superuser plan
+(`quota.rates.economy_operator`) — and plain staff meet 403 like a member.
+Also every member-facing surface that used to show the economy: the
+dashboard, the strip, the gas pump, the usage tab.
 """
 
 from django.contrib.auth import get_user_model
@@ -23,7 +25,16 @@ class GateTestCase(TestCase):
     def setUp(self):
         economy()
         self.member = User.objects.create_user("ada", password="pw")
-        self.staff = User.objects.create_user("root", password="pw", is_staff=True)
+        self.staff = User.objects.create_user("clerk", password="pw", is_staff=True)
+        # The operator: a superuser the plans bootstrap puts on the Superuser
+        # plan, exactly as init_data does for the platform's admin.
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        self.operator = User.objects.create_superuser("root", password="pw")
+        call_command("bootstrap_plans", stdout=StringIO())
+        self.operator = User.objects.get(pk=self.operator.pk)
 
     def urls(self):
         for name in DESKS:
@@ -46,11 +57,17 @@ class DeskTests(GateTestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response["Content-Type"].split(";")[0], "application/json")
 
-    def test_staff_reach_every_desk(self):
-        self.client.force_login(self.staff)
+    def test_the_operator_reaches_every_desk(self):
+        self.client.force_login(self.operator)
         for name, url in self.urls():
             with self.subTest(desk=name):
                 self.assertNotEqual(self.client.get(url).status_code, 403)
+
+    def test_plain_staff_are_refused_every_desk_like_a_member(self):
+        self.client.force_login(self.staff)
+        for name, url in self.urls():
+            with self.subTest(desk=name):
+                self.assertEqual(self.client.get(url).status_code, 403)
 
     def test_a_member_reaches_their_mana(self):
         self.client.force_login(self.member)
@@ -70,8 +87,12 @@ class SurfaceTests(GateTestCase):
         self.assertIn(reverse("mana:index"), body)
         self.assertNotIn(reverse("assets:wallet"), body)
 
-    def test_staff_keep_the_wallet_tile(self):
-        self.assertIn(reverse("assets:wallet"), self.body(self.staff, "core:dashboard"))
+    def test_the_operator_keeps_the_wallet_tile(self):
+        self.assertIn(reverse("assets:wallet"), self.body(self.operator, "core:dashboard"))
+
+    def test_plain_staff_see_mana_not_the_wallet(self):
+        body = self.body(self.staff, "core:dashboard")
+        self.assertNotIn(reverse("assets:wallet"), body)
 
     def test_the_strip_shows_a_member_mana_only(self):
         body = self.body(self.member, "mana:index")
