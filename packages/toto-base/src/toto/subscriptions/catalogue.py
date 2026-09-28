@@ -256,11 +256,12 @@ _DEFAULTS = (
     Entitlement("locations", "Maps", order=27,
                 icon="fa-solid fa-map-location-dot",
                 description="Addresses, territories and what is on them."),
-    # Places (1.51): offices and venues at addresses, a tab inside Maps on
-    # the host that ships it (zenobia's toto.places), sold with Maps.
+    # Places (1.51): named points on the map, each with a note (the kinds and
+    # the hours went on 2026-09-28), a tab inside Maps on the host that ships
+    # it (zenobia's toto.places), sold with Maps.
     Entitlement("places", "Places", order=27,
                 icon="fa-solid fa-building",
-                description="Offices, warehouses and venues, with hours and comments."),
+                description="Named points on the map, each with a note and comments."),
 
     # -- the heavy end ------------------------------------------------------
     Entitlement("aralia", "PDF generator", order=40,

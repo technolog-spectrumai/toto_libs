@@ -40,7 +40,7 @@
     </a>
     {% if "toto.places"|app_installed %}
     {# Places (a host app on zenobia) is a tab here, not a dashboard tile of its #}
-    {# own: offices, warehouses and venues belong to the map they sit on. #}
+    {# own: places (named points with a note) belong to the map they sit on. #}
     <a href="{% url 'places:index' %}"
        :class="{% if request.resolver_match.namespace == 'places' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
