@@ -11,7 +11,8 @@ the two hosts that never bill. {% endcomment %}
         <span class="inline-flex items-center gap-0.5 whitespace-nowrap font-bold tabular-nums" data-mana-role="{{ quote.role }}"
               title="{{ quote.label }} — {% if quote.role == 'security' %}{% trans 'security mana' %}{% elif quote.role == 'compute' %}{% trans 'compute mana' %}{% else %}{% trans 'storage mana' %}{% endif %}"
               {% if quote.role == "security" %}:class="darkMode ? 'text-security-dark' : 'text-security-light'"{% elif quote.role == "compute" %}:class="darkMode ? 'text-warn-dark' : 'text-warn-light'"{% else %}:class="darkMode ? 'text-success-dark' : 'text-success-light'"{% endif %}>
-          <i class="fa-solid fa-droplet" aria-hidden="true"></i>−{{ quote.price }}{% if quote.per %}<span class="font-normal opacity-70">/{{ quote.per }}</span>{% endif %}</span>
+          <i class="fa-solid fa-droplet" aria-hidden="true"></i>−{{ quote.price }}{% if quote.per %}<span class="font-normal opacity-70">/{{ quote.per }}</span>{% endif %}{% if quote.discount %}{% blocktrans asvar discount_note with percent=quote.discount source=quote.discount_source price=quote.list_price %}−{{ percent }}% community discount ({{ source }}); list price {{ price }}{% endblocktrans %}
+          <i class="fa-solid fa-tag text-[0.65em] font-normal opacity-70" data-discount="{{ quote.discount }}" title="{{ discount_note }}" aria-hidden="true"></i><span class="sr-only">{{ discount_note }}</span>{% endif %}</span>
       {% else %}
         <i class="fa-solid fa-coins" aria-hidden="true"></i>
         <span class="whitespace-nowrap tabular-nums"

@@ -41,13 +41,15 @@ def _cards(user, balances):
     return cards
 
 
-def _prices(role=None):
-    """What changes a pool: priced actions (−), levies (−/day), earning (+)."""
+def _prices(user, role=None):
+    """What changes a pool: priced actions (−), levies (−/day), earning (+) —
+    at this member's price, after their community discount."""
     from toto.quota import rates
     from toto.quota.metrics import registry
 
     levies = {c for codes in services.LEVY_OF.values() for c in codes}
     card = rates.rate_card()
+    percent, _source = rates.member_discount(user)
     rows = []
     for code, row_role in sorted(colours.COLOUR_OF.items()):
         if role is not None and row_role != role:
@@ -55,7 +57,8 @@ def _prices(role=None):
         price, metric = card.get(code), registry.get(code)
         if price is None or metric is None:
             continue
-        per = Decimal(price["price_display"]) / Decimal(price.get("unit_quantity") or 1)
+        per = rates.discounted(
+            Decimal(price["price_display"]) / Decimal(price.get("unit_quantity") or 1), percent)
         rows.append({"role": row_role, "code": code, "label": str(metric.label),
                      "amount": per, "unit": metric.unit,
                      "kind": "levy" if code in levies else "cost"})
@@ -136,7 +139,7 @@ def colour(request, colour):
         "b": b, "colour": colour, "history": history,
         "chart": _chart(points, b["max"]),
         "chart_low": min((p["level"] for p in points), default=b["amount"]),
-        "prices": _prices(colour),
+        "prices": _prices(request.user, colour),
         "next_tick_at": services.next_tick_at(),
         "active_tab": "mana",
         "prompt_open": False,
@@ -166,9 +169,13 @@ def about(request):
                 staff_links.append({"url": reverse(name), "label": label})
             except NoReverseMatch:
                 continue
+    from toto.quota import rates
+
+    percent, source = rates.member_discount(request.user)
     return _render(request, "mana/about.html", {
         "cards": [balances[r] for r in colours.ROLES if r in balances],
-        "prices": _prices(),
+        "prices": _prices(request.user),
+        "discount_percent": percent, "discount_source": source,
         "encrypt_reward": colours.ENCRYPT_REWARD,
         "encrypt_daily_cap": colours.ENCRYPT_DAILY_CAP,
         "staff_links": staff_links,

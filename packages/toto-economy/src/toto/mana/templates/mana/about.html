@@ -28,6 +28,7 @@
 
     <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 text-sm">
       <h2 class="mb-2 font-bold">{% trans "What everything costs" %}</h2>
+      {% if discount_percent %}<p class="mb-2 text-xs opacity-70" data-testid="mana-discount"><i class="fa-solid fa-tag" aria-hidden="true"></i> {% blocktrans with percent=discount_percent source=discount_source %}Your community discount (−{{ percent }}%, {{ source }}) is included.{% endblocktrans %}</p>{% endif %}
       <table class="w-full">
         <tbody>
         {% for p in prices %}

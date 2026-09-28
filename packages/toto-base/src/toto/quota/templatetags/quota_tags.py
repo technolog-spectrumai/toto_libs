@@ -101,6 +101,7 @@ def price_hint(context, *metric_codes, label=None):
         if request is not None:
             request._toto_rate_card = card
 
+    percent, source = _member_discount(request)
     quotes = []
     for code in metric_codes:
         row = card.get(code)
@@ -120,18 +121,42 @@ def price_hint(context, *metric_codes, label=None):
         if unit and unit != "request":
             per = f"{quantity} {unit}" if quantity and quantity != 1 else unit
 
+        # Which mana pool this draws on, when it is priced in one — the badge a
+        # member reads is "−3 security mana", never an asset ticker.
+        role = _mana_role(request, code, row.get("asset_id"))
+        # A member's community discount reaches mana prices only (the charge's
+        # rule, toto.tariffs.discounts), so the number shown is the one paid.
+        off = percent if role else 0
         quotes.append({
             "code": code,
             "label": metric.label if metric else code,
-            "price": rates.significant(price),
+            "price": rates.significant(rates.discounted(price, off)),
+            "list_price": rates.significant(price) if off else "",
+            "discount": off,
+            "discount_source": source if off else "",
             "asset": row.get("asset", ""),
             "per": per,
-            # Which mana pool this draws on, when it is priced in one — the
-            # badge a member reads is "−3 security mana", never an asset ticker.
-            "role": _mana_role(request, code, row.get("asset_id")),
+            "role": role,
         })
 
     return {"quotes": quotes, "label": label}
+
+
+def _member_discount(request):
+    """``(percent, community)`` for the person asking, read once per request
+    like the rate card — never raises."""
+    if request is None:
+        return 0, ""
+    cached = getattr(request, "_toto_member_discount", None)
+    if cached is None:
+        from toto.quota import rates
+
+        try:
+            cached = rates.member_discount(getattr(request, "user", None))
+        except Exception:  # noqa: BLE001 - a hint must never break a toolbar
+            cached = (0, "")
+        request._toto_member_discount = cached
+    return cached
 
 
 def _mana_role(request, code, asset_id):

@@ -533,7 +533,9 @@ def next_tick_at(now=None):
     return tick if tick > now else tick + timedelta(hours=1)
 
 
-def _price(code: str):
+def _price(code: str, percent: int = 0):
+    """One unit's price in pool units, less ``percent`` — the member's
+    community discount, which every mana charge takes off (2026-09-28)."""
     from decimal import Decimal
 
     from toto.quota import rates
@@ -541,18 +543,22 @@ def _price(code: str):
     row = rates.price_of(code)
     if not row:
         return None
-    return Decimal(row["price_display"]) / Decimal(row.get("unit_quantity") or 1)
+    return rates.discounted(
+        Decimal(row["price_display"]) / Decimal(row.get("unit_quantity") or 1), percent)
 
 
 def drain_per_day(user, role: str):
-    """What this member's holdings cost the pool each day, at today's price."""
+    """What this member's holdings cost the pool each day, at today's price
+    and after their community discount."""
     from decimal import Decimal
 
+    from toto.quota import rates
     from toto.quota.levy import registry as levy_registry
 
+    percent, _source = rates.member_discount(user)
     total = Decimal(0)
     for code in LEVY_OF.get(role, ()):
-        provider, price = levy_registry.get(code), _price(code)
+        provider, price = levy_registry.get(code), _price(code, percent)
         if provider is None or price is None:
             continue
         total += Decimal(provider.measure(user)) / Decimal(provider.raw_per_unit) * price
@@ -713,9 +719,11 @@ def plain_files(user, limit: int = 10) -> tuple[list, int]:
         return [], 0
     from toto.vault.models import VaultFile
 
+    from toto.quota import rates
+
     qs = provider._billable(VaultFile.objects.filter(owner=user))
     total = qs.count()
-    price = _price("security.plain_gb_day") or Decimal(0)
+    price = _price("security.plain_gb_day", rates.member_discount(user)[0]) or Decimal(0)
     rows = []
     for f in qs.order_by("-file_size_bytes", "pk")[:limit]:
         gb = Decimal(f.file_size_bytes or 0) / Decimal(provider.raw_per_unit)

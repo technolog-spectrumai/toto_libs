@@ -59,6 +59,40 @@ def significant(value, digits: int = DISPLAY_DIGITS) -> str:
     return "0" if text in ("-0", "") else text
 
 
+def member_discount(user) -> tuple[int, str]:
+    """``(percent, community)`` this person's mana spending is discounted by,
+    ``(0, "")`` when nothing is (2026-09-28).
+
+    The number the charge itself takes off (``toto.tariffs.discounts``): the
+    best community discount from ``toto.subscriptions``. A host without
+    subscriptions has none, and quotes list prices.
+    """
+    from django.apps import apps
+
+    if not getattr(user, "is_authenticated", False) or not apps.is_installed("toto.subscriptions"):
+        return 0, ""
+    from toto.subscriptions.services import best_discount
+
+    return best_discount(user)
+
+
+def discounted(amount, percent: int):
+    """A mana price less a member's discount, for display (a ``Decimal``).
+
+    Display only: the charge rounds each debit down to a whole base unit, and
+    ``significant`` rounds what is shown — the two agree to the digits a
+    member reads.
+    """
+    from decimal import Decimal
+
+    amount = Decimal(str(amount))
+    if not percent or percent <= 0:
+        return amount
+    if percent >= 100:
+        return Decimal(0)
+    return amount * (100 - percent) / 100
+
+
 def economy_hidden_from(user) -> bool:
     """Whether this host shows this person mana instead of the economy.
 
