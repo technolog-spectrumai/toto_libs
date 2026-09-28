@@ -9,6 +9,9 @@
 <p class="text-sm opacity-70">
   {% trans "One percentage per community, taken off its members' subscription on any plan. Somebody in several communities gets the largest one — belonging to a second community can only help." %}
 </p>
+<p class="text-xs opacity-55">
+  <i class="fa-solid fa-circle-nodes mr-1"></i>{% trans "Circles are not listed: a circle decides who reads wiki pages and gives no discount." %}
+</p>
 
 <form method="post" class="space-y-4">
   {% csrf_token %}

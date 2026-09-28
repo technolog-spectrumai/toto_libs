@@ -46,6 +46,25 @@ class ChargeStatus(models.TextChoices):
     WAIVED = "waived", _("Waived")
 
 
+#: A circle is on the other axis (2026-09-28): it decides who reads wiki pages,
+#: and it is offered no plan and gives no discount. `socialhub.Community.
+#: is_circle` says why; these are the refusals, made at every layer — the admin
+#: offers no circle (`limit_choices_to`), `clean` and `save` refuse one, the
+#: Communities and Discounts tabs list none, and every resolver in `services`
+#: skips circles should a row exist anyway.
+CIRCLE_OFFERED_NO_PLAN = _(
+    "A circle is offered no plan: it decides who reads, never what anybody buys.")
+CIRCLE_GIVES_NO_DISCOUNT = _(
+    "A circle gives no discount: it decides who reads, never what anybody pays.")
+
+
+def _refuse_a_circle(row, message):
+    from toto.socialhub.models import Community
+
+    if row.community_id and Community.objects.circles().filter(pk=row.community_id).exists():
+        raise ValidationError({"community": message})
+
+
 # SubscriptionPlan was a TABLE here until 2026-09-02. Plans are read-only
 # objects built from plans.yaml now (see plans.py): a plan is a decision about
 # the product, not user state, and it lived in the database only for as long as
@@ -84,7 +103,7 @@ class CommunityDiscount(models.Model):
 
     community = models.OneToOneField(
         "socialhub.Community", on_delete=models.CASCADE,
-        related_name="subscription_discount")
+        related_name="subscription_discount", limit_choices_to={"is_circle": False})
     percent = models.PositiveSmallIntegerField(default=0, help_text=_(
         "0–100. Taken off the billed quantity of ANY plan, for members of "
         "this community. Across several communities the LARGEST wins."))
@@ -100,6 +119,14 @@ class CommunityDiscount(models.Model):
 
     def __str__(self):
         return f"{self.community}: −{self.percent}%"
+
+    def clean(self):
+        super().clean()
+        _refuse_a_circle(self, CIRCLE_GIVES_NO_DISCOUNT)
+
+    def save(self, *args, **kwargs):
+        _refuse_a_circle(self, CIRCLE_GIVES_NO_DISCOUNT)
+        super().save(*args, **kwargs)
 
 
 class CommunityPlanOffer(models.Model):
@@ -141,7 +168,8 @@ class CommunityPlanOffer(models.Model):
 
     community = models.ForeignKey("socialhub.Community",
                                   on_delete=models.CASCADE,
-                                  related_name="plan_offers")
+                                  related_name="plan_offers",
+                                  limit_choices_to={"is_circle": False})
     plan_key = models.SlugField(max_length=64, help_text=_(
         "A plan_key from plans.yaml. Not a foreign key: plans are not rows."))
     created_at = models.DateTimeField(auto_now_add=True)
@@ -159,6 +187,14 @@ class CommunityPlanOffer(models.Model):
 
     def __str__(self):
         return f"{self.plan_key} → {self.community}"
+
+    def clean(self):
+        super().clean()
+        _refuse_a_circle(self, CIRCLE_OFFERED_NO_PLAN)
+
+    def save(self, *args, **kwargs):
+        _refuse_a_circle(self, CIRCLE_OFFERED_NO_PLAN)
+        super().save(*args, **kwargs)
 
 
 class Subscription(models.Model):

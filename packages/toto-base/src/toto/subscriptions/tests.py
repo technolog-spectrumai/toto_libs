@@ -1172,6 +1172,16 @@ class IngressTests(TestCase):
                       .filter(community=guild).values_list("plan_key", flat=True))
         self.assertEqual(offered, {"free", "standard", "professional", "stipend"})
 
+    def test_a_circle_is_offered_nothing_even_first_in_line(self):
+        """A circle is offered no plan (2026-09-28): not the default one, and
+        not the demo ladder when it happens to be the oldest community."""
+        circle = Community.objects.create(name="Seniors", slug="ingress-seniors", is_circle=True)
+        guild = Community.objects.create(name="Guild", slug="ingress-guild5")
+        self._seed("--full")
+        self.assertFalse(CommunityPlanOffer.objects.filter(community=circle).exists())
+        self.assertTrue(CommunityPlanOffer.objects.filter(
+            community=guild, plan_key="standard").exists())
+
     def test_the_demo_discount_is_full_only(self):
         Community.objects.create(name="Guild", slug="ingress-guild4")
         self._seed()

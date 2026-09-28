@@ -87,6 +87,9 @@ def best_discount(user, plan=None) -> tuple[int, str]:
     socialhub: all of them are "no discount", which is the honest answer and
     also the safe one — it can only ever make somebody pay MORE than the
     optimistic reading, never less than they agreed to.
+
+    A circle gives no discount (2026-09-28): only the person's functional
+    communities are asked, whatever rows exist.
     """
     if user is None or not getattr(user, "is_authenticated", False):
         return 0, ""
@@ -95,7 +98,7 @@ def best_discount(user, plan=None) -> tuple[int, str]:
         if person is None:
             return 0, ""
         row = (CommunityDiscount.objects
-               .filter(community__in=person.communities.all())
+               .filter(community__in=person.communities.functional())
                .select_related("community")
                .order_by("-percent")
                .first())
@@ -113,11 +116,13 @@ def set_discounts(posted) -> tuple[int, int]:
     range is IGNORED rather than saved as zero: a typo must not silently
     cancel a community's discount, and the form re-renders showing what is
     actually stored. Zero clears the row — the table is the set of communities
-    that give something, not a row per community forever.
+    that give something, not a row per community forever. A circle's field is
+    ignored like an unknown one: the tab lists none, and a posted one is not a
+    way to give a circle a discount.
     """
     from toto.socialhub.models import Community
 
-    valid_pks = set(Community.objects.values_list("pk", flat=True))
+    valid_pks = set(Community.objects.functional().values_list("pk", flat=True))
     saved = cleared = 0
     for key, raw in posted.items():
         if not key.startswith("discount-"):
@@ -146,6 +151,7 @@ def _offered_keys(user) -> frozenset:
     "An active membership" means a row exists in the person's communities M2M,
     because that is all membership IS in this suite — there is no status field
     on it anywhere. Admission is the grant and expulsion is the revocation.
+    Functional communities only: a circle is offered no plan (2026-09-28).
     """
     person = getattr(user, "community_profile", None) \
         if getattr(user, "is_authenticated", False) else None
@@ -163,22 +169,27 @@ MAX_TREE_DEPTH = 20
 
 
 def _community_ids_with_parents(person) -> set:
-    """The person's Communities and every ancestor of theirs (2026-09-26):
-    an offer made to `toto` reaches a member of `toto-dev`. A sub-community
-    can only add offers, never take a parent's away."""
-    rows = {pk: parent for pk, parent in person.communities.values_list("pk", "parent_id")}
+    """The person's functional Communities and every functional ancestor of
+    theirs (2026-09-26): an offer made to `toto` reaches a member of
+    `toto-dev`. A sub-community can only add offers, never take a parent's
+    away. A circle is on neither end (2026-09-28): not as the person's
+    community, and not as an ancestor, which the walk neither counts nor
+    climbs through."""
+    from toto.socialhub.models import Community
+
+    rows = dict(person.communities.functional().values_list("pk", "parent_id"))
     ids = set(rows)
     frontier = {parent for parent in rows.values() if parent}
-    from toto.socialhub.models import Community
 
     depth = 0
     while frontier and depth < MAX_TREE_DEPTH:
         frontier -= ids
         if not frontier:
             break
-        ids |= frontier
-        frontier = {parent for parent in Community.objects.filter(pk__in=frontier)
-                    .values_list("parent_id", flat=True) if parent}
+        rows = dict(Community.objects.functional().filter(pk__in=frontier)
+                    .values_list("pk", "parent_id"))
+        ids |= set(rows)
+        frontier = {parent for parent in rows.values() if parent}
         depth += 1
     return ids
 
@@ -257,7 +268,7 @@ def offering_communities(user, plan) -> list:
 
     What the card's "offered through …" line says. Empty for the default plan
     and for staff seeing a plan nobody offers — the template says so rather
-    than implying the plan is public.
+    than implying the plan is public. Never a circle, which offers nothing.
     """
     person = getattr(user, "community_profile", None) \
         if getattr(user, "is_authenticated", False) else None
@@ -265,7 +276,7 @@ def offering_communities(user, plan) -> list:
         return []
     return sorted(
         CommunityPlanOffer.objects
-        .filter(plan_key=plan.key, community__in=person.communities.all())
+        .filter(plan_key=plan.key, community__in=person.communities.functional())
         .values_list("community__name", flat=True))
 
 
@@ -283,12 +294,15 @@ def set_offers(posted) -> tuple[int, int]:
     The key is split on the FIRST hyphen only. A plan_key may contain one —
     `KEY_RE` allows it — and `split("-")` would have quietly dropped every
     such plan from both sets, which reads as "the operator unticked it".
+
+    A circle's pair is ignored like an unknown one (2026-09-28): the grid
+    renders none, and a forged one neither adds an offer nor removes one.
     """
     from toto.socialhub.models import Community
 
     from . import plans
 
-    valid_communities = set(Community.objects.values_list("pk", flat=True))
+    valid_communities = set(Community.objects.functional().values_list("pk", flat=True))
     valid_plans = plans.keys()
 
     def _pair(text):
