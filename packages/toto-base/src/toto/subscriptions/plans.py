@@ -46,7 +46,10 @@ KEY_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 
 _ALLOWED_TOP = {"version", "plans"}
 _ALLOWED_PLAN = {"key", "name", "description", "units", "features",
-                 "default", "order", "admin_only", "all_features"}
+                 "default", "order", "for_admins", "admin_only", "all_features"}
+#: The flag's documented spelling, and the older one it replaced (2026-09-28).
+#: Both are accepted and mean the same; a plan that states both must agree.
+_ADMIN_FLAGS = ("for_admins", "admin_only")
 _SCHEMA_VERSION = 1
 
 
@@ -73,12 +76,20 @@ class Plan:
     features: tuple[str, ...] = ()
     is_default: bool = False
     order: int = 100
-    #: Only superusers see it, may hold it, and are put on it (1.51). Left out
-    #: of every plan listing and the subscribe door for anyone else — refused
-    #: on the server, not merely hidden.
+    #: ``for_admins: true`` in the file (``admin_only`` is the older spelling
+    #: of the same flag). Only Django superusers see it, may subscribe to it
+    #: and may hold it — every superuser may, with no Community offer needed
+    #: (2026-09-28). Left out of every plan listing and the subscribe door for
+    #: anyone else — refused on the server, not merely hidden. The attribute
+    #: keeps its old name so no caller breaks; `for_admins` reads it.
     admin_only: bool = False
     #: Grants every feature, present and future, without listing them (1.51).
     all_features: bool = False
+
+    @property
+    def for_admins(self) -> bool:
+        """The readable name of `admin_only`: a plan for administrators."""
+        return self.admin_only
 
     def grants(self, feature_key: str) -> bool:
         return self.all_features or feature_key in self.features
@@ -165,11 +176,15 @@ def _problems(raw: dict, path: Path) -> list[str]:
         for numeric in ("units", "order"):
             if numeric in entry and not isinstance(entry[numeric], int):
                 found.append(f"{where}: {numeric} must be a whole number")
-        for flag in ("default", "admin_only", "all_features"):
+        for flag in ("default", *_ADMIN_FLAGS, "all_features"):
             if flag in entry and not isinstance(entry[flag], bool):
                 found.append(f"{where}: {flag} must be true or false")
-        if entry.get("default") and entry.get("admin_only"):
-            found.append(f"{where}: the default plan cannot be admin_only")
+        if all(flag in entry for flag in _ADMIN_FLAGS) \
+                and entry["for_admins"] != entry["admin_only"]:
+            found.append(f"{where}: for_admins and admin_only are one flag and "
+                         "disagree — write for_admins only")
+        if entry.get("default") and _for_admins(entry):
+            found.append(f"{where}: the default plan cannot be for_admins (admin_only)")
         if entry.get("default"):
             defaults.append(str(key))
             if int(entry.get("units", 0) or 0) > 0:
@@ -198,6 +213,11 @@ def _problems(raw: dict, path: Path) -> list[str]:
     return found
 
 
+def _for_admins(entry: dict) -> bool:
+    """The plan's admin flag, whichever spelling the file used."""
+    return any(bool(entry.get(flag, False)) for flag in _ADMIN_FLAGS)
+
+
 def validate(path: Path | None = None) -> list[str]:
     """Error strings for the file, or ``[]``. Never raises for content."""
     path = path or source_path()
@@ -219,7 +239,7 @@ def _build(raw: dict) -> dict[str, Plan]:
             features=tuple(entry.get("features", []) or ()),
             is_default=bool(entry.get("default", False)),
             order=int(entry.get("order", 100) or 100),
-            admin_only=bool(entry.get("admin_only", False)),
+            admin_only=_for_admins(entry),
             all_features=bool(entry.get("all_features", False)),
         )
         plans[plan.key] = plan

@@ -424,3 +424,60 @@ plans:
         path = Path(tempfile.mkdtemp()) / "bad.yaml"
         path.write_text("version: 1\nplans:\n  - key: free\n    name: Free\n    default: true\n    admin_only: true\n")
         self.assertTrue(any("admin_only" in p for p in plans.validate(path)))
+
+
+class ForAdminsSpellingTests(ValidationTestCase):
+    """`for_admins` is the documented spelling of the admin flag; `admin_only`
+    is the older one and still reads the same (2026-09-28)."""
+
+    ADMIN = GOOD + """  - key: superuser
+    name: Superuser
+    all_features: true
+"""
+
+    def ladder(self, flags: str) -> str:
+        return self.ADMIN + "".join(f"    {line}\n" for line in flags.splitlines())
+
+    def built(self, text: str):
+        with override_settings(SUBSCRIPTION_PLANS_FILE=str(write(text))):
+            plans.reload()
+            try:
+                return plans.plan("superuser")
+            finally:
+                plans.reload()
+
+    def test_for_admins_is_the_spelling(self):
+        text = self.ladder("for_admins: true")
+        self.assertEqual(self.problems(text), [])
+        top = self.built(text)
+        self.assertTrue(top.for_admins)
+        self.assertTrue(top.admin_only)
+
+    def test_admin_only_is_an_alias_for_it(self):
+        text = self.ladder("admin_only: true")
+        self.assertEqual(self.problems(text), [])
+        self.assertTrue(self.built(text).for_admins)
+
+    def test_both_may_be_stated_when_they_agree(self):
+        text = self.ladder("for_admins: true\nadmin_only: true")
+        self.assertEqual(self.problems(text), [])
+        self.assertTrue(self.built(text).for_admins)
+        self.assertFalse(self.built(self.ladder("for_admins: false\nadmin_only: false")).for_admins)
+
+    def test_both_disagreeing_is_refused(self):
+        for flags in ("for_admins: true\nadmin_only: false",
+                      "for_admins: false\nadmin_only: true"):
+            with self.subTest(flags=flags):
+                self.assertRejected(self.ladder(flags), "for_admins and admin_only are one flag")
+
+    def test_for_admins_must_be_a_boolean(self):
+        self.assertRejected(self.ladder('for_admins: "yes"'), "for_admins must be true or false")
+
+    def test_the_default_plan_cannot_be_for_admins(self):
+        self.assertRejected(GOOD.replace("    default: true\n", "    default: true\n    for_admins: true\n"),
+                            "the default plan cannot be for_admins")
+
+    def test_left_out_it_is_an_ordinary_plan(self):
+        text = self.ADMIN
+        self.assertEqual(self.problems(text), [])
+        self.assertFalse(self.built(text).for_admins)

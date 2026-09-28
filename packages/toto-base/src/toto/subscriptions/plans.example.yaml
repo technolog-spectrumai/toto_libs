@@ -67,3 +67,15 @@ plans:
     description: >
       For the people the platform pays rather than charges.
     features: []
+
+  # ------------------------------------------------------ a plan for admins
+  # `for_admins: true` (the older spelling `admin_only` still reads the same):
+  # only Django superusers see it, choose it or hold it — every superuser may,
+  # with no Community offer needed — and nobody else ever, staff included.
+  # `all_features` grants everything, present and future, without a list.
+  - key: superuser
+    name: Superuser
+    units: 0
+    order: 100
+    for_admins: true
+    all_features: true
