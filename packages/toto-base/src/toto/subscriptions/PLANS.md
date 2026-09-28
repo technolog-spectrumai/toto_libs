@@ -221,7 +221,9 @@ The model refuses a live row (active or in arrears) on a plan for admins for
 an account that is not a superuser — `Subscription.clean()` raises a
 `ValidationError` and `save()` refuses the same way — so neither the admin
 nor a script can bypass `services.subscribe`. Writing such a row down as
-lapsed or cancelled is always allowed. Migration `0003` marks the rows that
+lapsed or cancelled is always allowed, the admin screen included: its form
+checks a plan only for a live row, so the row of an admin who was stepped
+down can be cancelled or lapsed there. Migration `0003` marks the rows that
 exist: it asks the plan registry the host runs, and falls back to the key
 `superuser` if the registry cannot load at migrate time.
 

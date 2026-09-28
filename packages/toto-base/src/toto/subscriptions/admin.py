@@ -51,12 +51,16 @@ class _SuperusersOnly:
 
 
 class SubscriptionAdminForm(forms.ModelForm):
-    """`plan_key` is a choice from the ladder, and the same two refusals
-    `services.subscribe` makes: a plan for admins needs a superuser, a paid
-    plan needs an offer from a Community of the person's (staff and
-    superusers excepted, as `is_eligible` says). `for_admins` is not a field
-    here at all: the model sets it from the plan, and `Subscription.clean`
-    refuses a live admin plan on an ordinary account a second time."""
+    """`plan_key` is a choice from the ladder, and the refusals
+    `services.subscribe` makes, for a LIVE row (active or in arrears) only —
+    writing a row down as cancelled or lapsed is always allowed, as the model
+    allows it, so the admin can close the row of an admin who was stepped
+    down. A plan for admins needs a superuser: `Subscription.clean` says so,
+    once, for this form and every other path. A paid plan needs an offer from
+    a Community of the person's (staff and superusers excepted, as
+    `is_eligible` says), unless the row is an operator's grant (`forced`)
+    kept on the same plan. `for_admins` is not a field here at all: the model
+    sets it from the plan."""
 
     class Meta:
         model = Subscription
@@ -73,13 +77,21 @@ class SubscriptionAdminForm(forms.ModelForm):
         if user is None or not key:
             return cleaned
         from . import plans, services
+        from .models import SubscriptionState
 
         plan = plans.get(key)
         if plan is None:
             raise forms.ValidationError({"plan_key": "No such plan in plans.yaml."})
-        if plan.admin_only and not user.is_superuser:
-            raise forms.ValidationError({"plan_key": (
-                f"{plan.name} is for administrators: superusers only.")})
+        if cleaned.get("state") not in (SubscriptionState.ACTIVE, SubscriptionState.ARREARS):
+            return cleaned                 # cancelling or lapsing: always allowed
+        if plan.admin_only:
+            # Not refused here as well: Subscription.clean (run next, on the
+            # posted user, plan and state) refuses an ordinary account, and
+            # two refusals would print the same error twice.
+            return cleaned
+        instance = self.instance
+        if instance.pk and instance.forced and instance.plan_key == key:
+            return cleaned                 # an operator's grant needs no offer
         if not plan.is_default and not services.is_eligible(user, key):
             raise forms.ValidationError({"plan_key": (
                 f"No Community {user} belongs to offers {plan.name}. Offer it on the "

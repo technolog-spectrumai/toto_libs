@@ -367,7 +367,9 @@ class SuperuserPlanTests(EligibilityBase):
         form = SubscriptionAdminForm({"user": plain.pk, "plan_key": "superuser", "state": "active",
                                       "anchor_date": anchor})
         self.assertFalse(form.is_valid())
-        self.assertIn("superusers only", str(form.errors))
+        # Said once: the model refuses it, the form does not repeat it.
+        self.assertEqual(len(form.errors["plan_key"]), 1)
+        self.assertIn("only a Django superuser may hold it", str(form.errors))
         self.assertNotIn("for_admins", form.fields)          # the plan decides, never a form
         staff = member("staff", self.toto, is_staff=True)
         form = SubscriptionAdminForm({"user": staff.pk, "plan_key": "superuser", "state": "active",
@@ -385,6 +387,52 @@ class SuperuserPlanTests(EligibilityBase):
                                       "anchor_date": anchor})
         self.assertTrue(form.is_valid(), form.errors)
         self.assertTrue(form.save().for_admins)
+
+    def test_the_admin_form_writes_down_a_stepped_down_admins_row(self):
+        """Cancelling or lapsing is always allowed, as the model allows it;
+        only a live row on the plan for admins needs a superuser."""
+        from .admin import SubscriptionAdminForm
+
+        root = User.objects.create_superuser("root", password="pw")
+        row = services.subscribe(root, plans.plan("superuser"))
+        User.objects.filter(pk=root.pk).update(is_superuser=False)
+        row = Subscription.objects.select_related("user").get(pk=row.pk)
+
+        def form(state, reason=""):
+            return SubscriptionAdminForm({
+                "user": root.pk, "plan_key": "superuser", "state": state,
+                "anchor_date": row.anchor_date, "lapse_reason": reason}, instance=row)
+
+        for state in (SubscriptionState.CANCELLED, SubscriptionState.LAPSED):
+            with self.subTest(state=state):
+                self.assertTrue(form(state).is_valid(), form(state).errors)
+        live = form(SubscriptionState.ACTIVE)
+        self.assertFalse(live.is_valid())
+        self.assertEqual(len(live.errors["plan_key"]), 1)
+
+        services.run_billing()
+        row.refresh_from_db()
+        self.assertEqual((row.state, row.lapse_reason), (SubscriptionState.LAPSED, "not-superuser"))
+        unchanged = form(SubscriptionState.LAPSED, "not-superuser")
+        self.assertTrue(unchanged.is_valid(), unchanged.errors)
+        unchanged.save()
+        closed = form(SubscriptionState.CANCELLED, "not-superuser")
+        self.assertTrue(closed.is_valid(), closed.errors)
+        self.assertEqual(closed.save().state, SubscriptionState.CANCELLED)
+
+    def test_the_admin_form_keeps_an_operators_grant_without_an_offer(self):
+        from .admin import SubscriptionAdminForm
+
+        lonely = member("lonely", self.harbour)
+        row = services.subscribe(lonely, plans.plan("developer"), force=True)
+
+        def form(key):
+            return SubscriptionAdminForm({
+                "user": lonely.pk, "plan_key": key, "state": "active",
+                "anchor_date": row.anchor_date, "forced": "on"}, instance=row)
+
+        self.assertTrue(form("developer").is_valid(), form("developer").errors)
+        self.assertFalse(form("standard").is_valid())      # a new plan: the offer rule again
 
     def test_the_decorator_and_the_dashboard_arm_ask_for_both(self):
         from django.core.exceptions import PermissionDenied
