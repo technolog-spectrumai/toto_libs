@@ -105,6 +105,14 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Superuser created."))
 
         self._create_admin_person(admin_username)
+        # The admin is a superuser with the admin panel; on a host that sells
+        # plans it must also be ELIGIBLE for the Superuser plan (a Community's
+        # offer) and hold it — bootstrap_plans makes the operators' Community,
+        # offers every plan to it and subscribes every superuser (2026-09-28).
+        from django.apps import apps as django_apps
+
+        if django_apps.is_installed("toto.subscriptions"):
+            call_command("bootstrap_plans", stdout=self.stdout)
 
         self.stdout.write(self.style.NOTICE("Creating fonts..."))
         self.create_fonts()

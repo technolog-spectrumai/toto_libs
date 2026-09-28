@@ -1,6 +1,10 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
 {% block title %}{% trans "Mana" %} - {{ platform.site_name }}{% endblock %}
+{% block start_script %}{{ block.super }}
+{% load static %}<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+{% include "oya/partials/dim.html" %}
+{% endblock %}
 {% block content %}
 <div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'" class="min-h-screen px-4 py-8">
   <div class="mx-auto max-w-5xl space-y-6">
@@ -29,6 +33,14 @@
               {% trans "Details" %} <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
           </article>
         {% endfor %}
+      </section>
+      {% comment %}The history (2026-09-28): the three pools' levels over the
+         last month, the way the wallet draws a balance — every refill, reward,
+         grant and spend is in it, straight off the ledger.{% endcomment %}
+      <section class="rounded-xl border border-current/20 p-4" aria-label="{% trans 'Mana history' %}" data-testid="mana-history">
+        <h2 class="mb-2 text-sm font-bold"><i class="fa-solid fa-chart-line" aria-hidden="true"></i> {% blocktrans with days=history_days %}The last {{ days }} days{% endblocktrans %}</h2>
+        {% if history_chart %}<div class="h-64">{% include "oya/partials/chart.html" with chart_id="mana_history" data=history_chart %}</div>
+        {% else %}<p class="text-sm opacity-60">{% trans "Nothing to draw yet." %}</p>{% endif %}
       </section>
       <p class="text-xs opacity-60">
         {% blocktrans with at=next_tick_at|date:"H:i" %}Next refill at {{ at }} UTC.{% endblocktrans %}

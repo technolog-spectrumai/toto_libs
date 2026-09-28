@@ -66,12 +66,45 @@ def _prices(role=None):
     return rows
 
 
+HISTORY_DAYS = 30
+#: The three pools' line colours on the history chart (security cyan, compute
+#: red, storage green — the colour map's hues).
+LINE_COLOURS = {"security": "#06b6d4", "compute": "#ef4444", "storage": "#22c55e"}
+
+
+def history_chart(user, days: int = HISTORY_DAYS) -> str:
+    """The three pools' levels over the last `days` days as one line chart
+    (2026-09-28), in the shared chart partial's shape — the wallet's balance
+    chart, for mana. Empty string when there is nothing to draw."""
+    import json
+
+    datasets, labels = [], None
+    for role in colours.ROLES:
+        points = services.series(user, role, days=days)
+        if not points:
+            continue
+        if labels is None:
+            labels = [p["at"].strftime("%Y-%m-%d") for p in points]
+        datasets.append({"label": str(colours.LABELS.get(role, role)) if hasattr(colours, "LABELS") else role.title(),
+                         "data": [float(p["level"]) for p in points],
+                         "borderColor": LINE_COLOURS.get(role, "#94a3b8"),
+                         "backgroundColor": LINE_COLOURS.get(role, "#94a3b8"),
+                         "borderWidth": 2, "tension": 0.25, "pointRadius": 0})
+    if not datasets:
+        return ""
+    return json.dumps({"chart_type": "line", "labels": labels, "datasets": datasets,
+                       "options": {"interaction": {"mode": "index", "intersect": False},
+                                   "scales": {"y": {"beginAtZero": True}}}})
+
+
 @login_required
 def index(request):
     balances = services.balances_of(request.user)
     return _render(request, "mana/index.html", {
         "cards": _cards(request.user, balances),
         "next_tick_at": services.next_tick_at(),
+        "history_chart": history_chart(request.user) if balances else "",
+        "history_days": HISTORY_DAYS,
         "active_tab": "mana",
     })
 
