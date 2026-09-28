@@ -225,7 +225,11 @@ lapsed or cancelled is always allowed, the admin screen included: its form
 checks a plan only for a live row, so the row of an admin who was stepped
 down can be cancelled or lapsed there. Migration `0003` marks the rows that
 exist: it asks the plan registry the host runs, and falls back to the key
-`superuser` if the registry cannot load at migrate time.
+`superuser` if the registry cannot load at migrate time. After a ladder edit
+(a plan gains or loses the flag, the admin plan is renamed) the stored flag
+is re-read for every row by `services.sync_for_admins()`, which
+`bootstrap_plans` (so every deploy) and the billing sweep run; nothing
+enforces from the stored flag, the plan is always what decides.
 
 **It is not granted by the privilege alone**: a superuser holds it through
 their own subscription. `bootstrap_plans` puts every superuser on it in one

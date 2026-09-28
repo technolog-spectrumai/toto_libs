@@ -338,6 +338,32 @@ class SuperuserPlanTests(EligibilityBase):
         for user in (root, second):
             self.assertTrue(superuser_plan_active(User.objects.get(pk=user.pk)))
 
+    def test_bootstrap_and_the_sweep_reread_the_flag_after_a_ladder_edit(self):
+        """The stored flag follows the ladder, not only the next save: a
+        plans.yaml edit is written down by bootstrap_plans and the sweep."""
+        root = User.objects.create_superuser("root", password="pw")
+        dev = member("dev", self.dev)
+        services.subscribe(root, plans.plan("superuser"))
+        services.subscribe(dev, plans.plan("developer"))
+        self.addCleanup(plans.reload)
+        self.addCleanup(_PATH.write_text, ADMIN_LADDER)
+        # The flag moves from Superuser to Developer; no row is saved.
+        _PATH.write_text(ADMIN_LADDER.replace("    for_admins: true\n", "").replace(
+            "    features: [editor, gitea]\n", "    features: [editor, gitea]\n    for_admins: true\n"))
+        plans.reload()
+        self.assertEqual((plans.plan("developer").for_admins, plans.plan("superuser").for_admins),
+                         (True, False))
+
+        def flags():
+            return dict(Subscription.objects.values_list("plan_key", "for_admins"))
+
+        self.assertEqual(flags(), {"superuser": True, "developer": False})     # stale
+        call_command("bootstrap_plans", stdout=StringIO())
+        self.assertEqual(flags(), {"superuser": False, "developer": True})
+        Subscription.objects.update(for_admins=False)
+        services.run_billing()
+        self.assertEqual(flags()["developer"], True)
+
     def test_bootstrap_keeps_a_plan_a_superuser_chose(self):
         root = member("root", self.dev, is_superuser=True, is_staff=True)
         services.subscribe(root, plans.plan("developer"))

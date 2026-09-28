@@ -758,6 +758,28 @@ def lapse_if_ineligible(subscription, *, now=None) -> bool:
     return True
 
 
+def sync_for_admins() -> int:
+    """Re-read every row's stored `for_admins` flag from the ladder.
+
+    `Subscription.save` sets the flag from the plan, but a row that is not
+    saved keeps the value it had — so after a plans.yaml edit (a plan gains
+    or loses `for_admins`, the admin plan is renamed or removed) the admin's
+    column and filter would answer from the old ladder. Nothing ENFORCES from
+    the stored flag (`plan_for`, `is_eligible` and the sweep read the plan),
+    so this is bookkeeping: `bootstrap_plans`, which every deploy runs, and
+    the billing sweep call it. Two UPDATEs, no save, so no `changed_at`
+    moves. Returns how many rows changed.
+    """
+    from . import plans
+
+    keys = [plan.key for plan in plans.all_plans() if plan.admin_only]
+    raised = (Subscription.objects.filter(plan_key__in=keys, for_admins=False)
+              .update(for_admins=True))
+    lowered = (Subscription.objects.exclude(plan_key__in=keys).filter(for_admins=True)
+               .update(for_admins=False))
+    return raised + lowered
+
+
 def run_billing(*, now=None) -> dict:
     """One pass over every subscription: materialise, settle, lapse.
 
@@ -767,6 +789,10 @@ def run_billing(*, now=None) -> dict:
     """
     now = now or timezone.now()
     counts = {"seen": 0, "charged": 0, "failed": 0, "lapsed": 0}
+    try:
+        sync_for_admins()
+    except Exception:  # noqa: BLE001 - bookkeeping; the billing must still run
+        pass
 
     queryset = (Subscription.objects
                 .exclude(state=SubscriptionState.CANCELLED)

@@ -16,7 +16,10 @@ What it does, every time it runs, changing only what is missing:
   admins is inert since 2026-09-28 — admins need none — and harmless);
 * every active superuser made a member (a Person is created for one who has
   none) and subscribed to the plan for admins, when the ladder has one and
-  the account is not on a live plan already.
+  the account is not on a live plan already;
+* every row's stored ``for_admins`` flag re-read from the ladder
+  (`services.sync_for_admins`), so a plans.yaml edit does not leave the
+  admin's column and filter answering from the old one.
 
 Nothing is taken away: a superuser already on some other plan keeps it (an
 admin who chose Developer to test the ladder is not moved). Nothing here
@@ -78,6 +81,9 @@ class Command(BaseCommand):
                 continue                      # keeps whatever plan they hold
             services.subscribe(user, reserved)
             placed += 1
+        synced = services.sync_for_admins()
+        if synced:
+            self.stdout.write(f"Re-read the for_admins flag of {synced} subscription(s) from the ladder.")
         if reserved is None:
             self.stdout.write(self.style.WARNING(
                 "The ladder has no plan for admins; superusers were made members and nothing else."))
