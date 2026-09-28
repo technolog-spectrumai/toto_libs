@@ -189,6 +189,41 @@ class PriceHintResilienceTests(SimpleTestCase):
             self.assertIn("1", render('{% price_hint "a.b" %}'))
 
 
+class PriceHintDiscountTests(SimpleTestCase):
+    """A member's community discount (2026-09-28): the hint shows what THEY
+    pay — the number the charge takes — on mana prices, and only there."""
+
+    CARD = {"forum.message": {"price_display": "0.1", "asset": "CYAN", "asset_id": 7}}
+
+    def render_for(self, percent, role):
+        class _Req:
+            user = None
+
+        with mock.patch("toto.quota.rates.rate_card", return_value=self.CARD), \
+             mock.patch("toto.quota.rates.member_discount", return_value=(percent, "Students")), \
+             mock.patch("toto.quota.templatetags.quota_tags._mana_role", return_value=role):
+            return Template('{% load quota_tags %}{% price_hint "forum.message" %}').render(
+                Context({"request": _Req()}))
+
+    def test_a_discounted_member_sees_the_discounted_mana_price(self):
+        out = self.render_for(50, "security")
+        self.assertIn("−0.05", out)
+        self.assertIn('data-discount="50"', out)
+        self.assertIn("Students", out)
+        self.assertIn("list price 0.1", out)
+
+    def test_no_discount_no_tag(self):
+        out = self.render_for(0, "security")
+        self.assertIn("−0.1", out)
+        self.assertNotIn("data-discount", out)
+
+    def test_a_currency_price_is_never_discounted(self):
+        out = self.render_for(50, "")
+        self.assertIn("0.1", out)
+        self.assertNotIn("0.05", out)
+        self.assertNotIn("data-discount", out)
+
+
 class PriceHintLiveTests(TestCase):
     """Against a real seeded rate card, not a mock — the wiring, end to end.
 
