@@ -60,6 +60,8 @@ urlpatterns = [
          name="room_retention_reset"),
     path("<slug:slug>/settings/cleanup/", views.room_cleanup_run,
          name="room_cleanup_run"),
+    # The Archive tab (2026-09-28). The download keeps its old address.
+    path("<slug:slug>/archive/", views.room_archive, name="room_archive"),
     path("<slug:slug>/settings/archive/", views.room_export_download,
          name="room_export_download"),
     path("<slug:slug>/", ChannelDetailView.as_view(), name="channel_detail"),

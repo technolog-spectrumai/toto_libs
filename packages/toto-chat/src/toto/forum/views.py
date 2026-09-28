@@ -24,7 +24,6 @@ class ChannelListView(LoginRequiredMixin, ListView):
     ordering = ["name"]
 
     def get_queryset(self):
-        # Invite-only rooms are listed to their members and staff only.
         ids = permissions.listable_channels(self.request.user).values("pk")
         qs = super().get_queryset().filter(pk__in=ids).annotate(
             member_count=models.Count(
@@ -213,8 +212,67 @@ class ChannelCreateView(LoginRequiredMixin, View):
         return redirect("forum:channel_detail", slug=channel.slug)
 
 
+def _writers(channel):
+    """Everyone who has written in this room, most data first.
+
+    One grouped query over the room's messages — every row still stored,
+    soft-deleted ones included (they were written, and they still take
+    space until the cleanup removes them). Data is what the room holds for
+    each person: the text (or its ciphertext in an encrypted room) plus the
+    files. Text is counted in characters, which is bytes for plain text and
+    close enough for the rest.
+    """
+    from django.db.models import Count, F, Func, IntegerField, Sum, Value
+    from django.db.models.functions import Coalesce, Length
+
+    from toto.people.models import Person
+
+    from .models import ForumMember, ForumMessage
+
+    rows = list(
+        ForumMessage.objects.filter(channel=channel, sender__isnull=False)
+        .values("sender_id")
+        .annotate(
+            messages=Count("id"),
+            files=Count("id", filter=~models.Q(attachment="") & models.Q(attachment__isnull=False)),
+            text=Coalesce(Sum(Length("body")), Value(0)),
+            sealed=Coalesce(Sum(Func(F("body_sealed"), function="LENGTH",
+                                     output_field=IntegerField())), Value(0)),
+            attached=Coalesce(Sum("attachment_size"), Value(0)),
+            last_name=models.Max("sender_name"),
+        )
+        .order_by())
+    user_ids = [r["sender_id"] for r in rows]
+    people = {p.user_id: p for p in Person.objects.filter(user_id__in=user_ids).select_related("user")}
+    active = {m.person.user_id: m for m in ForumMember.objects.filter(
+        channel=channel, is_active=True, person__user_id__in=user_ids).select_related("person")}
+    from toto.quota.rates import significant
+
+    out = []
+    for r in rows:
+        person = people.get(r["sender_id"])
+        total = int(r["text"] or 0) + int(r["sealed"] or 0) + int(r["attached"] or 0)
+        out.append({
+            "name": (person.display_name if person and person.display_name else r["last_name"]) or "?",
+            "username": person.user.username if person and person.user_id else "",
+            "user_id": r["sender_id"],
+            "member": active.get(r["sender_id"]),
+            "messages": r["messages"],
+            "files": r["files"],
+            "bytes": total,
+            "mb": significant(total / (1024 * 1024)),
+        })
+    out.sort(key=lambda w: (-w["bytes"], w["name"].lower()))
+    return out
+
+
 def room_members(request, slug):
-    """The members of a room, and — for its creator or staff — add and remove."""
+    """Who has written in the room and how much data each sent; for its
+    creator or staff, remove a writer and set the room password.
+
+    There are no invitations (2026-09-28): a password will do. People who
+    joined and never wrote are counted, not listed.
+    """
     from django.contrib.auth.views import redirect_to_login
 
     from . import creation
@@ -226,19 +284,26 @@ def room_members(request, slug):
         permissions.require_member(request, channel)
     if request.method == "POST":
         try:
-            if request.POST.get("action") == "remove":
+            action = request.POST.get("action")
+            if action == "remove":
                 creation.remove_member(request.user, channel, request.POST.get("member"))
-            elif request.POST.get("action") == "password":
+            elif action == "password":
                 creation.change_password(request.user, channel, request.POST.get("password", ""))
                 messages.success(request, _("Password changed."))
             else:
-                creation.add_member(request.user, channel, request.POST.get("username", ""))
+                raise creation.RoomRefused(_("Members join with the room password; "
+                                             "nobody is added by name."))
         except creation.RoomRefused as exc:
             messages.error(request, str(exc))
         return redirect("forum:room_members", slug=channel.slug)
-    members = channel.forum_members.filter(is_active=True).select_related("person__user")
-    context = {"channel": channel, "active_tab": "members", "members": members,
+    writers = _writers(channel)
+    active_ids = set(channel.forum_members.filter(is_active=True)
+                     .values_list("person__user_id", flat=True))
+    wrote = {w["user_id"] for w in writers}
+    context = {"channel": channel, "active_tab": "members", "writers": writers,
+               "silent_members": len(active_ids - wrote),
                "badges": channel.badges(),
+               "needs_first_password": channel.access == "password" and not channel.password_verifier,
                "can_manage_members": permissions.can_manage_members(request.user, channel)}
     return render(request, "forum/room_members.html", PageProcessor().decorate(context, request))
 
@@ -596,18 +661,11 @@ def _room_hygiene_context(request, channel):
     from toto.celery_utils import celery_available
 
     from . import cleanup as cleanup_engine
-    from . import export as export_engine
     from .forms import ConfirmCleanupForm, RetentionSettingsForm
-    from .models import ForumCleanupRun, ForumMessage, ForumRetentionPolicy
+    from .models import ForumCleanupRun, ForumRetentionPolicy
 
     governing = ForumRetentionPolicy.current(channel)
     own = ForumRetentionPolicy.objects.filter(channel=channel).first()
-
-    files = (ForumMessage.objects.filter(channel=channel,
-                                         deleted_at__isnull=True)
-             .exclude(attachment="").exclude(attachment__isnull=True)
-             .aggregate(n=models.Count("id"),
-                        total=models.Sum("attachment_size")))
 
     context = _room_context(request, channel, "settings")
     context.update({
@@ -626,9 +684,31 @@ def _room_hygiene_context(request, channel):
         "next_run": cleanup_engine.next_scheduled_run(),
         "worker_available": celery_available(),
         "in_flight": cleanup_engine.in_flight(channel),
-        # Archive counts. Cheap aggregates only — the survey that walks every
-        # message and reads every blob is the POST's job, exactly as on the
-        # forum-wide desk.
+        "page_title": f"{channel.name} — settings",
+    })
+    return context
+
+
+@login_required
+@require_safe
+def room_archive(request, slug):
+    """The Archive tab (2026-09-28, out of Settings): what a ZIP of this
+    room would hold, and the button that streams it. Staff only, like the
+    download it offers."""
+    from django.shortcuts import render
+
+    from . import export as export_engine
+    from .models import ForumMessage
+
+    channel = get_object_or_404(ForumChannel, slug=slug)
+    permissions.require_operator(request)
+    # Cheap aggregates only — the survey that walks every message and reads
+    # every blob is the POST's job.
+    files = (ForumMessage.objects.filter(channel=channel, deleted_at__isnull=True)
+             .exclude(attachment="").exclude(attachment__isnull=True)
+             .aggregate(n=models.Count("id"), total=models.Sum("attachment_size")))
+    context = _room_context(request, channel, "archive")
+    context.update({
         "message_count": ForumMessage.objects.filter(channel=channel).count(),
         "attachments": files["n"] or 0,
         "attachment_bytes": files["total"] or 0,
@@ -637,9 +717,9 @@ def _room_hygiene_context(request, channel):
             "attachments": export_engine.MAX_ATTACHMENTS,
             "total_mb": export_engine.MAX_TOTAL_BYTES // (1024 * 1024),
         },
-        "page_title": f"{channel.name} — settings",
+        "page_title": f"{channel.name} — archive",
     })
-    return context
+    return render(request, "forum/room_archive.html", context)
 
 
 @login_required
@@ -794,7 +874,7 @@ def room_export_download(request, slug):
                                     channel=channel)
     except export_engine.ExportTooLarge as exc:
         messages.error(request, str(exc))
-        return redirect("forum:room_settings", slug=channel.slug)
+        return redirect("forum:room_archive", slug=channel.slug)
 
     chunks = export_engine.stream_archive(plan)
 

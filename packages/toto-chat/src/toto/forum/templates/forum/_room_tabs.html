@@ -4,48 +4,54 @@
    channel_base.html (which the other tabs extend). Polls is unconditional
    now: the room owns its polls, so there is no separate engine that could be
    missing from a build.{% endcomment %}
-<nav class="flex flex-wrap gap-1" aria-label="{% trans 'Room navigation' %}">
+<nav class="flex flex-wrap gap-x-0.5" aria-label="{% trans 'Room navigation' %}">
   <a href="{% url 'forum:channel_detail' channel.slug %}"
      :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+     class="inline-flex items-center gap-1.5 rounded-t px-2.5 py-2 text-sm font-semibold transition sm:px-3
             {% if active_tab == 'chat' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
      {% if active_tab == 'chat' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-comments"></i>{% trans "Chat" %}</a>
+    <i class="fa-solid fa-comments" aria-hidden="true" title="{% trans "Chat" %}"></i><span class="sr-only sm:not-sr-only">{% trans "Chat" %}</span></a>
   <a href="{% url 'forum:room_files' channel.slug %}"
      :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+     class="inline-flex items-center gap-1.5 rounded-t px-2.5 py-2 text-sm font-semibold transition sm:px-3
             {% if active_tab == 'files' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
      {% if active_tab == 'files' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-folder-open"></i>{% trans "Files" %}</a>
+    <i class="fa-solid fa-folder-open" aria-hidden="true" title="{% trans "Files" %}"></i><span class="sr-only sm:not-sr-only">{% trans "Files" %}</span></a>
   <a href="{% url 'forum:room_polls' channel.slug %}"
      :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+     class="inline-flex items-center gap-1.5 rounded-t px-2.5 py-2 text-sm font-semibold transition sm:px-3
             {% if active_tab == 'polls' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
      {% if active_tab == 'polls' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-square-poll-vertical"></i>{% trans "Polls" %}</a>
+    <i class="fa-solid fa-square-poll-vertical" aria-hidden="true" title="{% trans "Polls" %}"></i><span class="sr-only sm:not-sr-only">{% trans "Polls" %}</span></a>
   <a href="{% url 'forum:room_stats' channel.slug %}"
      :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+     class="inline-flex items-center gap-1.5 rounded-t px-2.5 py-2 text-sm font-semibold transition sm:px-3
             {% if active_tab == 'stats' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
      {% if active_tab == 'stats' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-chart-simple"></i>{% trans "Statistics" %}</a>
+    <i class="fa-solid fa-chart-simple" aria-hidden="true" title="{% trans "Statistics" %}"></i><span class="sr-only sm:not-sr-only">{% trans "Statistics" %}</span></a>
   <a href="{% url 'forum:room_members' channel.slug %}"
      :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+     class="inline-flex items-center gap-1.5 rounded-t px-2.5 py-2 text-sm font-semibold transition sm:px-3
             {% if active_tab == 'members' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
      {% if active_tab == 'members' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-users"></i>{% trans "Members" %}</a>
+    <i class="fa-solid fa-users" aria-hidden="true" title="{% trans "Members" %}"></i><span class="sr-only sm:not-sr-only">{% trans "Members" %}</span></a>
   {% if user.is_staff or user.is_superuser %}
-  {% comment %}Settings is staff-only, and hidden rather than shown-and-refused:
+  {% comment %}Settings and Archive are staff-only, and hidden rather than shown-and-refused:
      a tab that always answers 403 is worse than no tab. The view re-checks —
      this is chrome, not the gate. The predicate matches permissions.is_operator
      exactly, superuser included, because is_superuser does not imply is_staff
      in Django.{% endcomment %}
   <a href="{% url 'forum:room_settings' channel.slug %}"
      :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+     class="inline-flex items-center gap-1.5 rounded-t px-2.5 py-2 text-sm font-semibold transition sm:px-3
             {% if active_tab == 'settings' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
      {% if active_tab == 'settings' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-sliders"></i>{% trans "Settings" %}</a>
+    <i class="fa-solid fa-sliders" aria-hidden="true" title="{% trans "Settings" %}"></i><span class="sr-only sm:not-sr-only">{% trans "Settings" %}</span></a>
+  <a href="{% url 'forum:room_archive' channel.slug %}"
+     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+     class="inline-flex items-center gap-1.5 rounded-t px-2.5 py-2 text-sm font-semibold transition sm:px-3
+            {% if active_tab == 'archive' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+     {% if active_tab == 'archive' %}aria-current="page"{% endif %} data-testid="room-archive-tab">
+    <i class="fa-solid fa-box-archive" aria-hidden="true" title="{% trans "Archive" %}"></i><span class="sr-only sm:not-sr-only">{% trans "Archive" %}</span></a>
   {% endif %}
 </nav>

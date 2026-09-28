@@ -1,35 +1,59 @@
 {% extends "forum/channel_base.html" %}
 {% load i18n %}
+{% comment %}Who has written here, and how much data each person sent
+(2026-09-28). People who joined and never wrote are counted under the table,
+not listed. No invitations: a password will do — its creator or staff set
+it below.{% endcomment %}
 {% block room_content %}
 <section class="space-y-4">
   <div class="flex flex-wrap items-center gap-2">{% include "forum/_room_badges.html" %}</div>
-  <h2 class="text-lg font-bold">{% trans "Members" %}</h2>
-  <ul class="divide-y divide-current/10 rounded-lg border border-current/15 text-sm">
-    {% for m in members %}
-    <li class="flex items-center justify-between gap-2 px-3 py-2">
-      <span>{{ m.display_name }}{% if m.person.user %} <span class="opacity-60">@{{ m.person.user.username }}</span>{% endif %}</span>
-      {% if can_manage_members and m.person.user_id != channel.created_by_id %}
-      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="remove"><input type="hidden" name="member" value="{{ m.pk }}">
-        <button type="submit" class="text-xs font-semibold hover:underline">{% trans "Remove" %}</button></form>
-      {% endif %}
-    </li>
-    {% empty %}<li class="px-3 py-2 italic opacity-60">{% trans "Nobody yet." %}</li>{% endfor %}
-  </ul>
-  {% if can_manage_members %}
-  <form method="post" class="flex flex-wrap items-end gap-2">{% csrf_token %}
-    <input type="hidden" name="action" value="add">
-    <label class="text-sm font-semibold">{% trans "Add a member by username" %}
-      <input name="username" required class="mt-1 block rounded border border-current/20 bg-inherit px-2 py-1 text-sm"></label>
-    <button type="submit" class="rounded border px-3 py-1.5 text-sm font-semibold">{% trans "Add" %}</button>
-  </form>
-  {% if channel.access == "password" %}
+  <h2 class="text-lg font-bold">{% trans "Members who have written" %}</h2>
+  <div class="overflow-x-auto rounded-lg border border-current/15">
+    <table class="w-full min-w-[28rem] text-sm" data-testid="room-writers">
+      <thead><tr class="border-b border-current/15 text-left text-xs uppercase tracking-wide opacity-60">
+        <th scope="col" class="px-3 py-2">{% trans "Member" %}</th>
+        <th scope="col" class="px-3 py-2 text-right">{% trans "Messages" %}</th>
+        <th scope="col" class="px-3 py-2 text-right">{% trans "Files" %}</th>
+        <th scope="col" class="px-3 py-2 text-right">{% trans "Data sent" %}</th>
+        {% if can_manage_members %}<th scope="col" class="px-3 py-2"><span class="sr-only">{% trans "Actions" %}</span></th>{% endif %}
+      </tr></thead>
+      <tbody>
+        {% for w in writers %}
+        <tr class="border-b border-current/5" data-writer="{{ w.username }}">
+          <td class="px-3 py-2">{{ w.name }}{% if w.username %} <span class="opacity-60">@{{ w.username }}</span>{% endif %}
+            {% if not w.member %}<span class="ml-1 text-xs opacity-60">({% trans "left" %})</span>{% endif %}</td>
+          <td class="px-3 py-2 text-right tabular-nums">{{ w.messages }}</td>
+          <td class="px-3 py-2 text-right tabular-nums">{{ w.files }}</td>
+          <td class="px-3 py-2 text-right tabular-nums" title="{{ w.bytes }} B">{{ w.mb }}&nbsp;MB</td>
+          {% if can_manage_members %}
+          <td class="px-3 py-2 text-right">
+            {% if w.member and w.user_id != channel.created_by_id %}
+            <form method="post">{% csrf_token %}<input type="hidden" name="action" value="remove"><input type="hidden" name="member" value="{{ w.member.pk }}">
+              <button type="submit" class="text-xs font-semibold hover:underline">{% trans "Remove" %}</button></form>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="px-3 py-2 italic opacity-60">{% trans "Nobody has written here yet." %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if silent_members %}
+  <p class="text-sm opacity-70" data-testid="silent-members">{% blocktrans count n=silent_members %}{{ n }} more member has not written anything yet.{% plural %}{{ n }} more members have not written anything yet.{% endblocktrans %}</p>
+  {% endif %}
+
+  {% if can_manage_members and channel.access == "password" %}
+  {% if needs_first_password %}
+  <p class="text-sm font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "This room has no password yet, so nobody new can join. Set one below." %}</p>
+  {% endif %}
   <form method="post" class="flex flex-wrap items-end gap-2">{% csrf_token %}
     <input type="hidden" name="action" value="password">
-    <label class="text-sm font-semibold">{% trans "New room password" %}
+    <label class="text-sm font-semibold">{% if needs_first_password %}{% trans "Room password" %}{% else %}{% trans "New room password" %}{% endif %}
       <input type="password" name="password" required minlength="8" autocomplete="new-password" class="mt-1 block rounded border border-current/20 bg-inherit px-2 py-1 text-sm"></label>
-    <button type="submit" class="rounded border px-3 py-1.5 text-sm font-semibold">{% trans "Change password" %}</button>
+    <button type="submit" class="rounded border px-3 py-1.5 text-sm font-semibold">{% if needs_first_password %}{% trans "Set password" %}{% else %}{% trans "Change password" %}{% endif %}</button>
   </form>
-  {% endif %}
   {% endif %}
 </section>
 {% endblock %}

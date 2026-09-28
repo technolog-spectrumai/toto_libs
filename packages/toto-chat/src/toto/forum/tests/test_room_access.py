@@ -1,5 +1,6 @@
-"""Who joins what: open, password (rate limited), legacy invite rooms; and
-what is listed. No NEW room is invite-only since 2026-09-26."""
+"""Who joins what: open, password (rate limited); and what is listed.
+There are no invitations (2026-09-28): a password will do. Legacy invite-only
+rooms became password rooms with no password (migration 0007)."""
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -37,11 +38,11 @@ class AccessTests(TestCase):
     def room(self, **kw):
         return creation.create_room(self.owner, **kw)
 
-    def legacy_invite_room(self, name):
-        """An invite-only room as one made before 2026-09-26: no new room can
-        be one, but existing rows keep their rule."""
+    def former_invite_room(self, name):
+        """What migration 0007 leaves of an invite-only room: a password room
+        with no password yet."""
         room = creation.create_room(self.owner, name=name)
-        ForumChannel.objects.filter(pk=room.pk).update(access="invite")
+        ForumChannel.objects.filter(pk=room.pk).update(access="password")
         room.refresh_from_db()
         return room
 
@@ -76,21 +77,50 @@ class AccessTests(TestCase):
             creation.join(self.bob, room, password="correct horse")
         self.assertEqual(caught.exception.status, 429)
 
-    def test_an_invite_room_is_joined_only_by_invitation_and_hidden_otherwise(self):
-        room = self.legacy_invite_room("Board")
-        with self.assertRaises(creation.RoomRefused):
-            creation.join(self.bob, room)
-        self.client.force_login(self.bob)
-        self.assertNotContains(self.client.get(reverse("forum:channel_list")), "Board")
-        self.assertEqual(self.client.post(reverse("forum:channel_join", args=[room.slug])).status_code, 404)
-        creation.add_member(self.owner, room, "bob")
-        self.assertContains(self.client.get(reverse("forum:channel_list")), "Board")
+    def test_nobody_is_added_by_name(self):
+        room = self.room(name="Board", access="password", password="correct horse")
+        self.assertFalse(hasattr(creation, "add_member"))
+        self.client.force_login(self.owner)
+        response = self.client.post(reverse("forum:room_members", args=[room.slug]),
+                                    {"action": "add", "username": "bob"}, follow=True)
+        self.assertContains(response, "nobody is added by name")
+        self.assertFalse(ForumMember.objects.filter(channel=room, person__user=self.bob).exists())
+        self.assertNotContains(self.client.get(reverse("forum:room_members", args=[room.slug])),
+                               'name="username"')
 
-    def test_only_the_owner_or_staff_manage_members(self):
-        room = self.legacy_invite_room("Board")
-        with self.assertRaises(creation.RoomRefused):
-            creation.add_member(self.bob, room, "staff")
-        creation.add_member(self.staff, room, "bob")
+    def test_a_former_invite_room_is_listed_and_closed_until_it_has_a_password(self):
+        room = self.former_invite_room("Board")
+        self.client.force_login(self.bob)
+        self.assertContains(self.client.get(reverse("forum:channel_list")), "Board")
+        with self.assertRaises(creation.RoomRefused) as caught:
+            creation.join(self.bob, room, password="anything at all")
+        self.assertIn("no password yet", str(caught.exception))
+        self.client.force_login(self.owner)
+        page = self.client.get(reverse("forum:room_members", args=[room.slug]))
+        self.assertContains(page, "no password yet")
+        self.client.post(reverse("forum:room_members", args=[room.slug]),
+                         {"action": "password", "password": "correct horse"})
+        room.refresh_from_db()
+        self.assertTrue(creation.join(self.bob, room, password="correct horse"))
+
+    def test_the_migration_turns_invite_rooms_into_password_rooms(self):
+        import importlib
+
+        room = creation.create_room(self.owner, name="Legacy")
+        ForumChannel.objects.filter(pk=room.pk).update(access="invite")
+        migration = importlib.import_module("toto.forum.migrations.0007_no_invitations")
+        from django.apps import apps as global_apps
+
+        migration.invite_to_password(global_apps, None)
+        room.refresh_from_db()
+        self.assertEqual(room.access, "password")
+        self.assertFalse(room.password_verifier)
+        self.assertTrue(ForumMember.objects.filter(channel=room, person__user=self.owner,
+                                                   is_active=True).exists())
+
+    def test_only_the_owner_or_staff_remove_members(self):
+        room = self.room(name="Board")
+        creation.join(self.bob, room)
         member = ForumMember.objects.get(channel=room, person__user=self.bob)
         with self.assertRaises(creation.RoomRefused):
             creation.remove_member(self.bob, room, member.pk)
@@ -141,3 +171,87 @@ class AccessTests(TestCase):
         self.client.force_login(self.bob)
         response = self.client.get(reverse("forum:channel_detail", args=[room.slug]))
         self.assertContains(response, 'name="password"')
+
+
+@override_settings(**FAST)
+class MembersTabTests(TestCase):
+    """The Members tab lists who has WRITTEN, with the data each sent."""
+
+    def setUp(self):
+        from toto.core.models import Platform
+
+        cache.clear()
+        Platform.objects.get_or_create(active=True, defaults={
+            "site_name": "T", "author": "t", "publication_year": 2026})
+        self.owner = User.objects.create_user("owner", password="x")
+        self.bob = User.objects.create_user("bob", password="x")
+        self.quiet = User.objects.create_user("quiet", password="x")
+        for u, n in ((self.owner, "Owner"), (self.bob, "Bob"), (self.quiet, "Quiet")):
+            _person(u, n)
+        self.room = creation.create_room(self.owner, name="Talk")
+        creation.join(self.bob, self.room)
+        creation.join(self.quiet, self.room)
+
+    def say(self, user, body, attachment_size=None):
+        from toto.forum.models import ForumMessage
+
+        return ForumMessage.objects.create(channel=self.room, sender=user,
+                                           sender_name=user.username, body=body,
+                                           attachment_size=attachment_size)
+
+    def test_only_writers_are_listed_with_their_data_most_first(self):
+        self.say(self.owner, "hi")
+        self.say(self.bob, "x" * 1000)
+        self.say(self.bob, "y" * 500, attachment_size=2000)
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("forum:room_members", args=[self.room.slug]))
+        writers = response.context["writers"]
+        self.assertEqual([w["username"] for w in writers], ["bob", "owner"])
+        bob = writers[0]
+        self.assertEqual((bob["messages"], bob["bytes"]), (2, 1000 + 500 + 2000))
+        self.assertEqual(writers[1]["bytes"], 2)
+        self.assertContains(response, 'data-testid="room-writers"')
+        self.assertNotContains(response, 'data-writer="quiet"')
+        self.assertEqual(response.context["silent_members"], 1)
+        self.assertContains(response, "1 more member has not written anything yet.")
+
+    def test_data_is_shown_in_megabytes_with_three_significant_digits(self):
+        self.say(self.bob, "z" * 1234)
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("forum:room_members", args=[self.room.slug]))
+        self.assertEqual(response.context["writers"][0]["mb"], "0.00118")
+        self.assertContains(response, "0.00118&nbsp;MB")
+
+    def test_someone_who_left_still_counts_as_having_written(self):
+        self.say(self.bob, "bye")
+        member = ForumMember.objects.get(channel=self.room, person__user=self.bob)
+        creation.remove_member(self.owner, self.room, member.pk)
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("forum:room_members", args=[self.room.slug]))
+        self.assertEqual([w["username"] for w in response.context["writers"]], ["bob"])
+        self.assertContains(response, "(left)")
+
+
+@override_settings(**FAST)
+class RoomLayoutTests(TestCase):
+    """The chat page fits its width: one shrinkable column and three rows."""
+
+    def setUp(self):
+        from toto.core.models import Platform
+
+        Platform.objects.get_or_create(active=True, defaults={
+            "site_name": "T", "author": "t", "publication_year": 2026})
+        self.owner = User.objects.create_user("owner", password="x")
+        _person(self.owner, "Owner")
+        self.room = creation.create_room(self.owner, name="Talk")
+        self.client.force_login(self.owner)
+
+    def test_the_chat_column_can_shrink_and_nothing_is_pinned_to_a_row(self):
+        page = self.client.get(reverse("forum:channel_detail", args=[self.room.slug])).content.decode()
+        self.assertIn("grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto]", page)
+        self.assertNotIn("[grid-row:", page)
+        self.assertIn("xl:flex xl:flex-col", page)   # members beside the chat from xl
+
+    def test_tab_labels_fold_into_icons_on_a_narrow_screen(self):
+        page = self.client.get(reverse("forum:channel_detail", args=[self.room.slug])).content.decode()
+        self.assertIn('<span class="sr-only sm:not-sr-only">Members</span>', page)

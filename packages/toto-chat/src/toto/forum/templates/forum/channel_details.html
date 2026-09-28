@@ -876,7 +876,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   class="flex min-h-0 flex-1 flex-col px-2 py-2 transition-colors duration-300 sm:px-6 sm:py-6 lg:px-8">
 
   {# Fills remaining viewport via the flex chain (body→main→here) so the grid has a real height for internal scroll #}
-  <div class="mx-auto grid min-h-0 w-full flex-1 max-w-7xl grid-cols-1 gap-2 sm:gap-4 overflow-hidden lg:grid-cols-[15rem_minmax(0,1fr)_15rem] xl:grid-cols-[17rem_minmax(0,1fr)_17rem]">
+  <div class="mx-auto grid min-h-0 w-full flex-1 max-w-7xl grid-cols-1 gap-2 sm:gap-4 overflow-hidden lg:grid-cols-[14rem_minmax(0,1fr)] xl:grid-cols-[15rem_minmax(0,1fr)_15rem] 2xl:grid-cols-[17rem_minmax(0,1fr)_17rem]">
 
     {# ── Left sidebar: channel list ───────────────────────────────────────── #}
     <aside
@@ -906,22 +906,25 @@ document.addEventListener("DOMContentLoaded", async () => {
     {# ── Centre: chat ─────────────────────────────────────────────────────── #}
     <section
       :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
-      class="grid min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border shadow-md">
+      class="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border shadow-md">
+      {# Row 1: everything above the messages, in one box, so a notice that
+         appears or not never shifts the messages or the composer. #}
+      <div class="min-w-0">
 
       {# The room's tab strip — chat is one of four surfaces now. #}
       {% if is_participant %}
-        <div class="border-b border-current/10 px-4 pt-2">
+        <div class="min-w-0 border-b border-current/10 px-2 pt-1 sm:px-4 sm:pt-2">
           {% include "forum/_room_tabs.html" %}
         </div>
       {% endif %}
 
       {# Header #}
-      <header class="flex min-w-0 flex-wrap items-center gap-2 border-b border-current/10 px-4 py-3">
+      <header class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-current/10 px-3 py-2 sm:px-4 sm:py-3">
         <button
           type="button"
           @click="sidebarOpen = true"
           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-          class="inline-flex h-9 w-9 items-center justify-center rounded border lg:hidden"
+          class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border xl:hidden"
           aria-label="{% trans 'Open channels' %}">
           <i class="fa-solid fa-bars text-sm"></i>
         </button>
@@ -947,7 +950,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             name="q"
             placeholder="{% trans 'Search messages…' %}"
             :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
-            class="w-40 rounded border px-2.5 py-1.5 text-xs outline-none transition focus:w-56 focus:ring-2 focus:ring-current/20">
+            class="w-28 rounded border px-2.5 py-1.5 text-xs outline-none transition focus:w-44 focus:ring-2 focus:ring-current/20">
           <button type="submit"
             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
             class="inline-flex h-8 w-8 items-center justify-center rounded border text-xs transition hover:opacity-80"
@@ -957,7 +960,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         </form>
         {% endif %}
 
-        <a href="{% url 'forum:channel_list' %}" class="hidden shrink-0 text-xs underline opacity-60 hover:opacity-90 sm:inline">{% trans "All channels" %}</a>
+        <a href="{% url 'forum:channel_list' %}" class="hidden shrink-0 text-xs underline opacity-60 hover:opacity-90 sm:inline lg:hidden">{% trans "All channels" %}</a>
 
         {# Connection chip #}
         <div
@@ -995,21 +998,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       </header>
 
       {% if is_encrypted %}
-        <div class="border-b border-current/15 px-4 py-2 text-xs opacity-80" data-testid="encrypted-notice">
+        <div class="break-words border-b border-current/15 px-3 py-2 text-xs opacity-80 sm:px-4" data-testid="encrypted-notice">
           <i class="fa-solid fa-lock" aria-hidden="true"></i>
           {% if channel.access == "password" %}{% trans "Messages here are encrypted at rest under a room key held by this platform and by the room password. They are not searchable." %}{% else %}{% trans "Messages here are encrypted at rest under a room key held by this platform. They are not searchable." %}{% endif %}
         </div>
-      {% endif %}
-      {% if join_verdict == "invite" and not can_send_messages %}
-        <div class="border-b border-current/15 px-4 py-2 text-sm opacity-70">{% trans "This room is invite only; its creator or staff add members." %}</div>
       {% endif %}
 
       {# Observer / join banner #}
       {% if not can_send_messages %}
         <div
           :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
-          class="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2.5">
-          <p class="text-sm opacity-70">{{ observer_reason }}</p>
+          class="flex flex-wrap items-center justify-between gap-3 border-b px-3 py-2.5 sm:px-4">
+          <p class="min-w-0 text-sm opacity-70">{{ observer_reason }}</p>
           {% if can_join %}
             <form method="post" action="{% url 'forum:channel_join' channel.slug %}">
               {% csrf_token %}
@@ -1023,8 +1023,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         </div>
       {% endif %}
 
-      {# Messages — pinned to row 3 so composer always stays visible regardless of whether the observer banner renders #}
-      <div id="messages" class="min-h-0 min-w-0 space-y-3 overflow-y-auto overflow-x-hidden p-4 [grid-row:4]">
+      </div>{# /row 1 #}
+
+      {# Row 2: the messages, the only part that scrolls #}
+      <div id="messages" class="min-h-0 min-w-0 space-y-3 overflow-y-auto overflow-x-hidden p-4">
         {# History is delivered over the websocket, never server-rendered. #}
         <div id="load-older-wrap" class="hidden pb-1 text-center">
           <button type="button" id="load-older-button"
@@ -1041,7 +1043,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       </div>
 
       {# Input #}
-      <div id="message-form" class="border-t border-current/10 p-3 [grid-row:5]">
+      <div id="message-form" class="min-w-0 border-t border-current/10 p-3">
         {# Mobile chips row #}
         <div class="mb-2 flex flex-wrap gap-2 sm:hidden">
           <div
@@ -1169,7 +1171,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             class="min-h-[2.75rem] w-full resize-none rounded-xl border px-3 py-2.5 text-base outline-none transition focus:ring-2 focus:ring-current/20 sm:w-auto sm:flex-1 sm:text-sm"
             {% if not can_send_messages %}disabled{% endif %}></textarea>
 
-          {% if can_send_messages %}<span class="self-center" data-testid="send-price">{% price_hint forum_price_code %}</span>{% endif %}
+          {% if can_send_messages %}<span class="shrink-0 self-center whitespace-nowrap" data-testid="send-price">{% price_hint forum_price_code %}</span>{% endif %}
           {# Row 3 (mobile): send — full-width on mobile, square icon button at sm+ #}
           <button
             type="button"
@@ -1185,10 +1187,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       </div>
     </section>
 
-    {# ── Right sidebar: members ───────────────────────────────────────────── #}
+    {# ── Right sidebar: members (xl and up; below that the drawer has them) ── #}
     <aside
       :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
-      class="hidden min-h-0 min-w-0 overflow-hidden rounded-lg border p-4 shadow-md lg:flex lg:flex-col">
+      class="hidden min-h-0 min-w-0 overflow-hidden rounded-lg border p-4 shadow-md xl:flex xl:flex-col">
 
       <div class="flex items-center justify-between border-b border-current/10 pb-3">
         <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-sm font-bold">{% trans "Members" %}</h2>
@@ -1224,14 +1226,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   </div>
 
   {# ── Mobile sidebar overlay ────────────────────────────────────────────── #}
-  <div x-show="sidebarOpen" x-cloak class="fixed inset-0 z-40 bg-black/40 lg:hidden" @click="sidebarOpen = false"></div>
+  <div x-show="sidebarOpen" x-cloak class="fixed inset-0 z-40 bg-black/40 xl:hidden" @click="sidebarOpen = false"></div>
 
   <aside
     x-show="sidebarOpen"
     x-cloak
     @click.away="sidebarOpen = false"
     :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
-    class="fixed inset-y-0 left-0 z-50 w-72 border-r p-4 shadow-xl lg:hidden">
+    class="fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] overflow-y-auto border-r p-4 shadow-xl xl:hidden">
 
     <div class="flex items-center justify-between border-b border-current/10 pb-3">
       <span class="text-sm font-semibold">{% trans "Channels" %}</span>

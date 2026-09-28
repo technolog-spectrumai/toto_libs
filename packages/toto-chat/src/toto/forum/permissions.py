@@ -76,11 +76,9 @@ def can_send(user, channel):
 
 
 def join_verdict(user, channel) -> str:
-    """"open", "password" or "invite" — how (whether) this user may join."""
+    """"open" or "password" — how this user may join ("closed" once expired)."""
     if channel.is_expired:
         return "closed"
-    if channel.access == "invite":
-        return "invite"
     if channel.access == "password":
         return "password"
     return "open"
@@ -95,20 +93,13 @@ def can_manage_members(user, channel) -> bool:
 
 
 def listable_channels(user):
-    """Channels a person may see listed: invite-only rooms only to their members
-    and staff (a room you cannot join is noise, and its name may be the secret)."""
-    from django.db.models import Q
-
+    """Channels a person may see listed: every room. Invite-only rooms, the
+    one kind hidden from non-members, are gone since 2026-09-28 — a password
+    keeps a room's content private, and its name was never the secret the
+    password guards. Kept as the one door the list and the API ask."""
     from .models import ForumChannel
 
-    qs = ForumChannel.objects.all()
-    if is_operator(user):
-        return qs
-    person = person_for(user)
-    visible = ~Q(access="invite")
-    if person is not None:
-        visible |= Q(forum_members__person=person, forum_members__is_active=True)
-    return qs.filter(visible).distinct()
+    return ForumChannel.objects.all()
 
 
 def can_moderate(user, message):

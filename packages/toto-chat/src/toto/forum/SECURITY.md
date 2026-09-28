@@ -40,13 +40,15 @@ prefixed `PGP1:`. It was studied and not copied, for the reasons above.
 
 ## 3. Room kinds
 
-Chosen when a room is made, fixed for its life (only a password may change):
+Chosen when a room is made, fixed for its life (only a password may change).
+There are no invitations (2026-09-28): a password will do. Invite-only rooms
+from before became password rooms with no password (migration 0007) — their
+members stayed, nobody new joins until the creator or staff set one:
 
 | Kind | Who joins | At rest | Search |
 |---|---|---|---|
 | open (every room from before) | any member | plaintext | yes |
 | password | whoever knows the password | plaintext unless encrypted | yes unless encrypted |
-| invite only (legacy) | whoever the creator or staff add; not listed to others. No new room is made invite-only since 2026-09-26; existing ones keep this rule | plaintext unless encrypted | yes unless encrypted |
 | **encrypted** (any of the above) | as above | AES-256-GCM ciphertext | **no** |
 | **temporary** (any of the above) | as above | as above | as above; the room and everything in it are deleted at expiry |
 

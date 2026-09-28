@@ -103,13 +103,13 @@ class ForumChannel(models.Model):
     # may change. Every row from before this change is an open, plaintext,
     # permanent room: the migration's defaults ARE the old behaviour.
     # See SECURITY.md.
-    #: Who may join: anybody (open), whoever knows the password, or only
-    #: whoever the owner or staff add (invite). "invite" is LEGACY since
-    #: 2026-09-26: no new room is made invite-only (creation.NEW_ROOM_ACCESS),
-    #: but existing ones keep the rule, so none opens up by itself.
+    #: Who may join: anybody (open), or whoever knows the password. There are
+    #: no invitations: invite-only rooms stopped being made on 2026-09-26 and
+    #: were turned into password rooms on 2026-09-28 (migration 0007) with no
+    #: password yet — their members stay, nobody new joins until the room's
+    #: creator or staff set one on the Members tab. A password will do.
     access = models.CharField(max_length=8, choices=[
-        ("open", _("Open")), ("password", _("Password")), ("invite", _("Invite only"))],
-        default="open")
+        ("open", _("Open")), ("password", _("Password"))], default="open")
     #: Messages and attachments stored as AES-256-GCM ciphertext under the
     #: room's key (rooms.py), never as plaintext. Not searchable.
     is_encrypted = models.BooleanField(default=False)
@@ -139,17 +139,11 @@ class ForumChannel(models.Model):
     def has_password(self) -> bool:
         return self.access == "password"
 
-    @property
-    def is_invite_only(self) -> bool:
-        return self.access == "invite"
-
     def badges(self) -> list[dict]:
         """What the UI says this room is, in the order it says it."""
         out = []
         if self.access == "password":
             out.append({"key": "password", "icon": "fa-key", "label": _("Password")})
-        elif self.access == "invite":
-            out.append({"key": "invite", "icon": "fa-user-lock", "label": _("Invite only")})
         else:
             out.append({"key": "open", "icon": "fa-door-open", "label": _("Open")})
         if self.is_encrypted:

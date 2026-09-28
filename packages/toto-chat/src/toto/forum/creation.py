@@ -1,7 +1,7 @@
 """Making a room, and joining one — the rules, once, for the page and the API.
 
 Both doors (views.ChannelCreateView and api_views.ChannelListApiView.post)
-and both join doors call these, so the password, invite, encryption, expiry,
+and both join doors call these, so the password, encryption, expiry,
 rate-limit and billing rules cannot drift between them.
 """
 
@@ -18,7 +18,7 @@ from django.utils.translation import gettext as _
 EXPIRY_CHOICES = {"": None, "1h": timedelta(hours=1), "24h": timedelta(hours=24),
                   "7d": timedelta(days=7), "30d": timedelta(days=30)}
 MIN_PASSWORD = 8
-#: What a NEW room may be. "invite" is legacy: existing rows keep it.
+#: What a room may be. No invitations since 2026-09-28: a password will do.
 NEW_ROOM_ACCESS = ("open", "password")
 
 #: (limit, window seconds). Password attempts are the costly ones — each is an
@@ -63,9 +63,7 @@ def create_room(user, *, name: str, access: str = "open", password: str = "",
     if ForumChannel.at_capacity():
         raise RoomRefused(_("This platform holds at most %(n)s rooms, and it has that many. "
                             "Close one before opening another.") % {"n": ForumChannel.max_channels()}, 409)
-    # Two kinds of access since 2026-09-26: open, or a password. Invite-only
-    # rooms are no longer made; the ones that exist keep their rule (they are
-    # still joined only by being added), so nobody's private room opens up.
+    # Two kinds of access: open, or a password. There are no invitations.
     if access not in NEW_ROOM_ACCESS:
         raise RoomRefused(_("Choose who may join: open or password."))
     if access == "password" and len(password or "") < MIN_PASSWORD:
@@ -113,8 +111,10 @@ def join(user, channel, *, password: str = ""):
         return False
     if verdict == "closed":
         raise RoomRefused(_("This room has expired."), 410)
-    if verdict == "invite":
-        raise RoomRefused(_("This room is invite only; its creator or staff add members."), 403)
+    if verdict == "password" and not channel.password_verifier:
+        # A former invite-only room (migration 0007) before anyone set its
+        # password: nobody joins until its creator or staff do.
+        raise RoomRefused(_("This room has no password yet; its creator or staff set one."), 403)
     if verdict == "password":
         lim = limits()
         user_limit, user_window = lim["password_user"]
@@ -133,28 +133,6 @@ def join(user, channel, *, password: str = ""):
         member.is_active = True
         member.save(update_fields=["is_active"])
     return created
-
-
-def add_member(actor, channel, username: str):
-    from django.contrib.auth import get_user_model
-
-    from toto.people.models import Person
-
-    from . import permissions
-    from .models import ForumMember
-
-    if not permissions.can_manage_members(actor, channel):
-        raise RoomRefused(_("Only the room's creator or staff add members."), 403)
-    user = get_user_model().objects.filter(username=(username or "").strip()).first()
-    person = Person.objects.filter(user=user).first() if user else None
-    if person is None:
-        raise RoomRefused(_("No member with that username."), 404)
-    member, _created = ForumMember.objects.get_or_create(
-        channel=channel, person=person, defaults={"is_active": True})
-    if not member.is_active:
-        member.is_active = True
-        member.save(update_fields=["is_active"])
-    return member
 
 
 def remove_member(actor, channel, member_pk):

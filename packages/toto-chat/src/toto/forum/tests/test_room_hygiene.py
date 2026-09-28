@@ -674,6 +674,41 @@ class SettingsTabTests(RoomHygieneBase):
         self.assertNotIn(b"beta-secret", text)
         self.assertEqual([n for n in archive.namelist() if "beta" in n], [])
 
+    def test_the_archive_is_its_own_staff_only_tab(self):
+        """2026-09-28: the archive left Settings for a tab of its own."""
+        from toto.forum.models import ForumMember
+
+        archive = reverse("forum:room_archive", args=[self.alpha.slug])
+        stats = reverse("forum:room_stats", args=[self.alpha.slug])
+        self.client.force_login(self.member)
+        self.assertEqual(self.client.get(archive).status_code, 403)
+        self.assertNotContains(self.client.get(stats), 'data-testid="room-archive-tab"')
+
+        from toto.people.models import Person
+
+        staff_person = Person.objects.create(user=self.staff, display_name="S")
+        ForumMember.objects.create(channel=self.alpha, person=staff_person, is_active=True)
+        self.client.force_login(self.staff)
+        self.assertContains(self.client.get(stats), 'data-testid="room-archive-tab"')
+        response = self.client.get(archive)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["active_tab"], "archive")
+        self.assertContains(response, "Download archive")
+        self.assertContains(response, reverse("forum:room_export_download", args=[self.alpha.slug]))
+        settings_page = self.client.get(reverse("forum:room_settings", args=[self.alpha.slug]))
+        self.assertNotContains(settings_page, "Download archive")
+        self.assertContains(settings_page, "from the Archive tab")
+
+    def test_an_archive_too_large_goes_back_to_the_archive_tab(self):
+        from unittest import mock
+
+        self.client.force_login(self.staff)
+        with mock.patch.object(export, "survey", side_effect=export.ExportTooLarge("too big")):
+            response = self.client.post(
+                reverse("forum:room_export_download", args=[self.alpha.slug]))
+        self.assertRedirects(response, reverse("forum:room_archive", args=[self.alpha.slug]),
+                             fetch_redirect_response=False)
+
     def test_every_write_endpoint_is_staff_only(self):
         self.client.force_login(self.member)
         for name in ("room_retention", "room_retention_reset",
