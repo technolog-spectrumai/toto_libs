@@ -703,7 +703,7 @@ class SettingsTabTests(RoomHygieneBase):
         from unittest import mock
 
         self.client.force_login(self.staff)
-        with mock.patch.object(export, "survey", side_effect=export.ExportTooLarge("too big")):
+        with mock.patch.object(export, "survey", side_effect=export.ExportTooLarge("messages", 10, 11)):
             response = self.client.post(
                 reverse("forum:room_export_download", args=[self.alpha.slug]))
         self.assertRedirects(response, reverse("forum:room_archive", args=[self.alpha.slug]),

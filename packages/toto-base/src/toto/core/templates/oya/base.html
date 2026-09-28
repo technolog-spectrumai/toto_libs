@@ -115,7 +115,10 @@
       ? `bg-footer-bg-dark text-footer-text-dark {{ platform.theme.footer.dark }}`
       : `bg-footer-bg-light text-footer-text-light {{ platform.theme.footer.light }}`"
     class="py-4 mt-8 text-center shadow-lg">
-    <p>&copy; {% blocktrans with author=platform.author|default:platform.site_name %}{{ author }}. All rights reserved.{% endblocktrans %}</p>
+    {% comment %}firstof, not |default:platform.site_name — a filter ARGUMENT that does not resolve raises, and
+       the 402 page renders this footer with no platform in the context at all.{% endcomment %}
+    {% firstof platform.author platform.site_name as copyright_holder %}
+    <p>&copy; {% blocktrans with author=copyright_holder %}{{ author }}. All rights reserved.{% endblocktrans %}</p>
   </footer>
   {% endblock %}
 
