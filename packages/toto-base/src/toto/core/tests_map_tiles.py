@@ -49,6 +49,13 @@ class MapTileTests(SimpleTestCase):
         self.assertIn('box.classList.toggle("toto-dark-tiles"', source)
         self.assertIn("Alpine.effect", source)
 
+    def test_native_controls_follow_dark_mode(self):
+        """`color-scheme` follows darkMode on <html>, so a field Django rendered
+        without classes is not light text in a white box on a dark page (the
+        forum cleanup form, 2026-09-28)."""
+        source = Path(get_template("oya/base.html").origin.name).read_text(encoding="utf-8")
+        self.assertIn(""":style="darkMode ? 'color-scheme: dark' : 'color-scheme: light'""", source)
+
     def test_the_base_template_carries_the_dark_tile_filter(self):
         source = Path(get_template("oya/base.html").origin.name).read_text(encoding="utf-8")
         self.assertIn(".toto-dark-tiles", source)

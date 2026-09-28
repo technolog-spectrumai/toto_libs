@@ -674,6 +674,19 @@ class SettingsTabTests(RoomHygieneBase):
         self.assertNotIn(b"beta-secret", text)
         self.assertEqual([n for n in archive.namelist() if "beta" in n], [])
 
+    def test_the_cleanup_fields_take_the_cards_colours(self):
+        """Transparent on the card in light and dark mode alike — the retention
+        field was a white box in dark mode (2026-09-28)."""
+        self.client.force_login(self.staff)
+        page = self.client.get(reverse("forum:room_settings", args=[self.alpha.slug])).content.decode()
+        import re
+
+        for name in ("retention_days", "confirm"):
+            field = re.search(r'<input[^>]*name="%s"[^>]*>' % name, page)
+            self.assertIsNotNone(field, name)
+            self.assertIn("bg-transparent", field.group(0))
+            self.assertIn("text-inherit", field.group(0))
+
     def test_the_archive_is_its_own_staff_only_tab(self):
         """2026-09-28: the archive left Settings for a tab of its own."""
         from toto.forum.models import ForumMember

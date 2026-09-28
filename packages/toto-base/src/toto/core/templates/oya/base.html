@@ -4,7 +4,8 @@
 
 {% get_current_language as LANGUAGE_CODE %}
 <!DOCTYPE html>
-<html lang="{{ LANGUAGE_CODE }}" x-data="{ darkMode: localStorage.getItem('darkMode') === 'true' }">
+<html lang="{{ LANGUAGE_CODE }}" x-data="{ darkMode: localStorage.getItem('darkMode') === 'true' }"
+      :style="darkMode ? 'color-scheme: dark' : 'color-scheme: light'">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -47,6 +48,12 @@
        OpenStreetMap's own tiles, darkened here. A layer opts in with
        L.tileLayer(url, {className: "toto-dark-tiles"}). */
     .toto-dark-tiles { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
+    /* `color-scheme` on <html> (bound to darkMode above, 2026-09-28): the
+       browser draws its own controls — an input Django rendered without a
+       class, a number spinner, a date picker, a scrollbar — in the page's
+       scheme. Tailwind's preflight makes a control's TEXT inherit but leaves
+       its background the browser's white, so every unthemed field was light
+       text in a white box on a dark page. Themed fields keep their classes. */
   </style>
   <script>
     /* totoTileLayer(map[, options]) — the OpenStreetMap layer for any Leaflet
