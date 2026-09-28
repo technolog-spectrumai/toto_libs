@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.urls import reverse
 from django.utils.html import strip_tags
@@ -33,6 +34,14 @@ CIRCLE_CARRIES_NOTHING = _(
     "community's before making it a circle.")
 CIRCLE_STANDS_ALONE = _(
     "A circle stands alone: it has no parent and is no community's parent.")
+CIRCLE_ONLY_SPEED = _(
+    "Only a circle sets how fast mana refills: clear the speeds before making "
+    "this a functional community.")
+
+#: The mana pools a circle may set a refill speed for (2026-09-28), one
+#: ``regen_<pool>`` column each — the same three roles ``toto.mana`` names.
+#: Written out here because socialhub does not depend on the mana app.
+REGEN_POOLS = ("security", "compute", "storage")
 
 #: The rows that put a community on the money axis: its privilege here and,
 #: where ``toto.subscriptions`` is installed, its plan offers and discount.
@@ -54,7 +63,7 @@ class CommunityQuerySet(models.QuerySet):
         return self.filter(is_circle=False)
 
     def circles(self):
-        """Communities that carry wiki reading, and nothing else."""
+        """Communities that carry wiki reading and mana refill speed."""
         return self.filter(is_circle=True)
 
     def listed_for(self, user):
@@ -152,9 +161,10 @@ class Community(DomainEntity):
         ),
     )
     #: A CIRCLE (2026-09-28) — ``seniors``, ``newcomers``, ``board`` — decides
-    #: who may READ a wiki page, and nothing else. A functional community —
+    #: who may READ a wiki page, and how fast its members' mana refills
+    #: (stage 17), and nothing else. A functional community —
     #: ``devs``, ``testers`` — carries plan offers, discounts and privileges,
-    #: and never reading. Orthogonal on purpose: one membership list,
+    #: and never reading or refill speed. Orthogonal on purpose: one membership list,
     #: ``Person.communities``, serves both axes, and each axis refuses the
     #: other in several layers (README, "Functional communities and circles").
     #: A circle is hidden from members, joined only through the admin, and
@@ -164,11 +174,29 @@ class Community(DomainEntity):
         default=False,
         db_index=True,
         help_text=_(
-            "A circle decides who may read wiki pages, and nothing else: no "
-            "plan offers, no discounts, no privileges. Hidden from members; "
-            "a superuser adds its members."
+            "A circle decides who may read wiki pages and how fast its "
+            "members' mana refills: no plan offers, no discounts, no "
+            "privileges. Hidden from members; a superuser adds its members."
         ),
     )
+
+    #: How fast each mana pool refills for this circle's members, per hour
+    #: (2026-09-28). Blank is "the pool's own rate"; a person in several
+    #: circles gets the fastest speed any of them sets, pool by pool. Circles
+    #: only — a functional community carries none (``clean``), and the hourly
+    #: faucet reads circles alone, so a speed left on one grants nothing.
+    regen_security = models.DecimalField(
+        _("security mana per hour"), max_digits=12, decimal_places=4,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+        help_text=_("Blank: the pool's own rate."))
+    regen_compute = models.DecimalField(
+        _("compute mana per hour"), max_digits=12, decimal_places=4,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+        help_text=_("Blank: the pool's own rate."))
+    regen_storage = models.DecimalField(
+        _("storage mana per hour"), max_digits=12, decimal_places=4,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+        help_text=_("Blank: the pool's own rate."))
 
     objects = CommunityQuerySet.as_manager()
 
@@ -205,6 +233,16 @@ class Community(DomainEntity):
             raise ValidationError({"is_circle": CIRCLE_STANDS_ALONE})
         if self.parent_id and Community.objects.circles().filter(pk=self.parent_id).exists():
             raise ValidationError({"parent": CIRCLE_STANDS_ALONE})
+        if not self.is_circle and any(
+                getattr(self, f"regen_{pool}") is not None for pool in REGEN_POOLS):
+            raise ValidationError({"is_circle": CIRCLE_ONLY_SPEED})
+
+    def regen_speeds(self) -> dict:
+        """``{pool: speed}`` for the pools this circle sets; empty otherwise."""
+        if not self.is_circle:
+            return {}
+        return {pool: getattr(self, f"regen_{pool}") for pool in REGEN_POOLS
+                if getattr(self, f"regen_{pool}") is not None}
 
     def carries_the_money_axis(self) -> bool:
         """Whether a privilege, a plan offer or a discount names this community."""
@@ -274,8 +312,8 @@ class CommunityPrivilege(models.Model):
     A community without a row grants nothing — the commoner default, free to
     resolve.
 
-    **A circle grants nothing** (2026-09-28): circles carry wiki reading and no
-    rights. A row naming one is refused here (``clean`` and ``save``), the
+    **A circle grants nothing** (2026-09-28): circles carry wiki reading and
+    mana refill speed, and no rights. A row naming one is refused here (``clean`` and ``save``), the
     admin offers no inline for it, and ``privileges.has_privilege`` skips
     circles should a row exist anyway — three layers, one rule.
 
