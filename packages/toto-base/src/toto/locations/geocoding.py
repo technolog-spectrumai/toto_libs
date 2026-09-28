@@ -135,6 +135,21 @@ def first_match(user, query) -> dict | None:
     return results[0] if results else None
 
 
+def clean_query(query) -> str:
+    """``query`` with its whitespace folded, or GeocodingError 400 when it is
+    too short or too long for a search. Route search checks every typed name
+    with it before the first is looked up, so a bad second name cannot be
+    refused after the first was charged."""
+    text = " ".join(str(query or "").split())
+    if len(text) < QUERY_MIN:
+        raise GeocodingError(
+            _("Type at least %(n)d characters to search.") % {"n": QUERY_MIN}, 400)
+    if len(text) > QUERY_MAX:
+        raise GeocodingError(
+            _("Search for at most %(n)d characters.") % {"n": QUERY_MAX}, 400)
+    return text
+
+
 def check_affordable(user, n=1) -> None:
     """Raise the billing refusal ``n`` lookups would meet, before any of them.
 
@@ -149,7 +164,7 @@ def search_answer(user, query) -> Answer:
     report it)."""
     _require_member(user)
     config = _config()
-    text = _clean_query(query)
+    text = clean_query(query)
     key = _cache_key("search", config, text.casefold())
     return _lookup(user, key, SEARCH_LABEL, lambda: search_places(text, config))
 
@@ -181,17 +196,6 @@ def _config():
     if not geocoding_enabled(config):
         raise GeocodingError(_("Place lookup is not available on this server."), 404)
     return config
-
-
-def _clean_query(query):
-    text = " ".join(str(query or "").split())
-    if len(text) < QUERY_MIN:
-        raise GeocodingError(
-            _("Type at least %(n)d characters to search.") % {"n": QUERY_MIN}, 400)
-    if len(text) > QUERY_MAX:
-        raise GeocodingError(
-            _("Search for at most %(n)d characters.") % {"n": QUERY_MAX}, 400)
-    return text
 
 
 def _clean_point(lat, lng):
@@ -263,9 +267,11 @@ def _lookup(user, key, label, ask) -> Answer:
         try:
             value = ask()
         except GeocodingUnavailable:
+            # "This lookup": a route search may have paid for its first
+            # name a moment ago, in the same request.
             raise GeocodingError(
                 _("Place lookup is not answering. Try again later; "
-                  "nothing was charged."), 503) from None
+                  "this lookup was not charged."), 503) from None
         _cache_set(key, value)
     else:
         value = cached

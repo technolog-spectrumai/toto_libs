@@ -3,7 +3,7 @@ import json
 import yaml
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from django.apps import apps
 from django.conf import settings
@@ -29,7 +29,7 @@ from .models import (
 )
 from . import geocoding
 from .forms import AddressCreateForm
-from .geocode import reverse_geocode_address, forward_geocode_locations
+from .geocode import geocoding_enabled, geocoding_headers, geocoding_settings
 
 
 ROUTING_MODE_OPTIONS = (
@@ -385,6 +385,10 @@ def locations_all(request):
             }
             for f in vault_geojson_files
         ]),
+        # The map's web search is a charged place lookup; a host that makes
+        # no outbound calls renders none, and Enter keeps meaning "the first
+        # match on this map".
+        "geocoding_enabled": geocoding_enabled(geocoding_settings()),
         **LocationContextPlugin.get_context(),
     }
 
@@ -553,9 +557,13 @@ def fetch_traversable_route(start_lng, start_lat, end_lng, end_lat, mode):
         "alternatives": "false",
     })
     url = f"{endpoint}/{coordinates}?{query}"
+    # The routing service is OpenStreetMap's too, and its usage policy asks
+    # for the same identifying User-Agent the geocoder sends; urllib's default
+    # is the anonymous traffic such services throttle first.
+    request = Request(url, headers=geocoding_headers(geocoding_settings()))
 
     try:
-        with urlopen(url, timeout=12) as response:
+        with urlopen(request, timeout=12) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         raise ValueError(f"Routing service returned HTTP {exc.code}.") from exc
@@ -600,6 +608,138 @@ def selected_address_coordinates(address_id, label):
     return address_coordinates(address)
 
 
+# ---------------------------------------------------------------------
+# Typed places (2026-09-28): a route from "Gdansk" to "Warsaw". Each name is
+# one charged place lookup (toto.locations.geocoding), so the page resolves
+# names only on a POST (CSRF, never a link) and then redirects to the GET
+# that draws the route. That URL carries the answer — coordinates, the
+# provider's label, and `<side>_resolved`, the text they answer — so a reload,
+# a new mode or a re-submit with the same text asks nobody and costs nothing.
+# ---------------------------------------------------------------------
+
+ROUTE_ENDS = (("start", "Start"), ("end", "End"))
+
+
+def typed_place(value):
+    """A typed place name with its whitespace folded; "" for none."""
+    return " ".join(str(value or "").split())
+
+
+def lookup_typed_places(user, names):
+    """Yield (side, name, match or None) for each typed name in ``names``.
+
+    ``names`` is [(side, text)]; an empty text is skipped. The whole batch is
+    checked — every name's length, then the quota and the purse — before the
+    first lookup, so the second name cannot be refused for bad input or money
+    after the first was charged. A generator, so a caller keeps what resolved
+    before a refusal (throttle, provider down) stopped the rest: those lookups
+    are paid for.
+    """
+    pending = [(side, name) for side, name in names if name]
+    if not pending:
+        return
+    for _side, name in pending:
+        geocoding.clean_query(name)
+    geocoding.check_affordable(user, len(pending))
+    for side, name in pending:
+        yield side, name, geocoding.first_match(user, name)
+
+
+def no_place_found(name):
+    return _("No place found for '%(name)s'.") % {"name": name}
+
+
+def _route_form(params, default_start, default_end):
+    form = {
+        "mode": params.get("mode", "car"),
+        "start_address": params.get("start_address", str(default_start.pk) if default_start else ""),
+        "end_address": params.get("end_address", str(default_end.pk) if default_end else ""),
+        "start_lat": params.get("start_lat", str(default_start.geometry.y) if default_start else "54.3487"),
+        "start_lng": params.get("start_lng", str(default_start.geometry.x) if default_start else "18.6538"),
+        "end_lat": params.get("end_lat", str(default_end.geometry.y) if default_end else "54.4067"),
+        "end_lng": params.get("end_lng", str(default_end.geometry.x) if default_end else "18.6717"),
+    }
+
+    for side, _label in ROUTE_ENDS:
+        query = typed_place(params.get(f"{side}_query"))
+        form[f"{side}_query"] = query
+        # Markers for a cleared box are dropped, not carried: they describe
+        # a name nobody is asking for any more.
+        form[f"{side}_resolved"] = typed_place(params.get(f"{side}_resolved")) if query else ""
+        form[f"{side}_label"] = str(params.get(f"{side}_label") or "").strip() if query else ""
+
+    return form
+
+
+def _is_resolved(form, side):
+    query = form[f"{side}_query"]
+    return bool(query) and query == form[f"{side}_resolved"]
+
+
+def _route_end(form, side, label):
+    """(lng, lat) for one end: a typed place (resolved already), else the
+    saved address, else the typed coordinates. The typed name wins over the
+    address select, which always has a default."""
+    if form[f"{side}_query"]:
+        if not _is_resolved(form, side):
+            # Only a POST asks the provider; a GET naming a place (an old
+            # link, a hand-edited URL) must not spend anybody's mana.
+            raise ValueError(_("'%(name)s' has not been looked up yet: press Search route.")
+                             % {"name": form[f"{side}_query"]})
+    else:
+        selected = selected_address_coordinates(form[f"{side}_address"], label)
+        if selected:
+            lng, lat = selected
+            form[f"{side}_lng"] = str(lng)
+            form[f"{side}_lat"] = str(lat)
+            return lng, lat
+
+    lat = parse_coordinate(form[f"{side}_lat"], f"{label} latitude", -90, 90)
+    lng = parse_coordinate(form[f"{side}_lng"], f"{label} longitude", -180, 180)
+    return lng, lat
+
+
+def _resolve_route_places(user, form):
+    """Look up the typed names that are not resolved yet, writing each answer
+    into ``form`` as it comes, so the page shows what was paid for even when a
+    later name fails. Raises ValueError naming every place nothing was found
+    for, or a billing/geocoding refusal."""
+    if form["mode"] not in {mode["value"] for mode in ROUTING_MODE_OPTIONS}:
+        raise ValueError("Mode must be car, bicycle, foot, or public transport.")
+
+    # The free end first: a route with a broken end must not be refused after
+    # the other end's lookup was charged.
+    for side, label in ROUTE_ENDS:
+        if not form[f"{side}_query"]:
+            _route_end(form, side, label)
+
+    names = [(side, form[f"{side}_query"]) for side, _label in ROUTE_ENDS
+             if form[f"{side}_query"] and not _is_resolved(form, side)]
+    missing = []
+
+    for side, name, match in lookup_typed_places(user, names):
+        if match is None:
+            missing.append(no_place_found(name))
+            continue
+        form[f"{side}_lat"] = str(match["lat"])
+        form[f"{side}_lng"] = str(match["lng"])
+        form[f"{side}_label"] = match.get("label") or match.get("name") or name
+        form[f"{side}_resolved"] = name
+        form[f"{side}_address"] = ""
+
+    if missing:
+        raise ValueError(" ".join(missing))
+
+
+def _route_end_name(form, side, address_labels):
+    """What the default route name calls one end."""
+    if _is_resolved(form, side):
+        return form[f"{side}_query"]
+    if not form[f"{side}_query"] and form[f"{side}_address"] in address_labels:
+        return address_labels[form[f"{side}_address"]]
+    return f"{form[f'{side}_lat']}, {form[f'{side}_lng']}"
+
+
 @login_required
 def route_search(request):
     addresses = list(
@@ -611,42 +751,29 @@ def route_search(request):
     default_start = addresses[0] if addresses else None
     default_end = addresses[1] if len(addresses) > 1 else default_start
 
-    form = {
-        "mode": request.GET.get("mode", "car"),
-        "start_address": request.GET.get("start_address", str(default_start.pk) if default_start else ""),
-        "end_address": request.GET.get("end_address", str(default_end.pk) if default_end else ""),
-        "start_lat": request.GET.get("start_lat", str(default_start.geometry.y) if default_start else "54.3487"),
-        "start_lng": request.GET.get("start_lng", str(default_start.geometry.x) if default_start else "18.6538"),
-        "end_lat": request.GET.get("end_lat", str(default_end.geometry.y) if default_end else "54.4067"),
-        "end_lng": request.GET.get("end_lng", str(default_end.geometry.x) if default_end else "18.6717"),
-    }
+    params = request.POST if request.method == "POST" else request.GET
+    form = _route_form(params, default_start, default_end)
 
     route = None
     error = ""
 
-    if request.GET:
+    if request.method == "POST":
+        try:
+            _resolve_route_places(request.user, form)
+        except (ValueError, *geocoding.REFUSALS) as exc:
+            # Shown in the page's error box: "No place found for ...", the
+            # mana sentence, a throttle. What did resolve stays in the form.
+            error = str(exc)
+        else:
+            return redirect(f"{reverse('locations:route_search')}?{urlencode(form)}")
+
+    elif request.GET:
         try:
             if form["mode"] not in {mode["value"] for mode in ROUTING_MODE_OPTIONS}:
                 raise ValueError("Mode must be car, bicycle, foot, or public transport.")
 
-            start_selected = selected_address_coordinates(form["start_address"], "Start")
-            end_selected = selected_address_coordinates(form["end_address"], "End")
-
-            if start_selected:
-                start_lng, start_lat = start_selected
-                form["start_lng"] = str(start_lng)
-                form["start_lat"] = str(start_lat)
-            else:
-                start_lat = parse_coordinate(form["start_lat"], "Start latitude", -90, 90)
-                start_lng = parse_coordinate(form["start_lng"], "Start longitude", -180, 180)
-
-            if end_selected:
-                end_lng, end_lat = end_selected
-                form["end_lng"] = str(end_lng)
-                form["end_lat"] = str(end_lat)
-            else:
-                end_lat = parse_coordinate(form["end_lat"], "End latitude", -90, 90)
-                end_lng = parse_coordinate(form["end_lng"], "End longitude", -180, 180)
+            start_lng, start_lat = _route_end(form, "start", "Start")
+            end_lng, end_lat = _route_end(form, "end", "End")
 
             route = fetch_traversable_route(
                 start_lng,
@@ -669,11 +796,15 @@ def route_search(request):
         }
         for address in addresses
     ]
+    address_labels = {option["id"]: option["label"] for option in address_options}
 
     selected_mode = next(
-        mode for mode in ROUTING_MODE_OPTIONS
-        if mode["value"] == form["mode"]
+        (mode for mode in ROUTING_MODE_OPTIONS if mode["value"] == form["mode"]),
+        ROUTING_MODE_OPTIONS[0],
     )
+
+    start_name = _route_end_name(form, "start", address_labels)
+    end_name = _route_end_name(form, "end", address_labels)
 
     context = {
         "form": form,
@@ -682,6 +813,15 @@ def route_search(request):
         "selected_mode": selected_mode,
         "route": route,
         "route_json": json.dumps(route),
+        "route_name": f"{start_name} → {end_name}"[:200],
+        # What the map's two markers say: the place's label, else the name.
+        "point_labels": {
+            "start": form["start_label"] if _is_resolved(form, "start") else start_name,
+            "end": form["end_label"] if _is_resolved(form, "end") else end_name,
+        },
+        "start_resolved": _is_resolved(form, "start"),
+        "end_resolved": _is_resolved(form, "end"),
+        "geocoding_enabled": geocoding_enabled(geocoding_settings()),
         "error": error,
     }
 
@@ -707,6 +847,14 @@ def route_review(request, pk):
 
 @login_required
 def address_create(request):
+    """The new-address form, opened blank or from a map click (?lat=&lng=).
+
+    Nothing is looked up when the page opens (2026-09-28). The point used to
+    be reverse-geocoded on every GET; that is a charged place lookup now, and
+    opening a form is not asking for one. The point prefills the coordinates,
+    and "Fill from the map point" asks the provider at its price, filling only
+    the fields the member left empty.
+    """
     initial_latitude = request.GET.get("lat")
     initial_longitude = request.GET.get("lng")
 
@@ -721,11 +869,6 @@ def address_create(request):
             return redirect("locations:address_detail", pk=address.pk)
 
     else:
-        geocoded_initial = reverse_geocode_address(
-            initial_latitude,
-            initial_longitude,
-        )
-
         query_initial = {
             "country_name": request.GET.get("country", ""),
             "state_or_province_name": request.GET.get("region", ""),
@@ -735,12 +878,9 @@ def address_create(request):
         }
 
         initial = {
-            **geocoded_initial,
-            **{
-                key: value
-                for key, value in query_initial.items()
-                if value not in (None, "")
-            },
+            key: value
+            for key, value in query_initial.items()
+            if value not in (None, "")
         }
 
         form = AddressCreateForm(
@@ -753,6 +893,7 @@ def address_create(request):
         "form": form,
         "latitude": initial_latitude or "",
         "longitude": initial_longitude or "",
+        "geocoding_enabled": geocoding_enabled(geocoding_settings()),
     }
 
     return render(
@@ -846,8 +987,8 @@ def route_save(request):
 # Both work on a GIS-off host too (urls.py exempts them).
 # ---------------------------------------------------------------------
 
-def _geocoding_refusal(exc):
-    response = JsonResponse({"error": str(exc)}, status=exc.status_code)
+def _geocoding_refusal(exc, **extra):
+    response = JsonResponse({"error": str(exc), **extra}, status=exc.status_code)
     if getattr(exc, "retry_after", None):
         response["Retry-After"] = str(exc.retry_after)
     return response

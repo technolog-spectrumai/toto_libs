@@ -181,26 +181,81 @@ class MapLayersApiView(MeshGatedApiView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class RouteSearchApiView(CorsApiView):
+    """A route between two points, each given as coordinates or, since
+    2026-09-28, as a typed place (``start_query`` / ``end_query``).
+
+    A typed place is a charged place lookup (toto.locations.geocoding): both
+    are checked against the quota and the purse before the first is asked,
+    and a refusal answers ``{"error"}`` with its own status. A refusal that
+    comes after a lookup was charged also carries that end (``"start"``:
+    {lat, lng, label}), paid for and not to be asked again. The answer's
+    properties name each end as it was resolved.
+    """
+
     def post(self, request):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
+        # csrf_exempt for the desktop clients' Bearer token, and a typed place
+        # spends mana now: a cookie-authenticated write a browser sent from
+        # another site is refused, as the forum's JSON doors refuse it.
+        from toto.api.fetch_metadata import cross_site_refusal
+
+        refused = cross_site_refusal(request)
+        if refused is not None:
+            return refused
         try:
             data = json.loads(request.body)
         except (json.JSONDecodeError, ValueError):
             return JsonResponse({"error": "Invalid JSON."}, status=400)
+        if not isinstance(data, dict):
+            return JsonResponse({"error": "Invalid JSON."}, status=400)
 
-        from toto.locations.views import fetch_traversable_route, parse_coordinate, ROUTING_MODE_OPTIONS
+        from toto.locations import geocoding
+        from toto.locations.views import (
+            ROUTE_ENDS, ROUTING_MODE_OPTIONS, _geocoding_refusal,
+            fetch_traversable_route, lookup_typed_places, no_place_found,
+            parse_coordinate, typed_place,
+        )
 
         mode = data.get("mode", "car")
-        if mode not in {m["value"] for m in ROUTING_MODE_OPTIONS}:
+        if not isinstance(mode, str) or mode not in {m["value"] for m in ROUTING_MODE_OPTIONS}:
             return JsonResponse({"error": "Invalid mode."}, status=400)
 
+        names = {side: typed_place(data.get(f"{side}_query")) for side, _label in ROUTE_ENDS}
+        ends = {}
+        # The typed ends looked up (and charged) so far. Every refusal after
+        # the first carries them, so a client retries with coordinates rather
+        # than paying for the same name again.
+        paid = {}
+
         try:
-            start_lat = parse_coordinate(data.get("start_lat"), "Start latitude", -90, 90)
-            start_lng = parse_coordinate(data.get("start_lng"), "Start longitude", -180, 180)
-            end_lat = parse_coordinate(data.get("end_lat"), "End latitude", -90, 90)
-            end_lng = parse_coordinate(data.get("end_lng"), "End longitude", -180, 180)
-            result = fetch_traversable_route(start_lng, start_lat, end_lng, end_lat, mode)
-            return JsonResponse(result)
+            # The coordinates first: a malformed end is refused before the
+            # other end's lookup is charged.
+            for side, label in ROUTE_ENDS:
+                if not names[side]:
+                    ends[side] = {
+                        "lat": parse_coordinate(data.get(f"{side}_lat"), f"{label} latitude", -90, 90),
+                        "lng": parse_coordinate(data.get(f"{side}_lng"), f"{label} longitude", -180, 180),
+                        "label": "",
+                    }
+
+            for side, name, match in lookup_typed_places(request.user, names.items()):
+                if match is None:
+                    # Stop here: the next name is not asked, so not charged,
+                    # for a route that cannot be drawn.
+                    return JsonResponse({"error": no_place_found(name), **paid}, status=400)
+                ends[side] = paid[side] = {
+                    "lat": match["lat"], "lng": match["lng"],
+                    "label": match.get("label") or match.get("name") or name}
+
+            result = fetch_traversable_route(
+                ends["start"]["lng"], ends["start"]["lat"],
+                ends["end"]["lng"], ends["end"]["lat"], mode)
+        except geocoding.REFUSALS as exc:
+            return _geocoding_refusal(exc, **paid)
         except ValueError as exc:
-            return JsonResponse({"error": str(exc)}, status=400)
+            return JsonResponse({"error": str(exc), **paid}, status=400)
+
+        result["properties"]["start"] = ends["start"]
+        result["properties"]["end"] = ends["end"]
+        return JsonResponse(result)

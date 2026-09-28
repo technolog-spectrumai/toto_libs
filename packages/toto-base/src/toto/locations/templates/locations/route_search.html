@@ -1,6 +1,7 @@
 {% extends "locations/base.html" %}
 {% load static %}
 {% load i18n %}
+{% load quota_tags %}
 
 {% block title %}{% trans "Route Search" %} - {{ platform.site_name }}{% endblock %}
 
@@ -50,12 +51,15 @@
         </h1>
 
         <p class="mt-2 text-sm opacity-70">
-          {% trans "Search a real route between two saved addresses or manual WGS84 points." %}
+          {% if geocoding_enabled %}{% trans "Search a real route between two places you type, saved addresses, or manual WGS84 points." %}{% else %}{% trans "Search a real route between two saved addresses or manual WGS84 points." %}{% endif %}
         </p>
       </div>
 
-      <!-- Search form -->
-      <form method="get" class="mt-5 space-y-4">
+      <!-- Search form. A GET, which draws the route for free; the script
+           below turns it into a POST (with the CSRF token) only when a typed
+           place still has to be looked up, since that spends mana. -->
+      <form method="get" id="route-search-form" class="mt-5 space-y-4">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}" disabled>
 
         <!-- Mode -->
         <div>
@@ -128,8 +132,34 @@
 
           <h2 class="text-sm font-semibold">{% trans "Start point" %}</h2>
 
+          {% if geocoding_enabled %}
+            <label class="mt-3 block">
+              <span class="mb-1 block text-xs opacity-70">{% trans "From: a place or address" %}</span>
+              <input
+                id="start_query"
+                name="start_query"
+                type="search"
+                value="{{ form.start_query }}"
+                autocomplete="off"
+                placeholder="{% trans 'e.g. Gdańsk' %}"
+                :class="darkMode
+                  ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark placeholder:text-text-main-dark/50'
+                  : 'border-accent-2 bg-bubble-bg-light text-text-main-light placeholder:text-text-main-light/50'"
+                class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+            </label>
+            {# The text these coordinates answer and the provider's label for it: the same text again reuses them. #}
+            <input type="hidden" name="start_resolved" value="{{ form.start_resolved }}">
+            <input type="hidden" name="start_label" value="{{ form.start_label }}">
+            {% if start_resolved %}
+              <p class="mt-1 flex items-start gap-1.5 text-xs opacity-70" data-testid="start-place">
+                <i class="fa-solid fa-location-dot mt-0.5" aria-hidden="true"></i>
+                <span>{{ form.start_label }}</span>
+              </p>
+            {% endif %}
+          {% endif %}
+
           <label class="mt-3 block">
-            <span class="mb-1 block text-xs opacity-70">{% trans "Saved address" %}</span>
+            <span class="mb-1 block text-xs opacity-70">{% if geocoding_enabled %}{% trans "or a saved address" %}{% else %}{% trans "Saved address" %}{% endif %}</span>
 
             <select
               id="start_address"
@@ -191,8 +221,34 @@
 
           <h2 class="text-sm font-semibold">{% trans "End point" %}</h2>
 
+          {% if geocoding_enabled %}
+            <label class="mt-3 block">
+              <span class="mb-1 block text-xs opacity-70">{% trans "To: a place or address" %}</span>
+              <input
+                id="end_query"
+                name="end_query"
+                type="search"
+                value="{{ form.end_query }}"
+                autocomplete="off"
+                placeholder="{% trans 'e.g. Warszawa' %}"
+                :class="darkMode
+                  ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark placeholder:text-text-main-dark/50'
+                  : 'border-accent-2 bg-bubble-bg-light text-text-main-light placeholder:text-text-main-light/50'"
+                class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+            </label>
+            {# The text these coordinates answer and the provider's label for it: the same text again reuses them. #}
+            <input type="hidden" name="end_resolved" value="{{ form.end_resolved }}">
+            <input type="hidden" name="end_label" value="{{ form.end_label }}">
+            {% if end_resolved %}
+              <p class="mt-1 flex items-start gap-1.5 text-xs opacity-70" data-testid="end-place">
+                <i class="fa-solid fa-location-dot mt-0.5" aria-hidden="true"></i>
+                <span>{{ form.end_label }}</span>
+              </p>
+            {% endif %}
+          {% endif %}
+
           <label class="mt-3 block">
-            <span class="mb-1 block text-xs opacity-70">{% trans "Saved address" %}</span>
+            <span class="mb-1 block text-xs opacity-70">{% if geocoding_enabled %}{% trans "or a saved address" %}{% else %}{% trans "Saved address" %}{% endif %}</span>
 
             <select
               id="end_address"
@@ -262,6 +318,13 @@
             : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-magnifying-glass-location"></i>{% trans "Search route" %}</button>
+
+        {% if geocoding_enabled %}
+          <p class="flex flex-wrap items-center gap-1.5 text-xs opacity-70" data-testid="route-lookup-price">
+            {% trans "Each typed place is one place lookup, once; saved addresses and coordinates are free." %}
+            {% price_hint "locations.geocode" %}
+          </p>
+        {% endif %}
       </form>
 
       <!-- Result + save route -->
@@ -304,7 +367,7 @@
                 <span class="mb-1 block text-xs font-semibold opacity-70">{% trans "Route name" %}</span>
                 <input
                   name="name"
-                  value="{{ selected_mode.label }} route"
+                  value="{{ route_name }}"
                   :class="darkMode
                     ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
                     : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
@@ -343,6 +406,7 @@
   </div>
 </div>
 
+{{ point_labels|json_script:"route-point-labels" }}
 <script>
   const routeFeature = JSON.parse(`{{ route_json|escapejs }}`);
 
@@ -350,6 +414,8 @@
     start: [Number("{{ form.start_lat }}"), Number("{{ form.start_lng }}")],
     end: [Number("{{ form.end_lat }}"), Number("{{ form.end_lng }}")]
   };
+
+  const pointLabels = JSON.parse(document.getElementById("route-point-labels").textContent);
 
   const currentMode = "{{ form.mode }}";
   let routeMap = null;
@@ -389,26 +455,39 @@
     });
   }
 
-  function bindAddressSelect(selectId, latInputId, lngInputId) {
+  function bindAddressSelect(selectId, latInputId, lngInputId, queryInputId) {
     const select = document.getElementById(selectId);
     const latInput = document.getElementById(latInputId);
     const lngInput = document.getElementById(lngInputId);
+    const queryInput = document.getElementById(queryInputId);
 
     if (!select || !latInput || !lngInput) return;
 
     select.addEventListener("change", function () {
       const option = select.options[select.selectedIndex];
 
+      // A typed place wins over the saved address, so picking one clears it.
+      if (queryInput) queryInput.value = "";
+
       if (!option || !option.dataset.lat || !option.dataset.lng) return;
 
       latInput.value = option.dataset.lat;
       lngInput.value = option.dataset.lng;
+    });
+
+    // So does a coordinate typed by hand: the typed place's label would no
+    // longer name the point the boxes hold.
+    [latInput, lngInput].forEach(function (input) {
+      input.addEventListener("input", function () {
+        if (queryInput) queryInput.value = "";
+      });
     });
   }
 
   function bindGeolocationStart() {
     const button = document.getElementById("find-my-location");
     const startAddress = document.getElementById("start_address");
+    const startQuery = document.getElementById("start_query");
     const startLat = document.getElementById("start_lat");
     const startLng = document.getElementById("start_lng");
 
@@ -427,6 +506,10 @@
 
           if (startAddress) {
             startAddress.value = "";
+          }
+
+          if (startQuery) {
+            startQuery.value = "";
           }
 
           startLat.value = Number(lat).toFixed(6);
@@ -448,11 +531,45 @@
     });
   }
 
+  function foldPlace(value) {
+    return String(value || "").trim().split(/\s+/).filter(Boolean).join(" ");
+  }
+
+  // A typed place that is not resolved yet is a charged lookup, and a
+  // lookup is never a GET: the form posts, with its CSRF token, and the
+  // server redirects back to the GET that draws the route. Anything else
+  // stays a plain, free GET (the token is left out of the URL).
+  function bindPlaceLookup() {
+    const form = document.getElementById("route-search-form");
+
+    if (!form) return;
+
+    form.addEventListener("submit", function () {
+      const pending = ["start", "end"].some(function (side) {
+        const typed = form.elements[`${side}_query`];
+        const resolved = form.elements[`${side}_resolved`];
+        const text = foldPlace(typed && typed.value);
+
+        return Boolean(text) && text !== foldPlace(resolved && resolved.value);
+      });
+
+      form.method = pending ? "post" : "get";
+      form.elements.csrfmiddlewaretoken.disabled = !pending;
+    });
+  }
+
+  function pointPopup(text) {
+    const box = document.createElement("div");
+    box.textContent = text;
+    return box;
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     bindModeSelect();
-    bindAddressSelect("start_address", "start_lat", "start_lng");
-    bindAddressSelect("end_address", "end_lat", "end_lng");
+    bindAddressSelect("start_address", "start_lat", "start_lng", "start_query");
+    bindAddressSelect("end_address", "end_lat", "end_lng", "end_query");
     bindGeolocationStart();
+    bindPlaceLookup();
 
     const isDark = localStorage.getItem("darkMode") === "true";
 
@@ -462,23 +579,13 @@
 
     routeMap = map;
 
-    const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "&copy; OpenStreetMap contributors"
-    });
-
-    const darkTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { className: "toto-dark-tiles",
-      maxZoom: 19,
-      attribution: "&copy; OpenStreetMap contributors"
-    });
-
     const pointLayer = L.layerGroup().addTo(map);
 
     L.control.zoom({
       position: "bottomright"
     }).addTo(map);
 
-    (isDark ? darkTiles : lightTiles).addTo(map);
+    window.totoTileLayer(map);   // dark with the page (oya/base.html)
 
     L.circleMarker(formPoints.start, {
       radius: 7,
@@ -486,7 +593,7 @@
       color: routeThemeColor(isDark),
       fillColor: routeThemeColor(isDark),
       fillOpacity: 0.85
-    }).bindPopup("Start").addTo(pointLayer);
+    }).bindPopup(pointPopup(pointLabels.start || "Start")).addTo(pointLayer);
 
     L.circleMarker(formPoints.end, {
       radius: 7,
@@ -494,7 +601,7 @@
       color: routeThemeColor(isDark),
       fillColor: routeThemeColor(isDark),
       fillOpacity: 0.85
-    }).bindPopup("End").addTo(pointLayer);
+    }).bindPopup(pointPopup(pointLabels.end || "End")).addTo(pointLayer);
 
     if (routeFeature) {
       const routeLayer = L.geoJSON(routeFeature, {
