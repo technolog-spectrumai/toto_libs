@@ -1,6 +1,7 @@
 {% extends "oya/base.html" %}
 {% load static %}
 {% load i18n %}
+{% load quota_tags %}
 
 {% block title %}{{ profile.display_name }}{% endblock %}
 
@@ -442,6 +443,9 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
   view, search by name where the host allows geocoding; nothing is saved
   until Save is pressed, and Cancel discards everything. The map builds
   lazily on first open — leaflet cannot size itself inside a hidden box.
+  A name search and "Save and look up the address" are charged place
+  lookups (2026-09-28): each is its own priced button, and clicking the map
+  or a plain Save costs nothing.
   {% endcomment %}
   <div x-show="addressModal" x-cloak x-transition.opacity
        class="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -464,9 +468,16 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
         {% if geocoding_enabled %}
           <div class="relative">
             <label for="address-search" class="mb-1 block text-sm font-semibold">{% trans "Search for a place" %}</label>
-            <input id="address-search" type="search" autocomplete="off"
-                   placeholder="{% trans 'Street, town, landmark…' %}"
-                   class="w-full rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none">
+            <div class="flex flex-wrap items-center gap-2">
+              <input id="address-search" type="search" autocomplete="off"
+                     placeholder="{% trans 'Street, town, landmark…' %}"
+                     class="min-w-0 flex-1 rounded-lg border border-current/30 bg-transparent px-3 py-2 text-sm text-inherit outline-none">
+              <button type="button" id="address-search-go" data-testid="address-search-go"
+                      class="inline-flex items-center gap-1.5 rounded-lg border border-current/30 px-3 py-2 text-sm font-semibold disabled:opacity-40">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>{% trans "Search" %}</button>
+              {% price_hint "locations.geocode" %}
+            </div>
+            <p id="address-search-note" role="status" class="mt-1 hidden text-xs"></p>
             <ul id="address-search-results"
                 :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                 class="absolute z-20 mt-1 hidden max-h-48 w-full overflow-auto rounded-lg border text-sm shadow-lg"></ul>
@@ -485,10 +496,21 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
                    value="{{ profile.address.longitude|default_if_none:'' }}"
                    class="mt-1 w-36 rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none"></label>
         </div>
-        <div class="mt-5 flex justify-end gap-3">
+        {% if geocoding_enabled %}
+          <p class="mt-4 text-xs opacity-60">
+            {% trans "Save keeps the pin alone. Looking up its street and town is one place lookup." %}</p>
+        {% endif %}
+        <div class="mt-5 flex flex-wrap items-center justify-end gap-3">
           <button type="button" @click="addressModal = false"
                   class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
+          {% comment %}First in the form, so Enter in a coordinate box is the
+             free Save, never the lookup.{% endcomment %}
           <button type="submit" class="rounded-lg border px-4 py-2 text-sm font-bold">{% trans "Save" %}</button>
+          {% if geocoding_enabled %}
+            <button type="submit" name="lookup_address" value="1" data-testid="save-and-look-up"
+                    class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-bold">
+              {% trans "Save and look up the address" %}{% price_hint "locations.geocode" %}</button>
+          {% endif %}
         </div>
       </form>
     </div>
@@ -512,13 +534,11 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
     function build() {
       if (built) { return; }
       built = true;
-      var isDark = localStorage.getItem('darkMode') === 'true';
       var latInput = document.getElementById('address-lat');
       var lonInput = document.getElementById('address-lon');
       var start = [latInput.value || 52.2297, lonInput.value || 21.0122];
       pick = L.map('address-pick-map').setView(start, latInput.value ? 12 : 5);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        {maxZoom: 19, className: isDark ? 'toto-dark-tiles' : '', attribution: '&copy; OpenStreetMap contributors'}).addTo(pick);
+      window.totoTileLayer(pick);   // dark with the page (oya/base.html)
       if (latInput.value && lonInput.value) {
         place(parseFloat(latInput.value), parseFloat(lonInput.value));
       }
@@ -532,20 +552,48 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
       var box = document.getElementById('address-search');
       if (!box) { return; }   // the host allows no geocoding
       var list = document.getElementById('address-search-results');
-      var timer = null;
-      box.addEventListener('input', function () {
-        clearTimeout(timer);
-        timer = setTimeout(run, 350);   // a keystroke is not a query yet
+      var button = document.getElementById('address-search-go');
+      var note = document.getElementById('address-search-note');
+      var failed = '{% trans "Could not search right now." as failed %}{{ failed|escapejs }}';
+      // A search is a charged place lookup: it runs on Enter or the Search
+      // button, never per keystroke, and not again while one is running (a
+      // second Enter would pay twice). Enter must not submit the form around
+      // the box either, which would save the pin.
+      box.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') { event.preventDefault(); run(); }
       });
+      button.addEventListener('click', run);
+
+      function say(text) {
+        note.textContent = text;
+        note.classList.toggle('hidden', !text);
+      }
+
       function run() {
         var query = box.value.trim();
-        if (query.length < 3) { list.classList.add('hidden'); return; }
-        fetch('{% url "socialhub:search_address" %}?q=' + encodeURIComponent(query),
-              {headers: {'Accept': 'application/json'}})
-          .then(function (r) { return r.json(); })
-          .then(function (data) {
+        if (!query || button.disabled) { return; }
+        button.disabled = true;
+        say('');
+        var body = new FormData();
+        body.append('q', query);
+        fetch('{% url "socialhub:search_address" %}', {
+          method: 'POST', body: body, credentials: 'same-origin',
+          headers: {'Accept': 'application/json', 'X-CSRFToken': '{{ csrf_token }}',
+                    'X-Requested-With': 'XMLHttpRequest'}})
+          .then(function (r) {
+            return r.json().catch(function () { return {}; })
+              .then(function (data) { return {ok: r.ok, data: data}; });
+          })
+          .then(function (answer) {
             list.textContent = '';
-            (data.results || []).forEach(function (hit) {
+            if (!answer.ok) {
+              // The server's sentence: out of mana, too many lookups, down.
+              list.classList.add('hidden');
+              say(answer.data.error || failed);
+              return;
+            }
+            var hits = answer.data.results || [];
+            hits.forEach(function (hit) {
               var item = document.createElement('li');
               item.textContent = hit.label;
               item.className = 'cursor-pointer px-3 py-2 hover:opacity-70';
@@ -557,9 +605,14 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
               });
               list.appendChild(item);
             });
-            list.classList.toggle('hidden', !(data.results || []).length);
+            list.classList.toggle('hidden', !hits.length);
+            if (!hits.length) { say('{% trans "No place found." as none %}{{ none|escapejs }}'); }
           })
-          .catch(function () { list.classList.add('hidden'); });
+          .catch(function () {
+            list.classList.add('hidden');
+            say(failed);
+          })
+          .finally(function () { button.disabled = false; });
       }
     }
   })();

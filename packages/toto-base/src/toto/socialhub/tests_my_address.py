@@ -4,32 +4,48 @@
 the suite could WRITE one, so the setting sat there with nothing to share.
 These pin the new door: own profile only by construction, updated in place,
 range-checked, and the search endpoint gated on the host's geocoding config.
+
+Since 2026-09-28 both lookups are charged place lookups
+(`toto.locations.geocoding`): the name search is a POST, and the street and
+town come only from "Save and look up the address" — a plain Save asks
+nobody. The provider is patched at its `urlopen`, so these walk the real
+service: one usage event per answer, none for a refusal.
 """
 
 from __future__ import annotations
 
 from unittest import mock
+from urllib.error import URLError
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.core.cache import cache
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from toto.core.models import Platform
-from toto.locations.models import Address
+from toto.locations.models import Address, LocationsUsageEvent
+from toto.locations.tests_geocoding import DLUGA, GDANSK, SEA, answering, unthrottled
 from toto.people.models import Person
 
 User = get_user_model()
 
 GEOCODING_OFF = {"enabled": False}
+URLOPEN = "toto.locations.geocode.urlopen"
 
 
 class AddressTestCase(TestCase):
     def setUp(self):
         Platform.objects.create(site_name="Test", author="Tests",
                                 publication_year=2026, active=True)
+        # The lookup cache and both throttles live in the cache.
+        cache.clear()
+        unthrottled(self)
         self.user = User.objects.create_user("pinner", password="pw")
         self.client.force_login(self.user)
         self.url = reverse("socialhub:set_my_address")
+
+    def lookups(self):
+        return LocationsUsageEvent.objects.filter(user=self.user).count()
 
 
 @override_settings(LOCATIONS_GEOCODING=GEOCODING_OFF)
@@ -88,57 +104,144 @@ class SetMyAddressTests(AddressTestCase):
         self.assertIsNotNone(self.user.community_profile.address)
 
     def test_with_geocoding_off_no_outbound_call_is_made(self):
-        with mock.patch("toto.locations.geocode.urlopen") as opened:
-            self.client.post(self.url, {"latitude": "52", "longitude": "21"})
+        """Even asked to look the address up: the pin is saved alone and
+        the member is told why."""
+        with mock.patch(URLOPEN) as opened:
+            response = self.client.post(self.url, {
+                "latitude": "52", "longitude": "21", "lookup_address": "1"},
+                follow=True)
         opened.assert_not_called()
+        self.assertEqual(self.user.community_profile.address.latitude, 52.0)
+        self.assertContains(response, "was not looked up")
+        self.assertEqual(self.lookups(), 0)
 
 
 @override_settings(LOCATIONS_GEOCODING={"enabled": True})
 class ReverseGeocodeTests(AddressTestCase):
-    def test_the_saved_address_is_humanised_when_the_host_allows(self):
-        resolved = {"country_name": "PL", "locality_name": "Warszawa",
-                    "street": "Nowy Świat"}
-        with mock.patch("toto.socialhub.views.profile."
-                        "reverse_geocode_address", create=True) as rev, \
-             mock.patch("toto.locations.geocode.reverse_geocode_address",
-                        return_value=resolved):
-            self.client.post(self.url, {"latitude": "52.23",
-                                        "longitude": "21.01"})
+    def test_a_plain_save_asks_nobody(self):
+        """Looking the street up costs a lookup, so it is its own button;
+        Save keeps the pin alone."""
+        with mock.patch(URLOPEN) as opened:
+            self.client.post(self.url, {"latitude": "54.35", "longitude": "18.65"})
+        opened.assert_not_called()
+        self.assertEqual(self.lookups(), 0)
+        self.assertEqual(self.user.community_profile.address.street, "")
+
+    def test_the_saved_address_is_humanised_when_asked_for(self):
+        with answering(DLUGA):
+            self.client.post(self.url, {"latitude": "54.35123456",
+                                        "longitude": "18.65", "lookup_address": "1"})
         address = self.user.community_profile.address
-        self.assertEqual(address.locality_name, "Warszawa")
-        self.assertEqual(address.latitude, 52.23)
+        self.assertEqual((address.locality_name, address.street, address.building),
+                         ("Gdańsk", "Długa", "1"))
+        self.assertEqual(address.country_name, "PL")
+        # The pin is where it was put, not the lookup's rounded point.
+        self.assertEqual(address.latitude, 54.35123456)
+        self.assertEqual(self.lookups(), 1)
+
+    def test_a_moved_pin_does_not_keep_the_old_street(self):
+        with answering(DLUGA):
+            self.client.post(self.url, {"latitude": "54.35", "longitude": "18.65",
+                                        "lookup_address": "1"})
+        with answering({"display_name": "Sopot", "address": {"town": "Sopot",
+                                                             "country_code": "pl"}}):
+            self.client.post(self.url, {"latitude": "54.44", "longitude": "18.56",
+                                        "lookup_address": "1"})
+        address = self.user.community_profile.address
+        self.assertEqual((address.locality_name, address.street), ("Sopot", ""))
+        self.assertEqual(self.lookups(), 2)
+
+    def test_a_point_with_no_address_saves_the_pin_and_says_so(self):
+        with answering(SEA):
+            response = self.client.post(self.url, {"latitude": "55", "longitude": "18",
+                                                   "lookup_address": "1"}, follow=True)
+        self.assertContains(response, "No street address is known at that point.")
+        self.assertEqual(self.user.community_profile.address.latitude, 55.0)
+        self.assertEqual(self.lookups(), 1, "an answer, even an empty one, is a lookup")
+
+    def test_a_refused_lookup_never_loses_the_pin(self):
+        from toto.quota.charge import InsufficientFunds
+
+        with mock.patch("toto.locations.billing.check_funds",
+                        side_effect=InsufficientFunds("RED", 1, 0)), \
+                mock.patch(URLOPEN) as opened:
+            response = self.client.post(self.url, {"latitude": "54.35", "longitude": "18.65",
+                                                   "lookup_address": "1"}, follow=True)
+        opened.assert_not_called()
+        self.assertEqual(self.user.community_profile.address.latitude, 54.35)
+        self.assertContains(response, "Your pin is saved, but its address was not looked up")
+        self.assertEqual(self.lookups(), 0)
+
+    def test_a_provider_failure_is_not_charged(self):
+        with mock.patch(URLOPEN, side_effect=URLError("down")), \
+                self.assertLogs("toto.locations.geocode", "WARNING"):
+            response = self.client.post(self.url, {"latitude": "54.35", "longitude": "18.65",
+                                                   "lookup_address": "1"}, follow=True)
+        self.assertContains(response, "this lookup was not charged")
+        self.assertEqual(self.lookups(), 0)
 
 
 class SearchAddressTests(AddressTestCase):
+    def setUp(self):
+        super().setUp()
+        self.search_url = reverse("socialhub:search_address")
+
     @override_settings(LOCATIONS_GEOCODING=GEOCODING_OFF)
     def test_the_search_door_is_closed_where_geocoding_is_off(self):
         """The same gate placidia's boundary pins: a host that makes no
         outbound calls answers 404 and renders no search box."""
-        response = self.client.get(reverse("socialhub:search_address"),
-                                   {"q": "Warszawa"})
+        with mock.patch(URLOPEN) as opened:
+            response = self.client.post(self.search_url, {"q": "Warszawa"})
         self.assertEqual(response.status_code, 404)
-
-    @override_settings(LOCATIONS_GEOCODING={"enabled": True})
-    def test_a_short_query_searches_nothing(self):
-        with mock.patch("toto.locations.geocode.urlopen") as opened:
-            response = self.client.get(reverse("socialhub:search_address"),
-                                       {"q": "ab"})
-        self.assertEqual(response.json(), {"results": []})
         opened.assert_not_called()
 
     @override_settings(LOCATIONS_GEOCODING={"enabled": True})
-    def test_results_come_back_in_the_geocode_contract(self):
-        hits = [{"label": "Warszawa, Polska", "name": "Warszawa",
-                 "lat": "52.23", "lng": "21.01", "type": "city",
-                 "country_name": "PL", "state_or_province_name": "",
-                 "locality_name": "Warszawa"}]
-        with mock.patch("toto.socialhub.views.profile."
-                        "forward_geocode_locations", create=True), \
-             mock.patch("toto.locations.geocode.forward_geocode_locations",
-                        return_value=hits):
-            response = self.client.get(reverse("socialhub:search_address"),
-                                       {"q": "Warszawa"})
-        self.assertEqual(response.json()["results"][0]["lat"], "52.23")
+    def test_a_get_searches_nothing(self):
+        """A search spends mana, so a link or a prefetch must not run one."""
+        with mock.patch(URLOPEN) as opened:
+            response = self.client.get(self.search_url, {"q": "Warszawa"})
+        self.assertEqual(response.status_code, 405)
+        opened.assert_not_called()
+
+    @override_settings(LOCATIONS_GEOCODING={"enabled": True})
+    def test_a_short_query_searches_nothing_and_costs_nothing(self):
+        with mock.patch(URLOPEN) as opened:
+            response = self.client.post(self.search_url, {"q": "a"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("error", response.json())
+        opened.assert_not_called()
+        self.assertEqual(self.lookups(), 0)
+
+    @override_settings(LOCATIONS_GEOCODING={"enabled": True})
+    def test_results_come_back_in_the_geocode_contract_for_one_lookup(self):
+        with answering(GDANSK):
+            response = self.client.post(self.search_url, {"q": "Gdansk"})
+        self.assertEqual(response.status_code, 200)
+        hit = response.json()["results"][0]
+        self.assertEqual((hit["lat"], hit["lng"]), (54.352, 18.6466))
+        self.assertEqual(hit["label"], "Gdańsk, województwo pomorskie, Polska")
+        self.assertEqual(self.lookups(), 1)
+
+    @override_settings(LOCATIONS_GEOCODING={"enabled": True})
+    def test_a_refusal_answers_its_sentence_with_its_status(self):
+        from toto.quota.charge import InsufficientFunds
+
+        with mock.patch("toto.locations.billing.check_funds",
+                        side_effect=InsufficientFunds("RED", 1, 0)), \
+                mock.patch(URLOPEN) as opened:
+            response = self.client.post(self.search_url, {"q": "Gdansk"})
+        self.assertEqual(response.status_code, 402)
+        self.assertTrue(response.json()["error"])
+        opened.assert_not_called()
+
+    @override_settings(LOCATIONS_GEOCODING={"enabled": True})
+    def test_the_search_needs_the_csrf_token(self):
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.user)
+        with mock.patch(URLOPEN) as opened:
+            response = client.post(self.search_url, {"q": "Gdansk"})
+        self.assertEqual(response.status_code, 403)
+        opened.assert_not_called()
 
 
 @override_settings(LOCATIONS_GEOCODING=GEOCODING_OFF)
@@ -161,6 +264,34 @@ class PageTests(AddressTestCase):
                                            args=[person.slug]))
         self.assertNotContains(response, "Set my address")
         self.assertNotContains(response, "address-pick-map")
+
+    def test_without_geocoding_there_is_nothing_to_pay_for(self):
+        person = Person.objects.create(user=self.user, display_name="Pinner")
+        response = self.client.get(reverse("socialhub:profile_details",
+                                           args=[person.slug]))
+        self.assertNotContains(response, 'data-testid="save-and-look-up"')
+        self.assertNotContains(response, 'data-testid="address-search-go"')
+
+    @override_settings(LOCATIONS_GEOCODING={"enabled": True})
+    def test_with_geocoding_each_lookup_is_its_own_button(self):
+        person = Person.objects.create(user=self.user, display_name="Pinner")
+        with mock.patch(URLOPEN) as opened:
+            response = self.client.get(reverse("socialhub:profile_details",
+                                               args=[person.slug]))
+        opened.assert_not_called()
+        self.assertContains(response, "Search for a place")
+        self.assertContains(response, 'data-testid="address-search-go"')
+        self.assertContains(response, 'data-testid="save-and-look-up"')
+        # The search posts, with the token, and runs on Enter, not per key.
+        self.assertContains(response, "method: 'POST'")
+        self.assertContains(response, "'X-CSRFToken'")
+        self.assertNotContains(response, "addEventListener('input'")
+
+    def test_the_picker_map_follows_dark_mode(self):
+        person = Person.objects.create(user=self.user, display_name="Pinner")
+        response = self.client.get(reverse("socialhub:profile_details",
+                                           args=[person.slug]))
+        self.assertContains(response, "window.totoTileLayer(pick)")
 
     def test_with_an_address_the_button_says_modify(self):
         person = Person.objects.create(

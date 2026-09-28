@@ -7,6 +7,7 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import translation
 from django.utils.translation import gettext_lazy as _
+from django.views.decorators.http import require_POST
 from django.views.generic import ListView, DetailView
 
 from toto.people.models import Person
@@ -189,13 +190,14 @@ def set_my_address(request):
 
     The Address row is updated in place rather than replaced, so nothing
     referencing it dangles and a re-save moves the pin instead of minting
-    rows. When geocoding is on, the coordinates are reverse-geocoded into the
-    human-readable fields; when it is off (a host that makes no outbound
-    calls), the pin alone is saved and is exactly as useful on the map.
+    rows. The pin alone is exactly as useful on the map. Its street and town
+    come from a reverse lookup only when asked for (2026-09-28): that is a
+    charged place lookup now (`toto.locations.geocoding`), so it has its own
+    priced button, "Save and look up the address", and a plain Save asks
+    nobody. A refused lookup never loses the pin: it is saved, and the member
+    is told why its address was not.
     """
-    from toto.locations.geocode import (geocoding_enabled,
-                                        geocoding_settings,
-                                        reverse_geocode_address)
+    from toto.locations import geocoding
     from toto.locations.models import Address
 
     if request.method != "POST":
@@ -222,12 +224,19 @@ def set_my_address(request):
             display_name=request.user.get_username())
 
     fields = {"latitude": latitude, "longitude": longitude}
-    if geocoding_enabled(geocoding_settings()):
-        resolved = reverse_geocode_address(latitude, longitude) or {}
-        for key in ("country_name", "state_or_province_name",
-                    "locality_name", "street", "building"):
-            if resolved.get(key):
-                fields[key] = resolved[key]
+    refused = None
+    answer = None
+    if request.POST.get("lookup_address"):
+        try:
+            answer = geocoding.reverse(request.user, latitude, longitude)
+        except geocoding.REFUSALS as exc:
+            refused = exc
+        else:
+            # The answer describes THIS pin, blanks included: a moved pin
+            # must not keep the old street under a new town.
+            for key, value in answer["fields"].items():
+                limit = Address._meta.get_field(key).max_length
+                fields[key] = str(value or "")[:limit]
 
     if profile.address_id:
         # On a GIS build the geometry is authoritative and save() overwrites
@@ -243,32 +252,46 @@ def set_my_address(request):
         profile.address = Address.objects.create(**fields)
         profile.save(update_fields=["address"])
 
-    messages.success(request, _("Your address is saved."))
+    if refused is not None:
+        messages.warning(request, _(
+            "Your pin is saved, but its address was not looked up: %(reason)s")
+            % {"reason": refused})
+    elif answer is not None and not answer["found"]:
+        messages.success(request, _(
+            "Your pin is saved. No street address is known at that point."))
+    else:
+        messages.success(request, _("Your address is saved."))
     return redirect(request.META.get("HTTP_REFERER",
                                      reverse("socialhub:profile_details",
                                              args=[profile.slug])))
 
 
+@require_POST
 @login_required
 def search_address(request):
     """Forward-geocode a typed place name, for the picker's search box.
 
     Proxied through the server rather than fetched from the browser so the
     host's `LOCATIONS_GEOCODING` config is the single gate: a host that makes
-    no outbound calls answers 404 here and renders no search box, and the
-    user-agent/timeout/fail-silently policy lives in one place
-    (`toto.locations.geocode`).
+    no outbound calls answers 404 here and renders no search box. Each search
+    is a charged place lookup (`toto.locations.geocoding`, 2026-09-28), so it
+    is a POST with the CSRF token, sent on Enter or the Search button and
+    never per keystroke, and a refusal answers ``{"error"}`` with its own
+    status: 402 out of mana, 429 too many, 503 provider down, 404 off here.
+
+    Its own door rather than `locations:geocode_search`: socialhub is free on
+    every plan, the locations app is not, and setting your own address must
+    not need a plan.
     """
-    from django.http import Http404, JsonResponse
+    from django.http import JsonResponse
 
-    from toto.locations.geocode import (forward_geocode_locations,
-                                        geocoding_enabled,
-                                        geocoding_settings)
+    from toto.locations import geocoding
 
-    if not geocoding_enabled(geocoding_settings()):
-        raise Http404
-    query = (request.GET.get("q") or "").strip()
-    if len(query) < 3:
-        return JsonResponse({"results": []})
-    return JsonResponse({"results": forward_geocode_locations(query)})
-
+    try:
+        results = geocoding.search(request.user, request.POST.get("q", ""))
+    except geocoding.REFUSALS as exc:
+        response = JsonResponse({"error": str(exc)}, status=exc.status_code)
+        if getattr(exc, "retry_after", None):
+            response["Retry-After"] = str(exc.retry_after)
+        return response
+    return JsonResponse({"results": results})
