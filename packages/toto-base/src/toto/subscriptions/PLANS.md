@@ -57,6 +57,11 @@ file. **Negative units are a stipend** — the same mechanism read backwards, th
 platform paying the holder. A community discount is refused on a negative plan:
 a discount reduces what you *owe*.
 
+The same discount reaches every **mana** charge too (2026-09-28): a member who
+pays 20 % less for their plan pays 20 % less for a message, a scan or a run
+(`toto.tariffs.discounts`; the economy's decision 15). The plan's own bill is
+never discounted twice.
+
 **`features` are `feature_key`s, and a `feature_key` is a Django `app_name`.**
 `"cyprian"`, not `"documents"` — the gate resolves
 `request.resolver_match.app_name` and nothing else, so a mapping table between
