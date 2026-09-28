@@ -153,7 +153,7 @@ def _offered_keys(user) -> frozenset:
         return frozenset()
     return frozenset(
         CommunityPlanOffer.objects
-        .filter(community_id__in=_community_ids_with_parents(person))
+        .filter(community_id__in=community_ids_with_parents(person))
         .values_list("plan_key", flat=True))
 
 
@@ -162,10 +162,14 @@ def _offered_keys(user) -> frozenset:
 MAX_TREE_DEPTH = 20
 
 
-def _community_ids_with_parents(person) -> set:
+def community_ids_with_parents(person) -> set:
     """The person's Communities and every ancestor of theirs (2026-09-26):
     an offer made to `toto` reaches a member of `toto-dev`. A sub-community
-    can only add offers, never take a parent's away."""
+    can only add offers, never take a parent's away.
+
+    Public because it is THE membership rule for "does a grant to a community
+    reach this person" — the wiki's circles read it too, so a grant means the
+    same thing on a plan offer and on a page."""
     rows = {pk: parent for pk, parent in person.communities.values_list("pk", "parent_id")}
     ids = set(rows)
     frontier = {parent for parent in rows.values() if parent}
