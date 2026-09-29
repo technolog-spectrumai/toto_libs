@@ -20,7 +20,7 @@ from django.test import RequestFactory, TestCase, override_settings
 from toto.audit.models import AuditRecord
 from toto.audit.services import verify_chain
 from toto.people.models import Person
-from toto.socialhub.models import Community
+from toto.socialhub.models import Clearance, Community
 
 User = get_user_model()
 
@@ -48,8 +48,8 @@ class EraseUserTests(TestCase):
     def setUp(self):
         self.root = User.objects.create_superuser("root", "r@example.com", "pw")
         self.ada = User.objects.create_user("ada", "ada@example.com", "pw")
-        self.board = Community.objects.create(name="board", slug="board", is_circle=True)
-        Person.objects.create(user=self.ada, display_name="Ada").communities.add(self.board)
+        self.internal = Clearance.objects.create(name="internal", slug="internal")
+        Person.objects.create(user=self.ada, display_name="Ada").clearances.add(self.internal)
         signed_in(self.ada)                                  # an AUTH.LOGIN with ada as actor
 
     def file(self):
@@ -81,7 +81,7 @@ class EraseUserTests(TestCase):
         self.assertTrue(out["erased"])
         self.assertFalse(User.objects.filter(username="ada").exists())
         self.assertFalse(Person.objects.filter(display_name="Ada").exists())
-        self.assertEqual(self.board.members.count(), 0)
+        self.assertEqual(self.internal.members.count(), 0)
         self.assertFalse(os.path.exists(path))               # the bytes too
         # Sealed records stay, by username — and the chain still verifies.
         self.assertTrue(AuditRecord.objects.filter(action="AUTH.LOGIN", actor_username="ada").exists())
@@ -122,26 +122,29 @@ class EraseUserTests(TestCase):
 class CommunityMembersTests(TestCase):
     def setUp(self):
         self.devs = Community.objects.create(name="devs", slug="devs")
-        self.board = Community.objects.create(name="board", slug="board", is_circle=True)
+        self.internal = Clearance.objects.create(name="internal", slug="internal")
         self.ada = User.objects.create_user("ada", "ada@example.com", "pw")
 
     def test_list_names_the_two_kinds_apart(self):
         code, out = run("community_members", "list")
         self.assertEqual(code, 0)
         self.assertEqual([c["slug"] for c in out["communities"]], ["devs"])
-        self.assertEqual([c["slug"] for c in out["circles"]], ["board"])
+        self.assertEqual([c["slug"] for c in out["clearances"]], ["internal"])
 
     def test_join_makes_the_person_and_the_memberships(self):
-        code, out = run("community_members", "join", "ada", "--community", "devs", "--circle", "board")
+        code, out = run("community_members", "join", "ada", "--community", "devs", "--clearance", "internal")
         self.assertEqual(code, 0, out)
         self.assertTrue(out["person_created"])
         person = Person.objects.get(user=self.ada)
-        self.assertEqual({c.slug for c in person.communities.all()}, {"devs", "board"})
-        self.assertEqual(AuditRecord.objects.filter(action="SOCIALHUB.MEMBER_ADDED").count(), 2)
+        self.assertEqual({c.slug for c in person.communities.all()}, {"devs"})
+        self.assertEqual({c.slug for c in person.clearances.all()}, {"internal"})
+        self.assertEqual(AuditRecord.objects.filter(action="SOCIALHUB.MEMBER_ADDED").count(), 1)
+        self.assertEqual(AuditRecord.objects.filter(
+            action="SOCIALHUB.CLEARANCE_MEMBER_ADDED").count(), 1)
 
     def test_the_kinds_are_not_interchangeable_and_nothing_half_happens(self):
-        code, out = run("community_members", "join", "ada", "--community", "board", "--circle", "devs")
+        code, out = run("community_members", "join", "ada", "--community", "internal", "--clearance", "devs")
         self.assertEqual(code, 1)
-        self.assertIn("community 'board'", out["error"])
+        self.assertIn("community 'internal'", out["error"])
         self.assertFalse(Person.objects.filter(user=self.ada).exists())
         self.assertEqual(run("community_members", "join", "nobody", "--community", "devs")[0], 1)
