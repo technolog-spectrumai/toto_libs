@@ -72,15 +72,23 @@ an object's "who reads this" control, and never of the others.
 ### Who gives clearances
 
 Superusers, on the **Clearances** tab of this app (`communities/clearances/`,
-2026-09-29 — beside Profiles and Communities in the strip, shown to
-superusers only): every clearance with its holders and its mana refill
-speeds; make one (at most seven), add and remove people, set the speeds,
-remove a clearance nothing reads through any more (an app's PROTECT refuses
-otherwise). What a clearance READS is each app's own business and stays in
-that app (the wiki's page × clearance grid). Or in the Django admin, on the
-clearance's own page (its **Members** field, written through
-`clearance.members.set`, the relation's own door), or from the console
-(`community_members join ada --clearance internal`). Never the membership
+beside Profiles and Communities in the strip, shown to superusers only). The
+list (2026-09-30) is read-only: a table on a wide screen, a card per
+clearance on a narrow one, five a page (the shared server pagination), each
+with its holders, its mana refill speeds, how many things it keeps, and a
+**Delete** that is refused while an app still keeps something to it (their
+through tables PROTECT the clearance). **New clearance** opens a modal: the
+name, a speed per pool, and holders found by searching people
+(`communities/clearances/people/?q=`, JSON, superusers only), made all or
+nothing; a refusal comes back to the list with the modal open, what was typed
+kept and the reason inside it (Post/Redirect/Get, through the session). At most
+seven clearances.
+
+Holders and speeds change afterwards in the Django admin, on the clearance's
+own page (its **Members** field, written through `clearance.members.set`, the
+relation's own door), or from the console (`community_members join ada
+--clearance internal`). What a clearance READS is each app's own business and
+stays in that app (the wiki's page × clearance grid). Never the membership
 application: it names communities, and a community grants no reading.
 
 ## On the audit chain
