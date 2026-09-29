@@ -161,9 +161,9 @@ def audience(request):
     tell "offered to everyone" from "offered to no one"; now there is only
     one meaning and the page states it.
 
-    Functional communities only (2026-09-28): a circle decides who reads and
+    Functional communities only (2026-09-28): a clearance decides who reads and
     is offered nothing, so it has no row here — and an offer left on one
-    from before it became a circle counts for nothing in the header either.
+    from before it became a clearance counts for nothing in the header either.
     """
     from django.http import HttpResponseForbidden
 
@@ -188,14 +188,14 @@ def audience(request):
     # administration is populated with plan keys, and no plan definition is
     # copied into the database to render this page.
     catalogue = plans_registry.all_plans()
-    ticked = set(CommunityPlanOffer.objects.filter(community__is_circle=False)
+    ticked = set(CommunityPlanOffer.objects.all()
                  .values_list("community_id", "plan_key"))
     rows = [{"community": community,
              "members": community.members.count(),
              "cells": [{"plan": plan,
                         "on": (community.pk, plan.key) in ticked}
                        for plan in catalogue]}
-            for community in Community.objects.functional().order_by("name")]
+            for community in Community.objects.all().order_by("name")]
     offered = {plan_key for _c, plan_key in ticked}
     return _render(request, "subscriptions/audience.html", {
         "active_tab": "audience",
@@ -219,7 +219,7 @@ def discounts(request):
     have a discount" is a question answered by reading one column, not by
     remembering which rows exist. A zero saves as no row at all, so the table
     stays the set of communities that actually give something. Every
-    FUNCTIONAL community, that is (2026-09-28): a circle gives no discount and
+    FUNCTIONAL community, that is (2026-09-28): a clearance gives no discount and
     has no row here.
     """
     from django.http import HttpResponseForbidden
@@ -246,7 +246,7 @@ def discounts(request):
     rows = [{"community": community,
              "percent": by_community.get(community.pk, 0),
              "members": community.members.count()}
-            for community in Community.objects.functional().order_by("name")]
+            for community in Community.objects.all().order_by("name")]
     return _render(request, "subscriptions/discounts.html", {
         "active_tab": "discounts",
         "rows": rows,

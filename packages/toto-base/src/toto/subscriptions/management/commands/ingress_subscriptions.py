@@ -7,7 +7,7 @@ the only plan-shaped dial left in the database.
 
 Eligibility is CLOSED BY DEFAULT: an offer table with no rows means nobody can
 buy anything. So this always offers the default plan to every functional
-community (a circle is offered nothing, 2026-09-28), at every level rather
+community (a clearance is offered nothing, 2026-09-28), at every level rather
 than only under ``--full`` — a bare bring-up must be a working platform, and a
 plans page that shows a signed-in person nothing at all is not one. ``--full`` additionally offers the paid ladder to the first
 community, so a demo has something to sell, and keeps the demo discount.
@@ -51,7 +51,7 @@ class Command(IngressCommand):
         if self.full:
             self._seed_demo_communities()
 
-        communities = list(Community.objects.functional().order_by("pk"))
+        communities = list(Community.objects.all().order_by("pk"))
         if not communities:
             self.stdout.write("subscriptions: no communities yet, nothing to offer")
             return

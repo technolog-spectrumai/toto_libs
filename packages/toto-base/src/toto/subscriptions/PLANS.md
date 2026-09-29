@@ -144,14 +144,13 @@ least one community that offers it**. "Active membership" is the existence of a
 row in `people.Person.communities` — there is no status field anywhere in the
 suite, and the model docstring says so rather than inventing one.
 
-**Functional communities only** (2026-09-28). A circle (`Community.is_circle`
-— `seniors`, `board`) decides who reads wiki pages and how fast its members'
-mana refills, and nothing on this axis: it is offered no plan and gives no
-discount. Plans do not set refill speed either — circles do (2026-09-28). An offer or a discount naming one is
-refused on save, the Communities and Discounts tabs list none, and eligibility,
-the parent walk and `best_discount` skip circles, so a row left on a community
-that became one counts for nothing. The two kinds are orthogonal on purpose —
-`socialhub/README.md`, "Functional communities and circles".
+**Communities only** (2026-09-28). A clearance (`socialhub.Clearance` —
+`internal`, `confidential`, its own model since 2026-09-29) decides who reads
+and how fast its holders' mana refills, and nothing on this axis: an offer
+and a discount name a `Community`, and a clearance is not one, so neither can
+be given to it. Plans do not set refill speed either — clearances do. The two
+are orthogonal on purpose — `socialhub/README.md`, "Communities and
+clearances".
 
 Four exceptions, each narrow:
 
