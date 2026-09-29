@@ -1,0 +1,6 @@
+{% load i18n %}{# One clearance's holders: a few by name, then a count. Expects `row`. #}
+<ul class="mt-1 flex flex-wrap gap-1.5" data-testid="holders-{{ row.clearance.slug }}">
+  {% for person in row.holders %}<li class="rounded-full border border-current/30 px-2 py-0.5 text-xs">{{ person.display_name }}</li>
+  {% empty %}<li class="text-xs opacity-60">{% trans "Nobody yet." %}</li>{% endfor %}
+  {% if row.more_holders %}<li class="px-1 py-0.5 text-xs opacity-70">{% blocktrans with n=row.more_holders %}+{{ n }} more{% endblocktrans %}</li>{% endif %}
+</ul>

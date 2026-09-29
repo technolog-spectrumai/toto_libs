@@ -1,0 +1,7 @@
+{% load i18n %}{# One clearance's refill speed per pool; — is the pool's own rate. Expects `row`. #}
+<dl class="mt-1 grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5 text-xs">
+  {% for s in row.speeds %}
+  <dt class="opacity-60">{% if s.pool == "security" %}{% trans "Security" %}{% elif s.pool == "compute" %}{% trans "Compute" %}{% else %}{% trans "Storage" %}{% endif %}</dt>
+  <dd class="font-mono">{% if s.value is not None %}{{ s.value|floatformat:"-4" }}{% else %}<span class="opacity-50" title="{% trans 'the pool’s own rate' %}">—</span>{% endif %}</dd>
+  {% endfor %}
+</dl>

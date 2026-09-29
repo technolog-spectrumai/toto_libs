@@ -21,8 +21,8 @@ from toto.socialhub.views.community_news import (
     community_news_delete,
     community_news_update,
 )
-from toto.socialhub.views.clearances import (clearance_add, clearance_delete, clearance_member,
-                                          clearance_speeds, clearances)
+from toto.socialhub.views.clearances import (clearance_add, clearance_delete, clearance_people,
+                                             clearances)
 from toto.socialhub.views.application import membership_application_view, application_success_view, \
     verification_success_view, reference_request_view, reference_next, verify_application_view, reference_accept, \
     reference_reject
@@ -51,8 +51,7 @@ urlpatterns = [
     # would otherwise read "clearances" as a community's name.
     path("communities/clearances/", clearances, name="clearances"),
     path("communities/clearances/add/", clearance_add, name="clearance_add"),
-    path("communities/clearances/<int:pk>/members/", clearance_member, name="clearance_member"),
-    path("communities/clearances/<int:pk>/speeds/", clearance_speeds, name="clearance_speeds"),
+    path("communities/clearances/people/", clearance_people, name="clearance_people"),
     path("communities/clearances/<int:pk>/delete/", clearance_delete, name="clearance_delete"),
     # Public: an office nobody can see is not an institution.
     path("communities/<slug:community_slug>/news/new/", community_news_create, name="community_news_create"),

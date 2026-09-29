@@ -1,89 +1,228 @@
 {% extends "oya/base.html" %}
 {% load i18n app_tags %}
 {% block title %}{% trans "Clearances" %} – {{ platform.site_name }}{% endblock %}
+{% block start_script %}
+<style>[x-cloak] { display: none !important; }</style>
+{% comment %}The New clearance modal (2026-09-30): name, a refill speed per pool,
+   and holders found by searching people (socialhub:clearance_people). A
+   refused submission comes back with `draft` — the modal open, what was typed
+   kept. Names reach the page through x-text only, never as markup.{% endcomment %}
+{{ draft|json_script:"clearance-draft" }}
+<script>
+document.addEventListener('alpine:init', () => {
+  Alpine.data('clearanceNew', (searchUrl) => {
+    const draft = JSON.parse(document.getElementById('clearance-draft').textContent);
+    return {
+      open: !!draft.open,
+      name: draft.name || '',
+      speeds: Object.assign({security: '', compute: '', storage: ''}, draft.speeds || {}),
+      chosen: draft.people || [],
+      q: '', results: [], searching: false, searched: false, timer: null, seq: 0,
+      show() { this.open = true; this.$nextTick(() => this.$refs.name && this.$refs.name.focus()); },
+      hide() { this.open = false; },
+      search() {
+        clearTimeout(this.timer);
+        const q = this.q.trim();
+        if (!q) { this.results = []; this.searched = false; return; }
+        this.timer = setTimeout(async () => {
+          const mine = ++this.seq;
+          this.searching = true;
+          try {
+            const r = await fetch(searchUrl + '?q=' + encodeURIComponent(q),
+                                  {headers: {'Accept': 'application/json'}, credentials: 'same-origin'});
+            const data = r.ok ? await r.json() : {people: []};
+            if (mine !== this.seq) return;            // a later keystroke already answered
+            this.results = (data.people || []).filter(p => !this.chosen.some(c => c.pk === p.pk));
+            this.searched = true;
+          } catch (e) {
+            if (mine === this.seq) { this.results = []; this.searched = true; }
+          } finally {
+            if (mine === this.seq) this.searching = false;
+          }
+        }, 200);
+      },
+      pick(person) {
+        if (!this.chosen.some(c => c.pk === person.pk)) this.chosen.push(person);
+        this.q = ''; this.results = []; this.searched = false;
+        this.$nextTick(() => this.$refs.search && this.$refs.search.focus());
+      },
+      drop(pk) { this.chosen = this.chosen.filter(c => c.pk !== pk); },
+    };
+  });
+});
+</script>
+{% endblock %}
 {% block content %}
 <div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
      class="min-h-screen px-4 py-10 transition-colors duration-300">
-  <div class="mx-auto max-w-6xl space-y-8">
+  <div class="mx-auto max-w-6xl space-y-6">
     <header class="space-y-4">
       <div>
         <h1 class="text-2xl font-extrabold">{% trans "Clearances" %}
-          <span class="text-sm font-normal opacity-60">{% blocktrans with n=rows|length max=max_clearances %}{{ n }} of {{ max }}{% endblocktrans %}</span></h1>
+          <span class="text-sm font-normal opacity-60">{% blocktrans with n=total max=max_clearances %}{{ n }} of {{ max }}{% endblocktrans %}</span></h1>
         <p class="mt-1 max-w-prose text-sm opacity-70">{% trans "A clearance decides who may read — wiki pages, and whatever else an app keeps to clearances — and how fast its holders' mana refills — named after what it opens, never after who holds it. It offers no plan, gives no discount and holds no right; members never see it listed. Communities and clearances are kept apart on purpose." %}</p>
       </div>
       {% include "socialhub/_tabs.html" with active_tab="clearances" %}
     </header>
 
-    {% if room_left %}
-    <form method="POST" action="{% url 'socialhub:clearance_add' %}" class="flex flex-wrap items-end gap-2 text-sm">
-      {% csrf_token %}
-      <label class="flex flex-col gap-1"><span class="text-xs opacity-70">{% trans "New clearance" %}</span>
-        <input type="text" name="name" required maxlength="120"
-               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-               class="w-full max-w-xs rounded border px-2 py-1 sm:w-64"></label>
-      <button type="submit" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-              class="rounded-lg px-4 py-1.5 font-semibold">{% trans "Make clearance" %}</button>
-    </form>
-    {% else %}
-    <p class="text-sm opacity-70" data-testid="clearances-full">{% blocktrans with max=max_clearances %}A platform has at most {{ max }} clearances, and they are all made. Remove one before making another.{% endblocktrans %}</p>
-    {% endif %}
+    {% with mana="toto.mana"|app_installed %}
+    <div x-data="clearanceNew('{% url 'socialhub:clearance_people' %}')" @keydown.escape.window="hide()" class="space-y-6">
 
-    <datalist id="clearance-people">{% for person in people %}<option value="{{ person.user.username }}">{{ person.display_name }}</option>{% endfor %}</datalist>
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <p class="text-xs opacity-60">{% trans "Holders and speeds change in the admin; here a clearance is made or removed." %}</p>
+        {% if room_left %}
+        <button type="button" @click="show()" data-testid="clearance-new-open"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i>{% trans "New clearance" %}</button>
+        {% else %}
+        <p class="text-sm opacity-70" data-testid="clearances-full">{% blocktrans with max=max_clearances %}A platform has at most {{ max }} clearances, and they are all made. Remove one before making another.{% endblocktrans %}</p>
+        {% endif %}
+      </div>
 
-    <section class="grid gap-4 md:grid-cols-2" aria-label="{% trans 'Clearances' %}">
-    {% for row in rows %}
-      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-               class="space-y-4 rounded-2xl border p-5 text-sm shadow-sm" data-testid="clearance-{{ row.clearance.slug }}">
-        <div class="flex flex-wrap items-start justify-between gap-2">
-          <h2 class="text-lg font-bold"><i class="fa-solid fa-shield-halved opacity-60" aria-hidden="true"></i> {{ row.clearance.name }}</h2>
-          <form method="POST" action="{% url 'socialhub:clearance_delete' pk=row.clearance.pk %}"
-                onsubmit="return confirm('{% trans "Remove this clearance?" %}')">
-            {% csrf_token %}
-            <button type="submit" class="text-xs opacity-60 hover:opacity-100"><i class="fa-solid fa-trash" aria-hidden="true"></i> {% trans "Remove" %}</button>
-          </form>
-        </div>
+      {% if rows %}
+      {# Wide screens: a table. #}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="hidden overflow-x-auto rounded-2xl border shadow-sm md:block">
+        <table class="min-w-full text-left text-sm" data-testid="clearances-table">
+          <thead :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-xs uppercase tracking-wide opacity-70">
+            <tr>
+              <th scope="col" class="px-4 py-3">{% trans "Clearance" %}</th>
+              <th scope="col" class="px-4 py-3">{% trans "Holders" %}</th>
+              {% if mana %}<th scope="col" class="px-4 py-3">{% trans "Mana refill per hour" %}</th>{% endif %}
+              <th scope="col" class="px-4 py-3">{% trans "Keeps" %}</th>
+              <th scope="col" class="px-4 py-3">{% trans "Made" %}</th>
+              <th scope="col" class="px-4 py-3 text-right"><span class="sr-only">{% trans "Actions" %}</span></th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for row in rows %}
+            <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b align-top last:border-b-0" data-testid="clearance-{{ row.clearance.slug }}">
+              <td class="px-4 py-3">
+                <div class="font-semibold"><i class="fa-solid fa-shield-halved mr-1 opacity-60" aria-hidden="true"></i>{{ row.clearance.name }}</div>
+                <div class="font-mono text-xs opacity-50">{{ row.clearance.slug }}</div>
+              </td>
+              <td class="px-4 py-3">{% include "socialhub/_clearance_holders.html" %}</td>
+              {% if mana %}<td class="px-4 py-3">{% include "socialhub/_clearance_speeds.html" %}</td>{% endif %}
+              <td class="px-4 py-3">{% if row.kept %}{% blocktrans count n=row.kept %}{{ n }} thing{% plural %}{{ n }} things{% endblocktrans %}{% else %}<span class="opacity-50">—</span>{% endif %}</td>
+              <td class="whitespace-nowrap px-4 py-3 text-xs opacity-70">{{ row.clearance.created_at|date:"Y-m-d" }}</td>
+              <td class="px-4 py-3 text-right">{% include "socialhub/_clearance_delete.html" %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
 
-        <div>
-          <h3 class="text-xs uppercase tracking-wide opacity-60">{% trans "Members" %}</h3>
-          <ul class="mt-1 flex flex-wrap gap-2">
-            {% for person in row.members %}
-            <li class="inline-flex items-center gap-1 rounded-full border border-current/30 px-2 py-0.5">{{ person.display_name }}
-              <form method="POST" action="{% url 'socialhub:clearance_member' pk=row.clearance.pk %}" class="inline">{% csrf_token %}
-                <input type="hidden" name="action" value="remove"><input type="hidden" name="person" value="{{ person.pk }}">
-                <button type="submit" class="opacity-60 hover:opacity-100" aria-label="{% blocktrans with who=person.display_name %}Take {{ who }} out{% endblocktrans %}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></form></li>
-            {% empty %}<li class="opacity-60">{% trans "Nobody yet." %}</li>{% endfor %}
-          </ul>
-          <form method="POST" action="{% url 'socialhub:clearance_member' pk=row.clearance.pk %}" class="mt-2 flex flex-wrap items-end gap-2">
-            {% csrf_token %}<input type="hidden" name="action" value="add">
-            <input type="text" name="who" list="clearance-people" autocomplete="off" placeholder="{% trans 'username' %}"
-                   aria-label="{% blocktrans with clearance=row.clearance.name %}Put somebody in {{ clearance }}{% endblocktrans %}"
-                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-                   class="w-full max-w-xs rounded border px-2 py-1 sm:w-56">
-            <button type="submit" class="rounded-lg border px-3 py-1 font-semibold">{% trans "Add" %}</button>
-          </form>
-        </div>
+      {# Narrow screens: a card per clearance. #}
+      <div class="space-y-4 md:hidden" data-testid="clearances-cards">
+        {% for row in rows %}
+        <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                 class="space-y-3 rounded-2xl border p-4 text-sm shadow-sm" data-testid="clearance-card-{{ row.clearance.slug }}">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <h2 class="break-words font-bold"><i class="fa-solid fa-shield-halved mr-1 opacity-60" aria-hidden="true"></i>{{ row.clearance.name }}</h2>
+              <p class="font-mono text-xs opacity-50">{{ row.clearance.slug }} · {{ row.clearance.created_at|date:"Y-m-d" }}</p>
+            </div>
+            {% include "socialhub/_clearance_delete.html" %}
+          </div>
+          <div><h3 class="text-xs uppercase tracking-wide opacity-60">{% trans "Holders" %}</h3>{% include "socialhub/_clearance_holders.html" %}</div>
+          {% if mana %}<div><h3 class="text-xs uppercase tracking-wide opacity-60">{% trans "Mana refill per hour" %}</h3>{% include "socialhub/_clearance_speeds.html" %}</div>{% endif %}
+          <p class="text-xs opacity-70">{% trans "Keeps" %}: {% if row.kept %}{% blocktrans count n=row.kept %}{{ n }} thing{% plural %}{{ n }} things{% endblocktrans %}{% else %}—{% endif %}</p>
+        </article>
+        {% endfor %}
+      </div>
 
-        {% if "toto.mana"|app_installed %}
-        <form method="POST" action="{% url 'socialhub:clearance_speeds' pk=row.clearance.pk %}" class="space-y-2" data-testid="speeds-{{ row.clearance.slug }}">
+      {% include "oya/partials/_server_pagination.html" %}
+      {% else %}
+      <p class="rounded border border-dashed p-4 text-sm opacity-70" data-testid="clearances-empty">{% trans "There are no clearances yet." %}</p>
+      {% endif %}
+
+      {% if room_left %}
+      {# The New clearance modal. #}
+      <div x-show="open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+           role="dialog" aria-modal="true" aria-labelledby="clearance-new-title">
+        <div class="absolute inset-0 bg-black/60" @click="hide()"></div>
+        <form method="post" action="{% url 'socialhub:clearance_add' %}" data-testid="clearance-new"
+              :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+              class="relative max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-xl border p-5 text-sm shadow-xl">
           {% csrf_token %}
-          <h3 class="text-xs uppercase tracking-wide opacity-60">{% trans "Mana refill per hour" %} <span class="normal-case">— {% trans "blank: the pool's own rate" %}</span></h3>
-          <div class="flex flex-wrap items-end gap-3">
-            {% for s in row.speeds %}
-            <label class="flex flex-col gap-1 text-xs">
-              <span>{% if s.pool == "security" %}{% trans "Security" %}{% elif s.pool == "compute" %}{% trans "Compute" %}{% else %}{% trans "Storage" %}{% endif %}</span>
-              <input type="text" inputmode="decimal" name="regen_{{ s.pool }}" value="{% if s.value is not None %}{{ s.value|floatformat:"-4" }}{% endif %}"
-                     :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-                     class="w-24 rounded border px-2 py-1 font-mono"></label>
-            {% endfor %}
-            <button type="submit" class="rounded-lg border px-3 py-1 text-sm font-semibold">{% trans "Save speeds" %}</button>
+          <div class="flex items-center justify-between">
+            <h2 id="clearance-new-title" class="text-lg font-bold"><i class="fa-solid fa-shield-halved mr-1" aria-hidden="true"></i>{% trans "New clearance" %}</h2>
+            <button type="button" @click="hide()" class="opacity-70 hover:opacity-100" aria-label="{% trans 'Close' %}">
+              <i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+          </div>
+
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold opacity-70">{% trans "Name — what it opens" %}</span>
+            <input type="text" name="name" x-ref="name" x-model="name" required maxlength="120"
+                   placeholder="{% trans 'internal, confidential, payroll…' %}"
+                   :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                   class="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-current/20">
+          </label>
+
+          {% if mana %}
+          <fieldset class="space-y-1">
+            <legend class="text-xs font-semibold opacity-70">{% trans "Mana refill per hour" %} <span class="font-normal">— {% trans "blank: the pool's own rate" %}</span></legend>
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {% for pool in pools %}
+              <label class="flex flex-col gap-1 text-xs">
+                <span>{% if pool == "security" %}{% trans "Security" %}{% elif pool == "compute" %}{% trans "Compute" %}{% else %}{% trans "Storage" %}{% endif %}</span>
+                <input type="text" inputmode="decimal" name="regen_{{ pool }}" x-model="speeds.{{ pool }}" maxlength="20"
+                       :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                       class="w-full rounded border px-2 py-1.5 font-mono">
+              </label>
+              {% endfor %}
+            </div>
+          </fieldset>
+          {% endif %}
+
+          <div class="space-y-2">
+            <label for="clearance-people-search" class="text-xs font-semibold opacity-70">{% trans "Holders" %}</label>
+            <ul class="flex flex-wrap gap-2" data-testid="clearance-chosen">
+              <template x-for="person in chosen" :key="person.pk">
+                <li class="inline-flex items-center gap-1 rounded-full border border-current/30 px-2 py-0.5">
+                  <span x-text="person.name"></span>
+                  <input type="hidden" name="person" :value="person.pk">
+                  <button type="button" @click="drop(person.pk)" class="opacity-60 hover:opacity-100"
+                          :aria-label="'{% trans "Take out" %} ' + person.name"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                </li>
+              </template>
+              <li x-show="!chosen.length" class="text-xs opacity-60">{% trans "Nobody yet — only its owners and superusers read what it keeps." %}</li>
+            </ul>
+            <div class="relative">
+              <input id="clearance-people-search" type="search" x-ref="search" x-model="q" @input="search()"
+                     @keydown.enter.prevent="results.length && pick(results[0])" autocomplete="off"
+                     placeholder="{% trans 'Search people by name, username or e-mail' %}" data-testid="clearance-people-search"
+                     role="combobox" aria-autocomplete="list" aria-controls="clearance-people-results" :aria-expanded="results.length > 0"
+                     :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                     class="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-current/20">
+              <i x-show="searching" x-cloak class="fa-solid fa-circle-notch fa-spin absolute right-3 top-3 opacity-60" aria-hidden="true"></i>
+              <ul id="clearance-people-results" role="listbox" x-show="results.length" x-cloak
+                  :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+                  class="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded border shadow-lg">
+                <template x-for="person in results" :key="person.pk">
+                  <li role="option">
+                    <button type="button" @click="pick(person)" class="flex w-full items-baseline justify-between gap-2 px-3 py-2 text-left hover:bg-current/10">
+                      <span x-text="person.name"></span><span class="font-mono text-xs opacity-60" x-text="person.username"></span>
+                    </button>
+                  </li>
+                </template>
+              </ul>
+              <p x-show="searched && !searching && !results.length && q.trim()" x-cloak class="mt-1 text-xs opacity-60">{% trans "Nobody found (or everybody found is already chosen)." %}</p>
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 pt-1">
+            <button type="button" @click="hide()" class="rounded border border-current/25 px-3 py-2">{% trans "Cancel" %}</button>
+            <button type="submit" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="inline-flex items-center gap-1.5 rounded px-4 py-2 font-semibold">
+              <i class="fa-solid fa-plus" aria-hidden="true"></i>{% trans "Make clearance" %}</button>
           </div>
         </form>
-        {% endif %}
-      </article>
-    {% empty %}
-      <p class="rounded border border-dashed p-4 text-sm opacity-70 md:col-span-2">{% trans "There are no clearances yet." %}</p>
-    {% endfor %}
-    </section>
+      </div>
+      {% endif %}
+    </div>
+    {% endwith %}
   </div>
 </div>
 {% endblock %}

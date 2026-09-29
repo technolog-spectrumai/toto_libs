@@ -1,0 +1,10 @@
+{% load i18n %}{# Delete one clearance. Refused by the server while it keeps something (PROTECT); the button says so first. Expects `row`. #}
+<form method="POST" action="{% url 'socialhub:clearance_delete' pk=row.clearance.pk %}" class="inline"
+      data-confirm="{% blocktrans with name=row.clearance.name %}Remove the clearance {{ name }}? Its holders lose what it opens.{% endblocktrans %}"
+      @submit="if (!confirm($el.dataset.confirm)) $event.preventDefault()">
+  {% csrf_token %}
+  <button type="submit" data-testid="clearance-delete-{{ row.clearance.slug }}"
+          {% if row.kept %}disabled title="{% trans 'It still keeps something: take it off those first.' %}"{% endif %}
+          class="inline-flex items-center gap-1 rounded border border-current/25 px-2.5 py-1 text-xs font-semibold transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40">
+    <i class="fa-solid fa-trash" aria-hidden="true"></i>{% trans "Delete" %}</button>
+</form>
