@@ -204,3 +204,45 @@ class PresentationReadTests(TestCase):
         response = self.read()
         self.assertContains(response, reverse("memo:present", args=[self.deck.pk]))
         self.assertContains(response, reverse("memo:export_pdf", args=[self.deck.pk]))
+
+
+class DeckCircleTests(PresentationReadTests):
+    """A deck kept to circles (2026-09-29) is theirs alone: gone from the
+    gallery, a 404 in the player, whatever its public flag."""
+
+    def setUp(self):
+        super().setUp()
+        from toto.people.models import Person
+        from toto.socialhub.models import Community
+        from toto.vault.models import VaultFileCircle
+
+        self.board = Community.objects.create(name="board", slug="board", is_circle=True)
+        self.member = User.objects.create_user("member", password="pw")
+        Person.objects.create(user=self.member, display_name="M").communities.add(self.board)
+        self.deck.is_public = True
+        self.deck.save()
+        VaultFileCircle.objects.create(file=self.deck, circle=self.board)
+
+    def test_the_gallery_and_the_player(self):
+        gallery, present = reverse("memo:gallery"), reverse("memo:present", args=[self.deck.pk])
+        self.client.force_login(self.other)
+        self.assertNotContains(self.client.get(gallery), "deck.pxml")
+        self.assertEqual(self.client.get(present).status_code, 404)
+        self.client.force_login(self.member)
+        self.assertContains(self.client.get(gallery), "deck.pxml")
+        self.assertEqual(self.client.get(present).status_code, 200)
+        self.client.logout()
+        # A visitor is sent to log in (this host's login middleware; the
+        # player would send them too) — never shown a kept deck.
+        for url in (gallery, present):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 302, url)
+            self.assertNotIn("deck.pxml", response.content.decode())
+
+    def test_the_owner_has_the_door(self):
+        self.client.force_login(self.user)
+        self.assertContains(self.client.get(reverse("memo:gallery")), 'data-testid="deck-access"')
+        self.assertContains(self.client.get(reverse("memo:read", args=[self.deck.pk])),
+                            reverse("vault:file_access", args=[self.deck.pk]))
+        self.client.force_login(self.member)
+        self.assertNotContains(self.client.get(reverse("memo:gallery")), 'data-testid="deck-access"')

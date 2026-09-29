@@ -24,6 +24,13 @@ already has, and it means a presentation can never half-exist.
 The vault's **Play** and **Edit** buttons on a deck go to the player and the
 editor. There is no longer a raw-XML surface.
 
+**Who sees a deck is the vault's answer** (2026-09-29): the gallery lists
+what `accessible_files` allows and the player asks `may_read`, so a deck kept
+to **circles** (`vault.VaultFileCircle`) is seen by their members, its owner
+and superusers only, public or not, and answers 404 to anyone else. The owner
+keeps it to circles from the card and the read page ("Who can read" → the
+vault's `files/<pk>/access/`). Tests: `tests_read.DeckCircleTests`.
+
 ## The editing surface is the slide
 
 The middle of the editor is not a preview of a slide, it **is** one: the same

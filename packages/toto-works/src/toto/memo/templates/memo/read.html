@@ -55,6 +55,13 @@
             <i class="fa-solid fa-pen-to-square"></i>{% trans "Edit" %}
           </a>
         {% endif %}
+        {% if access_url %}
+          <a href="{{ access_url }}" data-testid="deck-access"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+            <i class="fa-solid fa-lock"></i>{% trans "Who can read" %}
+          </a>
+        {% endif %}
         <a href="{% url 'memo:present' vault_file.pk %}"
            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
            class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
