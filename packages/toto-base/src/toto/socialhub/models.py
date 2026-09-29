@@ -23,64 +23,17 @@ from toto.verbena.models import AbstractSection, AbstractTag
 from toto.verbena.utils import unique_slug
 
 
-#: What the two axes refuse each other (2026-09-28), worded once — see
-#: ``Community.is_circle`` and the README, "Functional communities and circles".
-CIRCLE_NOT_JOINABLE = _(
-    "A circle is not joined by application: a superuser adds its members.")
-CIRCLE_GRANTS_NO_PRIVILEGE = _(
-    "A circle grants no privileges: it decides who reads, never what anybody may do.")
-CIRCLE_CARRIES_NOTHING = _(
-    "A circle carries no plan offers, discounts or privileges: remove this "
-    "community's before making it a circle.")
-CIRCLE_STANDS_ALONE = _(
-    "A circle stands alone: it has no parent and is no community's parent.")
-#: How many circles a platform may have at once (2026-09-28, the owner's
-#: rule): a circle is a rank — seniors, newcomers, board — and a handful is
-#: the point. An eighth is refused, and so is turning a community into a
-#: circle when seven exist.
-MAX_CIRCLES = 7
-TOO_MANY_CIRCLES = _(
-    "A platform has at most %(max)d circles. Remove one before making another.")
-CIRCLE_ONLY_SPEED = _(
-    "Only a circle sets how fast mana refills: clear the speeds before making "
-    "this a functional community.")
+#: How many clearances a platform may have at once (2026-09-28, the owner's
+#: rule): a clearance names what it opens — internal, confidential — and a
+#: handful is the point. An eighth is refused.
+MAX_CLEARANCES = 7
+TOO_MANY_CLEARANCES = _(
+    "A platform has at most %(max)d clearances. Remove one before making another.")
 
-#: The mana pools a circle may set a refill speed for (2026-09-28), one
+#: The mana pools a clearance may set a refill speed for (2026-09-28), one
 #: ``regen_<pool>`` column each — the same three roles ``toto.mana`` names.
 #: Written out here because socialhub does not depend on the mana app.
 REGEN_POOLS = ("security", "compute", "storage")
-
-#: The rows that put a community on the money axis: its privilege here and,
-#: where ``toto.subscriptions`` is installed, its plan offers and discount.
-#: Reverse accessor names rather than imports — socialhub does not depend on
-#: subscriptions, and a relation this host does not have is simply skipped.
-MONEY_AXIS_RELATIONS = ("privilege", "plan_offers", "subscription_discount")
-
-
-class CommunityQuerySet(models.QuerySet):
-    """The two kinds of community, told apart in one place (2026-09-28).
-
-    Every query that serves one axis names its kind: the money axis asks for
-    ``functional()``, the reading axis for ``circles()``, and a page listing
-    communities to a person asks ``listed_for(user)``.
-    """
-
-    def functional(self):
-        """Communities that carry plans, offers, discounts and privileges."""
-        return self.filter(is_circle=False)
-
-    def circles(self):
-        """Communities that carry wiki reading and mana refill speed."""
-        return self.filter(is_circle=True)
-
-    def listed_for(self, user):
-        """What ``user`` may see listed or open: everything for a superuser,
-        the functional communities for anybody else. A circle is hidden from
-        members wherever communities are shown — the directory, a profile, the
-        map, the API — and its page answers 404, as a missing one does."""
-        if getattr(user, "is_superuser", False):
-            return self
-        return self.functional()
 
 
 class Community(DomainEntity):
@@ -167,46 +120,6 @@ class Community(DomainEntity):
             "Retiring it is an aurelian follow-up."
         ),
     )
-    #: A CIRCLE (2026-09-28) — ``seniors``, ``newcomers``, ``board`` — decides
-    #: who may READ a wiki page, and how fast its members' mana refills
-    #: (stage 17), and nothing else. A functional community —
-    #: ``devs``, ``testers`` — carries plan offers, discounts and privileges,
-    #: and never reading or refill speed. Orthogonal on purpose: one membership list,
-    #: ``Person.communities``, serves both axes, and each axis refuses the
-    #: other in several layers (README, "Functional communities and circles").
-    #: A circle is hidden from members, joined only through the admin, and
-    #: read by direct membership — it has no parent and is nobody's.
-    is_circle = models.BooleanField(
-        pgettext_lazy("community kind", "circle"),
-        default=False,
-        db_index=True,
-        help_text=_(
-            "A circle decides who may read wiki pages and how fast its "
-            "members' mana refills: no plan offers, no discounts, no "
-            "privileges. Hidden from members; a superuser adds its members."
-        ),
-    )
-
-    #: How fast each mana pool refills for this circle's members, per hour
-    #: (2026-09-28). Blank is "the pool's own rate"; a person in several
-    #: circles gets the fastest speed any of them sets, pool by pool. Circles
-    #: only — a functional community carries none (``clean``), and the hourly
-    #: faucet reads circles alone, so a speed left on one grants nothing.
-    regen_security = models.DecimalField(
-        _("security mana per hour"), max_digits=12, decimal_places=4,
-        null=True, blank=True, validators=[MinValueValidator(0)],
-        help_text=_("Blank: the pool's own rate."))
-    regen_compute = models.DecimalField(
-        _("compute mana per hour"), max_digits=12, decimal_places=4,
-        null=True, blank=True, validators=[MinValueValidator(0)],
-        help_text=_("Blank: the pool's own rate."))
-    regen_storage = models.DecimalField(
-        _("storage mana per hour"), max_digits=12, decimal_places=4,
-        null=True, blank=True, validators=[MinValueValidator(0)],
-        help_text=_("Blank: the pool's own rate."))
-
-    objects = CommunityQuerySet.as_manager()
-
     def __str__(self):
         return self.name
 
@@ -219,61 +132,7 @@ class Community(DomainEntity):
                 slug = f"{base_slug}-{counter}"
                 counter += 1
             self.slug = slug
-        if self.is_circle and self._would_exceed_the_circle_cap():
-            raise ValidationError({"is_circle": TOO_MANY_CIRCLES % {"max": MAX_CIRCLES}})
         super().save(*args, **kwargs)
-
-    def _would_exceed_the_circle_cap(self) -> bool:
-        """Whether saving this row as a circle makes one circle too many —
-        a new one, or a functional community turned into one; a circle
-        that already counts is never refused its own save."""
-        others = Community.objects.circles().exclude(pk=self.pk) if self.pk else Community.objects.circles()
-        return others.count() >= MAX_CIRCLES
-
-    def clean(self):
-        """A community changes axis only when nothing of the other one holds it.
-
-        Making a community a circle is refused while it carries a plan offer,
-        a discount or a privilege: the money axis would quietly stop honouring
-        them (every resolver skips circles), and its members would lose a plan
-        on their next request. A circle has no parent and is no parent: read
-        by direct membership, a tree would promise an inheritance that is not
-        there.
-        """
-        super().clean()
-        if self.is_circle and self._would_exceed_the_circle_cap():
-            raise ValidationError({"is_circle": TOO_MANY_CIRCLES % {"max": MAX_CIRCLES}})
-        if self.is_circle and self.carries_the_money_axis():
-            raise ValidationError({"is_circle": CIRCLE_CARRIES_NOTHING})
-        if self.is_circle and self.parent_id:
-            raise ValidationError({"parent": CIRCLE_STANDS_ALONE})
-        if self.is_circle and self.pk and self.children.exists():
-            raise ValidationError({"is_circle": CIRCLE_STANDS_ALONE})
-        if self.parent_id and Community.objects.circles().filter(pk=self.parent_id).exists():
-            raise ValidationError({"parent": CIRCLE_STANDS_ALONE})
-        if not self.is_circle and any(
-                getattr(self, f"regen_{pool}") is not None for pool in REGEN_POOLS):
-            raise ValidationError({"is_circle": CIRCLE_ONLY_SPEED})
-
-    def regen_speeds(self) -> dict:
-        """``{pool: speed}`` for the pools this circle sets; empty otherwise."""
-        if not self.is_circle:
-            return {}
-        return {pool: getattr(self, f"regen_{pool}") for pool in REGEN_POOLS
-                if getattr(self, f"regen_{pool}") is not None}
-
-    def carries_the_money_axis(self) -> bool:
-        """Whether a privilege, a plan offer or a discount names this community."""
-        if not self.pk:
-            return False
-        for relation in type(self)._meta.related_objects:
-            if relation.get_accessor_name() not in MONEY_AXIS_RELATIONS:
-                continue
-            rows = relation.related_model._default_manager.filter(
-                **{relation.field.name: self.pk})
-            if rows.exists():
-                return True
-        return False
 
     parent = models.ForeignKey(
         "self",
@@ -291,6 +150,72 @@ class Community(DomainEntity):
         on_delete=models.SET_NULL,
         related_name="communities"
     )
+
+
+
+class Clearance(models.Model):
+    """What a person is trusted to read — ``internal``, ``confidential`` —
+    and how fast their mana refills (2026-09-29; a Community with
+    ``is_circle`` until then).
+
+    A clearance is named after what it OPENS, never after who holds it, and
+    it is the whole of the trust axis: an app that keeps something to
+    clearances (``clearance_access``) reads it by ``Person.clearances``, and
+    the hourly refill takes the fastest speed any of a person's clearances
+    sets, pool by pool. It carries nothing else — no plan, no discount, no
+    privilege, no page of its own: that is a Community's, and the two are
+    orthogonal on purpose (README, "Communities and clearances"). Only a
+    superuser makes one (the socialhub's Clearances tab, the admin, the
+    console) or puts somebody in; members never see them listed.
+    """
+
+    name = models.CharField(_("name"), max_length=120, unique=True,
+                            help_text=_("What it opens: internal, confidential."))
+    slug = models.SlugField(unique=True, blank=True)
+    regen_security = models.DecimalField(
+        _("security mana per hour"), max_digits=12, decimal_places=4,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+        help_text=_("Blank: the pool's own rate."))
+    regen_compute = models.DecimalField(
+        _("compute mana per hour"), max_digits=12, decimal_places=4,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+        help_text=_("Blank: the pool's own rate."))
+    regen_storage = models.DecimalField(
+        _("storage mana per hour"), max_digits=12, decimal_places=4,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+        help_text=_("Blank: the pool's own rate."))
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = _("clearance")
+        verbose_name_plural = _("clearances")
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = unique_slug(self, self.name, fallback="clearance")
+        if self._would_exceed_the_cap():
+            raise ValidationError({"name": TOO_MANY_CLEARANCES % {"max": MAX_CLEARANCES}})
+        super().save(*args, **kwargs)
+
+    def _would_exceed_the_cap(self) -> bool:
+        """A new clearance is refused when seven exist; one that already
+        counts is never refused its own save."""
+        others = Clearance.objects.exclude(pk=self.pk) if self.pk else Clearance.objects.all()
+        return others.count() >= MAX_CLEARANCES
+
+    def clean(self):
+        super().clean()
+        if self._would_exceed_the_cap():
+            raise ValidationError({"name": TOO_MANY_CLEARANCES % {"max": MAX_CLEARANCES}})
+
+    def regen_speeds(self) -> dict:
+        """``{pool: speed}`` for the pools this clearance sets."""
+        return {pool: getattr(self, f"regen_{pool}") for pool in REGEN_POOLS
+                if getattr(self, f"regen_{pool}") is not None}
 
 
 class CommunityPrivilege(models.Model):
@@ -330,10 +255,10 @@ class CommunityPrivilege(models.Model):
     A community without a row grants nothing — the commoner default, free to
     resolve.
 
-    **A circle grants nothing** (2026-09-28): circles carry wiki reading and
+    **A clearance grants nothing** (2026-09-28): clearances carry wiki reading and
     mana refill speed, and no rights. A row naming one is refused here (``clean`` and ``save``), the
     admin offers no inline for it, and ``privileges.has_privilege`` skips
-    circles should a row exist anyway — three layers, one rule.
+    clearances should a row exist anyway — three layers, one rule.
 
     Each flag is honoured somewhere concrete — ``PRIVILEGES.md`` maps every
     field to the gate that reads it, and :mod:`toto.socialhub.privileges` is the
@@ -341,8 +266,7 @@ class CommunityPrivilege(models.Model):
     """
 
     community = models.OneToOneField(
-        Community, on_delete=models.CASCADE, related_name="privilege",
-        limit_choices_to={"is_circle": False})
+        Community, on_delete=models.CASCADE, related_name="privilege")
 
     may_see_community_chain = models.BooleanField(
         default=False,
@@ -378,17 +302,7 @@ class CommunityPrivilege(models.Model):
     def __str__(self):
         return f"privileges of {self.community.name}"
 
-    def _refuse_a_circle(self):
-        if self.community_id and Community.objects.circles().filter(
-                pk=self.community_id).exists():
-            raise ValidationError({"community": CIRCLE_GRANTS_NO_PRIVILEGE})
-
-    def clean(self):
-        super().clean()
-        self._refuse_a_circle()
-
     def save(self, *args, **kwargs):
-        self._refuse_a_circle()
         super().save(*args, **kwargs)
 
 
@@ -464,11 +378,9 @@ def generate_code(k=6):
 
 class MembershipApplication(models.Model):
     email = models.EmailField(unique=True)
-    # A functional community only: a circle is joined through the admin, never
-    # by application (2026-09-28). The form offers none, `clean` refuses one,
-    # and accepting a reference refuses it again (ReferenceRequest.save).
-    community = models.ForeignKey(Community, on_delete=models.CASCADE, related_name='applications',
-                                  limit_choices_to={"is_circle": False})
+    # A community only: a clearance is its own model (2026-09-29) and is given
+    # by a superuser, never applied for.
+    community = models.ForeignKey(Community, on_delete=models.CASCADE, related_name='applications')
     code = models.CharField(max_length=10, unique=True, default=generate_code)
     verified_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -482,11 +394,6 @@ class MembershipApplication(models.Model):
         ('rejected', 'Rejected'),
     ]
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
-
-    def clean(self):
-        super().clean()
-        if self.community_id and Community.objects.circles().filter(pk=self.community_id).exists():
-            raise ValidationError({"community": CIRCLE_NOT_JOINABLE})
 
     def is_expired(self):
         return timezone.now() > self.expires_at
@@ -519,15 +426,6 @@ class ReferenceRequest(models.Model):
     def __str__(self):
         return f"Reference by {self.referrer.display_name} for {self.application.email}"
 
-    def _applies_to_a_circle(self) -> bool:
-        return bool(self.application_id and Community.objects.circles().filter(
-            applications=self.application_id).exists())
-
-    def clean(self):
-        super().clean()
-        if self.status == "accepted" and self._applies_to_a_circle():
-            raise ValidationError(CIRCLE_NOT_JOINABLE)
-
     def save(self, *args, **kwargs):
         status_changed_to_accepted = False
 
@@ -535,12 +433,6 @@ class ReferenceRequest(models.Model):
             old = ReferenceRequest.objects.get(pk=self.pk)
             if old.status != "accepted" and self.status == "accepted":
                 status_changed_to_accepted = True
-
-        # Accepting is the one door a member walks through into a community,
-        # and a circle is never behind it: refused before anything is written,
-        # whoever calls — the view, the admin or a script.
-        if status_changed_to_accepted and self._applies_to_a_circle():
-            raise ValidationError(CIRCLE_NOT_JOINABLE)
 
         super().save(*args, **kwargs)
 

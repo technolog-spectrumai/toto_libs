@@ -35,6 +35,14 @@ class Person(DomainEntity):
         # Preserve the physical through-table that already exists in the DB.
         db_table="socialhub_person_communities",
     )
+    #: The trust axis (2026-09-29): what this person may read, and how fast
+    #: their mana refills — orthogonal to ``communities`` on purpose
+    #: (socialhub README). Only a superuser changes it.
+    clearances = models.ManyToManyField(
+        "socialhub.Clearance",
+        related_name="members",
+        blank=True,
+    )
     patron = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
