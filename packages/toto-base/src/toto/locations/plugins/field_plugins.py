@@ -31,7 +31,12 @@ def locations_map_features(request=None):
             },
         })
 
-    for r in Route.objects.exclude(geometry=None):
+    # Routes and layers kept to circles (2026-09-29): the viewer's, or with no
+    # request only the open ones.
+    from toto.locations.access import readable_layers, readable_routes
+
+    user = getattr(request, "user", None)
+    for r in readable_routes(user, Route.objects.exclude(geometry=None)):
         features.append({
             "type": "Feature",
             "geometry": json.loads(r.geometry.geojson),
@@ -45,7 +50,8 @@ def locations_map_features(request=None):
             "properties": {"layer": "address", "name": str(a), "id": a.pk},
         })
 
-    for poly in MapLayerPolygon.objects.select_related("layer").filter(layer__is_active=True):
+    for poly in MapLayerPolygon.objects.select_related("layer").filter(
+            layer__in=readable_layers(user, MapLayer.objects.filter(is_active=True))):
         features.append({
             "type": "Feature",
             "geometry": json.loads(poly.geometry.geojson),

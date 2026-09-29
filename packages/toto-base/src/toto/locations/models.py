@@ -215,6 +215,28 @@ class Route(DomainEntity):
         return self.name or f"Route {self.pk}"
 
 
+class RouteCircle(models.Model):
+    """One circle reading one route (2026-09-29; `access.readable_routes`).
+
+    A route with rows here is seen by their members, its creator and
+    superusers — on the map, in the lists and on its pages. A route with
+    none is what it always was: every signed-in member's. The circle is
+    PROTECTED: a circle that still keeps a route cannot be deleted.
+    """
+
+    route = models.ForeignKey("Route", on_delete=models.CASCADE, related_name="circle_rows")
+    circle = models.ForeignKey("socialhub.Community", on_delete=models.PROTECT,
+                               related_name="route_rows", limit_choices_to={"is_circle": True})
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["route", "circle"], name="locations_route_circle_once"),
+        ]
+
+    def __str__(self):
+        return f"{self.route} — {self.circle.name}"
+
+
 class MapLayer(DomainEntity):
     """
     A map layer is a collection of continuous polygons.
@@ -264,6 +286,23 @@ class MapLayer(DomainEntity):
 
     def __str__(self):
         return self.name
+
+
+class MapLayerCircle(models.Model):
+    """One circle reading one map layer (2026-09-29; `access.readable_layers`),
+    the same shape as `RouteCircle`."""
+
+    layer = models.ForeignKey(MapLayer, on_delete=models.CASCADE, related_name="circle_rows")
+    circle = models.ForeignKey("socialhub.Community", on_delete=models.PROTECT,
+                               related_name="map_layer_rows", limit_choices_to={"is_circle": True})
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["layer", "circle"], name="locations_layer_circle_once"),
+        ]
+
+    def __str__(self):
+        return f"{self.layer.name} — {self.circle.name}"
 
 
 class MapLayerPolygon(DomainEntity):

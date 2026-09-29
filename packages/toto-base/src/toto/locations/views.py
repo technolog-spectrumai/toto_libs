@@ -53,6 +53,7 @@ DETAIL_MODELS = {
     "zone": Zone,
     "routechain": RouteChain,
     "route": Route,
+    "maplayer": MapLayer,
 }
 
 # Location kinds that carry a free-text note, mapped to their field name.
@@ -107,6 +108,13 @@ def _detail_fields(kind, obj):
             ("Description", obj.description),
             ("Routes", obj.routes.count()),
         ]
+    if kind == "maplayer":
+        return [
+            ("Unit", obj.unit or None),
+            ("Active", "yes" if obj.is_active else "no"),
+            ("Owner", obj.owner.display_name if obj.owner else None),
+            ("Polygons", obj.polygons.count()),
+        ]
     if kind == "route":
         return [
             ("Name", obj.name or f"Route {obj.pk}"),
@@ -124,10 +132,25 @@ def _may_write(user, obj):
     return may_write(user, obj)
 
 
+def _readable_or_404(request, model, pk):
+    """The object — or the 404 a missing one gets when circles hide it from
+    this reader (`access.may_read`; only routes and layers are ever hidden)."""
+    from .access import may_read
+
+    obj = get_object_or_404(model, pk=pk)
+    if not may_read(request.user, obj):
+        raise Http404("No such location.")
+    return obj
+
+
 def _metadata_context(kind, obj):
-    """Context the reusable metadata editor section needs."""
+    """Context the reusable metadata editor section needs; a kind with no
+    metadata column (a map layer) gets none and the page shows no editor."""
+    if not hasattr(obj, "metadata"):
+        return {"kind": kind, "has_metadata": False}
     return {
         "kind": kind,
+        "has_metadata": True,
         "metadata_json": json.dumps(obj.metadata or {}, indent=2, ensure_ascii=False),
         "metadata_save_url": reverse("locations:metadata_save", args=[kind, obj.pk]),
         "metadata_convert_url": reverse("locations:metadata_convert"),
@@ -320,11 +343,13 @@ def locations_all(request):
             "metadata_url": f"{detail_url}#metadata",
         })
 
-    for route in Route.objects.select_related(
+    from .access import readable_layers, readable_routes
+
+    for route in readable_routes(request.user).select_related(
         "route_chain",
         "start_address",
         "end_address",
-    ).all():
+    ):
         detail_url = location_detail_url("route", route.pk)
         locations.append({
             "type": "Route",
@@ -351,7 +376,7 @@ def locations_all(request):
         })
 
     from toto.locations.plugins.map_plugins import LocationMapPlugin
-    locations.extend(LocationMapPlugin.get_items())
+    locations.extend(LocationMapPlugin.get_items(request))
 
     from toto.locations.plugins.sidebar_plugins import LocationSidebarPlugin
     from toto.locations.plugins.context_plugins import LocationContextPlugin
@@ -370,8 +395,7 @@ def locations_all(request):
         "locations_json": json.dumps(locations),
         "map_layers_json": json.dumps([
             map_layer_payload(layer)
-            for layer in MapLayer.objects
-            .filter(is_active=True)
+            for layer in readable_layers(request.user, MapLayer.objects.filter(is_active=True))
             .prefetch_related("polygons")
             .order_by("name")
         ]),
@@ -495,14 +519,8 @@ def zone_detail(request, pk):
 
 @login_required
 def route_detail(request, pk):
-    route = get_object_or_404(
-        Route.objects.select_related(
-            "route_chain",
-            "start_address",
-            "end_address",
-        ),
-        pk=pk,
-    )
+    route = _readable_or_404(request, Route.objects.select_related(
+        "route_chain", "start_address", "end_address"), pk)
 
     from toto.locations.plugins.url_plugins import LocationUrlPlugin
 
@@ -1182,7 +1200,7 @@ def location_detail(request, kind, pk):
     if model is None:
         raise Http404(f"Unknown location kind '{kind}'.")
 
-    obj = get_object_or_404(model, pk=pk)
+    obj = _readable_or_404(request, model, pk)
 
     if kind == "routechain":
         geom_json = route_chain_geometry(obj)
@@ -1190,7 +1208,24 @@ def location_detail(request, kind, pk):
         geom = getattr(obj, "geometry", None)
         geom_json = geometry_json(geom) if geom else None
 
+    from . import access as _access
+    from toto.socialhub import circle_access
+
+    manages = kind in _access.CIRCLED_KINDS and _access.may_manage_circles(request.user, obj)
     context = {
+        # Who reads it (2026-09-29): a route's or a layer's circles, chosen
+        # here by its creator/owner or a superuser; a reader sees only the
+        # circles they are in themselves.
+        "circles_kind": kind if kind in _access.CIRCLED_KINDS else "",
+        "circles": (circle_access.visible_circles_of(request.user, obj, rows="circle_rows",
+                                                     manages=manages)
+                    if kind in _access.CIRCLED_KINDS else []),
+        "circles_restricted": bool(kind in _access.CIRCLED_KINDS and obj.circle_rows.exists()),
+        "can_manage_circles": manages,
+        "circle_choices": ([{"circle": c, "on": c.pk in {x.pk for x in circle_access.circles_of(obj, rows="circle_rows")}}
+                            for c in circle_access.shareable_circles(request.user, obj, rows="circle_rows")]
+                           if manages else []),
+        "circles_save_url": (reverse("locations:circles_save", args=[kind, pk]) if manages else ""),
         "obj": obj,
         "object_label": str(obj),
         "object_type": model._meta.verbose_name.title(),
@@ -1220,7 +1255,9 @@ def metadata_save(request, kind, pk):
     if model is None:
         raise Http404(f"Unknown location kind '{kind}'.")
 
-    obj = get_object_or_404(model, pk=pk)
+    obj = _readable_or_404(request, model, pk)
+    if not hasattr(obj, "metadata"):
+        raise Http404(f"No metadata for kind '{kind}'.")
     from .access import may_write
 
     if not may_write(request.user, obj):
@@ -1259,7 +1296,7 @@ def note_save(request, kind, pk):
     if field is None or model is None:
         raise Http404(f"No note field for kind '{kind}'.")
 
-    obj = get_object_or_404(model, pk=pk)
+    obj = _readable_or_404(request, model, pk)
     from .access import may_write
 
     if not may_write(request.user, obj):
@@ -1411,3 +1448,33 @@ def _search_centre(request, viewer):
             return (lat, lon), str(viewer.address)
 
     return None, ""
+
+
+@login_required
+@require_POST
+def circles_save(request, kind, pk):
+    """A route's or a layer's circles (2026-09-29): its creator/owner or a
+    superuser ticks the circles that may see it; none = every member. A
+    functional community is refused; the change is on the audit chain."""
+    from toto.socialhub import circle_access
+
+    from . import access as _access
+
+    model = DETAIL_MODELS.get(kind)
+    if model is None or kind not in _access.CIRCLED_KINDS:
+        raise Http404(f"No circles for kind '{kind}'.")
+    obj = _readable_or_404(request, model, pk)
+    if not _access.may_manage_circles(request.user, obj):
+        raise PermissionDenied(_("Only its creator or a superuser decides who sees this."))
+    wanted = {int(v) for v in request.POST.getlist("circle")
+              if v.isascii() and v.isdigit() and len(v) <= 18}
+    picked = circle_access.shareable_circles(request.user, obj, rows="circle_rows").filter(pk__in=wanted)
+    try:
+        before, after = circle_access.set_circles(
+            obj, picked, rows="circle_rows", actor=request.user,
+            action=f"{kind}.circles_changed", app_label="locations", kind=kind)
+    except circle_access.CircleRefused as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, _("Saved.") if before != after else _("Nothing changed."))
+    return redirect(request.POST.get("next") or reverse("locations:location_detail", args=[kind, pk]))

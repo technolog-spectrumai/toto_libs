@@ -89,7 +89,11 @@ class LocationsReadConnector(ReadOnlyModelConnector):
     def _execute_route(self, input_data: dict) -> dict:
         from toto.locations.models import Route
 
-        qs = Route.objects.select_related("route_chain", "start_address", "end_address")
+        from toto.locations.access import readable_routes
+
+        # A workflow runs as nobody: the routes kept to circles are not its
+        # to list or fetch (2026-09-29).
+        qs = readable_routes(None, Route.objects.select_related("route_chain", "start_address", "end_address"))
         if self.config.get("action", "list") == "get":
             route = get_object_by_config(qs, self, input_data, default_lookup="id")
             return {"data": {"route": serialize_route(route)}}
@@ -100,7 +104,9 @@ class LocationsReadConnector(ReadOnlyModelConnector):
     def _execute_map_layer(self, input_data: dict) -> dict:
         from toto.locations.models import MapLayer
 
-        qs = MapLayer.objects.select_related("owner")
+        from toto.locations.access import readable_layers
+
+        qs = readable_layers(None, MapLayer.objects.select_related("owner"))
         if self.config.get("action", "list") == "get":
             layer = get_object_by_config(qs, self, input_data, default_lookup="slug")
             return {"data": {"map_layer": serialize_map_layer(layer)}}

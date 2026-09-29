@@ -106,6 +106,41 @@
     </section>
     {% endif %}
 
+    {% if circles_kind %}
+    <!-- ── Who sees this (circles, 2026-09-29) ──────────────────── -->
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-xl border p-5 shadow-sm" data-testid="location-circles">
+      <h2 class="mb-3 flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid {% if circles_restricted %}fa-lock{% else %}fa-lock-open{% endif %} opacity-60"></i>{% trans "Who sees this" %}
+      </h2>
+      {% if not can_manage_circles %}
+      <p class="text-sm">{% if not circles_restricted %}{% trans "Every member signed in." %}{% else %}{% trans "Shared with your circle" %}: {% for c in circles %}{{ c.name }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="opacity-60">—</span>{% endfor %}{% endif %}</p>
+      {% else %}
+      <form method="post" action="{{ circles_save_url }}" class="flex flex-col gap-3">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        {% if circle_choices %}
+        <ul class="flex flex-wrap gap-2 text-sm">
+          {% for row in circle_choices %}
+          <li><label :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="inline-flex items-center gap-2 rounded-full border px-3 py-1">
+            <input type="checkbox" name="circle" value="{{ row.circle.pk }}" {% if row.on %}checked{% endif %} class="h-4 w-4 rounded">{{ row.circle.name }}</label></li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-sm opacity-70">{% trans "You are in no circle, so there is none you can keep this to." %}</p>
+        {% endif %}
+        <p class="text-xs opacity-60">{% trans "No circle ticked: every member signed in sees it. Ticked circles: their members, you and superusers, nobody else." %}</p>
+        <div class="flex justify-end">
+          <button type="submit" :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'" class="detail-btn">
+            <i class="fa-solid fa-floppy-disk"></i>{% trans "Save circles" %}</button>
+        </div>
+      </form>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    {% if has_metadata %}
     <!-- ── Metadata section ─────────────────────────────────────── -->
     <section id="metadata"
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -144,6 +179,7 @@
         {% trans "Edit as JSON or YAML — switching converts automatically. Stored as a JSON object on this location." %}
       </p>
     </section>
+    {% endif %}
 
   </div>
 </div>

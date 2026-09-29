@@ -39,6 +39,7 @@ urlpatterns = [
     path("metadata/<str:kind>/<int:pk>/save/", views.metadata_save, name="metadata_save"),
     path("metadata/convert/", views.metadata_convert, name="metadata_convert"),
     path("note/<str:kind>/<int:pk>/save/", views.note_save, name="note_save"),
+    path("circles/<str:kind>/<int:pk>/save/", views.circles_save, name="circles_save"),
     path("locations/search/", views.location_search_api, name="location_search_api"),
     path("geocode/search/", views.geocode_search, name="geocode_search"),
     path("geocode/reverse/", views.geocode_reverse, name="geocode_reverse"),

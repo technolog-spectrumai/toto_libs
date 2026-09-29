@@ -128,7 +128,13 @@ class MapDataApiView(MeshGatedApiView):
                 "geometry": geometry,
             })
 
-        for obj in Route.objects.select_related("route_chain", "start_address", "end_address").all():
+        from .access import readable_routes
+
+        # A route kept to circles is theirs alone (2026-09-29): the mesh's
+        # caller reads as itself, and a key with no member behind it sees
+        # only the open ones.
+        for obj in readable_routes(request.user).select_related(
+                "route_chain", "start_address", "end_address"):
             locations.append({
                 "type": "Route",
                 "name": obj.name or f"Route {obj.pk}",
@@ -152,8 +158,11 @@ class MapDataApiView(MeshGatedApiView):
 @method_decorator(csrf_exempt, name="dispatch")
 class MapLayersApiView(MeshGatedApiView):
     def get(self, request):
+        from .access import readable_layers
+
         layers = []
-        for layer in MapLayer.objects.filter(is_active=True).prefetch_related("polygons").order_by("name"):
+        for layer in readable_layers(request.user, MapLayer.objects.filter(is_active=True)
+                                     ).prefetch_related("polygons").order_by("name"):
             layers.append({
                 "id": layer.pk,
                 "name": layer.name,
