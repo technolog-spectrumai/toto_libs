@@ -194,8 +194,10 @@ class ApplicationTests(ClearanceTestCase):
 
 
 class ClearancesTabTests(ClearanceTestCase):
-    """The socialhub's Clearances tab (2026-09-29): superusers manage clearances
-    where communities are — members, speeds, a new clearance, a removed one."""
+    """The socialhub's Clearances tab (2026-09-29; a list with two doors since
+    2026-09-30): superusers make a clearance — its speeds and its holders
+    given at once — and remove one. Holders and speeds are changed in the
+    admin, never here."""
 
     def as_(self, user):
         from django.test import Client
@@ -203,6 +205,9 @@ class ClearancesTabTests(ClearanceTestCase):
         client = Client()
         client.force_login(user)
         return client
+
+    def add(self, **data):
+        return self.as_(self.root).post(reverse("socialhub:clearance_add"), data)
 
     def test_the_tab_and_the_page_are_for_superusers(self):
         member = self.senior.user
@@ -217,41 +222,46 @@ class ClearancesTabTests(ClearanceTestCase):
                             'data-testid="tab-clearances"')
 
     def test_making_a_clearance_and_the_cap(self):
-        self.as_(self.root).post(reverse("socialhub:clearance_add"), {"name": "confidential"})
+        self.assertRedirects(self.add(name="confidential"), reverse("socialhub:clearances"),
+                             fetch_redirect_response=False)
         self.assertTrue(Clearance.objects.filter(name="confidential").exists())
         for n in range(Clearance.objects.count(), MAX_CLEARANCES):
             Clearance.objects.create(name=f"c{n}", slug=f"c{n}")
-        response = self.as_(self.root).post(reverse("socialhub:clearance_add"), {"name": "eighth"},
-                                            follow=True)
+        response = self.add(name="eighth")
+        self.assertEqual(response.status_code, 200)                 # re-drawn, not redirected
         self.assertContains(response, "at most 7 clearances")
         self.assertContains(response, 'data-testid="clearances-full"')
         self.assertFalse(Clearance.objects.filter(name="eighth").exists())
 
-    def test_people_in_and_out(self):
+    def test_holders_are_given_when_the_clearance_is_made(self):
         newcomer = person("newcomer")
-        url = reverse("socialhub:clearance_member", args=[self.internal.pk])
-        self.as_(self.root).post(url, {"who": "newcomer"})
-        self.assertIn(self.internal, newcomer.clearances.all())
-        self.as_(self.root).post(url, {"action": "remove", "person": newcomer.pk})
-        self.assertNotIn(self.internal, newcomer.clearances.all())
-        response = self.as_(self.root).post(url, {"who": "nobody-here"}, follow=True)
-        self.assertContains(response, "There is nobody called")
+        response = self.as_(self.root).post(reverse("socialhub:clearance_add"),
+                                            {"name": "confidential", "person": [newcomer.pk]},
+                                            follow=True)
+        self.assertContains(response, "Clearance confidential made, held by 1.")
+        confidential = Clearance.objects.get(name="confidential")
+        self.assertEqual(set(confidential.members.all()), {newcomer})
+        self.assertEqual(set(newcomer.communities.all()), set())    # a clearance, not a community
 
-    def test_speeds_saved_blank_means_the_pool_rate_and_bad_values_refused(self):
+    def test_speeds_given_at_making_blank_means_the_pool_rate_and_bad_values_refused(self):
         from decimal import Decimal
 
-        url = reverse("socialhub:clearance_speeds", args=[self.internal.pk])
-        self.as_(self.root).post(url, {"regen_security": "8", "regen_compute": "12,5", "regen_storage": ""})
-        self.internal.refresh_from_db()
-        self.assertEqual(self.internal.regen_security, Decimal("8"))
-        self.assertEqual(self.internal.regen_compute, Decimal("12.5"))
-        self.assertIsNone(self.internal.regen_storage)
-        response = self.as_(self.root).post(url, {"regen_security": "-1"}, follow=True)
-        self.assertContains(response, "greater than or equal to 0")
-        response = self.as_(self.root).post(url, {"regen_security": "fast"}, follow=True)
-        self.assertContains(response, "is not a number")
-        self.internal.refresh_from_db()
-        self.assertEqual(self.internal.regen_security, Decimal("8"))
+        self.add(name="confidential", regen_security="8", regen_compute="12,5", regen_storage="")
+        made = Clearance.objects.get(name="confidential")
+        self.assertEqual(made.regen_security, Decimal("8"))
+        self.assertEqual(made.regen_compute, Decimal("12.5"))
+        self.assertIsNone(made.regen_storage)
+        self.assertContains(self.add(name="payroll", regen_security="-1"),
+                            "greater than or equal to 0")
+        self.assertContains(self.add(name="payroll", regen_security="fast"), "is not a number")
+        self.assertFalse(Clearance.objects.filter(name="payroll").exists())
+
+    def test_the_removed_doors_are_gone(self):
+        from django.urls import NoReverseMatch
+
+        for name in ("clearance_member", "clearance_speeds"):
+            with self.subTest(door=name), self.assertRaises(NoReverseMatch):
+                reverse(f"socialhub:{name}", args=[self.internal.pk])
 
     def test_a_removed_clearance_and_one_still_in_use(self):
         from django.db.models import ProtectedError
@@ -267,19 +277,22 @@ class ClearancesTabTests(ClearanceTestCase):
         self.assertTrue(Clearance.objects.filter(pk=self.internal.pk).exists())
 
     def test_changes_reach_the_audit_chain(self):
+        from decimal import Decimal
+
         from toto.audit.models import AuditRecord
 
         newcomer = person("newcomer")
-        self.as_(self.root).post(reverse("socialhub:clearance_member", args=[self.internal.pk]),
-                                 {"who": "newcomer"})
-        self.as_(self.root).post(reverse("socialhub:clearance_speeds", args=[self.internal.pk]),
-                                 {"regen_security": "8"})
+        self.as_(self.root).post(reverse("socialhub:clearance_add"), {
+            "name": "confidential", "regen_security": "8", "person": [newcomer.pk]})
+        made = AuditRecord.objects.filter(action="SOCIALHUB.CLEARANCE_CREATED",
+                                          metadata__clearance="confidential").get()
+        self.assertEqual(made.actor_user, self.root)
+        self.assertEqual({pool: Decimal(v) for pool, v in made.metadata["speeds"].items()},
+                         {"security": Decimal("8")})
         added = AuditRecord.objects.filter(action="SOCIALHUB.CLEARANCE_MEMBER_ADDED",
                                           metadata__person=newcomer.slug).get()
         self.assertEqual(added.actor_user, self.root)
-        self.assertEqual(added.metadata["clearance"], "internal")
-        changed = AuditRecord.objects.filter(action="SOCIALHUB.CLEARANCE_CHANGED").last()
-        self.assertIn("regen_security", changed.metadata["changed"])
+        self.assertEqual(added.metadata["clearance"], "confidential")
 
 
 class OnlySuperusersMakeClearancesTests(ClearanceTestCase):

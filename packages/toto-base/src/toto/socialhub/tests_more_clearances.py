@@ -1,6 +1,13 @@
 """Clearances, more closely (2026-09-29): the model's rules at their edges, the
-shared reading rule every app asks (``clearance_access``), the Clearances tab's
-refusals and the admin's limits for somebody who is not a superuser.
+shared reading rule every app asks (``clearance_access``), the Clearances tab
+and the admin's limits for somebody who is not a superuser.
+
+The tab (2026-09-30) is a paginated, read-only list with two doors: New
+clearance (``clearance_add`` — a name, a speed per pool and holders, all or
+nothing, a refusal re-drawn with the modal open; its holders found through
+``clearance_people``) and Delete. Holders and speeds are changed in the admin,
+so the doors that edited them in place (``clearance_member``,
+``clearance_speeds``) are gone, and their rules are asserted at making.
 
 ``clearance_access`` is exercised through a real through table — the map
 layer's ``clearance_rows`` (``toto.locations``, same package) — because the rule
@@ -10,16 +17,20 @@ fake would test past the lookups that make ``gate`` and ``hidden`` agree.
     DJANGO_SETTINGS_MODULE=zenobia.settings manage.py test toto.socialhub.tests_more_clearances
 """
 
+import re
 from decimal import Decimal
-from unittest import mock
+from unittest import expectedFailure, mock
+from urllib.parse import urljoin
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser, Permission
+from django.contrib.messages import get_messages
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q
+from django.db.models.signals import m2m_changed
 from django.test import Client, RequestFactory, TestCase
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 
 from toto.audit.models import AuditRecord
 from toto.core.models import Platform
@@ -265,66 +276,286 @@ class SetClearancesTests(ClearanceFixture):
 
 
 # ---------------------------------------------------------------------------
-# The Clearances tab
+# The Clearances tab (2026-09-30): a read-only list with two doors — New
+# clearance (``clearance_add``, fed by ``clearance_people``) and Delete.
 # ---------------------------------------------------------------------------
 
 
 class ClearancesTabRefusalTests(ClearanceFixture):
+    """Every remaining door is a superuser's; the doors that edited a
+    clearance in place are gone (holders and speeds change in the admin)."""
+
+    def doors(self):
+        """(method, url, data) for every door the tab still has."""
+        return (
+            ("get", reverse("socialhub:clearances"), {}),
+            ("get", reverse("socialhub:clearance_people"), {"q": "ada"}),
+            ("post", reverse("socialhub:clearance_add"),
+             {"name": "restricted", "regen_security": "99", "person": [self.cy.pk]}),
+            ("post", reverse("socialhub:clearance_delete", args=[self.internal.pk]), {}),
+        )
+
+    def assert_nothing_changed(self):
+        self.assertEqual(set(Clearance.objects.values_list("slug", flat=True)),
+                         {"internal", "confidential"})
+        self.assertEqual(set(self.internal.members.all()), {self.ada})
+        self.assertEqual(set(self.cy.clearances.all()), set())
+
     def test_every_door_refuses_a_member_and_changes_nothing(self):
         member = client_for(self.ada.user)
-        doors = (
-            (reverse("socialhub:clearance_add"), {"name": "restricted"}),
-            (reverse("socialhub:clearance_member", args=[self.internal.pk]), {"who": "cy"}),
-            (reverse("socialhub:clearance_member", args=[self.internal.pk]),
-             {"action": "remove", "person": self.ada.pk}),
-            (reverse("socialhub:clearance_speeds", args=[self.internal.pk]), {"regen_security": "99"}),
-            (reverse("socialhub:clearance_delete", args=[self.internal.pk])),
-        )
-        for door in doors:
-            url, data = door if isinstance(door, tuple) else (door, {})
+        for method, url, data in self.doors():
             with self.subTest(url=url):
-                self.assertEqual(member.post(url, data).status_code, 403)
-        self.assertFalse(Clearance.objects.filter(name="restricted").exists())
-        self.assertEqual(set(self.internal.members.all()), {self.ada})
+                self.assertEqual(getattr(member, method)(url, data).status_code, 403)
+        self.assert_nothing_changed()
+
+    def test_every_door_refuses_staff_whatever_rights_they_hold(self):
+        clerk = User.objects.create_user("clerk", "clerk@example.com", "pw", is_staff=True)
+        clerk.user_permissions.add(*Permission.objects.filter(
+            content_type__app_label="socialhub", content_type__model="clearance"))
+        staff = client_for(clerk)
+        for method, url, data in self.doors():
+            with self.subTest(url=url):
+                self.assertEqual(getattr(staff, method)(url, data).status_code, 403)
+        self.assert_nothing_changed()
+
+    def test_every_door_sends_a_visitor_to_sign_in(self):
+        for method, url, data in self.doors():
+            with self.subTest(url=url):
+                response = getattr(Client(), method)(url, data)
+                self.assertEqual(response.status_code, 302)
+                self.assertIn("login", response["Location"])
+        self.assert_nothing_changed()
+
+    def test_the_people_search_refuses_in_json(self):
+        response = client_for(self.ada.user).get(reverse("socialhub:clearance_people"), {"q": "a"})
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response["Content-Type"], "application/json")
+        self.assertEqual(set(response.json()), {"error"})
+
+    def test_the_doors_answer_the_methods_they_mean(self):
+        root = client_for(self.root)
+        for name, args in (("clearance_add", []), ("clearance_delete", [self.internal.pk])):
+            with self.subTest(door=name):
+                self.assertEqual(root.get(reverse(f"socialhub:{name}", args=args)).status_code, 405)
+        for name in ("clearances", "clearance_people"):
+            with self.subTest(door=name):
+                self.assertEqual(root.post(reverse(f"socialhub:{name}")).status_code, 405)
+        self.assertTrue(Clearance.objects.filter(pk=self.internal.pk).exists())
+
+    def test_the_doors_that_edited_a_clearance_in_place_are_gone(self):
+        for name in ("clearance_member", "clearance_speeds"):
+            with self.subTest(door=name), self.assertRaises(NoReverseMatch):
+                reverse(f"socialhub:{name}", args=[self.internal.pk])
+        # Their old addresses answer nobody, a superuser included.
+        root = client_for(self.root)
+        base = reverse("socialhub:clearances")
+        for path, data in ((f"{base}{self.internal.pk}/members/", {"who": "cy"}),
+                           (f"{base}{self.internal.pk}/members/",
+                            {"action": "remove", "person": self.ada.pk}),
+                           (f"{base}{self.internal.pk}/speeds/", {"regen_security": "99"})):
+            with self.subTest(path=path):
+                self.assertEqual(root.post(path, data).status_code, 404)
+        self.assert_nothing_changed()
         self.internal.refresh_from_db()
         self.assertIsNone(self.internal.regen_security)
 
-    def test_the_doors_answer_posts_only(self):
-        root = client_for(self.root)
-        for name, args in (("clearance_add", []), ("clearance_member", [self.internal.pk]),
-                           ("clearance_speeds", [self.internal.pk]), ("clearance_delete", [self.internal.pk])):
-            with self.subTest(door=name):
-                self.assertEqual(root.get(reverse(f"socialhub:{name}", args=args)).status_code, 405)
-        self.assertEqual(root.post(reverse("socialhub:clearances")).status_code, 405)
-
-    def test_a_clearance_nobody_made_is_a_404_to_every_door(self):
-        root = client_for(self.root)
+    def test_a_clearance_nobody_made_is_a_404_to_delete(self):
         missing = Clearance.objects.order_by("-pk").first().pk + 1
-        for name, data in (("clearance_member", {"who": "bob"}),
-                           ("clearance_speeds", {"regen_security": "5"}),
-                           ("clearance_delete", {})):
-            with self.subTest(door=name):
-                response = root.post(reverse(f"socialhub:{name}", args=[missing]), data)
-                self.assertEqual(response.status_code, 404)
-        self.assertEqual(set(self.bob.clearances.all()), {self.confidential})
+        response = client_for(self.root).post(reverse("socialhub:clearance_delete", args=[missing]))
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(Clearance.objects.count(), 2)
+
+
+class ClearancePeopleTests(ClearanceFixture):
+    """``clearance_people``: the New clearance modal's search, JSON."""
+
+    def search(self, q=None):
+        data = {} if q is None else {"q": q}
+        response = client_for(self.root).get(reverse("socialhub:clearance_people"), data)
+        self.assertEqual(response.status_code, 200)
+        return response.json()["people"]
+
+    def names(self, q):
+        return [row["name"] for row in self.search(q)]
+
+    def test_no_query_answers_nobody(self):
+        for q in (None, "", "   ", "\t\n"):
+            with self.subTest(q=q):
+                self.assertEqual(self.search(q), [])
+
+    def test_the_shape_of_an_answer(self):
+        response = client_for(self.root).get(reverse("socialhub:clearance_people"), {"q": "cy"})
+        self.assertEqual(response["Content-Type"], "application/json")
+        self.assertEqual(response.json(), {"people": [
+            {"pk": self.cy.pk, "name": "Cy", "username": "cy"}]})
+
+    def test_somebody_is_found_by_name_username_slug_or_email(self):
+        found = person("zed")
+        found.display_name = "Grace Hopper"
+        found.slug = "admiral-g"
+        found.save()
+        found.user.email = "cobol@navy.example"
+        found.user.save()
+        for q in ("grace hop", "HOPPER", "zed", "admiral-g", "cobol@navy", "NAVY.EXAMPLE"):
+            with self.subTest(q=q):
+                self.assertEqual([row["pk"] for row in self.search(q)], [found.pk])
+
+    def test_the_query_is_tidied_before_it_is_asked(self):
+        grace = person("grace")
+        grace.display_name = "Grace Hopper"
+        grace.save()
+        self.assertEqual(self.names("  grace \t  hopper "), ["Grace Hopper"])
+
+    def test_only_people_with_an_account_are_offered(self):
+        Person.objects.create(display_name="Ghost Ada")               # no login
+        self.assertEqual(self.names("ada"), ["Ada"])
+
+    def test_at_most_twenty_ordered_by_name(self):
+        for n in range(25):
+            person(f"crew{n:02d}")                                    # display names Crew00…
+        found = self.names("crew")
+        self.assertEqual(len(found), 20)
+        self.assertEqual(found, sorted(found))
+        self.assertEqual(found[0], "Crew00")
+        self.assertEqual(found[-1], "Crew19")
+
+    def test_a_search_names_no_email(self):
+        rows = self.search("example.com")                            # found by it, never shown
+        self.assertTrue(rows)
+        for row in rows:
+            self.assertEqual(set(row), {"pk", "name", "username"})
+            self.assertNotIn("@", str(row))
 
 
 class ClearancesTabPageTests(ClearanceFixture):
-    def test_the_page_lists_each_clearance_with_its_members_and_the_room_left(self):
-        response = client_for(self.root).get(reverse("socialhub:clearances"))
+    def page(self, **query):
+        response = client_for(self.root).get(reverse("socialhub:clearances"), query)
+        self.assertEqual(response.status_code, 200)
+        return response
+
+    def test_the_page_lists_each_clearance_with_its_holders_and_the_room_left(self):
+        response = self.page()
         rows = {row["clearance"].slug: row for row in response.context["rows"]}
         self.assertEqual(list(rows), ["confidential", "internal"])
-        self.assertEqual(rows["internal"]["members"], [self.ada])
+        self.assertEqual(rows["internal"]["holders"], [self.ada])
+        self.assertEqual(rows["internal"]["more_holders"], 0)
+        self.assertEqual(rows["internal"]["kept"], 0)
         self.assertEqual([s["pool"] for s in rows["internal"]["speeds"]],
                          ["security", "compute", "storage"])
+        self.assertEqual(response.context["total"], 2)
+        self.assertEqual(response.context["max_clearances"], MAX_CLEARANCES)
         self.assertEqual(response.context["room_left"], MAX_CLEARANCES - 2)
+        self.assertFalse(response.context["draft"]["open"])
+        self.assertNotIn("people", response.context)                 # no datalist any more
         self.assertNotContains(response, 'data-testid="clearances-full"')
+        self.assertNotContains(response, 'data-testid="clearances-empty"')
 
-    def test_the_people_offered_are_the_ones_with_an_account(self):
-        Person.objects.create(display_name="Ghost")           # no login
-        response = client_for(self.root).get(reverse("socialhub:clearances"))
-        self.assertNotIn("Ghost", {p.display_name for p in response.context["people"]})
-        self.assertIn(self.cy, list(response.context["people"]))
+    def test_the_table_and_the_cards_both_carry_each_clearance(self):
+        response = self.page()
+        self.assertContains(response, 'data-testid="clearances-table"', count=1)
+        self.assertContains(response, 'data-testid="clearances-cards"', count=1)
+        for slug in ("internal", "confidential"):
+            with self.subTest(clearance=slug):
+                self.assertContains(response, f'data-testid="clearance-{slug}"', count=1)
+                self.assertContains(response, f'data-testid="clearance-card-{slug}"', count=1)
+                self.assertContains(response, f'data-testid="holders-{slug}"', count=2)
+                self.assertContains(response, f'data-testid="clearance-delete-{slug}"', count=2)
+
+    def test_the_new_clearance_modal_is_offered(self):
+        response = self.page()
+        for testid in ("clearance-new-open", "clearance-new", "clearance-people-search",
+                       "clearance-chosen"):
+            with self.subTest(testid=testid):
+                self.assertContains(response, f'data-testid="{testid}"', count=1)
+        self.assertContains(response, reverse("socialhub:clearance_people"))
+        self.assertContains(response, f'action="{reverse("socialhub:clearance_add")}"')
+        self.assertContains(response, 'id="clearance-draft"')
+
+    def test_speeds_are_shown_and_a_blank_one_is_the_pool_rate(self):
+        self.internal.regen_compute = Decimal("12.5")
+        self.internal.save()
+        row = next(r for r in self.page().context["rows"] if r["clearance"] == self.internal)
+        self.assertEqual({s["pool"]: s["value"] for s in row["speeds"]},
+                         {"security": None, "compute": Decimal("12.5"), "storage": None})
+
+    def test_holders_show_four_by_name_then_how_many_more(self):
+        crew = [person(f"crew{n}") for n in range(5)]                # Crew0…Crew4
+        self.internal.members.add(*crew)                              # with Ada: six
+        response = self.page()
+        row = next(r for r in response.context["rows"] if r["clearance"] == self.internal)
+        self.assertEqual([p.display_name for p in row["holders"]], ["Ada", "Crew0", "Crew1", "Crew2"])
+        self.assertEqual(row["more_holders"], 2)
+        self.assertContains(response, "+2 more", count=2)             # table and card
+        self.assertNotContains(response, "Crew3")
+        other = next(r for r in response.context["rows"] if r["clearance"] == self.confidential)
+        self.assertEqual((other["holders"], other["more_holders"]), ([self.bob], 0))
+
+    def test_a_clearance_nobody_holds_says_so(self):
+        self.internal.members.clear()
+        response = self.page()
+        row = next(r for r in response.context["rows"] if r["clearance"] == self.internal)
+        self.assertEqual((row["holders"], row["more_holders"]), ([], 0))
+        self.assertContains(response, "Nobody yet.", count=2)
+
+    def test_pages_of_five(self):
+        from toto.socialhub.views.clearances import PER_PAGE
+
+        self.assertEqual(PER_PAGE, 5)
+        self.assertFalse(self.page().context["is_paginated"])
+        for n in range(4):
+            Clearance.objects.create(name=f"p{n}", slug=f"p{n}")      # six in all
+        first = self.page()
+        self.assertTrue(first.context["is_paginated"])
+        self.assertEqual([r["clearance"].slug for r in first.context["rows"]],
+                         ["confidential", "internal", "p0", "p1", "p2"])
+        self.assertContains(first, 'href="?page=2"')
+        self.assertEqual(first.context["total"], 6)                   # all of them, not the page
+        second = self.page(page="2")
+        self.assertEqual([r["clearance"].slug for r in second.context["rows"]], ["p3"])
+        self.assertContains(second, 'data-testid="clearance-p3"')
+        self.assertNotContains(second, 'data-testid="clearance-internal"')
+        self.assertEqual(second.context["page_obj"].number, 2)
+
+    def test_a_junk_page_number_serves_a_page(self):
+        for n in range(4):
+            Clearance.objects.create(name=f"p{n}", slug=f"p{n}")
+        for junk in ("abc", "", "1.5", "²"):
+            with self.subTest(page=junk):
+                self.assertEqual(self.page(page=junk).context["page_obj"].number, 1)
+        self.assertEqual(self.page(page="99").context["page_obj"].number, 2)   # the last
+
+    def test_a_clearance_that_keeps_something_says_so_and_cannot_be_deleted(self):
+        for slug in ("kept-1", "kept-2"):
+            layer = MapLayer.objects.create(name=slug, slug=slug)
+            MapLayerClearance.objects.create(layer=layer, clearance=self.internal)
+        response = self.page()
+        rows = {row["clearance"].slug: row for row in response.context["rows"]}
+        self.assertEqual((rows["internal"]["kept"], rows["confidential"]["kept"]), (2, 0))
+        self.assertContains(response, "2 things", count=2)
+        buttons = re.findall(r'<button type="submit" data-testid="clearance-delete-([\w-]+)"([^>]*)>',
+                             response.content.decode())
+        disabled = {slug: bool(re.search(r"(?<![\w:-])disabled(?![\w:=-])", rest))
+                    for slug, rest in buttons}
+        self.assertEqual(disabled, {"internal": True, "confidential": False})
+        self.assertEqual(len(buttons), 4)                             # table and card each
+
+    def test_no_clearance_at_all(self):
+        Clearance.objects.all().delete()
+        response = self.page()
+        self.assertContains(response, 'data-testid="clearances-empty"')
+        self.assertNotContains(response, 'data-testid="clearances-table"')
+        self.assertNotContains(response, 'data-testid="clearances-cards"')
+        self.assertContains(response, 'data-testid="clearance-new-open"')
+        self.assertEqual(response.context["room_left"], MAX_CLEARANCES)
+
+    def test_a_full_platform_offers_no_new_clearance(self):
+        for n in range(Clearance.objects.count(), MAX_CLEARANCES):
+            Clearance.objects.create(name=f"x{n}", slug=f"x{n}")
+        response = self.page(page="2")
+        self.assertEqual(response.context["room_left"], 0)
+        self.assertContains(response, 'data-testid="clearances-full"')
+        self.assertNotContains(response, 'data-testid="clearance-new-open"')
+        self.assertNotContains(response, 'data-testid="clearance-new"')
 
 
 class ClearanceAddTests(ClearanceFixture):
@@ -369,89 +600,263 @@ class ClearanceAddTests(ClearanceFixture):
         self.assertLessEqual(len(made.slug), Clearance._meta.get_field("slug").max_length)
 
 
-class ClearanceMemberTests(ClearanceFixture):
-    def post(self, data):
-        return client_for(self.root).post(
-            reverse("socialhub:clearance_member", args=[self.confidential.pk]), data, follow=True)
+class ClearanceAddCase(ClearanceFixture):
+    """Posts to ``clearance_add`` as a superuser, following nothing: a
+    refusal is re-drawn (200), a success redirects (302)."""
 
-    def test_somebody_is_found_by_slug_or_by_username(self):
-        self.assertContains(self.post({"who": f"  {self.cy.slug}  "}), "is in confidential")
-        self.assertIn(self.confidential, self.cy.clearances.all())
-        self.post({"who": "ada"})
-        self.assertEqual(set(self.confidential.members.all()), {self.bob, self.cy, self.ada})
+    def setUp(self):
+        self.client = client_for(self.root)
+        # The fixture's own clearances and holders are on the chain already.
+        self.known = set(AuditRecord.objects.values_list("id", flat=True))
 
-    def test_a_blank_name_finds_nobody(self):
-        self.assertContains(self.post({"who": "   "}), "There is nobody called")
-        self.assertEqual(set(self.confidential.members.all()), {self.bob})
+    def new_records(self, *actions):
+        return AuditRecord.objects.exclude(id__in=self.known).filter(
+            action__in=[f"SOCIALHUB.{action}" for action in actions])
 
-    def test_taking_somebody_out_names_them_by_pk_only(self):
-        for junk in ("bob", "", "１２", "-1", f"{self.bob.pk}x"):
-            with self.subTest(person=junk):
-                self.post({"action": "remove", "person": junk})
-                self.assertIn(self.bob, self.confidential.members.all())
-        response = self.post({"action": "remove", "person": str(self.bob.pk)})
-        self.assertContains(response, "Bob left confidential.")
-        self.assertNotIn(self.bob, self.confidential.members.all())
+    def add(self, name="restricted", *, people=(), **speeds):
+        data = {"name": name, "person": [str(p) for p in people], **speeds}
+        return self.client.post(reverse("socialhub:clearance_add"), data)
 
-    def test_taking_out_somebody_who_is_not_in_it_says_nothing_and_records_nothing(self):
-        before = AuditRecord.objects.filter(action="SOCIALHUB.CLEARANCE_MEMBER_REMOVED").count()
-        self.post({"action": "remove", "person": str(self.cy.pk)})
-        self.assertEqual(AuditRecord.objects.filter(action="SOCIALHUB.CLEARANCE_MEMBER_REMOVED").count(),
-                         before)
-        self.assertEqual(set(self.cy.clearances.all()), set())
+    def made(self, name="restricted"):
+        return Clearance.objects.filter(name=name).first()
 
-    def test_putting_somebody_in_a_clearance_leaves_their_communities_alone(self):
-        self.post({"who": "cy"})
-        self.assertEqual(set(self.cy.communities.all()), {self.devs})
-        self.assertEqual(set(self.cy.clearances.all()), {self.confidential})
+    def said(self, response):
+        return [str(m) for m in get_messages(response.wsgi_request)]
+
+    def assert_made(self, response, name="restricted"):
+        self.assertRedirects(response, reverse("socialhub:clearances"), fetch_redirect_response=False)
+        made = self.made(name)
+        self.assertIsNotNone(made)
+        return made
+
+    def assert_refused(self, response, said, name="restricted"):
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, said)
+        self.assertIsNone(self.made(name))
 
 
-class ClearanceSpeedTests(ClearanceFixture):
-    def post(self, **data):
-        return client_for(self.root).post(
-            reverse("socialhub:clearance_speeds", args=[self.internal.pk]), data, follow=True)
+class ClearanceAddSpeedTests(ClearanceAddCase):
+    """Speeds are given when a clearance is made (the admin changes them later)."""
 
     def test_comma_decimals_and_blanks(self):
-        response = self.post(regen_security="0,25", regen_compute=" 12 ", regen_storage="")
-        self.assertContains(response, "Speeds saved for internal")
-        self.internal.refresh_from_db()
-        self.assertEqual(self.internal.regen_security, Decimal("0.25"))
-        self.assertEqual(self.internal.regen_compute, Decimal("12"))
-        self.assertIsNone(self.internal.regen_storage)
+        made = self.assert_made(self.add(regen_security="0,25", regen_compute=" 12 ", regen_storage=""))
+        self.assertEqual(made.regen_security, Decimal("0.25"))
+        self.assertEqual(made.regen_compute, Decimal("12"))
+        self.assertIsNone(made.regen_storage)                         # the pool's own rate
+        self.assertEqual(made.regen_speeds(), {"security": Decimal("0.25"), "compute": Decimal("12")})
 
-    def test_a_blank_clears_a_speed_that_was_set(self):
-        self.post(regen_compute="7")
-        self.post(regen_compute="")
-        self.internal.refresh_from_db()
-        self.assertEqual(self.internal.regen_speeds(), {})
+    def test_no_speed_at_all_is_every_pool_at_its_own_rate(self):
+        made = self.assert_made(self.add())
+        self.assertEqual(made.regen_speeds(), {})
 
-    def test_one_refused_pool_saves_none_of_them(self):
-        self.assertContains(self.post(regen_security="5", regen_compute="fast"), "is not a number")
-        self.internal.refresh_from_db()
-        self.assertIsNone(self.internal.regen_security)
-        self.post(regen_security="5", regen_storage="-0.5")
-        self.internal.refresh_from_db()
-        self.assertIsNone(self.internal.regen_security)
+    def test_zero_is_a_speed(self):
+        made = self.assert_made(self.add(regen_storage="0"))
+        self.assertEqual(made.regen_speeds(), {"storage": Decimal("0")})
+
+    def test_a_negative_speed_is_refused(self):
+        for value in ("-1", "-0,5"):
+            with self.subTest(value=value):
+                self.assert_refused(self.add(regen_compute=value), "greater than or equal to 0")
+
+    def test_not_a_number_is_refused(self):
+        response = self.add(regen_security="fast")
+        self.assert_refused(response, "fast is not a number.")
+        self.assertEqual(self.said(response), ["fast is not a number."])
+
+    def test_one_refused_pool_saves_nothing(self):
+        self.assert_refused(self.add(regen_security="5", regen_compute="fast"), "is not a number")
+        self.assert_refused(self.add(regen_security="5", regen_storage="-0.5"),
+                            "greater than or equal to 0")
+        self.assertFalse(self.new_records("CLEARANCE_CREATED").exists())
 
     def test_more_precision_or_size_than_the_column_holds_is_refused(self):
-        for value in ("0.00001", "123456789", "NaN", "Infinity"):
+        for value in ("0.00001", "123456789", "NaN", "Infinity", "-Infinity", "sNaN"):
             with self.subTest(value=value):
-                self.post(regen_security=value)
-                self.internal.refresh_from_db()
-                self.assertIsNone(self.internal.regen_security)
-        self.post(regen_security="99999999.9999")                 # the largest it holds
-        self.internal.refresh_from_db()
-        self.assertEqual(self.internal.regen_security, Decimal("99999999.9999"))
+                response = self.add(regen_security=value)
+                self.assertEqual(response.status_code, 200)
+                self.assertIsNone(self.made())
+        made = self.assert_made(self.add(regen_security="99999999.9999"))   # the largest it holds
+        self.assertEqual(made.regen_security, Decimal("99999999.9999"))
 
-    def test_a_saved_speed_is_on_the_chain_with_before_and_after(self):
-        self.post(regen_compute="3")
-        record = AuditRecord.objects.filter(action="SOCIALHUB.CLEARANCE_CHANGED",
-                                            object_id=str(self.internal.pk)).get()
-        self.assertEqual(record.metadata["changed"], ["regen_compute"])
-        self.assertIsNone(record.metadata["before"]["regen_compute"])
-        self.assertEqual(Decimal(record.metadata["after"]["regen_compute"]), Decimal("3"))
-        self.assertEqual(record.metadata["clearance"], "internal")
+    def test_the_speeds_it_was_made_with_are_on_the_chain(self):
+        made = self.assert_made(self.add(regen_compute="3"))
+        record = AuditRecord.objects.filter(action="SOCIALHUB.CLEARANCE_CREATED",
+                                            object_id=str(made.pk)).get()
+        self.assertEqual({pool: Decimal(v) for pool, v in record.metadata["speeds"].items()},
+                         {"compute": Decimal("3")})
+        self.assertEqual(record.metadata["clearance"], "restricted")
         self.assertEqual(record.object_type, "socialhub.clearance")
+        self.assertEqual(record.actor_user, self.root)
+        self.assertFalse(AuditRecord.objects.filter(action="SOCIALHUB.CLEARANCE_CHANGED",
+                                                    object_id=str(made.pk)).exists())
+
+
+class ClearanceAddHolderTests(ClearanceAddCase):
+    """Holders are given when a clearance is made, by person pk."""
+
+    def test_holders_are_named_by_pk(self):
+        response = self.add(people=[self.cy.pk, self.ada.pk])
+        made = self.assert_made(response)
+        self.assertEqual(set(made.members.all()), {self.ada, self.cy})
+        self.assertEqual(self.said(response), ["Clearance restricted made, held by 2."])
+
+    def test_nobody_named_is_a_clearance_nobody_holds(self):
+        response = self.add()
+        made = self.assert_made(response)
+        self.assertFalse(made.members.exists())
+        self.assertEqual(self.said(response), ["Clearance restricted made."])
+
+    def test_junk_is_ignored(self):
+        junk = ["cy", "", " ", "１２", "-1", f"{self.cy.pk}x", f" {self.cy.pk}", "²", "0",
+                "9" * 19, str(Person.objects.order_by("-pk").first().pk + 100)]
+        response = self.add(people=junk)
+        made = self.assert_made(response)
+        self.assertFalse(made.members.exists())
+        self.assertEqual(self.said(response), ["Clearance restricted made."])
+
+    def test_the_same_person_twice_holds_it_once(self):
+        response = self.add(people=[self.cy.pk, self.cy.pk])
+        made = self.assert_made(response)
+        self.assertEqual(list(made.members.all()), [self.cy])
+        self.assertEqual(self.said(response), ["Clearance restricted made, held by 1."])
+
+    def test_only_people_with_an_account_hold_it(self):
+        ghost = Person.objects.create(display_name="Ghost")           # no login
+        response = self.add(people=[ghost.pk, self.cy.pk])
+        made = self.assert_made(response)
+        self.assertEqual(list(made.members.all()), [self.cy])
+        self.assertEqual(self.said(response), ["Clearance restricted made, held by 1."])
+        self.assertFalse(ghost.clearances.exists())
+
+    def test_a_holder_keeps_their_communities_and_their_other_clearances(self):
+        made = self.assert_made(self.add(people=[self.ada.pk]))
+        self.assertEqual(set(self.ada.communities.all()), {self.devs})
+        self.assertEqual(set(self.ada.clearances.all()), {self.internal, made})
+
+    def test_a_refusal_saves_no_clearance_and_no_membership(self):
+        refusals = (
+            ({"regen_security": "fast"}, "restricted"),
+            ({"regen_compute": "-2"}, "restricted"),
+            ({}, "   "),                                                # no name
+            ({}, "INTERNAL"),                                           # a name already taken
+        )
+        for speeds, name in refusals:
+            with self.subTest(name=name, speeds=speeds):
+                response = self.add(name, people=[self.cy.pk, self.bob.pk], **speeds)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(Clearance.objects.count(), 2)
+                self.assertEqual(set(self.cy.clearances.all()), set())
+                self.assertEqual(set(self.bob.clearances.all()), {self.confidential})
+                self.assertEqual(set(self.internal.members.all()), {self.ada})
+        self.assertFalse(self.new_records("CLEARANCE_CREATED", "CLEARANCE_MEMBER_ADDED").exists())
+
+    def test_the_cap_saves_nothing_either(self):
+        for n in range(Clearance.objects.count(), MAX_CLEARANCES):
+            Clearance.objects.create(name=f"x{n}", slug=f"x{n}")
+        response = self.add(people=[self.cy.pk])
+        self.assert_refused(response, f"at most {MAX_CLEARANCES} clearances")
+        self.assertEqual(Clearance.objects.count(), MAX_CLEARANCES)
+        self.assertFalse(self.cy.clearances.exists())
+
+    def test_a_holder_that_cannot_be_added_undoes_the_clearance(self):
+        """All or nothing: the clearance and its holders are one transaction."""
+        def refuse(sender, action, **kwargs):
+            if action == "pre_add":
+                raise ValidationError({"members": ["No holder today."]})
+
+        m2m_changed.connect(refuse, sender=Clearance.members.through)
+        try:
+            response = self.add(people=[self.cy.pk])
+        finally:
+            m2m_changed.disconnect(refuse, sender=Clearance.members.through)
+        self.assert_refused(response, "No holder today.")
+        self.assertFalse(self.cy.clearances.exists())
+        self.assertFalse(self.new_records("CLEARANCE_CREATED", "CLEARANCE_MEMBER_ADDED").exists())
+
+    def test_the_chain_has_one_made_and_one_given_per_holder(self):
+        made = self.assert_made(self.add(people=[self.ada.pk, self.cy.pk], regen_security="4"))
+        created = AuditRecord.objects.filter(action="SOCIALHUB.CLEARANCE_CREATED",
+                                             object_id=str(made.pk))
+        self.assertEqual(created.count(), 1)
+        given = AuditRecord.objects.filter(action="SOCIALHUB.CLEARANCE_MEMBER_ADDED",
+                                           object_id=str(made.pk))
+        self.assertEqual(sorted(r.metadata["person"] for r in given), sorted([self.ada.slug, self.cy.slug]))
+        self.assertTrue(all(r.metadata["clearance"] == "restricted" for r in given))
+        self.assertEqual({r.actor_user for r in (*created, *given)}, {self.root})
+        self.assertFalse(self.new_records("MEMBER_ADDED").exists())       # no community touched
+
+
+class ClearanceAddDraftTests(ClearanceAddCase):
+    """A refused New clearance comes back with the modal open and what was
+    typed kept, on a 200 — not a redirect that would lose it."""
+
+    def test_a_refusal_redraws_the_page_with_the_modal_open(self):
+        ghost = Person.objects.create(display_name="Ghost")
+        response = self.add("  Restricted   docs ", people=[self.cy.pk, ghost.pk, "junk"],
+                            regen_security=" 5 ", regen_compute="fast", regen_storage="")
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "socialhub/clearances.html")
+        self.assertEqual(response.context["draft"], {
+            "open": True, "name": "Restricted docs",
+            "speeds": {"security": "5", "compute": "fast", "storage": ""},
+            "people": [{"pk": self.cy.pk, "name": "Cy", "username": "cy"}],
+        })
+        self.assertEqual(self.said(response), ["fast is not a number."])
+        self.assertContains(response, "fast is not a number.")
+        self.assertContains(response, 'id="clearance-draft"')
+        self.assertContains(response, '"open": true')
+        self.assertContains(response, 'data-testid="clearance-new"')  # the modal is drawn
+        self.assertEqual([r["clearance"].slug for r in response.context["rows"]],
+                         ["confidential", "internal"])                # the list beneath it
+
+    def test_the_draft_keeps_its_holders_in_name_order(self):
+        response = self.add("INTERNAL", people=[self.cy.pk, self.bob.pk, self.ada.pk])
+        self.assertEqual([p["name"] for p in response.context["draft"]["people"]], ["Ada", "Bob", "Cy"])
+        self.assertTrue(response.context["draft"]["open"])
+        self.assertContains(response, "There is already a clearance called INTERNAL")
+
+    def test_a_typed_speed_is_kept_short(self):
+        response = self.add(regen_security="9" * 50)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["draft"]["speeds"]["security"], "9" * 20)
+
+    def test_what_was_typed_comes_back_as_text_never_as_markup(self):
+        name = "</script><script>alert(1)</script>"
+        response = self.add(name, regen_security="<b>x</b>")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["draft"]["name"], name)
+        page = response.content.decode()
+        self.assertNotIn("<script>alert(1)", page)
+        self.assertNotIn("<b>x</b>", page)
+        self.assertIn("&lt;b&gt;x&lt;/b&gt; is not a number.", page)
+
+    @expectedFailure
+    def test_the_list_after_a_refusal_pages_to_the_list_itself(self):
+        """A refusal answers at …/clearances/add/; the shared pagination's
+        relative "?page=2" there is a GET of the add door, which answers 405.
+        The page links must lead back to the list.
+
+        PRODUCTION DEFECT (2026-09-30), reported, not worked around: drop
+        ``expectedFailure`` once the refused page's pagination links name
+        ``socialhub:clearances``."""
+        for n in range(4):
+            Clearance.objects.create(name=f"p{n}", slug=f"p{n}")      # six: two pages
+        response = self.add("internal")
+        self.assertEqual(response.status_code, 200)
+        hrefs = re.findall(r'href="([^"]*\?page=\d+[^"]*)"', response.content.decode())
+        self.assertTrue(hrefs)
+        for href in hrefs:
+            with self.subTest(href=href):
+                followed = self.client.get(urljoin(response.wsgi_request.path, href))
+                self.assertEqual(followed.status_code, 200)
+
+    def test_a_success_redirects_to_the_list_and_closes_the_modal(self):
+        response = self.add(people=[self.cy.pk])
+        self.assertRedirects(response, reverse("socialhub:clearances"), fetch_redirect_response=False)
+        page = self.client.get(response["Location"])                  # the same session: the flash
+        self.assertFalse(page.context["draft"]["open"])
+        self.assertContains(page, "Clearance restricted made, held by 1.")
+        self.assertContains(page, 'data-testid="clearance-restricted"')
 
 
 class ClearanceDeleteTests(ClearanceFixture):
