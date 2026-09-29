@@ -1,7 +1,7 @@
 """What a month costs, who may buy what, and the sweep — at the edges.
 
 Community discounts and plan offers belong to functional communities only
-(2026-09-28); every resolver here is asserted to skip a circle, and the
+(2026-09-28); every resolver here is asserted to skip a clearance, and the
 money pipeline is exercised through the same two doors ``settle`` uses
 (``toto.quota.charge.price_for`` / ``charge``), patched where the host
 prices nothing. Run under the host settings, like ``tests_eligibility``:
@@ -21,7 +21,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from toto.people.models import Person
-from toto.socialhub.models import Community
+from toto.socialhub.models import Clearance, Community
 
 from . import plans, services
 from .models import (ChargeStatus, CommunityDiscount, CommunityPlanOffer, Subscription,
@@ -100,7 +100,7 @@ class ServiceCase(TestCase):
         cls.toto = Community.objects.create(name="toto", slug="toto")
         cls.dev = Community.objects.create(name="toto-dev", slug="toto-dev", parent=cls.toto)
         cls.harbour = Community.objects.create(name="Harbour", slug="harbour")
-        cls.seniors = Community.objects.create(name="seniors", slug="seniors", is_circle=True)
+        cls.internal = Clearance.objects.create(name="internal", slug="internal")
 
     def setUp(self):
         plans.reload()
@@ -116,10 +116,11 @@ class DiscountTests(ServiceCase):
         CommunityDiscount.objects.create(community=self.harbour, percent=0)
         self.assertEqual(services.best_discount(member("zed", self.harbour)), (0, ""))
 
-    def test_the_best_functional_discount_wins_whatever_a_circle_member_is_in(self):
+    def test_the_best_community_discount_wins_whatever_clearance_a_member_holds(self):
         CommunityDiscount.objects.create(community=self.harbour, percent=15)
         CommunityDiscount.objects.create(community=self.toto, percent=30)
-        user = member("both", self.harbour, self.toto, self.seniors)
+        user = member("both", self.harbour, self.toto)
+        user.community_profile.clearances.add(self.internal)
         self.assertEqual(services.best_discount(user), (30, "toto"))
         self.assertEqual(services.best_discount(user, plans.plan("pro-plus")), (30, "toto"))
 
@@ -196,7 +197,7 @@ class SetDiscountsTests(ServiceCase):
         services.set_discounts({f"discount-{self.harbour.pk}": "35"})
         self.assertEqual(CommunityDiscount.objects.get(community=self.harbour).percent, 35)
 
-    def test_anything_that_is_not_a_percentage_of_a_functional_community_is_ignored(self):
+    def test_anything_that_is_not_a_percentage_of_a_community_is_ignored(self):
         CommunityDiscount.objects.create(community=self.harbour, percent=12)
         saved, cleared = services.set_discounts({
             "csrfmiddlewaretoken": "x",
@@ -205,7 +206,6 @@ class SetDiscountsTests(ServiceCase):
             f"discount-{self.toto.pk}": "101",
             f"discount-{self.dev.pk}": "-3",
             "discount-999999": "10",
-            f"discount-{self.seniors.pk}": "40",
         })
         self.assertEqual((saved, cleared), (0, 0))
         self.assertEqual(list(CommunityDiscount.objects.values_list("community__slug", "percent")),
@@ -283,7 +283,8 @@ class EligibilityEdgeTests(ServiceCase):
     def test_offering_communities_names_the_members_own_offering_communities(self):
         CommunityPlanOffer.objects.create(community=self.harbour, plan_key="standard")
         CommunityPlanOffer.objects.create(community=self.toto, plan_key="standard")
-        user = member("sailor", self.harbour, self.toto, self.seniors)
+        user = member("sailor", self.harbour, self.toto)
+        user.community_profile.clearances.add(self.internal)
         self.assertEqual(services.offering_communities(user, plans.plan("standard")),
                          ["Harbour", "toto"])
         self.assertEqual(services.offering_communities(AnonymousUser(), plans.plan("standard")), [])

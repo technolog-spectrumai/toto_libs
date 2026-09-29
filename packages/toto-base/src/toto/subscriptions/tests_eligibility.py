@@ -20,7 +20,7 @@ from django.utils import timezone
 
 from toto.core.models import Platform
 from toto.people.models import Person
-from toto.socialhub.models import Community
+from toto.socialhub.models import Clearance, Community
 
 from . import plans, services
 from .models import (CommunityDiscount, CommunityPlanOffer, Subscription, SubscriptionState, plan_for,
@@ -495,107 +495,40 @@ class SuperuserPlanTests(EligibilityBase):
         self.assertIsNotNone(_resolve_dashboard_item(tile, root))
 
 
-class CircleTests(EligibilityBase):
-    """A circle decides who reads, and is offered no plan and gives no
-    discount (2026-09-28). Refused on save, skipped by every resolver should a
-    row exist anyway, and absent from both tabs — while the functional
-    communities above keep every rule they had."""
+class ClearanceTests(EligibilityBase):
+    """A clearance decides who reads; a plan offer and a discount are a
+    community's (2026-09-29, ``socialhub.Clearance`` its own model). Holding
+    one changes nothing on the money axis — while the communities above keep
+    every rule they had."""
 
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        cls.seniors = Community.objects.create(name="seniors", slug="seniors", is_circle=True)
+        cls.internal = Clearance.objects.create(name="internal", slug="internal")
 
-    def _flip_to_circle(self, community):
-        # Past the model, as a row that predates the flip would be.
-        Community.objects.filter(pk=community.pk).update(is_circle=True)
-
-    def test_a_circle_is_offered_no_plan_and_gives_no_discount(self):
-        with self.assertRaises(ValidationError):
-            CommunityPlanOffer.objects.create(community=self.seniors, plan_key="developer")
-        with self.assertRaises(ValidationError):
-            CommunityPlanOffer(community=self.seniors, plan_key="developer").full_clean()
-        with self.assertRaises(ValidationError):
-            CommunityDiscount.objects.create(community=self.seniors, percent=50)
-        with self.assertRaises(ValidationError):
-            CommunityDiscount(community=self.seniors, percent=50).full_clean()
-        self.assertFalse(CommunityPlanOffer.objects.filter(community=self.seniors).exists())
-        self.assertFalse(CommunityDiscount.objects.filter(community=self.seniors).exists())
-
-    def test_an_offer_left_on_a_circle_grants_nothing(self):
-        board = Community.objects.create(name="board", slug="board")
-        CommunityPlanOffer.objects.create(community=board, plan_key="developer")
-        cto = member("cto", board, self.harbour)
-        self.assertTrue(services.is_eligible(cto, "developer"))
-
-        self._flip_to_circle(board)
-        self.assertFalse(services.is_eligible(cto, "developer"))
-        self.assertNotIn("developer", {plan.key for plan in services.eligible_plans(cto)})
-        self.assertEqual(services.offering_communities(cto, plans.plan("developer")), [])
-        self.client.force_login(cto)
-        self.assertEqual(self.client.post("/plans/subscribe/developer/").status_code, 404)
-
-    def test_a_discount_left_on_a_circle_gives_nothing(self):
-        board = Community.objects.create(name="board", slug="board")
-        CommunityDiscount.objects.create(community=board, percent=40)
+    def test_holding_a_clearance_changes_nothing_on_the_money_axis(self):
         CommunityDiscount.objects.create(community=self.harbour, percent=10)
-        cto = member("cto", board, self.harbour)
-        self.assertEqual(services.best_discount(cto), (40, "board"))
+        cto = member("cto", self.toto, self.harbour)
+        before = ({plan.key for plan in services.eligible_plans(cto)}, services.best_discount(cto))
+        self.assertIn("standard", before[0])
+        self.assertEqual(before[1], (10, "Quiet Harbour"))
+        cto.community_profile.clearances.add(self.internal)
+        self.assertEqual(({plan.key for plan in services.eligible_plans(cto)},
+                          services.best_discount(cto)), before)
 
-        self._flip_to_circle(board)
-        self.assertEqual(services.best_discount(cto), (10, "Quiet Harbour"))
+    def test_a_clearance_alone_offers_no_plan_and_gives_no_discount(self):
+        loner = member("loner")
+        loner.community_profile.clearances.add(self.internal)
+        self.assertFalse(services.is_eligible(loner, "standard"))
+        self.assertFalse(services.is_eligible(loner, "developer"))
+        self.assertEqual(services.best_discount(loner), (0, ""))
+        self.client.force_login(loner)
+        self.assertEqual(self.client.post("/plans/subscribe/standard/").status_code, 404)
 
-    def test_the_parent_walk_neither_counts_nor_climbs_through_a_circle(self):
-        """Trees mixing the kinds are refused by `Community.clean`; written
-        past it, the walk stops at the circle rather than reaching above it."""
-        board = Community.objects.create(name="board", slug="board", parent=self.toto)
-        self._flip_to_circle(board)
-        board_devs = Community.objects.create(name="board-devs", slug="board-devs", parent=board)
-        under_a_circle = member("under", board_devs)
-        in_the_circle = member("inside", board)
-        self.assertFalse(services.is_eligible(under_a_circle, "standard"))
-        self.assertFalse(services.is_eligible(in_the_circle, "standard"))
-        self.assertTrue(services.is_eligible(member("dev", self.dev), "standard"))
-
-    def test_the_tabs_list_no_circle_and_ignore_a_forged_one(self):
+    def test_the_tabs_list_communities_only(self):
         root = member("root", is_superuser=True, is_staff=True)
         self.client.force_login(root)
-        audience = self.client.get("/plans/communities/")
-        discounts = self.client.get("/plans/discounts/")
-        for page in (audience, discounts):
+        for url in ("/plans/communities/", "/plans/discounts/"):
+            page = self.client.get(url)
             listed = {row["community"] for row in page.context["rows"]}
-            self.assertNotIn(self.seniors, listed)
-            self.assertIn(self.harbour, listed)
-
-        self.client.post("/plans/communities/", {
-            "aud-seen": [f"{self.seniors.pk}-developer"],
-            f"aud-{self.seniors.pk}-developer": "on"})
-        self.client.post("/plans/discounts/", {f"discount-{self.seniors.pk}": "50"})
-        self.assertFalse(CommunityPlanOffer.objects.filter(community=self.seniors).exists())
-        self.assertFalse(CommunityDiscount.objects.filter(community=self.seniors).exists())
-
-    def test_the_admin_offers_no_circle(self):
-        from django.contrib import admin
-        from django.test import RequestFactory
-
-        from .admin import CommunityDiscountAdmin, CommunityPlanOfferAdmin
-
-        request = RequestFactory().get("/")
-        request.user = member("root", is_superuser=True, is_staff=True)
-        for model, model_admin in ((CommunityPlanOffer, CommunityPlanOfferAdmin),
-                                   (CommunityDiscount, CommunityDiscountAdmin)):
-            with self.subTest(model=model.__name__):
-                form = model_admin(model, admin.site).get_form(request)()
-                choices = set(form.fields["community"].queryset)
-                self.assertNotIn(self.seniors, choices)
-                self.assertIn(self.harbour, choices)
-
-    def test_a_community_holding_an_offer_or_a_discount_cannot_become_a_circle(self):
-        CommunityDiscount.objects.create(community=self.harbour, percent=10)
-        for community in (self.toto, self.harbour):
-            community.is_circle = True
-            with self.subTest(community=community.name):
-                with self.assertRaises(ValidationError) as caught:
-                    community.full_clean()
-                self.assertIn("is_circle", caught.exception.message_dict)
-
+            self.assertEqual(listed, {self.toto, self.dev, self.harbour})

@@ -5,7 +5,7 @@ the zero-charge path a full discount takes through ``post_usage_record``.
 ``toto.mana.tests.unit.test_discount`` pins the member-facing numbers through
 ``toto.quota.charge``; these pin the rules underneath: who has no discount
 (an account nobody owns, a missing account, a host without subscriptions, a
-circle), what is never discounted (a currency price, the subscription bill),
+clearance), what is never discounted (a currency price, the subscription bill),
 the rounding at odd percents, the minimum charge, and what a charge brought to
 zero does and does not write.
 """
@@ -25,7 +25,7 @@ from toto.assets.prepaid import get_or_create_prepaid_account
 from toto.mana import services as mana
 from toto.mana.tests.fixtures import economy, held, master, spend
 from toto.people.models import Person
-from toto.socialhub.models import Community
+from toto.socialhub.models import Clearance, Community
 from toto.subscriptions.models import CommunityDiscount
 from toto.tariffs import discounts
 from toto.tariffs.charge import InsufficientBalanceError, charge_user, check_user_can_act
@@ -135,14 +135,11 @@ class PercentForAccountTests(TestCase):
         account, _ = get_or_create_prepaid_account(bob)
         self.assertEqual(discounts.percent_for_account(account.pk), (0, ""))
 
-    def test_a_circle_gives_no_discount_even_with_a_row(self):
-        """A discount row cannot be saved on a circle, but a community turned
-        into one behind ``save`` (a queryset update) keeps its old row — and
-        the money axis never reads circles, so it still takes nothing off."""
-        board = Community.objects.create(name="Board")
-        CommunityDiscount.objects.create(community=board, percent=90)
-        Community.objects.filter(pk=board.pk).update(is_circle=True)
-        bob = member("bob", board)
+    def test_a_clearance_gives_no_discount(self):
+        """A discount is a community's; a clearance (its own model, 2026-09-29)
+        carries none, so holding one takes nothing off."""
+        bob = member("bob")
+        bob.community_profile.clearances.add(Clearance.objects.create(name="internal"))
         account, _ = get_or_create_prepaid_account(bob)
         self.assertEqual(discounts.percent_for_account(account.pk), (0, ""))
 
