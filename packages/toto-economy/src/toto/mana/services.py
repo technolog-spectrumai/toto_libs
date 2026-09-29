@@ -281,14 +281,12 @@ def fill_pools(user, *, reason: str = "signup") -> int:
     return moved
 
 
-def circle_speeds(user_ids=None) -> dict:
-    """``{user_id: {role: (per hour, circle name)}}`` — for each person, the
-    fastest refill speed any of their circles sets, pool by pool (2026-09-28).
+def clearance_speeds(user_ids=None) -> dict:
+    """``{user_id: {role: (per hour, clearance name)}}`` — for each person, the
+    fastest refill speed any of their clearances sets, pool by pool (2026-09-28).
 
-    One query, however many members: the hourly run reads it once. Circles
-    only — a functional community's speed columns are refused on save
-    (socialhub ``Community.clean``) and never read here, so a stray one grants
-    nothing. Empty on a host without socialhub.
+    One query, however many members: the hourly run reads it once. Empty on
+    a host without socialhub.
     """
     from django.apps import apps
 
@@ -296,13 +294,12 @@ def circle_speeds(user_ids=None) -> dict:
         return {}
     from toto.people.models import Person
 
-    rows = Person.communities.through.objects.filter(
-        community__is_circle=True, person__user__isnull=False)
+    rows = Person.clearances.through.objects.filter(person__user__isnull=False)
     if user_ids is not None:
         rows = rows.filter(person__user_id__in=list(user_ids))
-    columns = [f"community__regen_{role}" for role in colours.ROLES]
+    columns = [f"clearance__regen_{role}" for role in colours.ROLES]
     out: dict = {}
-    for user_id, name, *speeds in rows.values_list("person__user_id", "community__name", *columns):
+    for user_id, name, *speeds in rows.values_list("person__user_id", "clearance__name", *columns):
         for role, speed in zip(colours.ROLES, speeds):
             if speed is None:
                 continue
@@ -313,15 +310,15 @@ def circle_speeds(user_ids=None) -> dict:
 
 
 def regen_for(user, pool, speeds=None) -> tuple:
-    """``(per hour, circle name)``: how fast this member's pool refills.
+    """``(per hour, clearance name)``: how fast this member's pool refills.
 
-    The fastest speed the member's circles set for the pool, naming that
-    circle; the pool's own rate (and "") when none sets one — a person in no
-    circle keeps the platform's speed. A circle may set a slower speed too,
+    The fastest speed the member's clearances set for the pool, naming that
+    clearance; the pool's own rate (and "") when none sets one — a person in no
+    clearance keeps the platform's speed. A clearance may set a slower speed too,
     and a member whose only speed is 0 is not refilled at all. The pool's own
     rate stays the operator's off switch: at 0 nobody is refilled, whatever
-    any circle says. ``speeds`` is this member's slice of
-    :func:`circle_speeds`, passed in by callers that already read it.
+    any clearance says. ``speeds`` is this member's slice of
+    :func:`clearance_speeds`, passed in by callers that already read it.
     """
     from decimal import Decimal
 
@@ -329,7 +326,7 @@ def regen_for(user, pool, speeds=None) -> tuple:
         return Decimal(0), ""
     if speeds is None:
         pk = getattr(user, "pk", None)
-        speeds = circle_speeds([pk]).get(pk, {}) if pk else {}
+        speeds = clearance_speeds([pk]).get(pk, {}) if pk else {}
     found = speeds.get(pool.role)
     if found is None:
         return pool.regen_per_hour, ""
@@ -338,11 +335,11 @@ def regen_for(user, pool, speeds=None) -> tuple:
 
 def regenerate_hour(*, at=None) -> RunReport:
     """Top every active member up by one hour's refill, toward the maximum —
-    at their own speed: their circles', or the pool's (:func:`regen_for`).
+    at their own speed: their clearances', or the pool's (:func:`regen_for`).
 
     The hour comes from the clock (or ``at``), hour-aligned in UTC — the
     faucet's own label, so the two sweeps can never disagree about which hour
-    it is. A missed hour is never backfilled. The circles are read once for
+    it is. A missed hour is never backfilled. The clearances are read once for
     the whole run, before the first pool.
     """
     from django.contrib.auth import get_user_model
@@ -357,7 +354,7 @@ def regenerate_hour(*, at=None) -> RunReport:
     label = period_label(at)
     report = RunReport(label=label)
     users = get_user_model().objects.filter(is_active=True).order_by("pk")
-    speeds = circle_speeds()
+    speeds = clearance_speeds()
     for pool in pools().values():
         if not _payable(pool) or not pool.regen_per_hour:
             continue
@@ -368,7 +365,7 @@ def regenerate_hour(*, at=None) -> RunReport:
         failures = []
         try:
             for user in users.iterator():
-                rate, _circle = regen_for(user, pool, speeds.get(user.pk, {}))
+                rate, _clearance = regen_for(user, pool, speeds.get(user.pk, {}))
                 if rate <= 0:
                     skipped += 1
                     continue
@@ -553,7 +550,7 @@ def explain_shortfall(user, asset, needed_base_units: int,
         return sentence + " " + _(
             "That is more than a full pool holds (%(max)s), so it cannot be "
             "paid by waiting.") % {"max": _amount(pool.max_pool)}
-    rate, _circle = regen_for(user, pool)
+    rate, _clearance = regen_for(user, pool)
     if rate > 0:
         hours = max(1, math.ceil((needed - have) / rate))
         sentence += " " + _(
@@ -643,7 +640,7 @@ def balances_of(user) -> dict | None:
     found = pools()
     if not found:
         return None
-    speeds = circle_speeds([user.pk]).get(user.pk, {})
+    speeds = clearance_speeds([user.pk]).get(user.pk, {})
     out = {}
     for role in colours.ROLES:
         pool = found.get(role)
@@ -652,7 +649,7 @@ def balances_of(user) -> dict | None:
         scale = Decimal(10) ** pool.asset.decimals
         amount = Decimal(balance_base_units(user, pool)) / scale
         drain = drain_per_day(user, role)
-        regen, circle = regen_for(user, pool, speeds)
+        regen, clearance = regen_for(user, pool, speeds)
         regen_day = regen * 24
         net_day = regen_day - drain
         full_h, empty_h = status.eta_hours(amount, pool.max_pool, net_day / 24)
@@ -664,7 +661,7 @@ def balances_of(user) -> dict | None:
             "band": status.band_of(amount, pool.max_pool),
             "trend": status.trend_of(amount, pool.max_pool, net_day),
             "regen_per_hour": regen, "regen_per_day": regen_day,
-            "regen_circle": circle, "regen_default": pool.regen_per_hour,
+            "regen_clearance": clearance, "regen_default": pool.regen_per_hour,
             "drain_per_day": drain, "net_per_day": net_day,
             "eta_full_hours": full_h, "eta_empty_hours": empty_h,
         }

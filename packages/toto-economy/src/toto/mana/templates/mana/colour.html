@@ -14,7 +14,7 @@
       {% include "mana/partials/_flow.html" %}
       {% include "mana/partials/_eta.html" %}
       <p class="text-xs opacity-60">{% blocktrans with regen=b.regen_per_hour|floatformat:"-1" at=next_tick_at|date:"H:i" %}Refills +{{ regen }} an hour, up to the cap. Next refill at {{ at }} UTC.{% endblocktrans %}</p>
-      {% if b.regen_circle %}<p class="text-xs opacity-60" data-testid="regen-circle">{% url 'mana:regeneration' as regen_url %}{% blocktrans with circle=b.regen_circle %}Your circle {{ circle }} sets this speed.{% endblocktrans %}{% if regen_url %} <a href="{{ regen_url }}" class="underline">{% trans "Regeneration" %}</a>{% endif %}</p>{% endif %}
+      {% if b.regen_clearance %}<p class="text-xs opacity-60" data-testid="regen-clearance">{% url 'mana:regeneration' as regen_url %}{% blocktrans with clearance=b.regen_clearance %}Your clearance {{ clearance }} sets this speed.{% endblocktrans %}{% if regen_url %} <a href="{{ regen_url }}" class="underline">{% trans "Regeneration" %}</a>{% endif %}</p>{% endif %}
     </section>
 
     {% if colour == "security" and plain_files %}
