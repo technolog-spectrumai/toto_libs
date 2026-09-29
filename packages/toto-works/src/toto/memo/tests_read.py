@@ -206,22 +206,22 @@ class PresentationReadTests(TestCase):
         self.assertContains(response, reverse("memo:export_pdf", args=[self.deck.pk]))
 
 
-class DeckCircleTests(PresentationReadTests):
-    """A deck kept to circles (2026-09-29) is theirs alone: gone from the
+class DeckClearanceTests(PresentationReadTests):
+    """A deck kept to clearances (2026-09-29) is theirs alone: gone from the
     gallery, a 404 in the player, whatever its public flag."""
 
     def setUp(self):
         super().setUp()
         from toto.people.models import Person
-        from toto.socialhub.models import Community
-        from toto.vault.models import VaultFileCircle
+        from toto.socialhub.models import Clearance
+        from toto.vault.models import VaultFileClearance
 
-        self.board = Community.objects.create(name="board", slug="board", is_circle=True)
+        self.internal = Clearance.objects.create(name="internal", slug="internal")
         self.member = User.objects.create_user("member", password="pw")
-        Person.objects.create(user=self.member, display_name="M").communities.add(self.board)
+        Person.objects.create(user=self.member, display_name="M").clearances.add(self.internal)
         self.deck.is_public = True
         self.deck.save()
-        VaultFileCircle.objects.create(file=self.deck, circle=self.board)
+        VaultFileClearance.objects.create(file=self.deck, clearance=self.internal)
 
     def test_the_gallery_and_the_player(self):
         gallery, present = reverse("memo:gallery"), reverse("memo:present", args=[self.deck.pk])

@@ -2,7 +2,7 @@
 
 A deployment in realistic mode gets no invented territories; full mode seeds
 them once, and a second run finds its own rows rather than doubling them.
-What it seeds is shared infrastructure, kept to no circle.
+What it seeds is shared infrastructure, kept to no clearance.
 """
 
 from io import StringIO

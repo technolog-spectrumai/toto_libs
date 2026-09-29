@@ -20,10 +20,10 @@ from django.urls import reverse
 from django.utils import timezone
 
 from toto.people.models import Person
-from toto.socialhub.models import Community
+from toto.socialhub.models import Clearance
 from toto.vault import locks, versions
 from toto.vault.models import (Bucket, FileLock, FileVersion, VaultDirectory, VaultFile,
-                               VaultFileCircle)
+                               VaultFileClearance)
 from toto.vault.plugins import VaultAccessPlugin
 from toto.vault.version_views import _file_for
 
@@ -106,10 +106,10 @@ class FileForTests(_Fixture):
         with patch.dict(VaultAccessPlugin.registry, {"text": Lender()}):
             self.assertEqual(_file_for(self.request(self.other), f.pk), f)
 
-    def test_circles_close_it_even_to_staff_and_lending_apps(self):
-        circle = Community.objects.create(name="board", slug="board", is_circle=True)
+    def test_clearances_close_it_even_to_staff_and_lending_apps(self):
+        clearance = Clearance.objects.create(name="internal", slug="internal")
         f = self.file(public=True)
-        VaultFileCircle.objects.create(file=f, circle=circle)
+        VaultFileClearance.objects.create(file=f, clearance=clearance)
 
         class Lender:
             def may_edit(self, user, vault_file):
@@ -119,7 +119,7 @@ class FileForTests(_Fixture):
             for user in (self.staff, self.other):
                 with self.assertRaises(Http404):
                     _file_for(self.request(user), f.pk)
-        Person.objects.create(user=self.other, display_name="O").communities.add(circle)
+        Person.objects.create(user=self.other, display_name="O").clearances.add(clearance)
         self.assertEqual(_file_for(self.request(self.other), f.pk), f)
 
 

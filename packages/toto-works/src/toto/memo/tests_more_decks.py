@@ -1,8 +1,8 @@
 """The reading half of memo, as people use it: who sees which deck, where.
 
 The gallery, the player and the read page each answer "may this person see
-this deck?" and since 2026-09-29 circles are part of that answer: a deck kept
-to circles belongs to their members, its owner and superusers — not to the
+this deck?" and since 2026-09-29 clearances are part of that answer: a deck kept
+to clearances belongs to their members, its owner and superusers — not to the
 public flag, not to a folder share, not to the bucket's owner. Hidden decks are
 missing decks (404 in the player, absent from the gallery).
 
@@ -28,7 +28,7 @@ from django.utils.http import urlencode
 from django.utils.text import slugify
 
 from toto.core.models import Platform
-from toto.vault.models import Bucket, VaultDirectory, VaultFile, VaultFileCircle
+from toto.vault.models import Bucket, VaultDirectory, VaultFile, VaultFileClearance
 
 from . import presentation_format as pf
 
@@ -42,7 +42,7 @@ HOST_LOGIN_GATE = "zenobia.middleware.LoginRequiredEverywhereMiddleware"
 #: holding a formula block raises AttributeError on open: the player and the
 #: read page answer 500 and the gallery card loses its cover.
 #: The player renders a legacy v1 `html` block with trust_html=True for EVERY
-#: reader may_read admits (public decks, folder shares, bucket owners, circle
+#: reader may_read admits (public decks, folder shares, bucket owners, clearance
 #: members), not only the deck's owner — the gallery escapes it and the read
 #: page is owner-only, the player is neither. No CSP is configured on this
 #: host, so a public deck with `<body><script>` runs in any member's session.
@@ -58,7 +58,7 @@ def _slide(title, *blocks, layout="title-content"):
 
 
 class DeckFixture(TestCase):
-    """Owner, circle member, stranger, superuser; a bucket; a circle."""
+    """Owner, clearance member, stranger, superuser; a bucket; a clearance."""
 
     def setUp(self):
         media = tempfile.mkdtemp(prefix="memo-more-")
@@ -68,7 +68,7 @@ class DeckFixture(TestCase):
         self.addCleanup(override.disable)
 
         from toto.people.models import Person
-        from toto.socialhub.models import Community
+        from toto.socialhub.models import Clearance
 
         Platform.objects.create(site_name="T", author="A",
                                 publication_year=2026, active=True)
@@ -76,10 +76,9 @@ class DeckFixture(TestCase):
         self.member = User.objects.create_user("member", password="pw")
         self.stranger = User.objects.create_user("stranger", password="pw")
         self.root = User.objects.create_superuser("root", "root@example.com", "pw")
-        self.board = Community.objects.create(name="board", slug="board", is_circle=True)
-        self.staff_circle = Community.objects.create(name="auditors", slug="auditors",
-                                                     is_circle=True)
-        Person.objects.create(user=self.member, display_name="M").communities.add(self.board)
+        self.internal = Clearance.objects.create(name="internal", slug="internal")
+        self.staff_clearance = Clearance.objects.create(name="restricted", slug="restricted")
+        Person.objects.create(user=self.member, display_name="M").clearances.add(self.internal)
         Person.objects.create(user=self.stranger, display_name="S")
         self.bucket = Bucket.objects.create(owner=self.owner, name="Decks", slug="decks",
                                             storage_backend="local")
@@ -104,9 +103,9 @@ class DeckFixture(TestCase):
         vault_file.file.save(f"{slugify(name)}.pxml", ContentFile(body), save=True)
         return vault_file
 
-    def keep(self, vault_file, *circles):
-        for circle in circles:
-            VaultFileCircle.objects.create(file=vault_file, circle=circle)
+    def keep(self, vault_file, *clearances):
+        for clearance in clearances:
+            VaultFileClearance.objects.create(file=vault_file, clearance=clearance)
         return vault_file
 
     def gallery(self, user, **params):
@@ -140,46 +139,46 @@ class GalleryVisibilityTests(DeckFixture):
         xml = self.deck("looks-like-one", file_type="xml", public=True)
         self.assertNotIn(xml.pk, self.listed(self.owner))
 
-    def test_a_deck_kept_to_a_circle_is_listed_to_its_members_its_owner_and_a_superuser(self):
-        kept = self.keep(self.deck("board-pack", public=True), self.board)
+    def test_a_deck_kept_to_a_clearance_is_listed_to_its_members_its_owner_and_a_superuser(self):
+        kept = self.keep(self.deck("board-pack", public=True), self.internal)
         self.assertIn(kept.pk, self.listed(self.owner))
         self.assertIn(kept.pk, self.listed(self.member))
         self.assertIn(kept.pk, self.listed(self.root))
         self.assertNotIn(kept.pk, self.listed(self.stranger))
 
-    def test_a_legacy_spelled_deck_kept_to_a_circle_is_hidden_the_same_way(self):
+    def test_a_legacy_spelled_deck_kept_to_a_clearance_is_hidden_the_same_way(self):
         legacy = self.keep(self.deck("legacy", file_type="presentation", public=True),
-                           self.board)
+                           self.internal)
         self.assertNotIn(legacy.pk, self.listed(self.stranger))
         self.assertIn(legacy.pk, self.listed(self.member))
 
-    def test_a_circle_overrides_a_folder_share(self):
+    def test_a_clearance_overrides_a_folder_share(self):
         folder = VaultDirectory.objects.create(bucket=self.bucket, owner=self.owner,
                                                name="shared")
         folder.allowed_users.add(self.stranger)
         shared = self.deck("shared", directory=folder)
         self.assertIn(shared.pk, self.listed(self.stranger))
-        self.keep(shared, self.board)
+        self.keep(shared, self.internal)
         self.assertNotIn(shared.pk, self.listed(self.stranger))
 
-    def test_the_owner_of_the_bucket_loses_a_deck_kept_to_a_circle_they_are_not_in(self):
-        # The bucket is the stranger's; the deck is the owner's, kept to the board.
+    def test_the_owner_of_the_bucket_loses_a_deck_kept_to_a_clearance_they_are_not_in(self):
+        # The bucket is the stranger's; the deck is the owner's, kept to internal.
         their_bucket = Bucket.objects.create(owner=self.stranger, name="Theirs",
                                              slug="theirs", storage_backend="local")
         guest = self.deck("guest", bucket=their_bucket)
         self.assertIn(guest.pk, self.listed(self.stranger))
-        self.keep(guest, self.board)
+        self.keep(guest, self.internal)
         self.assertNotIn(guest.pk, self.listed(self.stranger))
 
-    def test_being_in_any_one_of_a_decks_circles_is_enough(self):
-        both = self.keep(self.deck("both"), self.board, self.staff_circle)
+    def test_being_in_any_one_of_a_decks_clearances_is_enough(self):
+        both = self.keep(self.deck("both"), self.internal, self.staff_clearance)
         self.assertIn(both.pk, self.listed(self.member))
         self.assertNotIn(both.pk, self.listed(self.stranger))
 
 
 class GalleryCardTests(DeckFixture):
     def test_only_the_owner_and_a_superuser_get_the_who_can_read_door(self):
-        deck = self.keep(self.deck("board-pack"), self.board)
+        deck = self.keep(self.deck("board-pack"), self.internal)
         door = reverse("vault:file_access", args=[deck.pk])
         for user, offered in ((self.owner, True), (self.root, True), (self.member, False)):
             with self.subTest(user=user.username):
@@ -193,15 +192,15 @@ class GalleryCardTests(DeckFixture):
                     self.assertEqual(card["access_url"], "")
                     self.assertNotContains(self.gallery(user), door)
 
-    def test_the_access_link_keeps_a_deck_to_a_circle_and_comes_back_to_the_gallery(self):
+    def test_the_access_link_keeps_a_deck_to_a_clearance_and_comes_back_to_the_gallery(self):
         from toto.people.models import Person
 
-        Person.objects.create(user=self.owner, display_name="O").communities.add(self.board)
+        Person.objects.create(user=self.owner, display_name="O").clearances.add(self.internal)
         deck = self.deck("open-deck", public=True)
         self.assertIn(deck.pk, self.listed(self.stranger))
         card = next(row for row in self.gallery(self.owner).context["presentations"]
                     if row["file_pk"] == deck.pk)
-        response = self.client.post(card["access_url"], {"circle": [self.board.pk],
+        response = self.client.post(card["access_url"], {"clearance": [self.internal.pk],
                                                          "next": reverse("memo:gallery")})
         self.assertRedirects(response, reverse("memo:gallery"), fetch_redirect_response=False)
         self.assertNotIn(deck.pk, self.listed(self.stranger))
@@ -215,13 +214,13 @@ class GalleryCardTests(DeckFixture):
         response = self.client.post(url, {"next": "https://evil.example/"})
         self.assertRedirects(response, url, fetch_redirect_response=False)
 
-    def test_the_card_names_every_circle_a_deck_is_kept_to_in_order(self):
-        deck = self.keep(self.deck("board-pack"), self.board, self.staff_circle)
+    def test_the_card_names_every_clearance_a_deck_is_kept_to_in_order(self):
+        deck = self.keep(self.deck("board-pack"), self.internal, self.staff_clearance)
         response = self.gallery(self.owner)
         card = next(row for row in response.context["presentations"]
                     if row["file_pk"] == deck.pk)
-        self.assertEqual(card["circles"], "auditors, board")
-        self.assertContains(response, "Kept to: auditors, board")
+        self.assertEqual(card["clearances"], "internal, restricted")
+        self.assertContains(response, "Kept to: internal, restricted")
         self.assertContains(response, "fa-solid fa-lock\"")
 
     def test_an_open_deck_shows_an_open_lock_to_its_owner(self):
@@ -335,15 +334,15 @@ class PlayerTests(DeckFixture):
         folder.allowed_users.add(self.stranger)
         deck = self.deck("shared", directory=folder)
         self.assertEqual(self.present(self.stranger, deck).status_code, 200)
-        self.keep(deck, self.board)
+        self.keep(deck, self.internal)
         self.assertEqual(self.present(self.stranger, deck).status_code, 404)
 
-    def test_a_superuser_plays_a_deck_kept_to_a_circle_they_are_not_in(self):
-        deck = self.keep(self.deck("board-pack"), self.board)
+    def test_a_superuser_plays_a_deck_kept_to_a_clearance_they_are_not_in(self):
+        deck = self.keep(self.deck("board-pack"), self.internal)
         self.assertEqual(self.present(self.root, deck).status_code, 200)
 
     def test_the_owner_plays_their_own_kept_deck(self):
-        deck = self.keep(self.deck("board-pack"), self.board)
+        deck = self.keep(self.deck("board-pack"), self.internal)
         self.assertEqual(self.present(self.owner, deck).status_code, 200)
 
     def test_an_encrypted_deck_is_refused_even_to_its_owner(self):
@@ -400,9 +399,9 @@ class PlayerTests(DeckFixture):
 
 
 class ReadPageTests(DeckFixture):
-    def test_the_read_page_stays_the_owners_even_for_a_circle_member(self):
+    def test_the_read_page_stays_the_owners_even_for_a_clearance_member(self):
         # It renders legacy HTML live, which is only defensible for the owner.
-        deck = self.keep(self.deck("board-pack", public=True), self.board)
+        deck = self.keep(self.deck("board-pack", public=True), self.internal)
         self.client.force_login(self.member)
         self.assertEqual(self.client.get(reverse("memo:read", args=[deck.pk])).status_code, 404)
 
@@ -432,7 +431,7 @@ class ReadPageTests(DeckFixture):
 class HostVisitorTests(DeckFixture):
     """A visitor on this host: private by default, whatever the deck."""
 
-    def test_a_visitor_is_sent_to_log_in_even_for_a_public_deck_kept_to_no_circle(self):
+    def test_a_visitor_is_sent_to_log_in_even_for_a_public_deck_kept_to_no_clearance(self):
         from django.conf import settings
 
         if HOST_LOGIN_GATE not in settings.MIDDLEWARE:
@@ -450,11 +449,11 @@ class HostVisitorTests(DeckFixture):
 @modify_settings(MIDDLEWARE={"remove": [HOST_LOGIN_GATE]})
 class ViewsOwnVisitorRuleTests(DeckFixture):
     """The views' own rule for a visitor, with the host's gate taken away:
-    public decks kept to no circle, and nothing else."""
+    public decks kept to no clearance, and nothing else."""
 
-    def test_the_gallery_shows_a_visitor_only_public_decks_kept_to_no_circle(self):
+    def test_the_gallery_shows_a_visitor_only_public_decks_kept_to_no_clearance(self):
         open_deck = self.deck("open-deck", public=True)
-        kept = self.keep(self.deck("kept-deck", public=True), self.board)
+        kept = self.keep(self.deck("kept-deck", public=True), self.internal)
         private = self.deck("private-deck")
         response = self.client.get(reverse("memo:gallery"))
         self.assertEqual(response.status_code, 200)
@@ -464,13 +463,13 @@ class ViewsOwnVisitorRuleTests(DeckFixture):
         self.assertNotIn(private.pk, listed)
         self.assertNotContains(response, 'data-testid="deck-access"')
 
-    def test_a_visitor_plays_a_public_deck_kept_to_no_circle(self):
+    def test_a_visitor_plays_a_public_deck_kept_to_no_clearance(self):
         deck = self.deck("open-deck", public=True)
         self.assertEqual(self.client.get(reverse("memo:present", args=[deck.pk])).status_code,
                          200)
 
     def test_a_visitor_is_sent_to_log_in_for_a_kept_or_private_deck(self):
-        kept = self.keep(self.deck("kept-deck", public=True), self.board)
+        kept = self.keep(self.deck("kept-deck", public=True), self.internal)
         private = self.deck("private-deck")
         for deck in (kept, private):
             with self.subTest(deck=deck.title):

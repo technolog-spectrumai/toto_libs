@@ -1,5 +1,5 @@
-"""The file-circles door (``files/<pk>/access/``) and its helpers, past what
-tests_circles pins: the ``?next=`` open-redirect guard, who may manage, what
+"""The file-clearances door (``files/<pk>/access/``) and its helpers, past what
+tests_clearances pins: the ``?next=`` open-redirect guard, who may manage, what
 a forged form can and cannot tick, and the one audit record a change leaves.
 """
 
@@ -8,7 +8,6 @@ import tempfile
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.messages import get_messages
-from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.db import IntegrityError, transaction
 from django.test import TestCase, override_settings
@@ -17,30 +16,28 @@ from django.urls import reverse
 from toto.audit.models import AuditRecord
 from toto.core.models import Platform
 from toto.people.models import Person
-from toto.socialhub.circle_access import CircleRefused
-from toto.socialhub.models import Community
-from toto.vault import circles
+from toto.socialhub.models import Clearance
+from toto.vault import clearances
 from toto.vault.access import may_read
-from toto.vault.models import Bucket, VaultFile, VaultFileCircle
+from toto.vault.models import Bucket, VaultFile, VaultFileClearance
 
 User = get_user_model()
 
-ACTION = "VAULT.FILE.CIRCLES_CHANGED"
+ACTION = "VAULT.FILE.CLEARANCES_CHANGED"
 
 
-@override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="vault-more-circles-"))
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="vault-more-clearances-"))
 class _Fixture(TestCase):
     @classmethod
     def setUpTestData(cls):
         Platform.objects.get_or_create(active=True, defaults={
             "site_name": "T", "author": "t", "publication_year": 2026})
-        cls.board = Community.objects.create(name="board", slug="board", is_circle=True)
-        cls.seniors = Community.objects.create(name="seniors", slug="seniors", is_circle=True)
-        cls.devs = Community.objects.create(name="devs", slug="devs")
+        cls.internal = Clearance.objects.create(name="internal", slug="internal")
+        cls.confidential = Clearance.objects.create(name="confidential", slug="confidential")
         cls.owner = User.objects.create_user("owner", password="pw")
-        Person.objects.create(user=cls.owner, display_name="Owner").communities.add(cls.board)
+        Person.objects.create(user=cls.owner, display_name="Owner").clearances.add(cls.internal)
         cls.member = User.objects.create_user("member", password="pw")
-        Person.objects.create(user=cls.member, display_name="Member").communities.add(cls.board)
+        Person.objects.create(user=cls.member, display_name="Member").clearances.add(cls.internal)
         cls.stranger = User.objects.create_user("stranger", password="pw")
         cls.staff = User.objects.create_user("staff", password="pw", is_staff=True)
         cls.root = User.objects.create_superuser("root", "r@e.com", "pw")
@@ -55,8 +52,8 @@ class _Fixture(TestCase):
                                bucket=bucket or self.bucket)
         vault_file.file.save(title, ContentFile(b"the contents"), save=False)
         vault_file.save()
-        for circle in kept_to:
-            VaultFileCircle.objects.create(file=vault_file, circle=circle)
+        for clearance in kept_to:
+            VaultFileClearance.objects.create(file=vault_file, clearance=clearance)
         return vault_file
 
     def url(self, vault_file, **query):
@@ -78,7 +75,7 @@ class NextRedirectGuardTests(_Fixture):
     def post(self, vault_file, next_url, **extra):
         self.client.force_login(self.owner)
         return self.client.post(self.url(vault_file),
-                                {"circle": [self.board.pk], "next": next_url, **extra})
+                                {"clearance": [self.internal.pk], "next": next_url, **extra})
 
     def test_a_same_site_path_is_where_the_owner_lands(self):
         f = self.file()
@@ -114,12 +111,12 @@ class NextRedirectGuardTests(_Fixture):
     def test_the_guard_still_saves_the_change_it_refused_to_redirect_for(self):
         f = self.file()
         self.post(f, "https://evil.example/")
-        self.assertEqual([c.name for c in circles.circles_of(f)], ["board"])
+        self.assertEqual([c.name for c in clearances.clearances_of(f)], ["internal"])
 
     def test_next_in_the_query_string_is_read_on_a_post_too(self):
         f = self.file()
         self.client.force_login(self.owner)
-        response = self.client.post(self.url(f, next="/decks/3/"), {"circle": [self.board.pk]})
+        response = self.client.post(self.url(f, next="/decks/3/"), {"clearance": [self.internal.pk]})
         self.assertRedirects(response, "/decks/3/", fetch_redirect_response=False)
 
     def test_the_page_never_carries_a_hostile_next_into_its_form(self):
@@ -142,19 +139,19 @@ class NextRedirectGuardTests(_Fixture):
 class WhoMayManageTests(_Fixture):
     def test_nobody_logged_out_manages_anything(self):
         f = self.file()
-        self.assertFalse(circles.may_manage(None, f))
-        self.assertFalse(circles.may_manage(AnonymousUser(), f))
+        self.assertFalse(clearances.may_manage(None, f))
+        self.assertFalse(clearances.may_manage(AnonymousUser(), f))
 
     def test_the_owner_and_a_superuser_do(self):
         f = self.file()
-        self.assertTrue(circles.may_manage(self.owner, f))
-        self.assertTrue(circles.may_manage(self.root, f))
+        self.assertTrue(clearances.may_manage(self.owner, f))
+        self.assertTrue(clearances.may_manage(self.root, f))
 
     def test_a_reader_staff_or_member_does_not(self):
-        f = self.file(public=True, kept_to=[self.board])
+        f = self.file(public=True, kept_to=[self.internal])
         self.assertTrue(may_read(self.member, f))
-        self.assertFalse(circles.may_manage(self.member, f))
-        self.assertFalse(circles.may_manage(self.staff, f))
+        self.assertFalse(clearances.may_manage(self.member, f))
+        self.assertFalse(clearances.may_manage(self.staff, f))
 
     def test_a_logged_out_visitor_is_sent_to_log_in(self):
         f = self.file(public=True)
@@ -176,9 +173,9 @@ class WhoMayManageTests(_Fixture):
     def test_staff_who_may_read_a_public_file_may_not_decide_who_reads_it(self):
         f = self.file(public=True)
         self.client.force_login(self.staff)
-        response = self.client.post(self.url(f), {"circle": [self.board.pk]})
+        response = self.client.post(self.url(f), {"clearance": [self.internal.pk]})
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(circles.circles_of(f), [])
+        self.assertEqual(clearances.clearances_of(f), [])
 
     def test_the_bucket_owner_who_reads_it_may_not_decide_either(self):
         theirs = Bucket.objects.create(name="Theirs", slug="theirs", owner=self.stranger)
@@ -190,49 +187,49 @@ class WhoMayManageTests(_Fixture):
     def test_a_superuser_may_keep_somebody_elses_file_and_is_the_recorded_actor(self):
         f = self.file()
         self.client.force_login(self.root)
-        self.client.post(self.url(f), {"circle": [self.seniors.pk]})
-        self.assertEqual([c.name for c in circles.circles_of(f)], ["seniors"])
+        self.client.post(self.url(f), {"clearance": [self.confidential.pk]})
+        self.assertEqual([c.name for c in clearances.clearances_of(f)], ["confidential"])
         self.assertEqual(AuditRecord.objects.get(action=ACTION).actor_user, self.root)
 
 
 class TickingTests(_Fixture):
-    def test_saving_the_same_circles_says_so_and_records_nothing(self):
-        f = self.file(kept_to=[self.board])
+    def test_saving_the_same_clearances_says_so_and_records_nothing(self):
+        f = self.file(kept_to=[self.internal])
         self.client.force_login(self.owner)
-        response = self.client.post(self.url(f), {"circle": [self.board.pk]})
+        response = self.client.post(self.url(f), {"clearance": [self.internal.pk]})
         self.assertIn("Nothing changed.", self.messages(response))
         self.assertFalse(AuditRecord.objects.filter(action=ACTION).exists())
 
     def test_a_change_says_saved(self):
         f = self.file()
         self.client.force_login(self.owner)
-        response = self.client.post(self.url(f), {"circle": [self.board.pk]})
+        response = self.client.post(self.url(f), {"clearance": [self.internal.pk]})
         self.assertIn("Saved.", self.messages(response))
 
     def test_forged_ids_are_ignored_and_the_real_one_kept(self):
         f = self.file()
         self.client.force_login(self.owner)
-        self.client.post(self.url(f), {"circle": [
-            "abc", "-1", "1" * 30, "", str(self.board.pk)]})
-        self.assertEqual([c.name for c in circles.circles_of(f)], ["board"])
+        self.client.post(self.url(f), {"clearance": [
+            "abc", "-1", "1" * 30, "", str(self.internal.pk)]})
+        self.assertEqual([c.name for c in clearances.clearances_of(f)], ["internal"])
 
-    def test_an_owner_cannot_tick_a_circle_they_are_not_in(self):
+    def test_an_owner_cannot_tick_a_clearance_they_are_not_in(self):
         f = self.file()
-        self.client.force_login(self.owner)                  # in board, not in seniors
-        self.client.post(self.url(f), {"circle": [self.seniors.pk]})
-        self.assertEqual(circles.circles_of(f), [])
+        self.client.force_login(self.owner)                  # in internal, not in confidential
+        self.client.post(self.url(f), {"clearance": [self.confidential.pk]})
+        self.assertEqual(clearances.clearances_of(f), [])
 
-    def test_a_circle_already_keeping_the_file_is_offered_to_an_owner_outside_it(self):
-        # A superuser kept the owner's file to seniors; the owner must still be
-        # able to see that circle ticked, and untick it.
-        f = self.file(kept_to=[self.seniors])
+    def test_a_clearance_already_keeping_the_file_is_offered_to_an_owner_outside_it(self):
+        # A superuser kept the owner's file to confidential; the owner must still be
+        # able to see that clearance ticked, and untick it.
+        f = self.file(kept_to=[self.confidential])
         self.client.force_login(self.owner)
         response = self.client.get(self.url(f))
-        rows = {row["circle"].name: row["on"] for row in response.context["circles"]}
-        self.assertEqual(rows, {"board": False, "seniors": True})
+        rows = {row["clearance"].name: row["on"] for row in response.context["clearances"]}
+        self.assertEqual(rows, {"confidential": True, "internal": False})
         self.assertTrue(response.context["restricted"])
         self.client.post(self.url(f), {})
-        self.assertEqual(circles.circles_of(f), [])
+        self.assertEqual(clearances.clearances_of(f), [])
 
     def test_an_open_file_is_not_marked_restricted(self):
         f = self.file()
@@ -240,66 +237,54 @@ class TickingTests(_Fixture):
         self.assertFalse(self.client.get(self.url(f)).context["restricted"])
 
     def test_only_digit_strings_become_ids(self):
-        self.assertEqual(circles._ids(["12", "abc", " 3", "-4", "1" * 19, "١", "²"]),
+        self.assertEqual(clearances._ids(["12", "abc", " 3", "-4", "1" * 19, "١", "²"]),
                          {12})
 
 
-class SetCirclesTests(_Fixture):
+class SetClearancesTests(_Fixture):
     def test_the_audit_record_names_the_file_and_both_sides(self):
-        f = self.file(kept_to=[self.board])
-        before, after = circles.set_circles(f, [self.seniors, self.board], actor=self.root)
-        self.assertEqual((before, after), (["board"], ["board", "seniors"]))
+        f = self.file(kept_to=[self.internal])
+        before, after = clearances.set_clearances(f, [self.confidential, self.internal], actor=self.root)
+        self.assertEqual((before, after), (["internal"], ["confidential", "internal"]))
         record = AuditRecord.objects.get(action=ACTION)
         self.assertEqual(record.metadata["file"], f.pk)
         self.assertEqual(record.metadata["title"], "deck.txt")
         self.assertEqual(record.metadata["file_type"], "text")
-        self.assertEqual(record.metadata["before"], ["board"])
-        self.assertEqual(record.metadata["after"], ["board", "seniors"])
+        self.assertEqual(record.metadata["before"], ["internal"])
+        self.assertEqual(record.metadata["after"], ["confidential", "internal"])
         self.assertFalse(record.metadata["open"])
-
-    def test_a_functional_community_is_refused_and_nothing_moves(self):
-        f = self.file(kept_to=[self.board])
-        with self.assertRaises(CircleRefused):
-            circles.set_circles(f, [self.devs], actor=self.root)
-        self.assertEqual([c.name for c in circles.circles_of(f)], ["board"])
-        self.assertFalse(AuditRecord.objects.filter(action=ACTION).exists())
 
     def test_the_file_is_kept_the_moment_the_rows_exist(self):
         f = self.file(public=True)
         self.assertTrue(may_read(self.stranger, f))
-        circles.set_circles(f, [self.board], actor=self.owner)
+        clearances.set_clearances(f, [self.internal], actor=self.owner)
         self.assertFalse(may_read(self.stranger, f))
         self.assertTrue(may_read(self.member, f))
 
-    def test_circles_of_is_sorted_by_name(self):
-        f = self.file(kept_to=[self.seniors, self.board])
-        self.assertEqual([c.name for c in circles.circles_of(f)], ["board", "seniors"])
+    def test_clearances_of_is_sorted_by_name(self):
+        f = self.file(kept_to=[self.confidential, self.internal])
+        self.assertEqual([c.name for c in clearances.clearances_of(f)], ["confidential", "internal"])
 
 
 class AccessUrlTests(_Fixture):
     def test_without_next_it_is_the_bare_page(self):
         f = self.file()
-        self.assertEqual(circles.access_url(f), f"/vault/files/{f.pk}/access/")
+        self.assertEqual(clearances.access_url(f), f"/vault/files/{f.pk}/access/")
 
     def test_next_is_url_encoded(self):
         f = self.file()
-        self.assertEqual(circles.access_url(f, "/sheets/1/?tab=a&b=c"),
+        self.assertEqual(clearances.access_url(f, "/sheets/1/?tab=a&b=c"),
                          f"/vault/files/{f.pk}/access/?next=%2Fsheets%2F1%2F%3Ftab%3Da%26b%3Dc")
 
 
 class RowTests(_Fixture):
-    def test_one_circle_keeps_a_file_once(self):
-        f = self.file(kept_to=[self.board])
+    def test_one_clearance_keeps_a_file_once(self):
+        f = self.file(kept_to=[self.internal])
         with self.assertRaises(IntegrityError), transaction.atomic():
-            VaultFileCircle.objects.create(file=f, circle=self.board)
-
-    def test_the_admin_row_refuses_a_functional_community(self):
-        f = self.file()
-        with self.assertRaises(ValidationError):
-            VaultFileCircle(file=f, circle=self.devs).full_clean()
+            VaultFileClearance.objects.create(file=f, clearance=self.internal)
 
     def test_deleting_the_file_takes_its_rows_with_it(self):
-        f = self.file(kept_to=[self.board, self.seniors])
+        f = self.file(kept_to=[self.internal, self.confidential])
         f.delete()
-        self.assertFalse(VaultFileCircle.objects.exists())
-        self.board.delete()                     # no longer protected by anything
+        self.assertFalse(VaultFileClearance.objects.exists())
+        self.internal.delete()                     # no longer protected by anything

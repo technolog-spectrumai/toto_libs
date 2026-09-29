@@ -294,20 +294,20 @@ class MediaEmbedTests(Fixture):
         self.assertEqual(self.embed(self.owner, private.pk).status_code, 404)
         self.assertEqual(self.embed(self.owner, public.pk).status_code, 200)
 
-    def test_an_image_kept_to_a_circle_you_are_not_in_cannot_be_embedded(self):
+    def test_an_image_kept_to_a_clearance_you_are_not_in_cannot_be_embedded(self):
         from toto.people.models import Person
-        from toto.socialhub.models import Community
-        from toto.vault.models import Bucket, VaultFileCircle
+        from toto.socialhub.models import Clearance
+        from toto.vault.models import Bucket, VaultFileClearance
 
-        board = Community.objects.create(name="board", slug="board", is_circle=True)
+        internal = Clearance.objects.create(name="internal", slug="internal")
         Person.objects.create(user=self.owner, display_name="W")
         elsewhere = Bucket.objects.create(owner=self.other, name="Theirs", slug="theirs",
                                           storage_backend="local")
         kept = self.image("kept.png", _png(), owner=self.other, bucket=elsewhere,
                           public=True)
-        VaultFileCircle.objects.create(file=kept, circle=board)
+        VaultFileClearance.objects.create(file=kept, clearance=internal)
         self.assertEqual(self.embed(self.owner, kept.pk).status_code, 404)
-        self.owner.community_profile.communities.add(board)
+        self.owner.community_profile.clearances.add(internal)
         self.assertEqual(self.embed(self.owner, kept.pk).status_code, 200)
 
     def test_an_encrypted_image_cannot_be_embedded(self):

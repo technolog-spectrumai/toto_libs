@@ -1,9 +1,9 @@
-"""Routes and map layers kept to circles (2026-09-29), rule by rule.
+"""Routes and map layers kept to clearances (2026-09-29), rule by rule.
 
-`tests_circles` pins the headline: a hidden route is a missing one. These
+`tests_clearances` pins the headline: a hidden route is a missing one. These
 walk the rule's corners — who reads (members, the creator or owner,
-superusers; not staff, not a functional community), who chooses the circles,
-what `circles_save` refuses, what the detail page's section shows to whom,
+superusers; not staff, not a community), who chooses the clearances,
+what `clearances_save` refuses, what the detail page's section shows to whom,
 and that the map page and the two JSON doors agree with the per-object door.
 """
 
@@ -21,10 +21,10 @@ from toto.audit.models import AuditRecord
 from toto.core.models import Platform
 from toto.locations import access
 from toto.locations.models import (
-    HAS_GIS, Address, MapLayer, MapLayerCircle, Route, RouteCircle, Territory,
+    HAS_GIS, Address, MapLayer, MapLayerClearance, Route, RouteClearance, Territory,
 )
 from toto.people.models import Person
-from toto.socialhub.models import Community
+from toto.socialhub.models import Clearance, Community
 
 User = get_user_model()
 
@@ -36,9 +36,9 @@ def fresh(user):
 
 
 @skipUnless(HAS_GIS, "routes and layers draw on geometry; the map 404s without GIS")
-class CircleFixture(TestCase):
-    """Two circles and a functional community; readers of every kind; four
-    routes (open, kept, kept to both circles, kept with no creator) and four
+class ClearanceFixture(TestCase):
+    """Two clearances and a plain community; readers of every kind; four
+    routes (open, kept, kept to both clearances, kept with no creator) and four
     layers (open, kept with an owner, kept with none, inactive)."""
 
     @classmethod
@@ -49,15 +49,15 @@ class CircleFixture(TestCase):
 
         Platform.objects.get_or_create(active=True, defaults={
             "site_name": "T", "author": "t", "publication_year": 2026})
-        cls.board = Community.objects.create(name="board", slug="board", is_circle=True)
-        cls.seniors = Community.objects.create(name="seniors", slug="seniors", is_circle=True)
-        cls.guild = Community.objects.create(name="guild", slug="guild")          # functional
+        cls.board = Clearance.objects.create(name="internal", slug="internal")
+        cls.seniors = Clearance.objects.create(name="confidential", slug="confidential")
+        cls.guild = Community.objects.create(name="guild", slug="guild")          # a community, not a clearance
 
         cls.creator = User.objects.create_user("creator", password="x")
         cls.member = User.objects.create_user("member", password="x")
-        Person.objects.create(user=cls.member, display_name="Member").communities.add(cls.board)
+        Person.objects.create(user=cls.member, display_name="Member").clearances.add(cls.board)
         cls.both = User.objects.create_user("both", password="x")
-        Person.objects.create(user=cls.both, display_name="Both").communities.add(
+        Person.objects.create(user=cls.both, display_name="Both").clearances.add(
             cls.board, cls.seniors)
         cls.guildsman = User.objects.create_user("guildsman", password="x")
         Person.objects.create(user=cls.guildsman, display_name="Guildsman").communities.add(cls.guild)
@@ -74,22 +74,22 @@ class CircleFixture(TestCase):
                                         geometry=line((18.0, 54.0), (18.5, 54.5)))
         cls.kept = Route.objects.create(name="BoardRoute", created_by=cls.creator,
                                         geometry=line((19.0, 50.0), (19.5, 50.5)))
-        RouteCircle.objects.create(route=cls.kept, circle=cls.board)
+        RouteClearance.objects.create(route=cls.kept, clearance=cls.board)
         cls.double = Route.objects.create(name="DoubleRoute", created_by=cls.creator,
                                           geometry=line((20.0, 51.0), (20.5, 51.5)))
-        RouteCircle.objects.create(route=cls.double, circle=cls.board)
-        RouteCircle.objects.create(route=cls.double, circle=cls.seniors)
+        RouteClearance.objects.create(route=cls.double, clearance=cls.board)
+        RouteClearance.objects.create(route=cls.double, clearance=cls.seniors)
         cls.orphan = Route.objects.create(name="OrphanRoute",
                                           geometry=line((21.0, 52.0), (21.5, 52.5)))
-        RouteCircle.objects.create(route=cls.orphan, circle=cls.board)
+        RouteClearance.objects.create(route=cls.orphan, clearance=cls.board)
 
         square = Polygon(((0, 0), (1, 0), (1, 1), (0, 1), (0, 0)), srid=4326)
         cls.open_layer = MapLayer.objects.create(name="Open layer", slug="open-layer")
         cls.board_layer = MapLayer.objects.create(name="Board layer", slug="board-layer",
                                                   owner=cls.owner_person)
-        MapLayerCircle.objects.create(layer=cls.board_layer, circle=cls.board)
+        MapLayerClearance.objects.create(layer=cls.board_layer, clearance=cls.board)
         cls.nobodys_layer = MapLayer.objects.create(name="Nobodys layer", slug="nobodys-layer")
-        MapLayerCircle.objects.create(layer=cls.nobodys_layer, circle=cls.board)
+        MapLayerClearance.objects.create(layer=cls.nobodys_layer, clearance=cls.board)
         cls.idle_layer = MapLayer.objects.create(name="Idle layer", slug="idle-layer",
                                                  is_active=False)
         for layer in (cls.open_layer, cls.board_layer, cls.nobodys_layer, cls.idle_layer):
@@ -106,35 +106,25 @@ class CircleFixture(TestCase):
         return set(queryset.values_list("name", flat=True))
 
 
-class ReadingRuleTests(CircleFixture):
+class ReadingRuleTests(ClearanceFixture):
     def test_a_stranger_reads_only_the_open_routes(self):
         self.assertEqual(self.names(access.readable_routes(self.stranger)), {"OpenRoute"})
 
-    def test_a_circle_member_reads_the_routes_kept_to_their_circle(self):
+    def test_a_clearance_member_reads_the_routes_kept_to_their_clearance(self):
         self.assertEqual(self.names(access.readable_routes(self.member)),
                          {"OpenRoute", "BoardRoute", "DoubleRoute", "OrphanRoute"})
 
-    def test_a_route_kept_to_two_circles_is_listed_once_for_a_member_of_both(self):
+    def test_a_route_kept_to_two_clearances_is_listed_once_for_a_member_of_both(self):
         rows = list(access.readable_routes(self.both).values_list("name", flat=True))
         self.assertEqual(rows.count("DoubleRoute"), 1)
 
-    def test_the_creator_reads_their_kept_routes_without_being_in_the_circle(self):
+    def test_the_creator_reads_their_kept_routes_without_being_in_the_clearance(self):
         self.assertEqual(self.names(access.readable_routes(self.creator)),
                          {"OpenRoute", "BoardRoute", "DoubleRoute"})
 
-    def test_staff_is_not_a_circle(self):
+    def test_staff_is_not_a_clearance(self):
         self.assertEqual(self.names(access.readable_routes(self.staff)), {"OpenRoute"})
         self.assertFalse(access.may_read(self.staff, self.kept))
-
-    def test_a_functional_community_never_grants_reading(self):
-        """A row naming a functional community (the admin's limit_choices_to
-        is only a form hint) keeps the route kept, and grants its members
-        nothing."""
-        route = Route.objects.create(name="GuildRoute", geometry=self.open.geometry)
-        RouteCircle.objects.create(route=route, circle=self.guild)
-        self.assertNotIn("GuildRoute", self.names(access.readable_routes(self.guildsman)))
-        self.assertFalse(access.may_read(self.guildsman, route))
-        self.assertFalse(access.may_read(self.stranger, route))
 
     def test_a_superuser_reads_every_route_and_layer(self):
         self.assertEqual(access.readable_routes(self.root).count(), len(self.routes))
@@ -164,7 +154,7 @@ class ReadingRuleTests(CircleFixture):
         layer with no owner stays hidden from them."""
         self.assertNotIn("Nobodys layer", self.names(access.readable_layers(self.stranger)))
         self.assertFalse(access.may_read(self.stranger, self.nobodys_layer))
-        self.assertFalse(access.may_manage_circles(self.stranger, self.nobodys_layer))
+        self.assertFalse(access.may_manage_clearances(self.stranger, self.nobodys_layer))
 
     def test_may_read_agrees_with_the_listings_for_every_reader(self):
         for user in self.readers:
@@ -186,137 +176,130 @@ class ReadingRuleTests(CircleFixture):
             self.assertTrue(access.may_read(AnonymousUser(), obj))
 
 
-class ManagingRuleTests(CircleFixture):
-    def test_the_creator_and_superusers_choose_a_routes_circles(self):
-        self.assertTrue(access.may_manage_circles(self.creator, self.kept))
-        self.assertTrue(access.may_manage_circles(self.creator, self.open))
-        self.assertTrue(access.may_manage_circles(self.root, self.kept))
+class ManagingRuleTests(ClearanceFixture):
+    def test_the_creator_and_superusers_choose_a_routes_clearances(self):
+        self.assertTrue(access.may_manage_clearances(self.creator, self.kept))
+        self.assertTrue(access.may_manage_clearances(self.creator, self.open))
+        self.assertTrue(access.may_manage_clearances(self.root, self.kept))
 
-    def test_staff_and_circle_members_do_not(self):
+    def test_staff_and_clearance_members_do_not(self):
         for user in (self.staff, self.member, self.both, self.stranger):
             with self.subTest(user=user.username):
-                self.assertFalse(access.may_manage_circles(user, self.kept))
+                self.assertFalse(access.may_manage_clearances(user, self.kept))
 
     def test_a_route_nobody_created_is_the_superusers_alone(self):
-        self.assertFalse(access.may_manage_circles(self.creator, self.orphan))
-        self.assertFalse(access.may_manage_circles(self.member, self.orphan))
-        self.assertTrue(access.may_manage_circles(self.root, self.orphan))
+        self.assertFalse(access.may_manage_clearances(self.creator, self.orphan))
+        self.assertFalse(access.may_manage_clearances(self.member, self.orphan))
+        self.assertTrue(access.may_manage_clearances(self.root, self.orphan))
 
-    def test_the_layer_owner_chooses_the_layers_circles(self):
-        self.assertTrue(access.may_manage_circles(self.owner, self.board_layer))
-        self.assertFalse(access.may_manage_circles(self.creator, self.board_layer))
-        self.assertFalse(access.may_manage_circles(self.member, self.board_layer))
+    def test_the_layer_owner_chooses_the_layers_clearances(self):
+        self.assertTrue(access.may_manage_clearances(self.owner, self.board_layer))
+        self.assertFalse(access.may_manage_clearances(self.creator, self.board_layer))
+        self.assertFalse(access.may_manage_clearances(self.member, self.board_layer))
 
     def test_an_anonymous_visitor_chooses_nothing(self):
-        self.assertFalse(access.may_manage_circles(AnonymousUser(), self.open))
-        self.assertFalse(access.may_manage_circles(AnonymousUser(), self.open_layer))
+        self.assertFalse(access.may_manage_clearances(AnonymousUser(), self.open))
+        self.assertFalse(access.may_manage_clearances(AnonymousUser(), self.open_layer))
 
-    def test_other_kinds_have_no_circles_for_a_member_to_choose(self):
+    def test_other_kinds_have_no_clearances_for_a_member_to_choose(self):
         address = Address.objects.create(locality_name="Gdańsk", created_by=self.creator)
-        self.assertFalse(access.may_manage_circles(self.creator, address))
+        self.assertFalse(access.may_manage_clearances(self.creator, address))
 
     def test_an_anonymous_visitor_writes_nothing(self):
         self.assertFalse(access.may_write(AnonymousUser(), self.open))
         self.assertFalse(access.is_staff(AnonymousUser()))
 
 
-class CirclesSaveTests(CircleFixture):
+class ClearancesSaveTests(ClearanceFixture):
     def url(self, obj, kind="route"):
-        return reverse("locations:circles_save", args=[kind, obj.pk])
+        return reverse("locations:clearances_save", args=[kind, obj.pk])
 
-    def post(self, user, obj, circles, kind="route", **extra):
+    def post(self, user, obj, clearances, kind="route", **extra):
         self.client.force_login(user)
-        return self.client.post(self.url(obj, kind), {"circle": circles, **extra})
+        return self.client.post(self.url(obj, kind), {"clearance": clearances, **extra})
 
-    def circle_names(self, obj):
-        return sorted(obj.circle_rows.values_list("circle__name", flat=True))
+    def clearance_names(self, obj):
+        return sorted(obj.clearance_rows.values_list("clearance__name", flat=True))
 
     def said(self, response):
         """What this response told the member (the last message queued)."""
         return [str(m) for m in get_messages(response.wsgi_request)][-1:]
 
-    def test_only_routes_and_layers_have_circles(self):
+    def test_only_routes_and_layers_have_clearances(self):
         address = Address.objects.create(locality_name="Gdańsk")
         self.client.force_login(self.root)
         for kind, pk in (("address", address.pk), ("routechain", 1), ("zone", 1),
                          ("territory", 1), ("nonsense", self.open.pk)):
             with self.subTest(kind=kind):
-                response = self.client.post(reverse("locations:circles_save", args=[kind, pk]),
-                                            {"circle": [self.board.pk]})
+                response = self.client.post(reverse("locations:clearances_save", args=[kind, pk]),
+                                            {"clearance": [self.board.pk]})
                 self.assertEqual(response.status_code, 404)
 
     def test_a_hidden_route_answers_404_not_403(self):
         for user in (self.stranger, self.staff):
             with self.subTest(user=user.username):
                 self.assertEqual(self.post(user, self.kept, []).status_code, 404)
-        self.assertEqual(self.circle_names(self.kept), ["board"])
+        self.assertEqual(self.clearance_names(self.kept), ["internal"])
 
     def test_a_reader_who_does_not_manage_is_refused(self):
         self.assertEqual(self.post(self.member, self.kept, []).status_code, 403)
         self.assertEqual(self.post(self.staff, self.open, [self.board.pk]).status_code, 403)
-        self.assertEqual(self.circle_names(self.kept), ["board"])
-        self.assertEqual(self.circle_names(self.open), [])
+        self.assertEqual(self.clearance_names(self.kept), ["internal"])
+        self.assertEqual(self.clearance_names(self.open), [])
 
-    def test_saving_circles_is_post_only(self):
+    def test_saving_clearances_is_post_only(self):
         self.client.force_login(self.creator)
         self.assertEqual(self.client.get(self.url(self.open)).status_code, 405)
 
     def test_an_anonymous_visitor_changes_nothing(self):
-        response = self.client.post(self.url(self.open), {"circle": [self.board.pk]})
+        response = self.client.post(self.url(self.open), {"clearance": [self.board.pk]})
         self.assertIn(response.status_code, (302, 401))
-        self.assertEqual(self.circle_names(self.open), [])
+        self.assertEqual(self.clearance_names(self.open), [])
 
-    def test_a_creator_cannot_keep_a_route_to_a_circle_they_are_not_in(self):
-        Person.objects.create(user=self.creator, display_name="C").communities.add(self.board)
+    def test_a_creator_cannot_keep_a_route_to_a_clearance_they_are_not_in(self):
+        Person.objects.create(user=self.creator, display_name="C").clearances.add(self.board)
         response = self.post(self.creator, self.open, [self.seniors.pk])
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(self.circle_names(self.open), [])
+        self.assertEqual(self.clearance_names(self.open), [])
         self.assertEqual(self.said(response), ["Nothing changed."])
-
-    def test_a_functional_community_is_never_given_a_route(self):
-        Person.objects.create(user=self.creator, display_name="C").communities.add(self.guild)
-        self.post(self.creator, self.open, [self.guild.pk])
-        self.assertEqual(self.circle_names(self.open), [])
-        self.post(self.root, self.open, [self.guild.pk])
-        self.assertEqual(self.circle_names(self.open), [])
 
     def test_junk_values_are_ignored_not_a_crash(self):
         response = self.post(self.root, self.open,
                              ["abc", "-1", "１", "9" * 30, "", f"{self.board.pk}.0"])
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(self.circle_names(self.open), [])
+        self.assertEqual(self.clearance_names(self.open), [])
 
-    def test_a_superuser_keeps_a_route_to_any_circle(self):
+    def test_a_superuser_keeps_a_route_to_any_clearance(self):
         response = self.post(self.root, self.open, [self.seniors.pk, self.board.pk])
-        self.assertEqual(self.circle_names(self.open), ["board", "seniors"])
+        self.assertEqual(self.clearance_names(self.open), ["confidential", "internal"])
         self.assertEqual(self.said(response), ["Saved."])
         self.assertFalse(access.may_read(self.stranger, self.open))
 
-    def test_saving_the_same_circles_again_changes_nothing_and_is_not_audited(self):
-        Person.objects.create(user=self.creator, display_name="C").communities.add(self.board)
+    def test_saving_the_same_clearances_again_changes_nothing_and_is_not_audited(self):
+        Person.objects.create(user=self.creator, display_name="C").clearances.add(self.board)
         self.post(self.creator, self.open, [self.board.pk])
         response = self.post(self.creator, self.open, [self.board.pk])
         self.assertEqual(self.said(response), ["Nothing changed."])
         self.assertEqual(AuditRecord.objects.filter(
-            action="LOCATIONS.ROUTE.CIRCLES_CHANGED").count(), 1)
+            action="LOCATIONS.ROUTE.CLEARANCES_CHANGED").count(), 1)
 
-    def test_the_creator_may_keep_a_circle_they_are_not_in_that_the_route_already_has(self):
-        """The route's own circles are always offered to its manager, so a
+    def test_the_creator_may_keep_a_clearance_they_are_not_in_that_the_route_already_has(self):
+        """The route's own clearances are always offered to its manager, so a
         save of the page does not silently drop them."""
-        Person.objects.create(user=self.creator, display_name="C").communities.add(self.board)
+        Person.objects.create(user=self.creator, display_name="C").clearances.add(self.board)
         self.post(self.creator, self.double, [self.board.pk, self.seniors.pk])
-        self.assertEqual(self.circle_names(self.double), ["board", "seniors"])
+        self.assertEqual(self.clearance_names(self.double), ["confidential", "internal"])
         self.post(self.creator, self.double, [self.board.pk])
-        self.assertEqual(self.circle_names(self.double), ["board"])
+        self.assertEqual(self.clearance_names(self.double), ["internal"])
         self.post(self.creator, self.double, [self.board.pk, self.seniors.pk])
-        self.assertEqual(self.circle_names(self.double), ["board"])     # gone from reach
+        self.assertEqual(self.clearance_names(self.double), ["internal"])     # gone from reach
 
-    def test_clearing_every_circle_opens_the_route_and_the_audit_says_so(self):
+    def test_clearing_every_clearance_opens_the_route_and_the_audit_says_so(self):
         response = self.post(self.creator, self.kept, [])
         self.assertEqual(response.status_code, 302)
         self.assertTrue(access.may_read(self.stranger, self.kept))
-        record = AuditRecord.objects.get(action="LOCATIONS.ROUTE.CIRCLES_CHANGED")
-        self.assertEqual(record.metadata["before"], ["board"])
+        record = AuditRecord.objects.get(action="LOCATIONS.ROUTE.CLEARANCES_CHANGED")
+        self.assertEqual(record.metadata["before"], ["internal"])
         self.assertEqual(record.metadata["after"], [])
         self.assertTrue(record.metadata["open"])
         self.assertEqual(record.metadata["kind"], "route")
@@ -329,87 +312,87 @@ class CirclesSaveTests(CircleFixture):
         response = self.post(self.creator, self.open, [], next="/locations/")
         self.assertEqual(response["Location"], "/locations/")
 
-    def test_the_layer_owner_keeps_a_layer_to_a_circle_and_it_is_audited(self):
+    def test_the_layer_owner_keeps_a_layer_to_a_clearance_and_it_is_audited(self):
         layer = MapLayer.objects.create(name="Owned", slug="owned", owner=self.owner_person)
-        self.owner_person.communities.add(self.seniors)
+        self.owner_person.clearances.add(self.seniors)
         self.post(self.owner, layer, [self.seniors.pk], kind="maplayer")
-        self.assertEqual(self.circle_names(layer), ["seniors"])
+        self.assertEqual(self.clearance_names(layer), ["confidential"])
         self.assertFalse(access.may_read(self.member, layer))
         self.assertTrue(access.may_read(fresh(self.both), layer))
         self.assertTrue(access.may_read(fresh(self.owner), layer))
-        record = AuditRecord.objects.get(action="LOCATIONS.MAPLAYER.CIRCLES_CHANGED")
-        self.assertEqual((record.metadata["after"], record.metadata["open"]), (["seniors"], False))
+        record = AuditRecord.objects.get(action="LOCATIONS.MAPLAYER.CLEARANCES_CHANGED")
+        self.assertEqual((record.metadata["after"], record.metadata["open"]), (["confidential"], False))
 
-    def test_a_member_may_not_choose_a_layers_circles(self):
+    def test_a_member_may_not_choose_a_layers_clearances(self):
         self.assertEqual(self.post(self.member, self.board_layer, [], kind="maplayer").status_code, 403)
         self.assertEqual(self.post(self.stranger, self.board_layer, [], kind="maplayer").status_code, 404)
-        self.assertEqual(self.circle_names(self.board_layer), ["board"])
+        self.assertEqual(self.clearance_names(self.board_layer), ["internal"])
 
 
-class DetailSectionTests(CircleFixture):
+class DetailSectionTests(ClearanceFixture):
     def page(self, user, kind, obj):
         self.client.force_login(user)
         return self.client.get(reverse("locations:location_detail", args=[kind, obj.pk]))
 
-    def test_an_address_has_no_circles_section(self):
+    def test_an_address_has_no_clearances_section(self):
         address = Address.objects.create(locality_name="Gdańsk")
         response = self.page(self.member, "address", address)
-        self.assertEqual(response.context["circles_kind"], "")
-        self.assertEqual(response.context["circles"], [])
-        self.assertNotContains(response, 'data-testid="location-circles"')
+        self.assertEqual(response.context["clearances_kind"], "")
+        self.assertEqual(response.context["clearances"], [])
+        self.assertNotContains(response, 'data-testid="location-clearances"')
 
-    def test_a_reader_sees_only_the_circles_they_are_in(self):
+    def test_a_reader_sees_only_the_clearances_they_are_in(self):
         response = self.page(self.member, "route", self.double)
-        self.assertEqual([c.name for c in response.context["circles"]], ["board"])
-        self.assertTrue(response.context["circles_restricted"])
-        self.assertFalse(response.context["can_manage_circles"])
-        self.assertEqual(response.context["circle_choices"], [])
-        self.assertEqual(response.context["circles_save_url"], "")
-        self.assertNotContains(response, "seniors")
+        self.assertEqual([c.name for c in response.context["clearances"]], ["internal"])
+        self.assertTrue(response.context["clearances_restricted"])
+        self.assertFalse(response.context["can_manage_clearances"])
+        self.assertEqual(response.context["clearance_choices"], [])
+        self.assertEqual(response.context["clearances_save_url"], "")
+        self.assertNotContains(response, "confidential")
 
-    def test_the_manager_sees_every_circle_and_which_are_ticked(self):
-        Person.objects.create(user=self.creator, display_name="C").communities.add(self.board)
+    def test_the_manager_sees_every_clearance_and_which_are_ticked(self):
+        Person.objects.create(user=self.creator, display_name="C").clearances.add(self.board)
         response = self.page(self.creator, "route", self.kept)
-        self.assertTrue(response.context["can_manage_circles"])
-        self.assertEqual([c.name for c in response.context["circles"]], ["board"])
-        choices = {row["circle"].name: row["on"] for row in response.context["circle_choices"]}
-        self.assertEqual(choices, {"board": True})           # not the seniors: not theirs
-        self.assertContains(response, reverse("locations:circles_save", args=["route", self.kept.pk]))
+        self.assertTrue(response.context["can_manage_clearances"])
+        self.assertEqual([c.name for c in response.context["clearances"]], ["internal"])
+        choices = {row["clearance"].name: row["on"] for row in response.context["clearance_choices"]}
+        self.assertEqual(choices, {"internal": True})           # not the confidential: not theirs
+        self.assertContains(response, reverse("locations:clearances_save", args=["route", self.kept.pk]))
 
-    def test_the_manager_is_offered_the_routes_own_circles_they_are_not_in(self):
+    def test_the_manager_is_offered_the_routes_own_clearances_they_are_not_in(self):
         response = self.page(self.creator, "route", self.double)
-        self.assertEqual({row["circle"].name for row in response.context["circle_choices"]},
-                         {"board", "seniors"})
-        self.assertEqual([c.name for c in response.context["circles"]], ["board", "seniors"])
+        self.assertEqual({row["clearance"].name for row in response.context["clearance_choices"]},
+                         {"internal", "confidential"})
+        self.assertEqual([c.name for c in response.context["clearances"]], ["confidential", "internal"])
 
-    def test_a_superuser_is_offered_every_circle(self):
+    def test_a_superuser_is_offered_every_clearance(self):
         response = self.page(self.root, "route", self.open)
-        choices = {row["circle"].name: row["on"] for row in response.context["circle_choices"]}
-        self.assertEqual(choices, {"board": False, "seniors": False})
+        choices = {row["clearance"].name: row["on"] for row in response.context["clearance_choices"]}
+        self.assertEqual(choices, {"internal": False, "confidential": False})
 
     def test_an_open_route_says_every_member_sees_it(self):
         response = self.page(self.stranger, "route", self.open)
-        self.assertFalse(response.context["circles_restricted"])
+        self.assertFalse(response.context["clearances_restricted"])
         self.assertContains(response, "Every member signed in.")
 
-    def test_a_manager_in_no_circle_is_told_there_is_none_to_choose(self):
+    def test_a_manager_in_no_clearance_is_told_there_is_none_to_choose(self):
         response = self.page(self.creator, "route", self.open)
-        self.assertTrue(response.context["can_manage_circles"])
-        self.assertContains(response, "You are in no circle, so there is none you can keep this to.")
+        self.assertTrue(response.context["can_manage_clearances"])
+        self.assertContains(response, "You are in no clearance, so there is none you can keep this to.")
 
-    def test_the_layer_page_shows_its_circles_and_no_metadata_editor(self):
+    def test_the_layer_page_shows_its_clearances_and_no_metadata_editor(self):
         response = self.page(self.member, "maplayer", self.board_layer)
-        self.assertEqual(response.context["circles_kind"], "maplayer")
-        self.assertEqual([c.name for c in response.context["circles"]], ["board"])
+        self.assertEqual(response.context["clearances_kind"], "maplayer")
+        self.assertEqual([c.name for c in response.context["clearances"]], ["internal"])
         self.assertFalse(response.context["has_metadata"])
         self.assertIn(("Polygons", 1), response.context["fields"])
         self.assertIn(("Owner", "Owner"), response.context["fields"])
 
     def test_the_owner_sees_the_layer_section_with_its_save_door(self):
         response = self.page(self.owner, "maplayer", self.board_layer)
-        self.assertTrue(response.context["can_manage_circles"])
-        self.assertEqual(response.context["circles_save_url"],
-                         reverse("locations:circles_save", args=["maplayer", self.board_layer.pk]))
+        self.assertTrue(response.context["can_manage_clearances"])
+        self.assertEqual(response.context["clearances_save_url"],
+                         reverse("locations:clearances_save", args=["maplayer", self.board_layer.pk]))
 
     def test_a_kept_route_is_missing_for_staff_on_every_page(self):
         self.client.force_login(self.staff)
@@ -430,7 +413,7 @@ class DetailSectionTests(CircleFixture):
         self.assertEqual(self.kept.notes, "")
 
 
-class MapPageTests(CircleFixture):
+class MapPageTests(ClearanceFixture):
     def payload(self, user):
         self.client.force_login(user)
         response = self.client.get(reverse("locations:locations_all"))
@@ -461,7 +444,7 @@ class MapPageTests(CircleFixture):
         self.assertEqual(polygons[0]["geometry"]["type"], "Polygon")
         self.assertEqual(polygons[0]["center"]["type"], "Point")
 
-    def test_a_route_kept_to_two_circles_is_drawn_once(self):
+    def test_a_route_kept_to_two_clearances_is_drawn_once(self):
         locations, _layers = self.payload(self.both)
         self.assertEqual([row["name"] for row in locations if row["type"] == "Route"].count(
             "DoubleRoute"), 1)
@@ -487,7 +470,7 @@ class MapPageTests(CircleFixture):
 
 
 @skipUnless(HAS_GIS, "the map API reads geometry")
-class JsonDoorTests(CircleFixture):
+class JsonDoorTests(ClearanceFixture):
     def get(self, user, name):
         self.client.force_login(add_to_mesh(user))
         response = self.client.get(reverse(f"locations:{name}"))

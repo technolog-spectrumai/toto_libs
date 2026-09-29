@@ -1,6 +1,6 @@
 """The mana read side at its edges: the refusal sentence's boundaries, the
-balances a member sees (circle speed, a zero circle, the community discount on
-the drain, one circle read), how movements are named, and every function's
+balances a member sees (clearance speed, a zero clearance, the community discount on
+the drain, one clearance read), how movements are named, and every function's
 answer on a host with no pools yet.
 """
 
@@ -18,7 +18,7 @@ from toto.mana import services
 from toto.mana.models import ManaPool
 from toto.mana.tests.fixtures import economy, master, seed_prices, spend
 from toto.people.models import Person
-from toto.socialhub.models import Community
+from toto.socialhub.models import Clearance, Community
 from toto.subscriptions.models import CommunityDiscount
 from toto.tax.tests.factories import GB, make_vault_file
 
@@ -38,14 +38,14 @@ class TempMediaMixin:
         super().setUpClass()
 
 
-def circle(name, **speeds):
-    return Community.objects.create(
-        name=name, is_circle=True, **{f"regen_{role}": value for role, value in speeds.items()})
+def clearance(name, **speeds):
+    return Clearance.objects.create(
+        name=name, **{f"regen_{role}": value for role, value in speeds.items()})
 
 
-def join(user, *communities):
+def join(user, *clearances):
     person, _ = Person.objects.get_or_create(user=user, defaults={"display_name": user.username})
-    person.communities.add(*communities)
+    person.clearances.add(*clearances)
 
 
 @master
@@ -78,8 +78,8 @@ class ShortfallSentenceTests(TestCase):
         self.assertIn("more than a full pool holds (100)", text)
         self.assertNotIn("refills", text)
 
-    def test_a_member_whose_circle_stops_the_refill_is_promised_no_wait(self):
-        join(self.ada, circle("paused", compute=Decimal("0")))
+    def test_a_member_whose_clearance_stops_the_refill_is_promised_no_wait(self):
+        join(self.ada, clearance("paused", compute=Decimal("0")))
         text = self.explain("5", "1")
         self.assertTrue(text.endswith("you have 1."), text)
         self.assertNotIn("refills", text)
@@ -166,14 +166,14 @@ class BalancesTests(TestCase):
         self.ada = User.objects.create_user("ada", password="pw")
 
     def test_the_member_speed_and_the_pool_default_are_both_shown(self):
-        join(self.ada, circle("board", compute=Decimal("12")))
+        join(self.ada, clearance("confidential", compute=Decimal("12")))
         row = services.balances_of(self.ada)["compute"]
-        self.assertEqual((row["regen_per_hour"], row["regen_circle"], row["regen_default"]),
-                         (Decimal("12"), "board", Decimal("4")))
-        self.assertEqual(services.balances_of(self.ada)["storage"]["regen_circle"], "")
+        self.assertEqual((row["regen_per_hour"], row["regen_clearance"], row["regen_default"]),
+                         (Decimal("12"), "confidential", Decimal("4")))
+        self.assertEqual(services.balances_of(self.ada)["storage"]["regen_clearance"], "")
 
     def test_a_stopped_member_below_full_has_no_trend_and_no_eta(self):
-        join(self.ada, circle("paused", compute=Decimal("0")))
+        join(self.ada, clearance("paused", compute=Decimal("0")))
         spend(self.ada, "compute", "30")
         row = services.balances_of(self.ada)["compute"]
         self.assertEqual((row["regen_per_day"], row["trend"]), (Decimal(0), "flat"))
@@ -185,8 +185,8 @@ class BalancesTests(TestCase):
         self.assertEqual((row["trend"], row["eta_full_hours"]), ("up", 8))     # 30 / 4 → 8 h
         self.assertEqual(row["band"], "ok")
 
-    def test_the_circles_are_read_once_for_all_three_pools(self):
-        with mock.patch.object(services, "circle_speeds", wraps=services.circle_speeds) as read:
+    def test_the_clearances_are_read_once_for_all_three_pools(self):
+        with mock.patch.object(services, "clearance_speeds", wraps=services.clearance_speeds) as read:
             services.balances_of(self.ada)
         read.assert_called_once_with([self.ada.pk])
 
@@ -218,7 +218,8 @@ class DiscountedDrainTests(TempMediaMixin, TestCase):
     def discount(self, percent):
         students = Community.objects.create(name="Students")
         CommunityDiscount.objects.create(community=students, percent=percent)
-        join(self.ada, students)
+        person, _ = Person.objects.get_or_create(user=self.ada, defaults={"display_name": "ada"})
+        person.communities.add(students)                   # a community, not a clearance
 
     def test_the_list_drain_without_a_discount(self):
         self.assertEqual(services.drain_per_day(self.ada, "security"), Decimal("100"))

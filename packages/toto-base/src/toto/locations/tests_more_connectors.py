@@ -24,7 +24,7 @@ from toto.locations.models import HAS_GIS, Address, RouteChain, Territory, Zone
 from toto.locations.plugins.context_plugins import LocationContextPlugin
 from toto.locations.plugins.map_plugins import LocationMapPlugin
 from toto.locations.plugins.url_plugins import LocationUrlPlugin
-from toto.locations.tests_more_circles import CircleFixture
+from toto.locations.tests_more_clearances import ClearanceFixture
 
 
 def run(config, input_data=None):
@@ -54,7 +54,7 @@ class ConnectorContractTests(SimpleTestCase):
 
 
 @skipUnless(HAS_GIS, "routes and layers draw on geometry")
-class ConnectorReadsAsNobodyTests(CircleFixture):
+class ConnectorReadsAsNobodyTests(ClearanceFixture):
     def test_the_route_list_is_the_open_routes_only(self):
         names = [row["name"] for row in run({"resource": "route"})["data"]["routes"]]
         self.assertEqual(names, ["OpenRoute"])
@@ -102,7 +102,7 @@ class ConnectorReadsAsNobodyTests(CircleFixture):
 
 
 @skipUnless(HAS_GIS, "territories carry geometry")
-class ConnectorOpenResourcesTests(CircleFixture):
+class ConnectorOpenResourcesTests(ClearanceFixture):
     def test_addresses_are_listed_searched_and_fetched(self):
         gdansk = Address.objects.create(street="Długa", building="1", locality_name="Gdańsk",
                                         country_name="PL", latitude=54.35, longitude=18.65)
@@ -142,7 +142,7 @@ class ConnectorOpenResourcesTests(CircleFixture):
 
 
 @skipUnless(HAS_GIS, "the field map reads geometry")
-class FieldMapFeatureTests(CircleFixture):
+class FieldMapFeatureTests(ClearanceFixture):
     """`locations_map_features` for a field map: the viewer's routes and layers,
     or with no request only the open ones."""
 
@@ -161,7 +161,7 @@ class FieldMapFeatureTests(CircleFixture):
         self.assertEqual({f["properties"]["layer_slug"] for f in features
                           if f["properties"]["layer"] == "map_layer"}, {"open-layer"})
 
-    def test_a_circle_member_gets_what_their_circle_keeps(self):
+    def test_a_clearance_member_gets_what_their_clearance_keeps(self):
         features = self.features(self.member)
         self.assertEqual(self.layer_of(features, "route"),
                          {"OpenRoute", "BoardRoute", "DoubleRoute", "OrphanRoute"})
@@ -260,7 +260,7 @@ class ContextAndUrlRegistryTests(SimpleTestCase):
 
 
 @skipUnless(HAS_GIS, "the route page reads geometry")
-class RoutePageUrlPluginTests(CircleFixture):
+class RoutePageUrlPluginTests(ClearanceFixture):
     def test_the_route_page_offers_a_travel_only_where_a_host_registered_one(self):
         self.client.force_login(self.stranger)
         url = reverse("locations:route_detail", args=[self.open.pk])

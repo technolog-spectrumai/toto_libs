@@ -18,9 +18,9 @@ from toto.api.testutils import add_to_mesh
 from toto.core.models import Platform
 from toto.locations import access, views
 from toto.locations.models import (
-    HAS_GIS, Address, MapLayer, MapLayerCircle, Route, RouteChain, Territory, Zone,
+    HAS_GIS, Address, MapLayer, MapLayerClearance, Route, RouteChain, Territory, Zone,
 )
-from toto.locations.tests_more_circles import CircleFixture
+from toto.locations.tests_more_clearances import ClearanceFixture
 
 User = get_user_model()
 
@@ -59,8 +59,8 @@ class RouteSaveTests(PageTestCase):
                              fetch_redirect_response=False)
         self.assertEqual(route.geometry.geom_type, "MultiLineString")
         self.assertEqual(route.created_by, self.ada)
-        # The member who drew it chooses its circles and edits its note.
-        self.assertTrue(access.may_manage_circles(self.ada, route))
+        # The member who drew it chooses its clearances and edits its note.
+        self.assertTrue(access.may_manage_clearances(self.ada, route))
         self.assertTrue(access.may_write(self.ada, route))
         self.assertFalse(access.may_write(self.bob, route))
 
@@ -166,17 +166,17 @@ class LayerImportTests(PageTestCase):
             self.feature(value=None), self.feature(geometry=line), self.feature(value=2.0)))
         self.assertEqual(response.json()["imported"][0]["polygon_count"], 1)
 
-    def test_reimporting_a_slug_replaces_its_polygons_and_keeps_its_circles(self):
-        from toto.socialhub.models import Community
+    def test_reimporting_a_slug_replaces_its_polygons_and_keeps_its_clearances(self):
+        from toto.socialhub.models import Clearance
 
         self.upload(self.collection(self.feature(value=1.0), self.feature(value=2.0)))
         layer = MapLayer.objects.get(slug="rain")
-        board = Community.objects.create(name="board", slug="board", is_circle=True)
-        MapLayerCircle.objects.create(layer=layer, circle=board)
+        board = Clearance.objects.create(name="internal", slug="internal")
+        MapLayerClearance.objects.create(layer=layer, clearance=board)
         self.upload(self.collection(self.feature(value=9.0)))
         layer.refresh_from_db()
         self.assertEqual(list(layer.polygons.values_list("value", flat=True)), [9.0])
-        self.assertEqual(list(layer.circle_rows.values_list("circle__name", flat=True)), ["board"])
+        self.assertEqual(list(layer.clearance_rows.values_list("clearance__name", flat=True)), ["internal"])
         self.assertFalse(access.may_read(self.bob, layer))
 
     def test_what_is_not_a_feature_collection_is_refused(self):
@@ -378,7 +378,7 @@ class OtherKindsDetailTests(PageTestCase):
 
 
 @skipUnless(HAS_GIS, "route chains draw on geometry")
-class RouteChainTests(CircleFixture):
+class RouteChainTests(ClearanceFixture):
     """A chain is shared infrastructure and stays open; its drawing is its
     routes joined in sequence."""
 
@@ -431,7 +431,7 @@ class RouteChainTests(CircleFixture):
 
     @skip("suspected bug: route_chain_geometry and the chain rows (map page, api/map, "
           "detail page, connector) join every route of the chain, so a route kept to a "
-          "circle is drawn, counted and located for a stranger through its chain")
+          "clearance is drawn, counted and located for a stranger through its chain")
     def test_a_kept_route_is_not_drawn_through_its_chain(self):
         Route.objects.filter(pk=self.kept.pk).update(route_chain=self.chain, sequence=3)
         kept_line = [[19.0, 50.0], [19.5, 50.5]]
@@ -568,17 +568,17 @@ class LabelTests(PageTestCase):
         route = Route.objects.create(geometry=MultiLineString(LineString((0, 0), (1, 1))))
         self.assertEqual(str(route), f"Route {route.pk}")
 
-    def test_a_circle_row_names_the_thing_and_the_circle(self):
+    def test_a_clearance_row_names_the_thing_and_the_clearance(self):
         from django.contrib.gis.geos import LineString, MultiLineString
 
-        from toto.locations.models import RouteCircle
-        from toto.socialhub.models import Community
+        from toto.locations.models import RouteClearance
+        from toto.socialhub.models import Clearance
 
-        board = Community.objects.create(name="board", slug="board", is_circle=True)
+        board = Clearance.objects.create(name="internal", slug="internal")
         route = Route.objects.create(name="Coast", geometry=MultiLineString(LineString((0, 0), (1, 1))))
         layer = MapLayer.objects.create(name="Rain", slug="rain")
-        self.assertEqual(str(RouteCircle.objects.create(route=route, circle=board)), "Coast — board")
-        self.assertEqual(str(MapLayerCircle.objects.create(layer=layer, circle=board)), "Rain — board")
+        self.assertEqual(str(RouteClearance.objects.create(route=route, clearance=board)), "Coast — internal")
+        self.assertEqual(str(MapLayerClearance.objects.create(layer=layer, clearance=board)), "Rain — internal")
 
 
 class JsonDoorRefusalTests(PageTestCase):

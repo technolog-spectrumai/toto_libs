@@ -1,8 +1,8 @@
-"""Circle-set refill speed, underneath the pages (2026-09-28).
+"""Clearance-set refill speed, underneath the pages (2026-09-28).
 
-``test_circle_regen`` pins what a member sees; these pin the rules the hourly
+``test_clearance_regen`` pins what a member sees; these pin the rules the hourly
 run is built on: the pool's own rate as the off switch even against a fast
-circle, a slower or a zero circle, the circles read in ONE query for the
+clearance, a slower or a zero clearance, the clearances read in ONE query for the
 whole run, a person with no user, a functional community's stray speed, and
 how the run accounts for everyone it did not pay. Plus the edges of a single
 top-up and of a grant by hand, and what a pool refuses to be configured as.
@@ -24,7 +24,7 @@ from toto.mana import services
 from toto.mana.models import ManaGrant, ManaPool
 from toto.mana.tests.fixtures import economy, held, master, spend
 from toto.people.models import Person
-from toto.socialhub.models import Community
+from toto.socialhub.models import Clearance
 
 User = get_user_model()
 
@@ -32,15 +32,15 @@ User = get_user_model()
 HOUR = datetime(2026, 9, 29, 10, 30, tzinfo=dt_timezone.utc)
 
 
-def circle(name, speed=None, **speeds):
+def clearance(name, speed=None, **speeds):
     fields = {f"regen_{role}": speed for role in ("security", "compute", "storage")}
     fields.update({f"regen_{role}": value for role, value in speeds.items()})
-    return Community.objects.create(name=name, is_circle=True, **fields)
+    return Clearance.objects.create(name=name, **fields)
 
 
-def member(username, *communities):
+def member(username, *clearances):
     user = User.objects.create_user(username, password="pw")
-    Person.objects.create(user=user, display_name=username).communities.add(*communities)
+    Person.objects.create(user=user, display_name=username).clearances.add(*clearances)
     return user
 
 
@@ -51,35 +51,35 @@ class RegenForTests(TestCase):
         self.pools = services.pools()
         self.compute = self.pools["compute"]
 
-    def test_the_pool_off_switch_beats_a_fast_circle(self):
-        ada = member("ada", circle("board", Decimal("50")))
+    def test_the_pool_off_switch_beats_a_fast_clearance(self):
+        ada = member("ada", clearance("confidential", Decimal("50")))
         self.compute.regen_per_hour = Decimal("0")
         self.compute.save()
         self.assertEqual(services.regen_for(ada, self.compute), (Decimal(0), ""))
 
-    def test_the_off_switch_asks_no_circle(self):
-        ada = member("ada", circle("board", Decimal("50")))
+    def test_the_off_switch_asks_no_clearance(self):
+        ada = member("ada", clearance("confidential", Decimal("50")))
         self.compute.regen_per_hour = Decimal("0")
         with self.assertNumQueries(0):
             services.regen_for(ada, self.compute)
 
-    def test_a_circle_may_set_a_slower_speed_than_the_pool(self):
-        ada = member("ada", circle("newcomers", Decimal("1.5")))
-        self.assertEqual(services.regen_for(ada, self.compute), (Decimal("1.5"), "newcomers"))
+    def test_a_clearance_may_set_a_slower_speed_than_the_pool(self):
+        ada = member("ada", clearance("onboarding", Decimal("1.5")))
+        self.assertEqual(services.regen_for(ada, self.compute), (Decimal("1.5"), "onboarding"))
 
-    def test_a_zero_speed_circle_is_named_with_its_zero(self):
-        ada = member("ada", circle("paused", Decimal("0")))
+    def test_a_zero_speed_clearance_is_named_with_its_zero(self):
+        ada = member("ada", clearance("paused", Decimal("0")))
         self.assertEqual(services.regen_for(ada, self.compute), (Decimal("0"), "paused"))
 
-    def test_a_faster_circle_beats_a_zero_one(self):
-        ada = member("ada", circle("paused", Decimal("0")), circle("board", Decimal("6")))
-        self.assertEqual(services.regen_for(ada, self.compute), (Decimal("6"), "board"))
+    def test_a_faster_clearance_beats_a_zero_one(self):
+        ada = member("ada", clearance("paused", Decimal("0")), clearance("confidential", Decimal("6")))
+        self.assertEqual(services.regen_for(ada, self.compute), (Decimal("6"), "confidential"))
 
-    def test_a_circle_that_sets_another_pool_leaves_this_one_at_the_pool_rate(self):
-        ada = member("ada", circle("archivists", storage=Decimal("30")))
+    def test_a_clearance_that_sets_another_pool_leaves_this_one_at_the_pool_rate(self):
+        ada = member("ada", clearance("archive", storage=Decimal("30")))
         self.assertEqual(services.regen_for(ada, self.compute), (Decimal("4"), ""))
         self.assertEqual(services.regen_for(ada, self.pools["storage"]),
-                         (Decimal("30"), "archivists"))
+                         (Decimal("30"), "archive"))
 
     def test_speeds_handed_in_are_used_without_a_query(self):
         ada = User.objects.create_user("ada", password="pw")
@@ -94,56 +94,50 @@ class RegenForTests(TestCase):
 
 
 @master
-class CircleSpeedsTests(TestCase):
+class ClearanceSpeedsTests(TestCase):
     def setUp(self):
         economy()
-        self.board = circle("board", Decimal("12"))
-        self.seniors = circle("seniors", Decimal("8"), storage=Decimal("20"))
-        self.ada = member("ada", self.board, self.seniors)
-        self.bob = member("bob", self.seniors)
+        self.confidential = clearance("confidential", Decimal("12"))
+        self.payroll = clearance("payroll", Decimal("8"), storage=Decimal("20"))
+        self.ada = member("ada", self.confidential, self.payroll)
+        self.bob = member("bob", self.payroll)
         self.cy = member("cy")
 
-    def test_highest_wins_pool_by_pool_naming_the_circle(self):
-        speeds = services.circle_speeds()
+    def test_highest_wins_pool_by_pool_naming_the_clearance(self):
+        speeds = services.clearance_speeds()
         self.assertEqual(speeds[self.ada.pk], {
-            "security": (Decimal("12"), "board"), "compute": (Decimal("12"), "board"),
-            "storage": (Decimal("20"), "seniors")})
-        self.assertEqual(speeds[self.bob.pk]["compute"], (Decimal("8"), "seniors"))
+            "security": (Decimal("12"), "confidential"), "compute": (Decimal("12"), "confidential"),
+            "storage": (Decimal("20"), "payroll")})
+        self.assertEqual(speeds[self.bob.pk]["compute"], (Decimal("8"), "payroll"))
 
-    def test_a_person_in_no_circle_is_absent(self):
-        self.assertNotIn(self.cy.pk, services.circle_speeds())
+    def test_a_person_in_no_clearance_is_absent(self):
+        self.assertNotIn(self.cy.pk, services.clearance_speeds())
 
     def test_it_is_one_query_however_many_members(self):
         for n in range(5):
-            member(f"extra{n}", self.board, self.seniors)
+            member(f"extra{n}", self.confidential, self.payroll)
         with self.assertNumQueries(1):
-            speeds = services.circle_speeds()
+            speeds = services.clearance_speeds()
         self.assertEqual(len(speeds), 7)
 
     def test_it_can_be_narrowed_to_some_people(self):
-        self.assertEqual(set(services.circle_speeds([self.bob.pk])), {self.bob.pk})
-        self.assertEqual(services.circle_speeds([]), {})
+        self.assertEqual(set(services.clearance_speeds([self.bob.pk])), {self.bob.pk})
+        self.assertEqual(services.clearance_speeds([]), {})
 
-    def test_a_circle_that_sets_nothing_contributes_nothing(self):
-        dee = member("dee", circle("quiet"))
-        self.assertNotIn(dee.pk, services.circle_speeds())
+    def test_a_clearance_that_sets_nothing_contributes_nothing(self):
+        dee = member("dee", clearance("quiet"))
+        self.assertNotIn(dee.pk, services.clearance_speeds())
 
     def test_a_person_with_no_account_is_not_a_key(self):
         ghost = Person.objects.create(display_name="ghost")
-        ghost.communities.add(self.board)
-        self.assertNotIn(None, services.circle_speeds())
-
-    def test_a_functional_communitys_stray_speed_is_never_read(self):
-        devs = Community.objects.create(name="devs")
-        Community.objects.filter(pk=devs.pk).update(regen_compute=Decimal("99"))
-        self.cy.community_profile.communities.add(devs)
-        self.assertNotIn(self.cy.pk, services.circle_speeds())
+        ghost.clearances.add(self.confidential)
+        self.assertNotIn(None, services.clearance_speeds())
 
     def test_a_host_without_socialhub_has_no_speeds(self):
         real = apps.is_installed
         with mock.patch.object(apps, "is_installed",
                                side_effect=lambda name: name != "toto.socialhub" and real(name)):
-            self.assertEqual(services.circle_speeds(), {})
+            self.assertEqual(services.clearance_speeds(), {})
 
 
 @master
@@ -151,9 +145,9 @@ class RegenerateHourTests(TestCase):
     def setUp(self):
         economy()
         self.pools = services.pools()
-        self.board = circle("board", Decimal("12"))
-        self.paused = circle("paused", Decimal("0"))
-        self.ada = member("ada", self.board)          # fast
+        self.confidential = clearance("confidential", Decimal("12"))
+        self.paused = clearance("paused", Decimal("0"))
+        self.ada = member("ada", self.confidential)          # fast
         self.bob = member("bob", self.paused)         # stopped
         self.cy = User.objects.create_user("cy", password="pw")   # the pool's rate
         for user in (self.ada, self.bob, self.cy):
@@ -164,8 +158,8 @@ class RegenerateHourTests(TestCase):
         self.assertEqual([held(u, "compute") for u in (self.ada, self.bob, self.cy)],
                          [Decimal("62"), Decimal("50"), Decimal("54")])
 
-    def test_the_circles_are_read_once_for_the_whole_run(self):
-        with mock.patch.object(services, "circle_speeds", wraps=services.circle_speeds) as read:
+    def test_the_clearances_are_read_once_for_the_whole_run(self):
+        with mock.patch.object(services, "clearance_speeds", wraps=services.clearance_speeds) as read:
             services.regenerate_hour(at=HOUR)
         read.assert_called_once_with()
 

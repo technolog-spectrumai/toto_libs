@@ -1,4 +1,4 @@
-"""``may_read`` clause by clause with circles in play, its queryset twin
+"""``may_read`` clause by clause with clearances in play, its queryset twin
 ``accessible_files`` (including ``include_public``), the tree built on it,
 the attach checks, and the content/mirror guards in ``access``.
 
@@ -17,11 +17,11 @@ from django.test import RequestFactory, TestCase, override_settings
 
 from toto.core.models import Platform
 from toto.people.models import Person
-from toto.socialhub.models import Community
+from toto.socialhub.models import Clearance, Community
 from toto.vault import access, attach
 from toto.vault.access import may_read
 from toto.vault.filetree import accessible_files, build_file_tree
-from toto.vault.models import Bucket, VaultDirectory, VaultFile, VaultFileCircle
+from toto.vault.models import Bucket, VaultDirectory, VaultFile, VaultFileClearance
 from toto.vault.plugins import VaultAccessPlugin
 
 User = get_user_model()
@@ -31,15 +31,15 @@ User = get_user_model()
 class _Fixture(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.board = Community.objects.create(name="board", slug="board", is_circle=True)
-        cls.seniors = Community.objects.create(name="seniors", slug="seniors", is_circle=True)
+        cls.internal = Clearance.objects.create(name="internal", slug="internal")
+        cls.confidential = Clearance.objects.create(name="confidential", slug="confidential")
         cls.devs = Community.objects.create(name="devs", slug="devs")
         cls.owner = User.objects.create_user("owner", password="pw")
         cls.member = User.objects.create_user("member", password="pw")
         cls.member_person = Person.objects.create(user=cls.member, display_name="Member")
-        cls.member_person.communities.add(cls.board)
+        cls.member_person.clearances.add(cls.internal)
         cls.senior = User.objects.create_user("senior", password="pw")
-        Person.objects.create(user=cls.senior, display_name="Senior").communities.add(cls.seniors)
+        Person.objects.create(user=cls.senior, display_name="Senior").clearances.add(cls.confidential)
         cls.dev = User.objects.create_user("dev", password="pw")
         Person.objects.create(user=cls.dev, display_name="Dev").communities.add(cls.devs)
         cls.nobody = User.objects.create_user("nobody", password="pw")      # no Person at all
@@ -59,8 +59,8 @@ class _Fixture(TestCase):
                                directory=directory)
         vault_file.file.save(title, ContentFile(b"bytes"), save=False)
         vault_file.save()
-        for circle in kept_to:
-            VaultFileCircle.objects.create(file=vault_file, circle=circle)
+        for clearance in kept_to:
+            VaultFileClearance.objects.create(file=vault_file, clearance=clearance)
         return vault_file
 
     def agree(self, user, vault_file, expected):
@@ -70,53 +70,44 @@ class _Fixture(TestCase):
                       "accessible_files")
 
 
-class MayReadWithCirclesTests(_Fixture):
-    def test_a_circle_grants_a_private_file_to_its_members(self):
-        self.agree(self.member, self.file(kept_to=[self.board]), True)
+class MayReadWithClearancesTests(_Fixture):
+    def test_a_clearance_grants_a_private_file_to_its_members(self):
+        self.agree(self.member, self.file(kept_to=[self.internal]), True)
 
-    def test_one_circle_of_several_is_enough(self):
-        f = self.file(kept_to=[self.board, self.seniors])
+    def test_one_clearance_of_several_is_enough(self):
+        f = self.file(kept_to=[self.internal, self.confidential])
         self.agree(self.senior, f, True)
         self.agree(self.member, f, True)
 
-    def test_a_user_with_no_person_is_in_no_circle(self):
-        self.agree(self.nobody, self.file(public=True, kept_to=[self.board]), False)
+    def test_a_user_with_no_person_is_in_no_clearance(self):
+        self.agree(self.nobody, self.file(public=True, kept_to=[self.internal]), False)
 
-    def test_a_functional_community_member_is_not_a_circle_member(self):
-        self.agree(self.dev, self.file(public=True, kept_to=[self.board]), False)
+    def test_a_functional_community_member_is_not_a_clearance_member(self):
+        self.agree(self.dev, self.file(public=True, kept_to=[self.internal]), False)
 
-    def test_the_bucket_owner_loses_a_file_kept_to_a_circle_they_are_not_in(self):
-        f = self.file(bucket=self.theirs, kept_to=[self.board])
+    def test_the_bucket_owner_loses_a_file_kept_to_a_clearance_they_are_not_in(self):
+        f = self.file(bucket=self.theirs, kept_to=[self.internal])
         self.agree(self.nobody, f, False)
 
     def test_the_bucket_owner_reads_it_again_once_it_is_open(self):
         f = self.file(bucket=self.theirs)
         self.agree(self.nobody, f, True)
 
-    def test_a_circle_member_needs_no_place_on_the_folder_acl(self):
+    def test_a_clearance_member_needs_no_place_on_the_folder_acl(self):
         directory = VaultDirectory.objects.create(name="d", bucket=self.bucket, owner=self.owner)
         directory.allowed_users.add(self.nobody)
-        f = self.file(directory=directory, kept_to=[self.board])
+        f = self.file(directory=directory, kept_to=[self.internal])
         self.agree(self.member, f, True)
         self.agree(self.nobody, f, False)
 
-    def test_leaving_the_circle_takes_the_file_away(self):
-        f = self.file(kept_to=[self.board])
+    def test_leaving_the_clearance_takes_the_file_away(self):
+        f = self.file(kept_to=[self.internal])
         self.agree(self.member, f, True)
-        self.member_person.communities.remove(self.board)
+        self.member_person.clearances.remove(self.internal)
         self.agree(self.member, f, False)
 
-    def test_a_circle_demoted_to_a_functional_community_keeps_the_file_closed(self):
-        # The rows still keep it; the ex-circle no longer grants. Closed, not
-        # quietly reopened to everyone the public flag names.
-        f = self.file(public=True, kept_to=[self.board])
-        Community.objects.filter(pk=self.board.pk).update(is_circle=False)
-        self.agree(self.member, f, False)
-        self.agree(self.nobody, f, False)
-        self.agree(self.owner, f, True)
-
-    def test_the_owner_reads_a_file_kept_to_a_circle_they_are_not_in(self):
-        self.agree(self.owner, self.file(kept_to=[self.seniors]), True)
+    def test_the_owner_reads_a_file_kept_to_a_clearance_they_are_not_in(self):
+        self.agree(self.owner, self.file(kept_to=[self.confidential]), True)
 
     def test_none_and_anonymous_get_the_public_arm_only(self):
         public, private = self.file(public=True), self.file()
@@ -146,8 +137,8 @@ class AccessibleFilesTests(_Fixture):
         self.assertEqual(set(accessible_files(self.nobody, include_public=False)),
                          {own, in_my_bucket, shared})
 
-    def test_include_public_false_does_not_undo_a_circle(self):
-        f = self.file(bucket=self.theirs, kept_to=[self.board])
+    def test_include_public_false_does_not_undo_a_clearance(self):
+        f = self.file(bucket=self.theirs, kept_to=[self.internal])
         self.assertNotIn(f, accessible_files(self.nobody, include_public=False))
 
     def test_the_scopes_narrow(self):
@@ -159,13 +150,13 @@ class AccessibleFilesTests(_Fixture):
         self.assertEqual(set(accessible_files(self.owner, exclude_pk=a.pk)), {b, c})
 
     def test_a_superuser_is_still_scoped_by_the_filters(self):
-        a = self.file(file_type="pdf", kept_to=[self.seniors])
+        a = self.file(file_type="pdf", kept_to=[self.confidential])
         self.file(file_type="text")
         self.assertEqual(list(accessible_files(self.root, file_types=("pdf",))), [a])
 
-    def test_a_file_kept_to_two_of_my_circles_is_listed_once(self):
-        Person.objects.get(user=self.member).communities.add(self.seniors)
-        f = self.file(kept_to=[self.board, self.seniors])
+    def test_a_file_kept_to_two_of_my_clearances_is_listed_once(self):
+        Person.objects.get(user=self.member).clearances.add(self.confidential)
+        f = self.file(kept_to=[self.internal, self.confidential])
         self.assertEqual(list(accessible_files(self.member).filter(pk=f.pk)), [f])
 
 
@@ -195,7 +186,7 @@ class FileTreeTests(_Fixture):
                          ["", "Owned", "Theirs"])
 
     def test_the_tree_only_shows_what_the_reader_may_read(self):
-        self.file(title="kept.txt", kept_to=[self.seniors])
+        self.file(title="kept.txt", kept_to=[self.confidential])
         self.file(title="open.txt", public=True)
         titles = [r["title"] for n in build_file_tree(self.nobody)
                   for g in n["groups"] for r in g["files"]]
@@ -215,14 +206,14 @@ class FileTreeTests(_Fixture):
         self.assertEqual(len(rows), 2)
 
 
-class AttachWithCirclesTests(_Fixture):
+class AttachWithClearancesTests(_Fixture):
     def test_a_bucket_owner_cannot_attach_a_file_kept_away_from_them(self):
-        f = self.file(bucket=self.theirs, kept_to=[self.board])
+        f = self.file(bucket=self.theirs, kept_to=[self.internal])
         with self.assertRaises(Http404):
             attach.validate_reference(self.nobody, f.pk)
 
     def test_the_owner_still_attaches_a_kept_file(self):
-        f = self.file(kept_to=[self.seniors])
+        f = self.file(kept_to=[self.confidential])
         self.assertEqual(attach.validate_reference(self.owner, str(f.pk)), f)
 
     def test_a_non_numeric_or_empty_pk_is_the_same_404(self):
@@ -230,10 +221,10 @@ class AttachWithCirclesTests(_Fixture):
             with self.assertRaises(Http404):
                 attach.validate_reference(self.owner, pk)
 
-    def test_keeping_a_file_to_a_circle_hides_an_existing_attachment(self):
+    def test_keeping_a_file_to_a_clearance_hides_an_existing_attachment(self):
         f = self.file(public=True)
         self.assertTrue(attach.readable(self.nobody, f))
-        VaultFileCircle.objects.create(file=f, circle=self.board)
+        VaultFileClearance.objects.create(file=f, clearance=self.internal)
         self.assertFalse(attach.readable(self.nobody, f))
         self.assertTrue(attach.readable(self.member, f))
 
@@ -242,7 +233,7 @@ class AttachWithCirclesTests(_Fixture):
             def __init__(self, doc):
                 self.doc = doc
 
-        kept, open_ = self.file(kept_to=[self.board]), self.file(public=True)
+        kept, open_ = self.file(kept_to=[self.internal]), self.file(public=True)
         rows = [Row(kept), Row(open_), Row(None)]
         self.assertEqual([r.doc for r in attach.visible(self.nobody, rows, attr="doc")], [open_])
         self.assertEqual([r.doc for r in attach.visible(self.member, rows, attr="doc")],

@@ -1,6 +1,6 @@
 """The member's mana pages beyond the first render: the Regeneration tab's
-edges (no pools, the off switch, a circle that sets one pool, the superuser's
-member counts, a host without circles), the JSON the header chip polls, the
+edges (no pools, the off switch, a clearance that sets one pool, the superuser's
+member counts, a host without clearances), the JSON the header chip polls, the
 pool page's refusals, the operators' links and the profile section.
 """
 
@@ -19,7 +19,7 @@ from toto.mana import services, views
 from toto.mana.models import ManaPool
 from toto.mana.tests.fixtures import economy, master, spend
 from toto.people.models import Person
-from toto.socialhub.models import Community
+from toto.socialhub.models import Clearance
 
 User = get_user_model()
 
@@ -37,14 +37,14 @@ class TempMediaMixin:
         super().setUpClass()
 
 
-def circle(name, **speeds):
-    return Community.objects.create(
-        name=name, is_circle=True, **{f"regen_{role}": value for role, value in speeds.items()})
+def clearance(name, **speeds):
+    return Clearance.objects.create(
+        name=name, **{f"regen_{role}": value for role, value in speeds.items()})
 
 
-def join(user, *communities):
+def join(user, *clearances):
     person, _ = Person.objects.get_or_create(user=user, defaults={"display_name": user.username})
-    person.communities.add(*communities)
+    person.clearances.add(*clearances)
 
 
 @master
@@ -74,58 +74,51 @@ class RegenerationTabTests(TestCase):
         self.assertEqual(response.context["rows"], [])
         self.assertContains(response, "Mana is not set up on this platform yet.")
 
-    def test_a_circle_that_sets_one_pool_leaves_the_others_at_the_default(self):
-        join(self.ada, circle("archivists", storage=Decimal("20")))
+    def test_a_clearance_that_sets_one_pool_leaves_the_others_at_the_default(self):
+        join(self.ada, clearance("archive", storage=Decimal("20")))
         response = self.page()
-        self.assertEqual((self.row(response, "storage")["rate"], self.row(response, "storage")["circle"]),
-                         (Decimal("20"), "archivists"))
-        self.assertEqual((self.row(response, "compute")["rate"], self.row(response, "compute")["circle"]),
+        self.assertEqual((self.row(response, "storage")["rate"], self.row(response, "storage")["clearance"]),
+                         (Decimal("20"), "archive"))
+        self.assertEqual((self.row(response, "compute")["rate"], self.row(response, "compute")["clearance"]),
                          (Decimal("4"), ""))
         body = response.content.decode()
         self.assertIn("+20", body)
-        self.assertIn("—", body)                       # the pools the circle leaves alone
+        self.assertIn("—", body)                       # the pools the clearance leaves alone
 
-    def test_the_off_switch_reads_zero_whatever_the_circle_says(self):
-        join(self.ada, circle("board", compute=Decimal("12")))
+    def test_the_off_switch_reads_zero_whatever_the_clearance_says(self):
+        join(self.ada, clearance("confidential", compute=Decimal("12")))
         ManaPool.objects.filter(role="compute").update(regen_per_hour=Decimal("0"))
         row = self.row(self.page(), "compute")
-        self.assertEqual((row["rate"], row["per_day"], row["circle"]), (Decimal("0"), Decimal("0"), ""))
+        self.assertEqual((row["rate"], row["per_day"], row["clearance"]), (Decimal("0"), Decimal("0"), ""))
 
-    def test_a_zero_speed_circle_is_named_as_the_reason(self):
-        join(self.ada, circle("paused", compute=Decimal("0")))
+    def test_a_zero_speed_clearance_is_named_as_the_reason(self):
+        join(self.ada, clearance("paused", compute=Decimal("0")))
         row = self.row(self.page(), "compute")
-        self.assertEqual((row["rate"], row["circle"]), (Decimal("0"), "paused"))
+        self.assertEqual((row["rate"], row["clearance"]), (Decimal("0"), "paused"))
 
-    def test_the_member_list_is_their_circles_with_the_speeds_each_sets(self):
-        join(self.ada, circle("board", compute=Decimal("12")))
-        circle("seniors", compute=Decimal("8"))
+    def test_the_member_list_is_their_clearances_with_the_speeds_each_sets(self):
+        join(self.ada, clearance("confidential", compute=Decimal("12")))
+        clearance("payroll", compute=Decimal("8"))
         mine = self.page().context["mine"]
-        self.assertEqual(mine, [{"name": "board", "speeds": [None, Decimal("12"), None]}])
+        self.assertEqual(mine, [{"name": "confidential", "speeds": [None, Decimal("12"), None]}])
 
     def test_staff_who_are_not_superusers_see_only_their_own(self):
-        circle("seniors", compute=Decimal("8"))
+        clearance("payroll", compute=Decimal("8"))
         stan = User.objects.create_user("stan", password="pw", is_staff=True)
         response = self.page(stan)
         self.assertEqual(response.context["every"], [])
-        self.assertNotContains(response, "seniors")
+        self.assertNotContains(response, "payroll")
 
-    def test_a_superuser_sees_how_many_members_each_circle_has(self):
-        board = circle("board", compute=Decimal("12"))
-        join(self.ada, board)
-        join(User.objects.create_user("bob", password="pw"), board)
-        circle("empty")
+    def test_a_superuser_sees_how_many_members_each_clearance_has(self):
+        confidential = clearance("confidential", compute=Decimal("12"))
+        join(self.ada, confidential)
+        join(User.objects.create_user("bob", password="pw"), confidential)
+        clearance("empty")
         root = User.objects.create_superuser("root", password="pw")
         every = self.page(root).context["every"]
-        self.assertEqual([(c["name"], c["members"]) for c in every], [("board", 2), ("empty", 0)])
+        self.assertEqual([(c["name"], c["members"]) for c in every], [("confidential", 2), ("empty", 0)])
 
-    def test_a_functional_community_is_never_listed(self):
-        devs = Community.objects.create(name="devs")
-        join(self.ada, devs)
-        root = User.objects.create_superuser("root", password="pw")
-        self.assertEqual(self.page(self.ada).context["mine"], [])
-        self.assertEqual(self.page(root).context["every"], [])
-
-    def test_a_host_without_circles_shows_the_speeds_alone(self):
+    def test_a_host_without_clearances_shows_the_speeds_alone(self):
         real = apps.is_installed
         with mock.patch.object(apps, "is_installed",
                                side_effect=lambda name: name != "toto.socialhub" and real(name)):

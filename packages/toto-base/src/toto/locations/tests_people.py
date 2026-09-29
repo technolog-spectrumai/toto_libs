@@ -175,7 +175,7 @@ class PrecisionTests(PeopleTestCase):
 
 class RadiusTests(PeopleTestCase):
 
-    def test_somebody_inside_the_circle_is_found(self):
+    def test_somebody_inside_the_clearance_is_found(self):
         ada = self._other("Ada", NEARBY, LocationSharing.EXACT)
         found = nearby.people_within(
             self.viewer_user, latitude=CENTRE[0], longitude=CENTRE[1],
@@ -257,25 +257,6 @@ class CommunityFilterTests(PeopleTestCase):
             self.viewer_user, latitude=CENTRE[0], longitude=CENTRE[1],
             radius_km=50, community=self.teachers)
         self.assertNotIn("Hidden", [p.display_name for p, _ in found])
-
-
-    def test_a_circle_is_no_filter_for_a_member(self):
-        """Circles are hidden from members (2026-09-28): picked or typed, a
-        circle would say who is in it — so it is not offered, and a typed one
-        narrows nothing."""
-        from toto.socialhub.models import Community
-
-        board = Community.objects.create(name="Board", is_circle=True)
-        insider = self._other("Insider", NEARBY, LocationSharing.EXACT)
-        insider.communities.add(board)
-        self._other("Outsider", NEARBY, LocationSharing.EXACT)
-
-        response = self._search(community=board.pk)
-        self.assertNotIn(board, response.context["communities"])
-        self.assertIn(self.teachers, response.context["communities"])
-        self.assertIsNone(response.context["selected_community"])
-        names = {row["person"].display_name for row in response.context["results"]}
-        self.assertIn("Outsider", names)
 
 
 class PageTests(PeopleTestCase):

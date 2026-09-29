@@ -12,8 +12,8 @@ from django.urls import reverse
 
 from toto.core.models import Platform
 from toto.people.models import Person
-from toto.socialhub.models import Community
-from toto.vault.models import Bucket, FileGateway, VaultDirectory, VaultFile, VaultFileCircle
+from toto.socialhub.models import Clearance
+from toto.vault.models import Bucket, FileGateway, VaultDirectory, VaultFile, VaultFileClearance
 
 User = get_user_model()
 
@@ -82,13 +82,13 @@ class WhoSeesWhatTests(_Fixture):
         self.file("mine.txt", owner=self.reader, bucket=self.other_bucket)
         self.assertEqual(self.titles(self.listing(self.reader)), ["mine.txt", "open.txt"])
 
-    def test_a_public_file_kept_to_a_circle_is_listed_to_its_members_only(self):
-        circle = Community.objects.create(name="board", slug="board", is_circle=True)
+    def test_a_public_file_kept_to_a_clearance_is_listed_to_its_members_only(self):
+        clearance = Clearance.objects.create(name="internal", slug="internal")
         f = self.file("kept.txt", public=True)
-        VaultFileCircle.objects.create(file=f, circle=circle)
+        VaultFileClearance.objects.create(file=f, clearance=clearance)
         self.assertEqual(self.titles(self.listing(self.reader)), [])
         self.assertEqual(self.titles(self.listing(self.owner)), ["kept.txt"])
-        Person.objects.create(user=self.reader, display_name="R").communities.add(circle)
+        Person.objects.create(user=self.reader, display_name="R").clearances.add(clearance)
         self.assertEqual(self.titles(self.listing(self.reader)), ["kept.txt"])
 
     def test_a_restricted_folder_and_everything_in_it_is_hidden_from_outsiders(self):
