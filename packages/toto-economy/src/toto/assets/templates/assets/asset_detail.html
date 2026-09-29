@@ -170,7 +170,7 @@
         (<span class="font-mono">{{ asset.reserve_account.code }}</span>)
         {% trans "to any account. Supply is fixed — only existing reserve tokens can be distributed." %}
       </p>
-      <form method="post" action="{% url 'assets:asset_distribute' asset.pk %}" class="space-y-4">
+      <form method="post" action="{% url 'assets:asset_distribute' asset.code %}" class="space-y-4">
         {% csrf_token %}
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="space-y-1">

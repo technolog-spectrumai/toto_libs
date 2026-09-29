@@ -52,7 +52,7 @@
             :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
             class="flex items-center justify-between rounded-lg px-4 py-3 text-sm">
             <a
-              href="{% url 'assets:asset_detail' holding.asset.pk %}"
+              href="{{ holding.asset.get_absolute_url }}"
               class="font-semibold underline-offset-4 hover:underline">
               {{ holding.asset.unit_name }}
               <span class="opacity-60">— {{ holding.asset.name }}</span>

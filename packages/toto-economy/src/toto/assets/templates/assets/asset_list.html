@@ -128,7 +128,7 @@
             </div>
           </div>
           <a
-            href="{% url 'assets:asset_detail' asset.pk %}"
+            href="{{ asset.get_absolute_url }}"
             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
             class="inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
             <i class="fa-solid fa-arrow-right"></i>

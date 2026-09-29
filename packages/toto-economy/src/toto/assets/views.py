@@ -57,6 +57,14 @@ def _clean_new_asset(request) -> dict:
     elif not unit_name.isalnum():
         errors.append(_("The unit name may contain only letters and digits."))
 
+    # The short name, the key of the asset's page (2026-09-30): four capital
+    # letters, or blank for one derived from the ticker.
+    code = (request.POST.get("code") or "").strip().upper()
+    if code and not (len(code) == 4 and code.isascii() and code.isalpha()):
+        errors.append(_("The short name is four letters, A–Z (e.g. FLOR)."))
+    elif code and Asset.objects.filter(code=code).exists():
+        errors.append(_("The short name %(code)s is taken.") % {"code": code})
+
     raw_supply = (request.POST.get("total_supply") or "").strip()
     total_supply = None
     try:
@@ -109,6 +117,7 @@ def _clean_new_asset(request) -> dict:
     return {
         "name": name,
         "unit_name": unit_name,
+        "code": code,
         "total_supply": total_supply,
         "decimals": decimals,
         "description": (request.POST.get("description") or "").strip(),
@@ -117,7 +126,7 @@ def _clean_new_asset(request) -> dict:
 
 
 def _engrave_new_asset(*, name, unit_name, total_supply, decimals,
-                       description, reserve, actor):
+                       description, reserve, actor, code=""):
     """Create the reserve account and the currency as ONE act.
 
     Both inside the transaction, which is the fix for the mess this used to
@@ -150,6 +159,7 @@ def _engrave_new_asset(*, name, unit_name, total_supply, decimals,
             reference=f"mint-{unit_name.lower()}-{_uuid.uuid4().hex[:8]}",
             description=description,
             actor=actor,
+            code=code,
         )
 
 
@@ -202,7 +212,7 @@ def asset_create(request):
                     _("Asset %(unit)s engraved, with a total supply of "
                       "%(supply)s minted into its reserve.")
                     % {"unit": asset.unit_name, "supply": fields["total_supply"]})
-                return redirect("assets:asset_detail", pk=asset.pk)
+                return redirect(asset)
 
     return assets_render(request, "assets/asset_create.html", {
         "ledger_accounts": ledger_accounts,
@@ -256,8 +266,13 @@ def asset_list(request):
     })
 
 
-def asset_detail(request, pk):
-    asset = get_object_or_404(Asset, pk=pk)
+def asset_detail_by_pk(request, pk):
+    """The address an asset had before its short name (2026-09-30)."""
+    return redirect(get_object_or_404(Asset, pk=pk), permanent=True)
+
+
+def asset_detail(request, code):
+    asset = get_object_or_404(Asset, code=code)
     holders = list_asset_holders(asset)
     recent_txs = LedgerTransaction.objects.filter(asset=asset).order_by("-created_at")[:20]
     ledger_status = verify_asset_ledger(asset)
@@ -291,11 +306,11 @@ def asset_detail(request, pk):
 
 
 @login_required
-def asset_distribute(request, pk):
+def asset_distribute(request, code):
     """Transfer tokens from reserve to a recipient account.
     Allowed only for staff or the owner of the asset's reserve account."""
     from django.http import HttpResponseForbidden
-    asset = get_object_or_404(Asset, pk=pk)
+    asset = get_object_or_404(Asset, code=code)
     reserve = asset.reserve_account
     is_reserve_owner = reserve and reserve.user_id and reserve.user_id == request.user.pk
     if not request.user.is_staff and not is_reserve_owner:
@@ -306,7 +321,7 @@ def asset_distribute(request, pk):
         messages.error(request, _("%(unit)s is a mana pool. Mana is not distributed by hand: "
                                   "grant it from its manual faucet on the Faucets page, "
                                   "with a reason.") % {"unit": asset.unit_name})
-        return redirect("assets:asset_detail", pk=pk)
+        return redirect(asset)
     if request.method == "POST":
         import uuid as _uuid
 
@@ -353,7 +368,7 @@ def asset_distribute(request, pk):
                     _("Distributed %(amount)s %(unit)s to %(code)s.")
                     % {"amount": amount, "unit": asset.unit_name,
                        "code": recipient.code})
-    return redirect("assets:asset_detail", pk=pk)
+    return redirect(asset)
 
 
 # ---------------------------------------------------------------------------
@@ -755,8 +770,9 @@ def wallet(request):
         .select_related('transaction', 'asset', 'account')
         .order_by('-created_at')[:30]
     )
-    # Assets carrying a display code — what the retired Currency table listed.
-    currencies = Asset.objects.filter(active=True).exclude(code="")
+    # Assets carrying a display symbol — what the retired Currency table
+    # listed. Not the code: since 2026-09-30 every asset has one.
+    currencies = Asset.objects.filter(active=True).exclude(symbol="")
     total_holdings = []
     for account in accounts:
         for h in account.holdings.all():

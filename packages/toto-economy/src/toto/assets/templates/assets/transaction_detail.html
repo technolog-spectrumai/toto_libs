@@ -36,7 +36,7 @@
         {% if tx.asset %}
           <div>
             <div class="text-xs opacity-50 uppercase tracking-wide">{% trans "Asset" %}</div>
-            <a href="{% url 'assets:asset_detail' tx.asset.pk %}" class="font-semibold underline-offset-4 hover:underline">
+            <a href="{{ tx.asset.get_absolute_url }}" class="font-semibold underline-offset-4 hover:underline">
               {{ tx.asset.unit_name }} — {{ tx.asset.name }}
             </a>
           </div>

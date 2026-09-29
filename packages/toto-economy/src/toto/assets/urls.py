@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, register_converter
 
 from . import views
 from .api_views import (
@@ -6,6 +6,21 @@ from .api_views import (
 )
 
 app_name = "assets"
+
+
+class AssetCodeConverter:
+    """An asset's short name in a URL: four capital letters (2026-09-30)."""
+
+    regex = "[A-Z]{4}"
+
+    def to_python(self, value):
+        return value
+
+    def to_url(self, value):
+        return value
+
+
+register_converter(AssetCodeConverter, "asset_code")
 
 urlpatterns = [
     # Machine-readable, signed, read-only. See views.attestation.
@@ -33,8 +48,11 @@ urlpatterns = [
          name="faucet_member_add"),
     path("faucets/members/<int:pk>/remove/", views.faucet_member_remove,
          name="faucet_member_remove"),
-    path("assets/<int:pk>/", views.asset_detail, name="asset_detail"),
-    path("assets/<int:pk>/distribute/", views.asset_distribute, name="asset_distribute"),
+    # Keyed by the short name (2026-09-30): /assets/assets/FLOR/. The number
+    # it was keyed by before answers with a permanent redirect there.
+    path("assets/<asset_code:code>/", views.asset_detail, name="asset_detail"),
+    path("assets/<int:pk>/", views.asset_detail_by_pk, name="asset_detail_by_pk"),
+    path("assets/<asset_code:code>/distribute/", views.asset_distribute, name="asset_distribute"),
     path("accounts/", views.account_list, name="account_list"),
     path("accounts/<int:pk>/", views.account_detail, name="account_detail"),
     path("transactions/", views.transaction_list, name="transaction_list"),

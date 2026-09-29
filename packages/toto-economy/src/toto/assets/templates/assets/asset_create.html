@@ -71,6 +71,16 @@
       </div>
       <div class="space-y-1">
         <label class="text-xs font-semibold uppercase tracking-wide opacity-60">
+          {% trans "Short name" %} <span class="font-normal opacity-60">({% trans "4 letters; blank: from the ticker" %})</span>
+        </label>
+        <input type="text" name="code" maxlength="4" pattern="[A-Za-z]{4}" autocomplete="off"
+               placeholder="{% trans 'e.g. FLOR' %}"
+               oninput="this.value = this.value.toUpperCase()"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
+               class="w-full rounded-lg border px-3 py-2 text-sm font-mono uppercase outline-none focus:ring-2 focus:ring-current/20">
+      </div>
+      <div class="space-y-1">
+        <label class="text-xs font-semibold uppercase tracking-wide opacity-60">
           {% trans "Description" %} <span class="font-normal opacity-60">({% trans "optional" %})</span>
         </label>
         <input type="text" name="description" maxlength="500"
