@@ -31,7 +31,7 @@ def locations_map_features(request=None):
             },
         })
 
-    # Routes and layers kept to circles (2026-09-29): the viewer's, or with no
+    # Routes and layers kept to clearances (2026-09-29): the viewer's, or with no
     # request only the open ones.
     from toto.locations.access import readable_layers, readable_routes
 

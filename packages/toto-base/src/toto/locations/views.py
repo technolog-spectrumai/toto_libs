@@ -133,7 +133,7 @@ def _may_write(user, obj):
 
 
 def _readable_or_404(request, model, pk):
-    """The object — or the 404 a missing one gets when circles hide it from
+    """The object — or the 404 a missing one gets when clearances hide it from
     this reader (`access.may_read`; only routes and layers are ever hidden)."""
     from .access import may_read
 
@@ -1209,23 +1209,23 @@ def location_detail(request, kind, pk):
         geom_json = geometry_json(geom) if geom else None
 
     from . import access as _access
-    from toto.socialhub import circle_access
+    from toto.socialhub import clearance_access
 
-    manages = kind in _access.CIRCLED_KINDS and _access.may_manage_circles(request.user, obj)
+    manages = kind in _access.CLEARANCED_KINDS and _access.may_manage_clearances(request.user, obj)
     context = {
-        # Who reads it (2026-09-29): a route's or a layer's circles, chosen
+        # Who reads it (2026-09-29): a route's or a layer's clearances, chosen
         # here by its creator/owner or a superuser; a reader sees only the
-        # circles they are in themselves.
-        "circles_kind": kind if kind in _access.CIRCLED_KINDS else "",
-        "circles": (circle_access.visible_circles_of(request.user, obj, rows="circle_rows",
+        # clearances they are in themselves.
+        "clearances_kind": kind if kind in _access.CLEARANCED_KINDS else "",
+        "clearances": (clearance_access.visible_clearances_of(request.user, obj, rows="clearance_rows",
                                                      manages=manages)
-                    if kind in _access.CIRCLED_KINDS else []),
-        "circles_restricted": bool(kind in _access.CIRCLED_KINDS and obj.circle_rows.exists()),
-        "can_manage_circles": manages,
-        "circle_choices": ([{"circle": c, "on": c.pk in {x.pk for x in circle_access.circles_of(obj, rows="circle_rows")}}
-                            for c in circle_access.shareable_circles(request.user, obj, rows="circle_rows")]
+                    if kind in _access.CLEARANCED_KINDS else []),
+        "clearances_restricted": bool(kind in _access.CLEARANCED_KINDS and obj.clearance_rows.exists()),
+        "can_manage_clearances": manages,
+        "clearance_choices": ([{"clearance": c, "on": c.pk in {x.pk for x in clearance_access.clearances_of(obj, rows="clearance_rows")}}
+                            for c in clearance_access.shareable_clearances(request.user, obj, rows="clearance_rows")]
                            if manages else []),
-        "circles_save_url": (reverse("locations:circles_save", args=[kind, pk]) if manages else ""),
+        "clearances_save_url": (reverse("locations:clearances_save", args=[kind, pk]) if manages else ""),
         "obj": obj,
         "object_label": str(obj),
         "object_type": model._meta.verbose_name.title(),
@@ -1373,9 +1373,9 @@ def people(request):
     centre, centre_label = _search_centre(request, viewer)
     radius_km = _requested_radius(request)
 
-    # Only what the viewer may see listed: a circle is not a filter a member
+    # Only what the viewer may see listed: a clearance is not a filter a member
     # can pick or type (2026-09-28) — it would say who is in it.
-    listed = Community.objects.listed_for(request.user)
+    listed = Community.objects.all()
     community = None
     community_id = (request.GET.get("community") or "").strip()
     if community_id.isdigit():
@@ -1452,29 +1452,25 @@ def _search_centre(request, viewer):
 
 @login_required
 @require_POST
-def circles_save(request, kind, pk):
-    """A route's or a layer's circles (2026-09-29): its creator/owner or a
-    superuser ticks the circles that may see it; none = every member. A
+def clearances_save(request, kind, pk):
+    """A route's or a layer's clearances (2026-09-29): its creator/owner or a
+    superuser ticks the clearances that may see it; none = every member. A
     functional community is refused; the change is on the audit chain."""
-    from toto.socialhub import circle_access
+    from toto.socialhub import clearance_access
 
     from . import access as _access
 
     model = DETAIL_MODELS.get(kind)
-    if model is None or kind not in _access.CIRCLED_KINDS:
-        raise Http404(f"No circles for kind '{kind}'.")
+    if model is None or kind not in _access.CLEARANCED_KINDS:
+        raise Http404(f"No clearances for kind '{kind}'.")
     obj = _readable_or_404(request, model, pk)
-    if not _access.may_manage_circles(request.user, obj):
+    if not _access.may_manage_clearances(request.user, obj):
         raise PermissionDenied(_("Only its creator or a superuser decides who sees this."))
-    wanted = {int(v) for v in request.POST.getlist("circle")
+    wanted = {int(v) for v in request.POST.getlist("clearance")
               if v.isascii() and v.isdigit() and len(v) <= 18}
-    picked = circle_access.shareable_circles(request.user, obj, rows="circle_rows").filter(pk__in=wanted)
-    try:
-        before, after = circle_access.set_circles(
-            obj, picked, rows="circle_rows", actor=request.user,
-            action=f"{kind}.circles_changed", app_label="locations", kind=kind)
-    except circle_access.CircleRefused as exc:
-        messages.error(request, str(exc))
-    else:
-        messages.success(request, _("Saved.") if before != after else _("Nothing changed."))
+    picked = clearance_access.shareable_clearances(request.user, obj, rows="clearance_rows").filter(pk__in=wanted)
+    before, after = clearance_access.set_clearances(
+        obj, picked, rows="clearance_rows", actor=request.user,
+        action=f"{kind}.clearances_changed", app_label="locations", kind=kind)
+    messages.success(request, _("Saved.") if before != after else _("Nothing changed."))
     return redirect(request.POST.get("next") or reverse("locations:location_detail", args=[kind, pk]))

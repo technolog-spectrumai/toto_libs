@@ -2,8 +2,8 @@
 route or a map layer.
 
 Everybody signed in reads the map — except the routes and map layers kept to
-**circles** (`RouteCircle`, `MapLayerCircle`; the rule is
-`toto.socialhub.circle_access`): those are seen by the circles' members, the
+**clearances** (`RouteClearance`, `MapLayerClearance`; the rule is
+`toto.socialhub.clearance_access`): those are seen by the clearances' members, the
 route's creator or the layer's owner, and superusers, and by nobody else. On
 the map, in the JSON, in a list or on a page, a hidden one is a missing one.
 Addresses, territories, zones and route chains are shared infrastructure
@@ -39,61 +39,61 @@ def may_import_layer(user) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Reading: routes and map layers kept to circles (2026-09-29)
+# Reading: routes and map layers kept to clearances (2026-09-29)
 # ---------------------------------------------------------------------------
 
-#: The kinds a circle may keep, by the detail page's `kind` name.
-CIRCLED_KINDS = {"route": "route", "maplayer": "layer"}
+#: The kinds a clearance may keep, by the detail page's `kind` name.
+CLEARANCED_KINDS = {"route": "route", "maplayer": "layer"}
 
 
 def readable_routes(user, queryset=None):
-    """Routes ``user`` may see: all but those kept to circles they are not
+    """Routes ``user`` may see: all but those kept to clearances they are not
     in. ``user`` None (a connector, a plugin with no request): the open ones."""
     from django.db.models import Q
 
-    from toto.socialhub.circle_access import gate
+    from toto.socialhub.clearance_access import gate
 
     from .models import Route
 
     qs = Route.objects.all() if queryset is None else queryset
     owner = Q(created_by=user) if getattr(user, "is_authenticated", False) else None
-    return gate(user, qs, rows="circle_rows", owner=owner)
+    return gate(user, qs, rows="clearance_rows", owner=owner)
 
 
 def readable_layers(user, queryset=None):
     """Map layers ``user`` may see, the same way; the owner is a Person."""
     from django.db.models import Q
 
-    from toto.socialhub.circle_access import gate, person_of
+    from toto.socialhub.clearance_access import gate, person_of
 
     from .models import MapLayer
 
     qs = MapLayer.objects.all() if queryset is None else queryset
     person = person_of(user)
     owner = Q(owner=person) if person is not None else None
-    return gate(user, qs, rows="circle_rows", owner=owner)
+    return gate(user, qs, rows="clearance_rows", owner=owner)
 
 
 def may_read(user, obj) -> bool:
     """The per-object twin, for a route or a layer; anything else is open."""
-    from toto.socialhub.circle_access import hidden, person_of
+    from toto.socialhub.clearance_access import hidden, person_of
 
     from .models import MapLayer, Route
 
     if isinstance(obj, Route):
-        return not hidden(user, obj, rows="circle_rows",
+        return not hidden(user, obj, rows="clearance_rows",
                           is_owner=bool(obj.created_by_id and obj.created_by_id == getattr(user, "pk", None)))
     if isinstance(obj, MapLayer):
         person = person_of(user)
-        return not hidden(user, obj, rows="circle_rows",
+        return not hidden(user, obj, rows="clearance_rows",
                           is_owner=bool(person is not None and obj.owner_id == person.pk))
     return True
 
 
-def may_manage_circles(user, obj) -> bool:
-    """Who chooses a route's or a layer's circles: its creator or owner, and
+def may_manage_clearances(user, obj) -> bool:
+    """Who chooses a route's or a layer's clearances: its creator or owner, and
     superusers (staff edit metadata and notes, not who reads)."""
-    from toto.socialhub.circle_access import person_of
+    from toto.socialhub.clearance_access import person_of
 
     from .models import MapLayer, Route
 

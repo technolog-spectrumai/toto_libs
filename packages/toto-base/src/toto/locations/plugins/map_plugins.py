@@ -14,7 +14,7 @@ class LocationMapPlugin:
     @classmethod
     def get_items(cls, request=None):
         """Every provider's items. A provider that takes ``request`` gets it
-        (2026-09-29: so it can leave out what circles hide from this viewer);
+        (2026-09-29: so it can leave out what clearances hide from this viewer);
         one written before that is called bare and should offer only what
         everyone may see."""
         import inspect

@@ -130,7 +130,7 @@ class MapDataApiView(MeshGatedApiView):
 
         from .access import readable_routes
 
-        # A route kept to circles is theirs alone (2026-09-29): the mesh's
+        # A route kept to clearances is theirs alone (2026-09-29): the mesh's
         # caller reads as itself, and a key with no member behind it sees
         # only the open ones.
         for obj in readable_routes(request.user).select_related(

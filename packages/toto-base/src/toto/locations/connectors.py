@@ -91,7 +91,7 @@ class LocationsReadConnector(ReadOnlyModelConnector):
 
         from toto.locations.access import readable_routes
 
-        # A workflow runs as nobody: the routes kept to circles are not its
+        # A workflow runs as nobody: the routes kept to clearances are not its
         # to list or fetch (2026-09-29).
         qs = readable_routes(None, Route.objects.select_related("route_chain", "start_address", "end_address"))
         if self.config.get("action", "list") == "get":
