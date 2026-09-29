@@ -21,6 +21,8 @@ from toto.socialhub.views.community_news import (
     community_news_delete,
     community_news_update,
 )
+from toto.socialhub.views.circles import (circle_add, circle_delete, circle_member,
+                                          circle_speeds, circles)
 from toto.socialhub.views.application import membership_application_view, application_success_view, \
     verification_success_view, reference_request_view, reference_next, verify_application_view, reference_accept, \
     reference_reject
@@ -45,6 +47,13 @@ urlpatterns = [
          name="set_location_sharing"),
 
     path("communities/", CommunityListView.as_view(), name="community_list"),
+    # Circles (2026-09-29), for superusers — above the <slug> route, which
+    # would otherwise read "circles" as a community's name.
+    path("communities/circles/", circles, name="circles"),
+    path("communities/circles/add/", circle_add, name="circle_add"),
+    path("communities/circles/<int:pk>/members/", circle_member, name="circle_member"),
+    path("communities/circles/<int:pk>/speeds/", circle_speeds, name="circle_speeds"),
+    path("communities/circles/<int:pk>/delete/", circle_delete, name="circle_delete"),
     # Public: an office nobody can see is not an institution.
     path("communities/<slug:community_slug>/news/new/", community_news_create, name="community_news_create"),
     path("communities/<slug:slug>/", CommunityDetailView.as_view(), name="community_detail"),

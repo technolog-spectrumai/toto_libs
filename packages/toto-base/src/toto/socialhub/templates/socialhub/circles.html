@@ -1,0 +1,89 @@
+{% extends "oya/base.html" %}
+{% load i18n app_tags %}
+{% block title %}{% trans "Circles" %} – {{ platform.site_name }}{% endblock %}
+{% block content %}
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+     class="min-h-screen px-4 py-10 transition-colors duration-300">
+  <div class="mx-auto max-w-6xl space-y-8">
+    <header class="space-y-4">
+      <div>
+        <h1 class="text-2xl font-extrabold">{% trans "Circles" %}
+          <span class="text-sm font-normal opacity-60">{% blocktrans with n=rows|length max=max_circles %}{{ n }} of {{ max }}{% endblocktrans %}</span></h1>
+        <p class="mt-1 max-w-prose text-sm opacity-70">{% trans "A circle decides who may read — wiki pages, and whatever else an app keeps to circles — and how fast its members' mana refills. It offers no plan, gives no discount and holds no right; members never see it listed. Functional communities and circles are kept apart on purpose." %}</p>
+      </div>
+      {% include "socialhub/_tabs.html" with active_tab="circles" %}
+    </header>
+
+    {% if room_left %}
+    <form method="POST" action="{% url 'socialhub:circle_add' %}" class="flex flex-wrap items-end gap-2 text-sm">
+      {% csrf_token %}
+      <label class="flex flex-col gap-1"><span class="text-xs opacity-70">{% trans "New circle" %}</span>
+        <input type="text" name="name" required maxlength="120"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+               class="w-full max-w-xs rounded border px-2 py-1 sm:w-64"></label>
+      <button type="submit" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="rounded-lg px-4 py-1.5 font-semibold">{% trans "Make circle" %}</button>
+    </form>
+    {% else %}
+    <p class="text-sm opacity-70" data-testid="circles-full">{% blocktrans with max=max_circles %}A platform has at most {{ max }} circles, and they are all made. Remove one before making another.{% endblocktrans %}</p>
+    {% endif %}
+
+    <datalist id="circle-people">{% for person in people %}<option value="{{ person.user.username }}">{{ person.display_name }}</option>{% endfor %}</datalist>
+
+    <section class="grid gap-4 md:grid-cols-2" aria-label="{% trans 'Circles' %}">
+    {% for row in rows %}
+      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="space-y-4 rounded-2xl border p-5 text-sm shadow-sm" data-testid="circle-{{ row.circle.slug }}">
+        <div class="flex flex-wrap items-start justify-between gap-2">
+          <h2 class="text-lg font-bold"><i class="fa-solid fa-circle-nodes opacity-60" aria-hidden="true"></i> {{ row.circle.name }}</h2>
+          <form method="POST" action="{% url 'socialhub:circle_delete' pk=row.circle.pk %}"
+                onsubmit="return confirm('{% trans "Remove this circle?" %}')">
+            {% csrf_token %}
+            <button type="submit" class="text-xs opacity-60 hover:opacity-100"><i class="fa-solid fa-trash" aria-hidden="true"></i> {% trans "Remove" %}</button>
+          </form>
+        </div>
+
+        <div>
+          <h3 class="text-xs uppercase tracking-wide opacity-60">{% trans "Members" %}</h3>
+          <ul class="mt-1 flex flex-wrap gap-2">
+            {% for person in row.members %}
+            <li class="inline-flex items-center gap-1 rounded-full border border-current/30 px-2 py-0.5">{{ person.display_name }}
+              <form method="POST" action="{% url 'socialhub:circle_member' pk=row.circle.pk %}" class="inline">{% csrf_token %}
+                <input type="hidden" name="action" value="remove"><input type="hidden" name="person" value="{{ person.pk }}">
+                <button type="submit" class="opacity-60 hover:opacity-100" aria-label="{% blocktrans with who=person.display_name %}Take {{ who }} out{% endblocktrans %}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></form></li>
+            {% empty %}<li class="opacity-60">{% trans "Nobody yet." %}</li>{% endfor %}
+          </ul>
+          <form method="POST" action="{% url 'socialhub:circle_member' pk=row.circle.pk %}" class="mt-2 flex flex-wrap items-end gap-2">
+            {% csrf_token %}<input type="hidden" name="action" value="add">
+            <input type="text" name="who" list="circle-people" autocomplete="off" placeholder="{% trans 'username' %}"
+                   aria-label="{% blocktrans with circle=row.circle.name %}Put somebody in {{ circle }}{% endblocktrans %}"
+                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                   class="w-full max-w-xs rounded border px-2 py-1 sm:w-56">
+            <button type="submit" class="rounded-lg border px-3 py-1 font-semibold">{% trans "Add" %}</button>
+          </form>
+        </div>
+
+        {% if "toto.mana"|app_installed %}
+        <form method="POST" action="{% url 'socialhub:circle_speeds' pk=row.circle.pk %}" class="space-y-2" data-testid="speeds-{{ row.circle.slug }}">
+          {% csrf_token %}
+          <h3 class="text-xs uppercase tracking-wide opacity-60">{% trans "Mana refill per hour" %} <span class="normal-case">— {% trans "blank: the pool's own rate" %}</span></h3>
+          <div class="flex flex-wrap items-end gap-3">
+            {% for s in row.speeds %}
+            <label class="flex flex-col gap-1 text-xs">
+              <span>{% if s.pool == "security" %}{% trans "Security" %}{% elif s.pool == "compute" %}{% trans "Compute" %}{% else %}{% trans "Storage" %}{% endif %}</span>
+              <input type="text" inputmode="decimal" name="regen_{{ s.pool }}" value="{% if s.value is not None %}{{ s.value|floatformat:"-4" }}{% endif %}"
+                     :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                     class="w-24 rounded border px-2 py-1 font-mono"></label>
+            {% endfor %}
+            <button type="submit" class="rounded-lg border px-3 py-1 text-sm font-semibold">{% trans "Save speeds" %}</button>
+          </div>
+        </form>
+        {% endif %}
+      </article>
+    {% empty %}
+      <p class="rounded border border-dashed p-4 text-sm opacity-70 md:col-span-2">{% trans "There are no circles yet." %}</p>
+    {% endfor %}
+    </section>
+  </div>
+</div>
+{% endblock %}

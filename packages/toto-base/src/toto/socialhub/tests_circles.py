@@ -335,3 +335,91 @@ class CircleNotJoinableTests(CircleTestCase):
         ref.status = "accepted"
         ref.save()
         self.assertTrue(self.devs.members.filter(user__email="applicant@example.com").exists())
+
+
+class CirclesTabTests(CircleTestCase):
+    """The socialhub's Circles tab (2026-09-29): superusers manage circles
+    where communities are — members, speeds, a new circle, a removed one."""
+
+    def as_(self, user):
+        from django.test import Client
+
+        client = Client()
+        client.force_login(user)
+        return client
+
+    def test_the_tab_and_the_page_are_for_superusers(self):
+        member = self.senior.user
+        self.assertNotContains(self.as_(member).get(reverse("socialhub:community_list")),
+                               'data-testid="tab-circles"')
+        self.assertEqual(self.as_(member).get(reverse("socialhub:circles")).status_code, 403)
+        page = self.as_(self.root).get(reverse("socialhub:circles"))
+        self.assertContains(page, 'data-testid="tab-circles"')
+        self.assertContains(page, 'data-testid="circle-seniors"')
+        self.assertNotContains(page, 'data-testid="circle-devs"')      # functional
+        self.assertContains(self.as_(self.root).get(reverse("socialhub:profile_list")),
+                            'data-testid="tab-circles"')
+
+    def test_making_a_circle_and_the_cap(self):
+        self.as_(self.root).post(reverse("socialhub:circle_add"), {"name": "board"})
+        self.assertTrue(Community.objects.circles().filter(name="board").exists())
+        for n in range(Community.objects.circles().count(), MAX_CIRCLES):
+            Community.objects.create(name=f"c{n}", slug=f"c{n}", is_circle=True)
+        response = self.as_(self.root).post(reverse("socialhub:circle_add"), {"name": "eighth"},
+                                            follow=True)
+        self.assertContains(response, "at most 7 circles")
+        self.assertContains(response, 'data-testid="circles-full"')
+        self.assertFalse(Community.objects.filter(name="eighth").exists())
+
+    def test_people_in_and_out(self):
+        newcomer = person("newcomer")
+        url = reverse("socialhub:circle_member", args=[self.seniors.pk])
+        self.as_(self.root).post(url, {"who": "newcomer"})
+        self.assertIn(self.seniors, newcomer.communities.all())
+        self.as_(self.root).post(url, {"action": "remove", "person": newcomer.pk})
+        self.assertNotIn(self.seniors, newcomer.communities.all())
+        response = self.as_(self.root).post(url, {"who": "nobody-here"}, follow=True)
+        self.assertContains(response, "There is nobody called")
+
+    def test_speeds_saved_blank_means_the_pool_rate_and_bad_values_refused(self):
+        from decimal import Decimal
+
+        url = reverse("socialhub:circle_speeds", args=[self.seniors.pk])
+        self.as_(self.root).post(url, {"regen_security": "8", "regen_compute": "12,5", "regen_storage": ""})
+        self.seniors.refresh_from_db()
+        self.assertEqual(self.seniors.regen_security, Decimal("8"))
+        self.assertEqual(self.seniors.regen_compute, Decimal("12.5"))
+        self.assertIsNone(self.seniors.regen_storage)
+        response = self.as_(self.root).post(url, {"regen_security": "-1"}, follow=True)
+        self.assertContains(response, "greater than or equal to 0")
+        response = self.as_(self.root).post(url, {"regen_security": "fast"}, follow=True)
+        self.assertContains(response, "is not a number")
+        self.seniors.refresh_from_db()
+        self.assertEqual(self.seniors.regen_security, Decimal("8"))
+
+    def test_a_removed_circle_and_one_still_in_use(self):
+        from django.db.models import ProtectedError
+        from unittest import mock
+
+        spare = Community.objects.create(name="spare", slug="spare", is_circle=True)
+        self.as_(self.root).post(reverse("socialhub:circle_delete", args=[spare.pk]))
+        self.assertFalse(Community.objects.filter(pk=spare.pk).exists())
+        with mock.patch.object(Community, "delete", side_effect=ProtectedError("in use", [])):
+            response = self.as_(self.root).post(
+                reverse("socialhub:circle_delete", args=[self.seniors.pk]), follow=True)
+        self.assertContains(response, "still decides who reads")
+        self.assertTrue(Community.objects.filter(pk=self.seniors.pk).exists())
+
+    def test_changes_reach_the_audit_chain(self):
+        from toto.audit.models import AuditRecord
+
+        newcomer = person("newcomer")
+        self.as_(self.root).post(reverse("socialhub:circle_member", args=[self.seniors.pk]),
+                                 {"who": "newcomer"})
+        self.as_(self.root).post(reverse("socialhub:circle_speeds", args=[self.seniors.pk]),
+                                 {"regen_security": "8"})
+        added = AuditRecord.objects.filter(action="SOCIALHUB.MEMBER_ADDED",
+                                          metadata__person=newcomer.slug).get()
+        self.assertEqual(added.actor_user, self.root)
+        changed = AuditRecord.objects.filter(action="SOCIALHUB.COMMUNITY_CHANGED").last()
+        self.assertIn("regen_security", changed.metadata["changed"])

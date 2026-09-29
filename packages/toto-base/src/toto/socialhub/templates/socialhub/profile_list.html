@@ -41,15 +41,7 @@
         </div>
       </div>
 
-      <nav class="flex flex-wrap gap-2">
-        <a
-          href="{% url 'socialhub:profile_list' %}"
-          :class="darkMode
-            ? 'bg-accent-dark text-primary-bg-dark'
-            : 'bg-accent-light text-primary-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-          <i class="fa-solid fa-id-card"></i>{% trans "Profiles" %}</a>
-      </nav>
+      {% include "socialhub/_tabs.html" with active_tab="profiles" %}
     </header>
 
     <!-- Overview -->

@@ -65,7 +65,13 @@ profiles, marked as circles.
 
 ### Who puts people in circles
 
-Superusers, in the Django admin: on the circle's own page (its **Members**
+Superusers, on the **Circles** tab of this app (`communities/circles/`,
+2026-09-29 — beside Profiles and Communities in the strip, shown to
+superusers only): every circle with its members and its mana refill speeds;
+make one (at most seven), add and remove people, set the speeds, remove a
+circle nothing reads through any more. What a circle READS is each app's own
+business and stays in that app (the wiki's page × circle grid). Or in the
+Django admin: on the circle's own page (its **Members**
 field, written through `community.members.set`, the relation's own door) or on
 the person's page (their communities). Never the membership application — the
 form offers no circle, and accepting a reference into one is refused.
