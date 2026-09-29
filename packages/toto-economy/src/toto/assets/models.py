@@ -1,10 +1,12 @@
 import base64
 import hashlib
+import re
 import uuid as uuid_lib
 from decimal import Decimal, ROUND_DOWN
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator
 from django.utils.translation import gettext_lazy as _
 from django.db import models
 from django.utils.text import slugify
@@ -209,6 +211,32 @@ class TransactionType(models.TextChoices):
 # Asset
 # ---------------------------------------------------------------------------
 
+#: An asset's short name (2026-09-30): four capital letters, unique on this
+#: platform — the key of its page (/assets/assets/FLOR/). Not identity (the
+#: genesis hash commits to the ticker, ``unit_name``); a label people type.
+ASSET_CODE_RE = r"^[A-Z]{4}$"
+ASSET_CODE_LENGTH = 4
+
+
+def derive_asset_code(unit_name: str, taken) -> str:
+    """A free four-letter code for an asset that was given none: the ticker's
+    letters (A–Z only), padded with X, the tail varied until it is free.
+    ``taken`` is a callable answering whether a code is already used."""
+    import itertools
+    import string
+
+    letters = "".join(ch for ch in (unit_name or "").upper() if "A" <= ch <= "Z")
+    base = (letters + "XXXX")[:ASSET_CODE_LENGTH]
+    if not taken(base):
+        return base
+    for width in range(1, ASSET_CODE_LENGTH + 1):
+        for tail in itertools.product(string.ascii_uppercase, repeat=width):
+            candidate = base[:ASSET_CODE_LENGTH - width] + "".join(tail)
+            if not taken(candidate):
+                return candidate
+    raise ValidationError(_("Every four-letter asset code is taken."))
+
+
 class Asset(models.Model):
     """One kind of thing, and one only.
 
@@ -231,8 +259,14 @@ class Asset(models.Model):
 
     name = models.CharField(max_length=255)
     unit_name = models.CharField(max_length=20)
-    #: The display code and symbol, absorbed from the retired Currency model.
-    code = models.CharField(max_length=10, blank=True)
+    #: The short name (2026-09-30): four capital letters, unique here, the key
+    #: of the asset's page. Given when the asset is made (the seeds, the
+    #: issuance desk) or derived from the ticker by ``save``. The symbol is the
+    #: display mark a currency carries (ƒ); only currencies have one.
+    code = models.CharField(
+        _("short name"), max_length=ASSET_CODE_LENGTH, unique=True,
+        validators=[RegexValidator(ASSET_CODE_RE, _("Four capital letters, A–Z."))],
+        help_text=_("Four capital letters, e.g. FLOR — the key of the asset's page."))
     symbol = models.CharField(max_length=5, blank=True)
     decimals = models.PositiveSmallIntegerField()
     #: The ceiling, not the amount. Committed to the currency hash, so it can
@@ -299,6 +333,11 @@ class Asset(models.Model):
         if self.decimals is not None and self.decimals > 19:
             raise ValidationError({"decimals": "Decimals cannot exceed 19."})
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("assets:asset_detail", args=[self.code])
+
     def save(self, *args, **kwargs):
         """Identity is immutable once the asset has one.
 
@@ -307,6 +346,11 @@ class Asset(models.Model):
         describe a promise that was never made. Supply is NOT in this set,
         because supply is not a column — it is the chain.
         """
+        if not self.code:
+            others = type(self).objects.exclude(pk=self.pk) if self.pk else type(self).objects.all()
+            self.code = derive_asset_code(self.unit_name, lambda c: others.filter(code=c).exists())
+        elif not re.fullmatch(ASSET_CODE_RE, self.code):
+            raise ValidationError({"code": _("An asset's short name is four capital letters, A–Z.")})
         if self.pk and self.currency_hash:
             previous = type(self).objects.filter(pk=self.pk).values(
                 *self.IDENTITY_FIELDS).first()
