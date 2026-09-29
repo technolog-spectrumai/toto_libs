@@ -1,7 +1,7 @@
 """Community discounts on mana charges (2026-09-28).
 
 A member's best ``CommunityDiscount`` (``toto.subscriptions.best_discount`` —
-highest wins, functional communities only, never a circle) used to lower only
+highest wins, functional communities only, never a clearance) used to lower only
 the subscription's own monthly bill. It now lowers every charge drawn from a
 mana pool as well: a forum message, a geocode, a scan, a levy.
 

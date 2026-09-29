@@ -11,7 +11,7 @@ wiped colleague would be a button.
 
 What "as if they never existed" can and cannot mean here, said plainly:
 
-* **Erased:** the account, its person, their community and circle
+* **Erased:** the account, its person, their community and clearance
   memberships, their files and buckets (the bytes on this disk too), their
   wiki revisions — and the wiki pages only they ever wrote — their
   subscriptions, grants, sessions, tokens, and everything else that cascades

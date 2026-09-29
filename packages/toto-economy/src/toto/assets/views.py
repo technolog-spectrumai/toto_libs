@@ -1101,23 +1101,23 @@ def _is_mana(asset) -> bool:
 
 
 def _communities(request):
-    """The filter's choices: what the viewer may see listed — no circle for
+    """The filter's choices: what the viewer may see listed — no clearance for
     anybody but a superuser (2026-09-28), as everywhere communities are shown."""
     from toto.socialhub.models import Community
 
-    return list(Community.objects.listed_for(request.user)
+    return list(Community.objects.all()
                 .order_by("name").only("pk", "name", "slug"))
 
 
 def _community_filter(request):
-    """``?community=<pk>`` → the Community row, or None — never a circle the
+    """``?community=<pk>`` → the Community row, or None — never a clearance the
     viewer may not see listed."""
     raw = (request.GET.get("community") or "").strip()
     if not raw.isdigit():
         return None
     from toto.socialhub.models import Community
 
-    return Community.objects.listed_for(request.user).filter(pk=int(raw)).first()
+    return Community.objects.all().filter(pk=int(raw)).first()
 
 
 @login_required

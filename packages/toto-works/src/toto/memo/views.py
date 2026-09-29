@@ -40,7 +40,7 @@ from toto.editor.views import BaseFileDisplayView
 from toto.core import assistant
 from toto.ui import PageProcessor
 from toto.vault import access, editing, locks, versions
-from toto.vault import circles as file_circles
+from toto.vault import clearances as file_clearances
 from toto.vault.filetree import accessible_files
 from toto.vault.views import create_empty_vault_file, resolve_new_file_target
 from toto.quota import QuotaExceeded, check_quota, record_usage
@@ -156,8 +156,8 @@ class PresentationView(View):
         if vault_file.is_encrypted:
             return HttpResponseForbidden("Cannot display an encrypted file.")
 
-        # The vault's one read rule (2026-09-29), circles included: a deck
-        # kept to circles is theirs alone, public or not. A visitor is sent
+        # The vault's one read rule (2026-09-29), clearances included: a deck
+        # kept to clearances is theirs alone, public or not. A visitor is sent
         # to log in; a member who may not read it gets the 404 a missing
         # deck gets — its existence is not theirs to learn here.
         if not access.may_read(request.user, vault_file):
@@ -317,9 +317,9 @@ class PresentationIndexView(View):
         # side effect of rendering a page. Decks say what they are now.
         # The vault's read rule (2026-09-29): what this person may open —
         # their own, public decks, decks shared with them — less the decks
-        # kept to circles they are not in. A visitor sees public decks kept
-        # to no circle.
-        from toto.socialhub.circle_access import gate
+        # kept to clearances they are not in. A visitor sees public decks kept
+        # to no clearance.
+        from toto.socialhub.clearance_access import gate
 
         qs = VaultFile.objects.filter(
             file_type__in=DECK_TYPES, is_encrypted=False
@@ -328,7 +328,7 @@ class PresentationIndexView(View):
         if request.user.is_authenticated:
             qs = qs.filter(pk__in=accessible_files(request.user, file_types=DECK_TYPES))
         else:
-            qs = gate(request.user, qs, rows="circle_rows", open=Q(is_public=True))
+            qs = gate(request.user, qs, rows="clearance_rows", open=Q(is_public=True))
         qs = qs.order_by("-uploaded_at", "title")
 
         page = Paginator(qs, self.PER_PAGE).get_page(request.GET.get("page"))
@@ -346,9 +346,9 @@ class PresentationIndexView(View):
                 "read_url": reverse("memo:read", args=[f.pk]),
                 # Who reads it: the owner's (and a superuser's) door, in the
                 # vault, back here afterwards.
-                "access_url": (file_circles.access_url(f, request.get_full_path())
-                               if file_circles.may_manage(request.user, f) else ""),
-                "circles": ", ".join(c.name for c in file_circles.circles_of(f)),
+                "access_url": (file_clearances.access_url(f, request.get_full_path())
+                               if file_clearances.may_manage(request.user, f) else ""),
+                "clearances": ", ".join(c.name for c in file_clearances.clearances_of(f)),
                 # Only the current page is parsed — which is the point of
                 # paginating at all. A gallery of 300 decks used to read and
                 # fully parse all 300 files on every visit.
@@ -450,7 +450,7 @@ class PresentationReadView(LoginRequiredMixin, View):
             # `memo:edit` does not exist — an unguarded reverse here would
             # 500 the READ page, which is the half such a host actually wants.
             "edit_url": _maybe_reverse("memo:edit", vault_file.pk),
-            "access_url": file_circles.access_url(vault_file, request.get_full_path()),
+            "access_url": file_clearances.access_url(vault_file, request.get_full_path()),
         }, request))
 
 
