@@ -19,7 +19,7 @@ fake would test past the lookups that make ``gate`` and ``hidden`` agree.
 
 import re
 from decimal import Decimal
-from unittest import expectedFailure, mock
+from unittest import mock
 from urllib.parse import urljoin
 
 from django.contrib.auth import get_user_model
@@ -629,10 +629,19 @@ class ClearanceAddCase(ClearanceFixture):
         self.assertIsNotNone(made)
         return made
 
+    def refused_page(self, response):
+        """A refusal is Post/Redirect/Get: back to the list, which draws the
+        draft the session carried (and forgets it)."""
+        self.assertRedirects(response, reverse("socialhub:clearances"), fetch_redirect_response=False)
+        return self.client.get(response["Location"])
+
     def assert_refused(self, response, said, name="restricted"):
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, said)
+        page = self.refused_page(response)
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, said)
+        self.assertTrue(page.context["draft"]["open"])
         self.assertIsNone(self.made(name))
+        return page
 
 
 class ClearanceAddSpeedTests(ClearanceAddCase):
@@ -659,9 +668,9 @@ class ClearanceAddSpeedTests(ClearanceAddCase):
                 self.assert_refused(self.add(regen_compute=value), "greater than or equal to 0")
 
     def test_not_a_number_is_refused(self):
-        response = self.add(regen_security="fast")
-        self.assert_refused(response, "fast is not a number.")
-        self.assertEqual(self.said(response), ["fast is not a number."])
+        page = self.assert_refused(self.add(regen_security="fast"), "fast is not a number.")
+        self.assertEqual(page.context["draft"]["error"], "fast is not a number.")
+        self.assertEqual(self.said(page), [])              # said inside the modal, not flashed
 
     def test_one_refused_pool_saves_nothing(self):
         self.assert_refused(self.add(regen_security="5", regen_compute="fast"), "is not a number")
@@ -672,7 +681,7 @@ class ClearanceAddSpeedTests(ClearanceAddCase):
     def test_more_precision_or_size_than_the_column_holds_is_refused(self):
         for value in ("0.00001", "123456789", "NaN", "Infinity", "-Infinity", "sNaN"):
             with self.subTest(value=value):
-                response = self.add(regen_security=value)
+                response = self.refused_page(self.add(regen_security=value))
                 self.assertEqual(response.status_code, 200)
                 self.assertIsNone(self.made())
         made = self.assert_made(self.add(regen_security="99999999.9999"))   # the largest it holds
@@ -742,7 +751,7 @@ class ClearanceAddHolderTests(ClearanceAddCase):
         )
         for speeds, name in refusals:
             with self.subTest(name=name, speeds=speeds):
-                response = self.add(name, people=[self.cy.pk, self.bob.pk], **speeds)
+                response = self.refused_page(self.add(name, people=[self.cy.pk, self.bob.pk], **speeds))
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(Clearance.objects.count(), 2)
                 self.assertEqual(set(self.cy.clearances.all()), set())
@@ -787,21 +796,23 @@ class ClearanceAddHolderTests(ClearanceAddCase):
 
 
 class ClearanceAddDraftTests(ClearanceAddCase):
-    """A refused New clearance comes back with the modal open and what was
-    typed kept, on a 200 — not a redirect that would lose it."""
+    """A refused New clearance comes back with the modal open, what was typed
+    kept and the reason inside the modal — through the session and a redirect
+    to the list (Post/Redirect/Get), so the page's links stay on the list."""
 
     def test_a_refusal_redraws_the_page_with_the_modal_open(self):
         ghost = Person.objects.create(display_name="Ghost")
-        response = self.add("  Restricted   docs ", people=[self.cy.pk, ghost.pk, "junk"],
-                            regen_security=" 5 ", regen_compute="fast", regen_storage="")
+        response = self.refused_page(self.add("  Restricted   docs ", people=[self.cy.pk, ghost.pk, "junk"],
+                                              regen_security=" 5 ", regen_compute="fast", regen_storage=""))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "socialhub/clearances.html")
         self.assertEqual(response.context["draft"], {
-            "open": True, "name": "Restricted docs",
+            "open": True, "name": "Restricted docs", "error": "fast is not a number.",
             "speeds": {"security": "5", "compute": "fast", "storage": ""},
             "people": [{"pk": self.cy.pk, "name": "Cy", "username": "cy"}],
         })
-        self.assertEqual(self.said(response), ["fast is not a number."])
+        self.assertEqual(self.said(response), [])          # inside the modal, not flashed
+        self.assertContains(response, 'data-testid="clearance-new-error"')
         self.assertContains(response, "fast is not a number.")
         self.assertContains(response, 'id="clearance-draft"')
         self.assertContains(response, '"open": true')
@@ -810,19 +821,19 @@ class ClearanceAddDraftTests(ClearanceAddCase):
                          ["confidential", "internal"])                # the list beneath it
 
     def test_the_draft_keeps_its_holders_in_name_order(self):
-        response = self.add("INTERNAL", people=[self.cy.pk, self.bob.pk, self.ada.pk])
+        response = self.refused_page(self.add("INTERNAL", people=[self.cy.pk, self.bob.pk, self.ada.pk]))
         self.assertEqual([p["name"] for p in response.context["draft"]["people"]], ["Ada", "Bob", "Cy"])
         self.assertTrue(response.context["draft"]["open"])
         self.assertContains(response, "There is already a clearance called INTERNAL")
 
     def test_a_typed_speed_is_kept_short(self):
-        response = self.add(regen_security="9" * 50)
+        response = self.refused_page(self.add(regen_security="9" * 50))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["draft"]["speeds"]["security"], "9" * 20)
 
     def test_what_was_typed_comes_back_as_text_never_as_markup(self):
         name = "</script><script>alert(1)</script>"
-        response = self.add(name, regen_security="<b>x</b>")
+        response = self.refused_page(self.add(name, regen_security="<b>x</b>"))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["draft"]["name"], name)
         page = response.content.decode()
@@ -830,18 +841,13 @@ class ClearanceAddDraftTests(ClearanceAddCase):
         self.assertNotIn("<b>x</b>", page)
         self.assertIn("&lt;b&gt;x&lt;/b&gt; is not a number.", page)
 
-    @expectedFailure
     def test_the_list_after_a_refusal_pages_to_the_list_itself(self):
-        """A refusal answers at …/clearances/add/; the shared pagination's
-        relative "?page=2" there is a GET of the add door, which answers 405.
-        The page links must lead back to the list.
-
-        PRODUCTION DEFECT (2026-09-30), reported, not worked around: drop
-        ``expectedFailure`` once the refused page's pagination links name
-        ``socialhub:clearances``."""
+        """The refused page is the list (Post/Redirect/Get), so the shared
+        pagination\'s relative "?page=2" is a GET of the list, never of the
+        POST-only add door."""
         for n in range(4):
             Clearance.objects.create(name=f"p{n}", slug=f"p{n}")      # six: two pages
-        response = self.add("internal")
+        response = self.refused_page(self.add("internal"))
         self.assertEqual(response.status_code, 200)
         hrefs = re.findall(r'href="([^"]*\?page=\d+[^"]*)"', response.content.decode())
         self.assertTrue(hrefs)
@@ -849,6 +855,11 @@ class ClearanceAddDraftTests(ClearanceAddCase):
             with self.subTest(href=href):
                 followed = self.client.get(urljoin(response.wsgi_request.path, href))
                 self.assertEqual(followed.status_code, 200)
+
+    def test_the_draft_is_drawn_once(self):
+        self.refused_page(self.add("INTERNAL"))
+        again = self.client.get(reverse("socialhub:clearances"))
+        self.assertFalse(again.context["draft"]["open"])
 
     def test_a_success_redirects_to_the_list_and_closes_the_modal(self):
         response = self.add(people=[self.cy.pk])

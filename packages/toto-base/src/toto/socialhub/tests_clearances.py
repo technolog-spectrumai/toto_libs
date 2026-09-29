@@ -207,7 +207,11 @@ class ClearancesTabTests(ClearanceTestCase):
         return client
 
     def add(self, **data):
-        return self.as_(self.root).post(reverse("socialhub:clearance_add"), data)
+        # One client, following the redirect: a refusal is Post/Redirect/Get,
+        # and the list draws the draft from this session.
+        if not hasattr(self, "_root_client"):
+            self._root_client = self.as_(self.root)
+        return self._root_client.post(reverse("socialhub:clearance_add"), data, follow=True)
 
     def test_the_tab_and_the_page_are_for_superusers(self):
         member = self.senior.user
@@ -228,7 +232,8 @@ class ClearancesTabTests(ClearanceTestCase):
         for n in range(Clearance.objects.count(), MAX_CLEARANCES):
             Clearance.objects.create(name=f"c{n}", slug=f"c{n}")
         response = self.add(name="eighth")
-        self.assertEqual(response.status_code, 200)                 # re-drawn, not redirected
+        self.assertEqual(response.redirect_chain[-1][0], reverse("socialhub:clearances"))
+        self.assertTrue(response.context["draft"]["open"])          # the modal re-opens on the list
         self.assertContains(response, "at most 7 clearances")
         self.assertContains(response, 'data-testid="clearances-full"')
         self.assertFalse(Clearance.objects.filter(name="eighth").exists())
