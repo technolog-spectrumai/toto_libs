@@ -1,7 +1,7 @@
 """A person's own settings doors and the socialhub's JSON twins.
 
 The language and map-sharing doors change one thing each and never fail the
-person; the API answers what the pages answer — no circle for a member.
+person; the API answers what the pages answer — no clearance for a member.
 
     DJANGO_SETTINGS_MODULE=zenobia.settings manage.py test toto.socialhub.tests_more_profile_api
 """
@@ -16,7 +16,7 @@ from django.utils import translation
 from toto.api.testutils import add_to_mesh
 from toto.core.models import Platform
 from toto.people.models import LocationSharing, Person
-from toto.socialhub.models import Community, CommunityNewsPost
+from toto.socialhub.models import Clearance, Community, CommunityNewsPost
 
 User = get_user_model()
 
@@ -99,7 +99,7 @@ class ApiCase(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.guild = Community.objects.create(name="Guild", slug="guild")
-        cls.board = Community.objects.create(name="board", slug="board", is_circle=True)
+        cls.internal = Clearance.objects.create(name="internal", slug="internal")
         cls.elder_user = User.objects.create_user("elder", "elder@example.com", "pw")
         cls.elder = Person.objects.create(user=cls.elder_user, display_name="Elder",
                                           email="elder@example.com", phone="+48 600")
@@ -107,7 +107,7 @@ class ApiCase(TestCase):
         cls.junior = Person.objects.create(user=cls.junior_user, display_name="Junior",
                                            patron=cls.elder)
         cls.guild.members.add(cls.elder, cls.junior)
-        cls.board.members.add(cls.elder)
+        cls.internal.members.add(cls.elder)
         cls.guild.senior_members.add(cls.elder)
         cls.root = User.objects.create_superuser("root", "root@example.com", "pw")
 
@@ -135,19 +135,15 @@ class CommunityApiTests(ApiCase):
         self.assertEqual((by_slug[self.elder.slug]["email"], by_slug[self.elder.slug]["phone"]),
                          ("elder@example.com", "+48 600"))
         self.assertEqual(by_slug[self.junior.slug]["phone"], "")
-
-    def test_a_superuser_reads_a_circle_through_the_api(self):
-        self.assertEqual(self.get(self.root, "/socialhub/api/communities/board/").status_code, 200)
-        nodes = self.get(self.root, "/socialhub/api/communities/board/org-chart/").json()["nodes"]
-        self.assertEqual([n["slug"] for n in nodes], [self.elder.slug])
         self.assertEqual(self.get(self.junior_user,
                                   "/socialhub/api/communities/nowhere/org-chart/").status_code, 404)
 
-    def test_a_profile_counts_only_the_communities_its_reader_may_see(self):
+    def test_a_profile_counts_communities_and_never_a_clearance(self):
         mine = self.get(self.junior_user, f"/socialhub/api/profiles/{self.elder.slug}/").json()
         root = self.get(self.root, f"/socialhub/api/profiles/{self.elder.slug}/").json()
         self.assertEqual(mine["community_count"], 1)
-        self.assertEqual(root["community_count"], 2)
+        self.assertEqual(root["community_count"], 1)
+        self.assertEqual([c["slug"] for c in root["communities"]], ["guild"])
         listed = self.get(self.junior_user, "/socialhub/api/profiles/").json()["profiles"]
         self.assertEqual({p["slug"]: p["community_count"] for p in listed}[self.elder.slug], 1)
 

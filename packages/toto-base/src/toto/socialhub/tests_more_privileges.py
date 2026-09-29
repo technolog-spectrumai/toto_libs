@@ -1,9 +1,9 @@
 """What a community grants, and the doors that ask (``privileges``,
 ``permissions``, the chain graph and Administrata).
 
-Rights are held through functional communities only: a circle grants
+Rights are held through functional communities only: a clearance grants
 nothing, and every failure degrades to the commoner. Run in the host-owned
-block beside ``tests_circles``:
+block beside ``tests_clearances``:
 
     DJANGO_SETTINGS_MODULE=zenobia.settings manage.py test toto.socialhub.tests_more_privileges
 """
@@ -19,7 +19,7 @@ from django.urls import reverse
 from toto.core.models import Platform
 from toto.people.models import Person
 from toto.socialhub import permissions, privileges
-from toto.socialhub.models import Community, CommunityPrivilege
+from toto.socialhub.models import Clearance, Community, CommunityPrivilege
 
 User = get_user_model()
 
@@ -41,7 +41,7 @@ class PrivilegeCase(TestCase):
                                           may_administer_communities=True,
                                           may_manage_community_news=True)
         cls.weavers = Community.objects.create(name="weavers", slug="weavers")
-        cls.board = Community.objects.create(name="board", slug="board", is_circle=True)
+        cls.internal = Clearance.objects.create(name="internal", slug="internal")
         cls.agent = person("agent", cls.agents)
         cls.weaver = person("weaver", cls.weavers)
 
@@ -57,8 +57,9 @@ class ResolverTests(PrivilegeCase):
         self.assertFalse(privileges.has_privilege(self.agent.user, "may_operate_mint"))
 
     def test_a_database_fault_answers_no_rather_than_raising(self):
-        with mock.patch("toto.socialhub.models.CommunityQuerySet.functional",
-                        side_effect=DatabaseError("mid-migrate")):
+        from django.db.models import QuerySet
+
+        with mock.patch.object(QuerySet, "exists", side_effect=DatabaseError("mid-migrate")):
             self.assertFalse(privileges.has_privilege(self.agent.user, "may_see_community_chain"))
 
     def test_a_fault_while_finding_the_person_answers_no(self):
@@ -74,10 +75,10 @@ class ResolverTests(PrivilegeCase):
         with self.assertRaises(ValueError):
             privileges.has_privilege(AnonymousUser(), "may_see_everything")
 
-    def test_being_in_a_circle_as_well_changes_nothing(self):
-        self.weaver.communities.add(self.board)
+    def test_holding_a_clearance_as_well_changes_nothing(self):
+        self.weaver.clearances.add(self.internal)
         self.assertFalse(privileges.has_privilege(self.weaver.user, "may_see_community_chain"))
-        self.agent.communities.add(self.board)
+        self.agent.clearances.add(self.internal)
         self.assertTrue(privileges.has_privilege(self.agent.user, "may_see_community_chain"))
 
 
@@ -139,7 +140,6 @@ class ChainAndAdministrataTests(PrivilegeCase):
                                         args=["weavers"])).json()
         ids = {node["id"] for node in graph["nodes"]}
         self.assertIn(f"p-{self.weaver.pk}", ids)
-        self.assertNotIn(f"c-{self.board.pk}", ids)
         edges = {(e["source"], e["target"], e["type"]) for e in graph["edges"]}
         self.assertIn((f"c-{self.weavers.pk}", f"c-{child.pk}", "parent_child"), edges)
         self.assertIn((f"c-{child.pk}", f"p-{self.weaver.pk}", "head"), edges)

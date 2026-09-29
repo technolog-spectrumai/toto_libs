@@ -1,8 +1,8 @@
 """Community news pages and the socialhub connector.
 
 The news panel left the community page (``tests_forum_room``) but the posts,
-their pages and the connector that reads them stayed; a circle's news is as
-hidden as the circle.
+their pages and the connector that reads them stayed. News is a community's;
+a clearance (its own model since 2026-09-29) has none.
 
     DJANGO_SETTINGS_MODULE=zenobia.settings manage.py test toto.socialhub.tests_more_news
 """
@@ -25,7 +25,6 @@ class NewsCase(TestCase):
         Platform.objects.get_or_create(active=True, defaults={
             "site_name": "Test", "author": "t", "publication_year": 2026})
         cls.weavers = Community.objects.create(name="weavers", slug="weavers")
-        cls.board = Community.objects.create(name="board", slug="board", is_circle=True)
         cls.head_user = User.objects.create_user("head", password="pw")
         cls.head = Person.objects.create(user=cls.head_user, display_name="Head")
         cls.weavers.head = cls.head
@@ -36,9 +35,6 @@ class NewsCase(TestCase):
         cls.root = User.objects.create_superuser("root", "root@example.com", "pw")
         cls.post = CommunityNewsPost.objects.create(community=cls.weavers, title="Loom day",
                                                     content="<p>Bring <b>wool</b>.</p>")
-        cls.circle_post = CommunityNewsPost.objects.create(community=cls.board,
-                                                           title="Board minutes",
-                                                           content="<p>secret</p>")
 
 
 class NewsPostModelTests(TestCase):
@@ -110,14 +106,6 @@ class NewsPageTests(NewsCase):
                              fetch_redirect_response=False)
         self.assertFalse(CommunityNewsPost.objects.filter(pk=self.post.pk).exists())
 
-    def test_a_superuser_reaches_a_circles_news_where_a_member_meets_a_404(self):
-        self.client.force_login(self.root)
-        self.assertEqual(self.client.get(reverse("socialhub:community_news_update",
-                                                 args=[self.circle_post.pk])).status_code, 200)
-        self.client.force_login(self.head_user)
-        self.assertEqual(self.client.get(reverse("socialhub:community_news_update",
-                                                 args=[self.circle_post.pk])).status_code, 404)
-
     def test_a_missing_community_is_a_404(self):
         self.client.force_login(self.root)
         self.assertEqual(self.client.get(reverse("socialhub:community_news_create",
@@ -128,12 +116,12 @@ class ConnectorTests(NewsCase):
     def run_connector(self, config, data=None):
         return execute_connector_type("socialhub_read", config, data or {})["data"]
 
-    def test_news_posts_never_include_a_circles(self):
+    def test_a_post_nobody_wrote_is_a_connector_error(self):
         titles = [p["title"] for p in self.run_connector({"resource": "news_post"})["news_posts"]]
         self.assertEqual(titles, ["Loom day"])
         with self.assertRaises(ConnectorExecutionError):
             self.run_connector({"resource": "news_post", "action": "get",
-                                "id": self.circle_post.pk})
+                                "id": self.post.pk + 1000})
 
     def test_news_posts_narrow_to_one_community_and_serialise_the_post(self):
         other = Community.objects.create(name="spinners", slug="spinners")

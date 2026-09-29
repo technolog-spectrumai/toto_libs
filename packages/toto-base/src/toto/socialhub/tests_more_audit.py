@@ -18,8 +18,8 @@ from django.utils import timezone
 from toto.audit.models import AuditRecord
 from toto.people.models import Person
 from toto.socialhub import audit
-from toto.socialhub.models import (Community, CommunityPrivilege, MembershipApplication,
-                                   ReferenceRequest)
+from toto.socialhub.models import (Clearance, Community, CommunityPrivilege,
+                                   MembershipApplication, ReferenceRequest)
 
 User = get_user_model()
 
@@ -32,7 +32,8 @@ def make_person(name):
 class AuditCase(TestCase):
     def setUp(self):
         self.devs = Community.objects.create(name="devs", slug="devs")
-        self.board = Community.objects.create(name="board", slug="board", is_circle=True)
+        self.testers = Community.objects.create(name="testers", slug="testers")
+        self.internal = Clearance.objects.create(name="internal", slug="internal")
         self.ada = make_person("ada")
         self.bob = make_person("bob")
 
@@ -60,81 +61,99 @@ class CommunityChangeTests(AuditCase):
         self.devs.save()
         self.assertFalse(self.records("COMMUNITY_CHANGED").exists())
 
-    def test_a_crossing_between_the_kinds_is_on_the_chain(self):
-        tester = Community.objects.create(name="testers", slug="testers")
-        tester.is_circle = True
-        tester.save()
-        crossed = self.records("COMMUNITY_CHANGED", object_id=str(tester.pk)).get()
-        self.assertEqual(crossed.metadata["changed"], ["is_circle"])
-        self.assertEqual(crossed.metadata["before"]["is_circle"], "False")
-        self.assertEqual(crossed.metadata["after"]["is_circle"], "True")
-        self.assertTrue(crossed.metadata["is_circle"])
-
     def test_a_speed_saved_again_at_the_same_value_records_nothing(self):
-        self.board.regen_security = Decimal("8")
-        self.board.save()
-        self.board.refresh_from_db()                   # Decimal('8.0000') now
-        self.board.regen_security = Decimal("8")
-        self.board.save()
-        self.assertEqual(self.records("COMMUNITY_CHANGED").count(), 1)
+        self.internal.regen_security = Decimal("8")
+        self.internal.save()
+        self.internal.refresh_from_db()                # Decimal('8.0000') now
+        self.internal.regen_security = Decimal("8")
+        self.internal.save()
+        self.assertEqual(self.records("CLEARANCE_CHANGED").count(), 1)
 
     def test_a_speed_cleared_is_recorded_as_none_after(self):
-        self.board.regen_compute = Decimal("2.5")
-        self.board.save()
-        self.board.regen_compute = None
-        self.board.save()
-        cleared = self.records("COMMUNITY_CHANGED").order_by("-sequence").first()
+        self.internal.regen_compute = Decimal("2.5")
+        self.internal.save()
+        self.internal.regen_compute = None
+        self.internal.save()
+        cleared = self.records("CLEARANCE_CHANGED").order_by("-sequence").first()
         self.assertEqual(Decimal(cleared.metadata["before"]["regen_compute"]), Decimal("2.5"))
         self.assertIsNone(cleared.metadata["after"]["regen_compute"])
 
-    def test_a_created_record_names_the_parent_and_the_kind(self):
+    def test_a_created_record_names_the_parent(self):
         child = Community.objects.create(name="devs-api", slug="devs-api", parent=self.devs,
                                          org_type=Community.GUILD)
         made = self.records("COMMUNITY_CREATED", object_id=str(child.pk)).get()
         self.assertEqual(made.metadata["parent"], self.devs.pk)
         self.assertEqual(made.metadata["org_type"], Community.GUILD)
-        self.assertFalse(made.metadata["is_circle"])
+        self.assertNotIn("is_clearance", made.metadata)
         self.assertEqual(made.object_type, "socialhub.community")
+
+    def test_a_created_clearance_names_its_speeds(self):
+        fast = Clearance.objects.create(name="restricted", slug="restricted",
+                                        regen_compute=Decimal("12"))
+        made = self.records("CLEARANCE_CREATED", object_id=str(fast.pk)).get()
+        self.assertEqual(made.metadata["clearance"], "restricted")
+        self.assertEqual(Decimal(made.metadata["speeds"]["compute"]), Decimal("12"))
+        self.assertNotIn("security", made.metadata["speeds"])
+        self.assertEqual(made.object_type, "socialhub.clearance")
 
 
 class MembershipSideTests(AuditCase):
-    def test_a_circle_cleared_from_its_own_side_names_everybody_who_left(self):
-        self.board.members.add(self.ada, self.bob)
-        self.board.members.clear()
-        removed = self.records("MEMBER_REMOVED")
+    def test_a_clearance_cleared_from_its_own_side_names_everybody_who_left(self):
+        self.internal.members.add(self.ada, self.bob)
+        self.internal.members.clear()
+        removed = self.records("CLEARANCE_MEMBER_REMOVED")
         self.assertEqual({r.metadata["person"] for r in removed}, {self.ada.slug, self.bob.slug})
-        self.assertTrue(all(r.metadata["is_circle"] for r in removed))
-        self.assertTrue(all(r.object_id == str(self.board.pk) for r in removed))
+        self.assertTrue(all(r.metadata["clearance"] == "internal" for r in removed))
+        self.assertTrue(all(r.object_id == str(self.internal.pk) for r in removed))
+        self.assertFalse(self.records("MEMBER_REMOVED").exists())
 
     def test_clearing_an_empty_list_records_nothing(self):
-        self.board.members.clear()
+        self.internal.members.clear()
+        self.devs.members.clear()
         self.ada.communities.clear()
+        self.ada.clearances.clear()
         self.assertFalse(self.records("MEMBER_REMOVED").exists())
+        self.assertFalse(self.records("CLEARANCE_MEMBER_REMOVED").exists())
 
     def test_set_records_the_ones_that_left_and_the_ones_that_came(self):
         self.ada.communities.add(self.devs)
-        self.ada.communities.set([self.board])
+        self.ada.communities.set([self.testers])
         self.assertEqual(list(self.records("MEMBER_REMOVED").values_list("metadata__community",
                                                                          flat=True)), ["devs"])
         added = self.records("MEMBER_ADDED").order_by("sequence")
-        self.assertEqual([r.metadata["community"] for r in added], ["devs", "board"])
+        self.assertEqual([r.metadata["community"] for r in added], ["devs", "testers"])
+
+    def test_set_on_the_clearance_side_records_the_same_way(self):
+        confidential = Clearance.objects.create(name="confidential", slug="confidential")
+        self.ada.clearances.add(self.internal)
+        self.ada.clearances.set([confidential])
+        self.assertEqual(list(self.records("CLEARANCE_MEMBER_REMOVED")
+                              .values_list("metadata__clearance", flat=True)), ["internal"])
+        given = self.records("CLEARANCE_MEMBER_ADDED").order_by("sequence")
+        self.assertEqual([r.metadata["clearance"] for r in given], ["internal", "confidential"])
 
     def test_removing_somebody_from_their_own_side_who_is_not_a_member_records_nothing(self):
-        self.ada.communities.remove(self.board)
+        self.ada.clearances.remove(self.internal)
+        self.ada.communities.remove(self.devs)
+        self.assertFalse(self.records("CLEARANCE_MEMBER_REMOVED").exists())
         self.assertFalse(self.records("MEMBER_REMOVED").exists())
 
     def test_a_partial_remove_names_only_who_was_really_there(self):
-        self.board.members.add(self.ada)
-        self.board.members.remove(self.ada, self.bob)
-        removed = self.records("MEMBER_REMOVED")
+        self.internal.members.add(self.ada)
+        self.internal.members.remove(self.ada, self.bob)
+        removed = self.records("CLEARANCE_MEMBER_REMOVED")
         self.assertEqual([r.metadata["person"] for r in removed], [self.ada.slug])
 
     def test_a_member_record_carries_who_they_are(self):
-        self.board.members.add(self.ada)
-        added = self.records("MEMBER_ADDED").get()
+        self.internal.members.add(self.ada)
+        added = self.records("CLEARANCE_MEMBER_ADDED").get()
         self.assertEqual(added.metadata["display_name"], "Ada")
         self.assertEqual(added.metadata["user"], self.ada.user_id)
-        self.assertEqual(added.metadata["name"], "board")
+        self.assertEqual(added.metadata["name"], "internal")
+        self.devs.members.add(self.ada)
+        added = self.records("MEMBER_ADDED").get()
+        self.assertEqual(added.metadata["display_name"], "Ada")
+        self.assertEqual(added.metadata["name"], "devs")
 
 
 class SeniorTests(AuditCase):
@@ -210,7 +229,7 @@ class ApplicationTests(AuditCase):
         record = self.records("APPLICATION_SUBMITTED").get()
         self.assertEqual(record.object_type, "socialhub.membershipapplication")
         self.assertEqual(record.metadata["email"], "newbie@example.com")
-        self.assertFalse(record.metadata["is_circle"])
+        self.assertNotIn("is_clearance", record.metadata)
         self.assertIsNone(record.metadata["before"])
 
     def test_a_reference_moved_back_to_pending_or_saved_again_records_nothing(self):
@@ -233,15 +252,22 @@ class WithoutAChainTests(AuditCase):
     def test_nothing_is_recorded_where_audit_is_not_installed(self):
         before = AuditRecord.objects.count()
         with mock.patch.object(audit, "installed", return_value=False):
-            self.board.members.add(self.ada)
+            self.internal.members.add(self.ada)
+            self.devs.members.add(self.ada)
             Community.objects.create(name="quiet", slug="quiet")
+            Clearance.objects.create(name="quieter", slug="quieter")
         self.assertEqual(AuditRecord.objects.count(), before)
-        self.assertIn(self.board, self.ada.communities.all())
+        self.assertIn(self.internal, self.ada.clearances.all())
+        self.assertIn(self.devs, self.ada.communities.all())
 
     def test_a_record_that_cannot_be_written_never_fails_the_change(self):
         with mock.patch("toto.audit.services.record", side_effect=RuntimeError("disk full")), \
                 self.assertLogs("toto.socialhub", "ERROR") as logged:
-            self.board.members.add(self.ada)
-        self.assertIn(self.board, self.ada.communities.all())
+            self.internal.members.add(self.ada)
+            self.devs.members.add(self.ada)
+        self.assertIn(self.internal, self.ada.clearances.all())
+        self.assertIn(self.devs, self.ada.communities.all())
+        self.assertIn("socialhub.clearance_member_added", "\n".join(logged.output))
         self.assertIn("socialhub.member_added", "\n".join(logged.output))
+        self.assertFalse(self.records("CLEARANCE_MEMBER_ADDED").exists())
         self.assertFalse(self.records("MEMBER_ADDED").exists())

@@ -1,8 +1,8 @@
-"""Communities, circles and who is in them, on the chain (2026-09-28).
+"""Communities, clearances and who is in them, on the chain (2026-09-28).
 
-One record per change, from either side of ``Person.communities``, every
-community record saying whether it is a circle; applications and references
-from asking to being admitted."""
+One record per change, from either side of ``Person.communities`` and of
+``Person.clearances`` (its own actions, 2026-09-29); applications and
+references from asking to being admitted."""
 
 from datetime import timedelta
 
@@ -12,8 +12,8 @@ from django.utils import timezone
 
 from toto.audit.models import AuditRecord
 from toto.people.models import Person
-from toto.socialhub.models import (Community, CommunityPrivilege, MembershipApplication,
-                                   ReferenceRequest)
+from toto.socialhub.models import (Clearance, Community, CommunityPrivilege,
+                                   MembershipApplication, ReferenceRequest)
 
 User = get_user_model()
 
@@ -21,7 +21,7 @@ User = get_user_model()
 class CommunityAuditTests(TestCase):
     def setUp(self):
         self.devs = Community.objects.create(name="devs", slug="devs")
-        self.seniors = Community.objects.create(name="seniors", slug="seniors", is_circle=True)
+        self.internal = Clearance.objects.create(name="internal", slug="internal")
         self.ada = Person.objects.create(user=User.objects.create_user("ada", password="pw"),
                                          display_name="Ada")
 
@@ -29,8 +29,9 @@ class CommunityAuditTests(TestCase):
         return AuditRecord.objects.filter(action=action, **filters)
 
     def test_a_community_made_changed_and_removed(self):
-        made = self.records("SOCIALHUB.COMMUNITY_CREATED", object_id=str(self.seniors.pk)).get()
-        self.assertTrue(made.metadata["is_circle"])
+        made = self.records("SOCIALHUB.COMMUNITY_CREATED", object_id=str(self.devs.pk)).get()
+        self.assertEqual(made.metadata["community"], "devs")
+        self.assertNotIn("is_clearance", made.metadata)
         self.devs.name = "developers"
         self.devs.save()
         changed = self.records("SOCIALHUB.COMMUNITY_CHANGED").get()
@@ -42,26 +43,56 @@ class CommunityAuditTests(TestCase):
         self.devs.delete()
         self.assertTrue(self.records("SOCIALHUB.COMMUNITY_DELETED", object_id=str(pk)).exists())
 
+    def test_a_clearance_made_changed_and_removed(self):
+        made = self.records("SOCIALHUB.CLEARANCE_CREATED", object_id=str(self.internal.pk)).get()
+        self.assertEqual(made.metadata["clearance"], "internal")
+        self.assertEqual(made.object_type, "socialhub.clearance")
+        self.internal.name = "internal docs"
+        self.internal.save()
+        changed = self.records("SOCIALHUB.CLEARANCE_CHANGED").get()
+        self.assertEqual(changed.metadata["changed"], ["name"])
+        self.assertEqual(changed.metadata["before"]["name"], "internal")
+        self.internal.save()                                      # nothing changed: nothing recorded
+        self.assertEqual(self.records("SOCIALHUB.CLEARANCE_CHANGED").count(), 1)
+        pk = self.internal.pk
+        self.internal.delete()
+        self.assertTrue(self.records("SOCIALHUB.CLEARANCE_DELETED", object_id=str(pk)).exists())
+
     def test_joining_and_leaving_from_either_side(self):
-        self.ada.communities.add(self.seniors)
-        self.ada.communities.add(self.seniors)                    # already in: no second record
+        self.ada.communities.add(self.devs)
+        self.ada.communities.add(self.devs)                       # already in: no second record
         added = self.records("SOCIALHUB.MEMBER_ADDED").get()
         self.assertEqual(added.metadata["person"], self.ada.slug)
-        self.assertTrue(added.metadata["is_circle"])
-        self.devs.members.add(self.ada)
-        self.assertEqual(self.records("SOCIALHUB.MEMBER_ADDED").count(), 2)
-        self.seniors.members.remove(self.ada)
+        self.assertNotIn("is_clearance", added.metadata)
+        self.devs.members.remove(self.ada)
         self.assertEqual(self.records("SOCIALHUB.MEMBER_REMOVED").count(), 1)
 
+    def test_holding_and_losing_a_clearance_from_either_side(self):
+        self.ada.clearances.add(self.internal)
+        self.ada.clearances.add(self.internal)                    # already in: no second record
+        given = self.records("SOCIALHUB.CLEARANCE_MEMBER_ADDED").get()
+        self.assertEqual(given.metadata["person"], self.ada.slug)
+        self.assertEqual(given.metadata["clearance"], "internal")
+        self.assertFalse(self.records("SOCIALHUB.MEMBER_ADDED").exists())   # not a community
+        self.internal.members.remove(self.ada)
+        self.assertEqual(self.records("SOCIALHUB.CLEARANCE_MEMBER_REMOVED").count(), 1)
+
     def test_removing_somebody_who_is_not_there_records_nothing(self):
-        self.seniors.members.remove(self.ada)
+        self.internal.members.remove(self.ada)
+        self.devs.members.remove(self.ada)
+        self.assertFalse(self.records("SOCIALHUB.CLEARANCE_MEMBER_REMOVED").exists())
         self.assertFalse(self.records("SOCIALHUB.MEMBER_REMOVED").exists())
 
     def test_a_clear_names_everybody_it_removed(self):
-        self.ada.communities.add(self.devs, self.seniors)
+        other = Community.objects.create(name="testers", slug="testers")
+        self.ada.communities.add(self.devs, other)
+        self.ada.clearances.add(self.internal)
         self.ada.communities.clear()
+        self.ada.clearances.clear()
         removed = self.records("SOCIALHUB.MEMBER_REMOVED")
-        self.assertEqual({r.metadata["community"] for r in removed}, {"devs", "seniors"})
+        self.assertEqual({r.metadata["community"] for r in removed}, {"devs", "testers"})
+        lost = self.records("SOCIALHUB.CLEARANCE_MEMBER_REMOVED")
+        self.assertEqual({r.metadata["clearance"] for r in lost}, {"internal"})
 
     def test_senior_members(self):
         self.devs.senior_members.add(self.ada)
