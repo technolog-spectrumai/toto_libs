@@ -6,7 +6,8 @@
 {% comment %}The New clearance modal (2026-09-30): name, a refill speed per pool,
    and holders found by searching people (socialhub:clearance_people). A
    refused submission comes back with `draft` — the modal open, what was typed
-   kept. Names reach the page through x-text only, never as markup.{% endcomment %}
+   kept, the reason inside the modal. Names reach the page through x-text
+   only, never as markup.{% endcomment %}
 {{ draft|json_script:"clearance-draft" }}
 <script>
 document.addEventListener('alpine:init', () => {
@@ -17,13 +18,16 @@ document.addEventListener('alpine:init', () => {
       name: draft.name || '',
       speeds: Object.assign({security: '', compute: '', storage: ''}, draft.speeds || {}),
       chosen: draft.people || [],
+      error: draft.error || '',
       q: '', results: [], searching: false, searched: false, timer: null, seq: 0,
       show() { this.open = true; this.$nextTick(() => this.$refs.name && this.$refs.name.focus()); },
-      hide() { this.open = false; },
+      hide() { this.open = false; this.error = ''; },
+      cancel() { clearTimeout(this.timer); this.seq++; this.searching = false; },
       search() {
-        clearTimeout(this.timer);
+        this.cancel();
+        this.results = []; this.searched = false;   // never offer answers to an older query
         const q = this.q.trim();
-        if (!q) { this.results = []; this.searched = false; return; }
+        if (!q) return;
         this.timer = setTimeout(async () => {
           const mine = ++this.seq;
           this.searching = true;
@@ -42,6 +46,7 @@ document.addEventListener('alpine:init', () => {
         }, 200);
       },
       pick(person) {
+        this.cancel();
         if (!this.chosen.some(c => c.pk === person.pk)) this.chosen.push(person);
         this.q = ''; this.results = []; this.searched = false;
         this.$nextTick(() => this.$refs.search && this.$refs.search.focus());
@@ -66,7 +71,8 @@ document.addEventListener('alpine:init', () => {
     </header>
 
     {% with mana="toto.mana"|app_installed %}
-    <div x-data="clearanceNew('{% url 'socialhub:clearance_people' %}')" @keydown.escape.window="hide()" class="space-y-6">
+    <div x-data="clearanceNew('{% url 'socialhub:clearance_people' %}')" @keydown.escape.window="hide()"
+         x-init="open && $nextTick(() => $refs.name && $refs.name.focus())" class="space-y-6">
 
       <div class="flex flex-wrap items-center justify-between gap-3">
         <p class="text-xs opacity-60">{% trans "Holders and speeds change in the admin; here a clearance is made or removed." %}</p>
@@ -151,6 +157,8 @@ document.addEventListener('alpine:init', () => {
             <button type="button" @click="hide()" class="opacity-70 hover:opacity-100" aria-label="{% trans 'Close' %}">
               <i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
           </div>
+          <p x-show="error" x-cloak x-text="error" role="alert" data-testid="clearance-new-error"
+             class="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-red-600 dark:text-red-400">{{ draft.error }}</p>
 
           <label class="block space-y-1">
             <span class="text-xs font-semibold opacity-70">{% trans "Name — what it opens" %}</span>
@@ -191,7 +199,7 @@ document.addEventListener('alpine:init', () => {
             </ul>
             <div class="relative">
               <input id="clearance-people-search" type="search" x-ref="search" x-model="q" @input="search()"
-                     @keydown.enter.prevent="results.length && pick(results[0])" autocomplete="off"
+                     @keydown.enter.prevent="!searching && results.length && pick(results[0])" autocomplete="off"
                      placeholder="{% trans 'Search people by name, username or e-mail' %}" data-testid="clearance-people-search"
                      role="combobox" aria-autocomplete="list" aria-controls="clearance-people-results" :aria-expanded="results.length > 0"
                      :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
@@ -199,7 +207,7 @@ document.addEventListener('alpine:init', () => {
               <i x-show="searching" x-cloak class="fa-solid fa-circle-notch fa-spin absolute right-3 top-3 opacity-60" aria-hidden="true"></i>
               <ul id="clearance-people-results" role="listbox" x-show="results.length" x-cloak
                   :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
-                  class="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded border shadow-lg">
+                  class="mt-1 max-h-56 w-full overflow-y-auto rounded border shadow-sm">
                 <template x-for="person in results" :key="person.pk">
                   <li role="option">
                     <button type="button" @click="pick(person)" class="flex w-full items-baseline justify-between gap-2 px-3 py-2 text-left hover:bg-current/10">

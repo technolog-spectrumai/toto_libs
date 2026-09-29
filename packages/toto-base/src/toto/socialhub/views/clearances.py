@@ -12,8 +12,10 @@ on a narrow one — with two doors and no others:
 
 * **New clearance**, a modal: its name, its refill speed per pool, and who
   holds it, found by searching people (``clearance_people``, JSON). Made in
-  one transaction, so a refused speed or the cap leaves nothing half-made;
-  a refusal re-draws the page with the modal open and what was typed kept.
+  one transaction, so a refused speed or the cap leaves nothing half-made.
+  A refusal is Post/Redirect/Get: what was typed and why it was refused go
+  to the session, and the list re-opens the modal with them — so every link
+  on that page (pagination, the language switcher) stays on the list.
 * **Delete**, refused while an app still keeps something to the clearance
   (their through tables PROTECT it).
 
@@ -51,6 +53,8 @@ PER_PAGE = 5
 HOLDERS_SHOWN = 4
 #: People one search answers with.
 PEOPLE_LIMIT = 20
+#: Where a refused New clearance waits for the list to draw it.
+DRAFT_KEY = "socialhub.clearance_draft"
 
 
 def _refused(request):
@@ -110,18 +114,22 @@ def _page(request, *, draft=None):
     """The list, one page of it; ``draft`` re-opens the New clearance modal
     with what a refused submission carried."""
     relations = _keeping_relations()
+    # Only the holders a row names are loaded (a sliced prefetch); the count
+    # comes from the annotation, however many there are.
     listing = (Clearance.objects.order_by("name")
                .annotate(holder_count=Count("members", distinct=True))
-               .prefetch_related(Prefetch("members",
-                                          queryset=Person.objects.order_by("display_name"))))
+               .prefetch_related(Prefetch(
+                   "members",
+                   queryset=Person.objects.order_by("display_name", "pk")
+                   .only("pk", "display_name")[:HOLDERS_SHOWN],
+                   to_attr="shown_holders")))
     total = Clearance.objects.count()
     page = Paginator(listing, PER_PAGE).get_page(request.GET.get("page"))
     rows = []
     for clearance in page:
-        holders = list(clearance.members.all())
         rows.append({
             "clearance": clearance,
-            "holders": holders[:HOLDERS_SHOWN],
+            "holders": clearance.shown_holders,
             "more_holders": max(0, clearance.holder_count - HOLDERS_SHOWN),
             "speeds": [{"pool": pool, "value": getattr(clearance, f"regen_{pool}")}
                        for pool in REGEN_POOLS],
@@ -136,7 +144,7 @@ def _page(request, *, draft=None):
         "pools": REGEN_POOLS,
         "max_clearances": MAX_CLEARANCES,
         "room_left": max(0, MAX_CLEARANCES - total),
-        "draft": draft or {"open": False, "name": "", "speeds": {}, "people": []},
+        "draft": draft or {"open": False, "name": "", "speeds": {}, "people": [], "error": ""},
         "active_tab": "clearances",
     })
 
@@ -146,7 +154,7 @@ def _page(request, *, draft=None):
 def clearances(request):
     if not request.user.is_superuser:
         return _refused(request)
-    return _page(request)
+    return _page(request, draft=request.session.pop(DRAFT_KEY, None))
 
 
 @login_required
@@ -195,13 +203,13 @@ def clearance_add(request):
         except ValidationError as exc:
             error = " ".join(m for errors in exc.message_dict.values() for m in errors)
     if error:
-        messages.error(request, error)
-        return _page(request, draft={
-            "open": True, "name": name,
+        request.session[DRAFT_KEY] = {
+            "open": True, "name": name, "error": error,
             "speeds": {pool: (request.POST.get(f"regen_{pool}") or "").strip()[:20]
                        for pool in REGEN_POOLS},
             "people": [_person_row(person) for person in people],
-        })
+        }
+        return redirect("socialhub:clearances")
     if people:
         messages.success(request, _("Clearance %(name)s made, held by %(n)d.")
                          % {"name": name, "n": len(people)})
