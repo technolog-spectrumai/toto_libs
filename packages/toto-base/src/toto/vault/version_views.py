@@ -39,7 +39,15 @@ def _file_for(request, pk: int) -> VaultFile:
     the existence of other people's documents.
     """
     vault_file = get_object_or_404(VaultFile, pk=pk)
-    if vault_file.owner_id == request.user.pk or request.user.is_staff:
+    if vault_file.owner_id == request.user.pk or request.user.is_superuser:
+        return vault_file
+    # A file kept to circles (2026-09-29) is theirs alone: no folder ACL,
+    # no public flag, no lending app opens its history or its lock.
+    from toto.socialhub.circle_access import hidden
+
+    if hidden(request.user, vault_file, rows="circle_rows"):
+        raise Http404("No such file.")
+    if request.user.is_staff:
         return vault_file
     directory = vault_file.directory
     if directory is not None and directory.user_can_access(request.user):

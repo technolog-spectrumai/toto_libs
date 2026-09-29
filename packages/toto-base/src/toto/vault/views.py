@@ -250,9 +250,13 @@ class PublicFileListView(TemplateView):
             visibility_q = Q(is_public=True) | Q(owner=user)
         else:
             visibility_q = Q(is_public=True)
-        file_qs = VaultFile.objects.filter(visibility_q).distinct().select_related(
-            "owner", "bucket", "directory"
-        ).order_by("title")
+        # A file kept to circles (2026-09-29) is listed to their members and
+        # its owner alone — the public flag does not put it on this page.
+        from toto.socialhub.circle_access import gate
+
+        file_qs = gate(user, VaultFile.objects.all(), rows="circle_rows", open=visibility_q,
+                       owner=Q(owner=user) if user.is_authenticated else None
+                       ).select_related("owner", "bucket", "directory").order_by("title")
         if bucket_slug:
             file_qs = file_qs.filter(bucket__slug=bucket_slug)
 

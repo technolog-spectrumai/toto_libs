@@ -103,6 +103,30 @@ pks. Panel: `/vault/transfers/`.
 | `BUILD_WORKFLOWS` off | refresh + transfer dispatch refuse by name |
 | `BUILD_ANTIVIRUS` off | scans degrade to clean-but-unscanned (façade) |
 
+## Circles — a file kept to some people (2026-09-29)
+
+A file may be kept to **circles** (`VaultFileCircle`; a circle is a
+`socialhub.Community` with `is_circle`, and its members are whoever
+`Person.communities` says). The rule is `toto.socialhub.circle_access`, read
+by `access.may_read` and `filetree.accessible_files` — the same two doors
+every reader already used, so sheets, decks, the download URL, the versions
+and lock endpoints, the browser, attachments and every picker follow it with
+no rule of their own:
+
+* a file with **no circle** is what it always was — owner, public, bucket
+  owner, a folder's ACL;
+* a file **with circles** is read by their members, its owner and superusers,
+  and by nobody else: not through the public flag, not through a folder's
+  ACL. A circle both keeps and grants;
+* a hidden file is a missing file (404), and its history and lock with it.
+
+Changing them: `circles.file_access` — `files/<pk>/access/`, for the owner
+or a superuser, reached from the app that shows the file (a sheet's or a
+deck's toolbar: "Who can read") with `?next=` back. An owner is offered the
+circles they are in. Every change is on the audit chain
+(`VAULT.FILE.CIRCLES_CHANGED`: before, after, `open`). A circle that still
+keeps a file cannot be deleted (PROTECT). Tests: `tests_circles`.
+
 ## Tests
 
 Vault Django test modules run only where a gate stanza names them (the
@@ -110,7 +134,7 @@ library pytest suite does not collect them): `tests`, `tests_access`,
 `tests_api`, `tests_purge`, `tests_hardening`, `tests_peering`,
 `tests_peer_api`, `tests_mirror`, `tests_transfer`, `tests_remote_ui`,
 `tests_transfers_ui`, `tests_outbound`, `tests_bucket_transition`,
-`tests_remote_page` — wired in zenobia's gate, core four in placidia's.
+`tests_remote_page`, `tests_circles` — wired in zenobia's gate, core four in placidia's.
 The two-host harness is a loopback: `peer_client._http` patched into
 Django's test client against the real peer views (one DB, clearing's
 pattern).
