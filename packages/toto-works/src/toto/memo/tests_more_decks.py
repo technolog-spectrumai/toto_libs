@@ -613,3 +613,156 @@ class OpeningADeckTests(SimpleTestCase):
     def test_slide_titles_are_plain_text(self):
         deck = pf.loads(self.doc('<slide><title>&lt;b&gt;Bold&lt;/b&gt; move</title></slide>'))
         self.assertEqual(deck.slides[0].title, "Bold move")
+
+
+class ClearanceTargetKindTests(DeckFixture):
+    """``memo.deck`` — the kind the socialhub's New clearance modal offers for
+    decks (2026-09-30, "what a clearance clears"): the vault's file kind for
+    the deck types this app shows, pxml and the legacy "presentation"."""
+
+    KEY = "memo.deck"
+    ACTION = "VAULT.FILE.CLEARANCES_CHANGED"
+
+    def setUp(self):
+        super().setUp()
+        from toto.socialhub.plugins.clearance_plugins import kind
+
+        self.kind = kind(self.KEY)
+
+    def found(self, q, **kw):
+        return [row["pk"] for row in self.kind.search(q, **kw)]
+
+    def mirrored(self, name):
+        from toto.vault.models import FileOrigin
+
+        stub = VaultFile(owner=self.owner, bucket=self.bucket, title=f"{name}.pxml",
+                         key=slugify(name), file_type="pxml", origin=FileOrigin.MIRROR)
+        stub.file.name = stub.key                         # the bytes live on the peer
+        stub.save()
+        return stub
+
+    @staticmethod
+    def kept_to(vault_file):
+        from toto.vault.clearances import clearances_of
+
+        return [c.name for c in clearances_of(vault_file)]
+
+    @staticmethod
+    def may_read(user, vault_file):
+        from toto.vault.access import may_read
+
+        return may_read(user, VaultFile.objects.get(pk=vault_file.pk))
+
+    # -- registration ------------------------------------------------------------
+
+    def test_it_is_registered_under_its_key_with_a_title_and_an_icon(self):
+        from django.utils import translation
+
+        from toto.socialhub.plugins.clearance_plugins import kinds
+        from toto.vault.plugins.clearance_plugins import VaultFileKind
+
+        self.assertIn(self.KEY, [k.get_key() for k in kinds()])
+        self.assertIsInstance(self.kind, VaultFileKind)
+        self.assertEqual(self.kind.icon, "person-chalkboard")
+        self.assertEqual(self.kind.vault_file_types, ("pxml", "presentation"))
+        with translation.override("en"):
+            self.assertEqual(str(self.kind.get_title()), "Presentations")
+        with translation.override("pl"):
+            self.assertEqual(str(self.kind.get_title()), "Prezentacje")
+
+    # -- what it offers ----------------------------------------------------------
+
+    def test_it_offers_only_pxml_and_legacy_presentation_files(self):
+        deck = self.deck("Quarter deck")
+        legacy = self.deck("Quarter legacy", file_type="presentation")
+        notes = self.deck("Quarter notes", file_type="text")
+        sheet = self.deck("Quarter sheet", file_type="sheet")
+        self.assertEqual(set(self.found("quarter")), {deck.pk, legacy.pk})
+        self.assertEqual(self.kind.resolve([deck.pk, legacy.pk, notes.pk, sheet.pk]),
+                         sorted([deck, legacy], key=lambda f: (f.title, f.pk)))
+
+    def test_the_generic_files_kind_leaves_decks_to_this_one(self):
+        from toto.socialhub.plugins.clearance_plugins import kind
+
+        deck = self.deck("Quarter deck")
+        notes = self.deck("Quarter notes", file_type="text")
+        files = kind("vault.file")
+        self.assertEqual([r["pk"] for r in files.search("quarter")], [notes.pk])
+        self.assertEqual(files.resolve([deck.pk]), [])
+
+    def test_a_mirrored_deck_is_never_offered_nor_resolved(self):
+        stub = self.mirrored("Remote deck")
+        native = self.deck("Native deck")
+        self.assertEqual(self.found("deck"), [native.pk])
+        self.assertEqual(self.kind.resolve([stub.pk, native.pk]), [native])
+
+    # -- search ------------------------------------------------------------------
+
+    def test_search_matches_the_title_and_the_key_case_insensitively(self):
+        by_title = self.deck("Board Review")
+        self.assertEqual(self.found("BOARD review"), [by_title.pk])
+        by_key = VaultFile.objects.create(owner=self.owner, bucket=self.bucket, title="Untitled",
+                                          key="talks/Kickoff-2026.pxml", file_type="pxml")
+        self.assertEqual(self.found("kickoff-2026"), [by_key.pk])
+
+    def test_a_row_is_pk_label_and_type_with_bucket(self):
+        deck = self.deck("Board review")
+        self.assertEqual(self.kind.search("board"),
+                         [{"pk": deck.pk, "label": "Board review.pxml", "detail": "pxml · Decks"}])
+
+    def test_search_is_ordered_by_title_and_capped_by_limit(self):
+        c = self.deck("talk c")
+        a = self.deck("talk a")
+        b = self.deck("talk b")
+        self.assertEqual(self.found("talk"), [a.pk, b.pk, c.pk])
+        self.assertEqual(self.found("talk", limit=2), [a.pk, b.pk])
+
+    def test_search_offers_decks_kept_elsewhere_and_other_peoples_decks(self):
+        # Nothing is filtered by reader: the modal is a superuser's.
+        theirs = self.deck("their deck", owner=self.stranger)
+        kept = self.keep(self.deck("kept deck"), self.staff_clearance)
+        self.assertEqual(set(self.found("deck")), {theirs.pk, kept.pk})
+
+    # -- resolve -----------------------------------------------------------------
+
+    def test_resolve_ignores_unknown_pks(self):
+        deck = self.deck("only deck")
+        self.assertEqual(self.kind.resolve([987654, deck.pk]), [deck])
+        self.assertEqual(self.kind.resolve([987654]), [])
+
+    # -- keep --------------------------------------------------------------------
+
+    def test_keep_adds_the_clearance_to_a_deck_kept_to_another(self):
+        deck = self.keep(self.deck("kept deck"), self.staff_clearance)
+        self.assertEqual(self.kind.keep([deck], self.internal, actor=self.root), 1)
+        self.assertEqual(self.kept_to(deck), ["internal", "restricted"])
+
+    def test_keep_closes_an_open_public_deck_to_readers_outside_the_clearance(self):
+        deck = self.deck("public deck", public=True)
+        self.assertTrue(self.may_read(self.stranger, deck))
+        self.kind.keep([deck], self.internal, actor=self.root)
+        self.assertFalse(self.may_read(self.stranger, deck))
+        self.assertTrue(self.may_read(self.member, deck))
+        self.assertTrue(self.may_read(self.owner, deck))
+        self.assertEqual(self.present(self.stranger, deck).status_code, 404)
+        self.assertNotIn(deck.pk, self.listed(self.stranger))
+
+    def test_keep_writes_the_vaults_audit_record_with_the_actor(self):
+        from toto.audit.models import AuditRecord
+
+        deck = self.deck("audited deck")
+        self.kind.keep([deck], self.internal, actor=self.root)
+        record = AuditRecord.objects.get(action=self.ACTION)
+        self.assertEqual(record.actor_user_id, self.root.pk)
+        self.assertEqual(record.metadata["file"], deck.pk)
+        self.assertEqual(record.metadata["file_type"], "pxml")
+        self.assertEqual(record.metadata["after"], ["internal"])
+
+    def test_keeping_twice_is_a_no_op(self):
+        from toto.audit.models import AuditRecord
+
+        deck = self.deck("twice deck")
+        self.kind.keep([deck], self.internal, actor=self.root)
+        self.kind.keep([deck], self.internal, actor=self.root)
+        self.assertEqual(VaultFileClearance.objects.filter(file=deck).count(), 1)
+        self.assertEqual(AuditRecord.objects.filter(action=self.ACTION).count(), 1)
