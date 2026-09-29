@@ -30,6 +30,10 @@ to **clearances** (`vault.VaultFileClearance`) is seen by their members, its own
 and superusers only, public or not, and answers 404 to anyone else. The owner
 keeps it to clearances from the card and the read page ("Who can read" → the
 vault's `files/<pk>/access/`). Tests: `tests_read.DeckClearanceTests`.
+A superuser can also keep decks when making a clearance: this app offers the
+`memo.deck` kind to the socialhub's **New clearance** modal through
+`plugins/clearance_plugins.py` (a `VaultFileKind` over `pxml` and
+`presentation` files, adding through the vault's door and audit).
 
 ## The editing surface is the slide
 
