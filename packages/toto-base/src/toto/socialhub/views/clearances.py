@@ -42,6 +42,7 @@ from django.db.models import Count, Prefetch, Q
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext as _
+from django.utils.translation import ngettext
 from django.views.decorators.http import require_POST, require_safe
 
 from toto.people.models import Person
@@ -265,8 +266,10 @@ def clearance_add(request):
     else:
         messages.success(request, _("Clearance %(name)s made.") % {"name": name})
     if kept:
-        messages.info(request, _("It keeps %(n)d things: only its holders, their owners and "
-                                 "superusers read them now.") % {"n": kept})
+        messages.info(request, ngettext(
+            "It keeps %(n)d thing: only its holders, its owner and superusers read it now.",
+            "It keeps %(n)d things: only its holders, their owners and superusers read them now.",
+            kept) % {"n": kept})
     return redirect("socialhub:clearances")
 
 
