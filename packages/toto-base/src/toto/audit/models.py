@@ -56,12 +56,21 @@ class AuditRecord(models.Model):
     algorithm = models.CharField(max_length=32, default="sha256-json-chain-1")
     timestamp = models.DateTimeField(default=timezone.now)
 
+    #: The actor's id, kept as it was when the record was written — NEVER
+    #: nulled (2026-09-29). The digest covers ``actor_user_id``
+    #: (``record_material``), so the SET_NULL this used to be broke the chain's
+    #: verification for every record an account had acted on, the moment that
+    #: account was deleted — and since sign-ins are recorded, that is nearly
+    #: every account. DO_NOTHING with no database constraint: a deleted
+    #: account leaves its id behind as a plain number (``select_related`` then
+    #: reads None), and the chain keeps verifying.
     actor_user = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True,
-        on_delete=models.SET_NULL, related_name="placidia_audit_records",
+        on_delete=models.DO_NOTHING, db_constraint=False,
+        related_name="placidia_audit_records",
     )
-    #: The username is denormalised on purpose: SET_NULL above means deleting
-    #: an account must not erase who did the thing.
+    #: The username is denormalised on purpose: deleting an account must not
+    #: erase who did the thing.
     actor_username = models.CharField(max_length=150, blank=True)
 
     action = models.CharField(max_length=100, db_index=True)

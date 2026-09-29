@@ -23,6 +23,14 @@ tests only, never a setting.
 | `aralia` | a PDF render's life | zenobia's `toto.aralia.audit` |
 | file events | vault reads and writes | `FileAuditMiddleware` |
 
+**Deleting an account never breaks the chain** (2026-09-29). The digest
+covers `actor_user_id`; the field used to be SET_NULL, so deleting any
+account that had acted — and every account that signs in has — rewrote
+sealed rows and verification failed. It is DO_NOTHING with no database
+constraint now: the id stays as written, `actor_username` names them, and a
+deleted account's id simply points at nothing. `toto.core`'s `erase_user`
+(console only) records `AUTH.ACCOUNT_ERASED` itself.
+
 **Never in the way.** The identity and community writers wrap each record in
 its own savepoint and swallow (and log) a failure: a login, a signup or a
 membership change never fails because the chain could not be written.
