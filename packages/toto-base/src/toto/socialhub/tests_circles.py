@@ -423,3 +423,52 @@ class CirclesTabTests(CircleTestCase):
         self.assertEqual(added.actor_user, self.root)
         changed = AuditRecord.objects.filter(action="SOCIALHUB.COMMUNITY_CHANGED").last()
         self.assertIn("regen_security", changed.metadata["changed"])
+
+
+class OnlySuperusersMakeCirclesTests(CircleTestCase):
+    """Only a superuser makes a circle (2026-09-29): the Circles tab is theirs,
+    and the admin lets staff make and change functional communities alone."""
+
+    def staff(self):
+        from django.contrib.auth.models import Permission
+
+        user = User.objects.create_user("clerk", "c@example.com", "pw", is_staff=True)
+        user.user_permissions.add(*Permission.objects.filter(
+            content_type__app_label="socialhub", content_type__model="community"))
+        return user
+
+    def test_the_circles_tab_refuses_staff(self):
+        from django.test import Client
+
+        client = Client()
+        client.force_login(self.staff())
+        self.assertEqual(client.post(reverse("socialhub:circle_add"), {"name": "board"}).status_code, 403)
+        self.assertFalse(Community.objects.filter(name="board").exists())
+
+    def test_the_admin_lets_staff_make_functional_communities_only(self):
+        from django.test import Client
+
+        client = Client()
+        client.force_login(self.staff())
+        client.post(reverse("admin:socialhub_community_add"), {
+            "name": "testers", "slug": "testers", "org_type": Community.OTHER, "is_circle": "on",
+            "regen_compute": "50",
+            "privilege-TOTAL_FORMS": "0", "privilege-INITIAL_FORMS": "0",
+            "privilege-MIN_NUM_FORMS": "0", "privilege-MAX_NUM_FORMS": "1"})
+        testers = Community.objects.filter(slug="testers").first()
+        self.assertIsNotNone(testers)
+        self.assertFalse(testers.is_circle)                       # the field was read-only
+        self.assertIsNone(testers.regen_compute)
+        # An existing circle is neither listed nor editable to them.
+        listing = client.get(reverse("admin:socialhub_community_changelist")).content.decode()
+        self.assertNotIn(">seniors<", listing)
+        self.assertEqual(client.get(reverse("admin:socialhub_community_change",
+                                            args=[self.seniors.pk])).status_code, 302)
+
+    def test_a_superuser_still_can(self):
+        from django.test import Client
+
+        client = Client()
+        client.force_login(self.root)
+        self.assertEqual(client.get(reverse("admin:socialhub_community_change",
+                                            args=[self.seniors.pk])).status_code, 200)

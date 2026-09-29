@@ -112,11 +112,47 @@ class CommunityAdmin(TotoModelAdmin):
     autocomplete_fields = ('parent',)
     inlines = (CommunityPrivilegeInline,)
 
+    #: Only a superuser makes a circle, or turns a community into one, or
+    #: sets its refill speeds (2026-09-29, the owner's rule) — the Circles
+    #: tab is theirs and so is this page. A staff member with the add or
+    #: change right on communities makes functional ones alone.
+    CIRCLE_ONLY_FIELDS = ("is_circle", "regen_security", "regen_compute", "regen_storage")
+
     def get_form(self, request, obj=None, change=False, **kwargs):
         # A circle's page carries its members; see CircleAdminForm.
         if obj is not None and obj.is_circle and self.has_change_permission(request, obj):
             kwargs["form"] = CircleAdminForm
         return super().get_form(request, obj, change=change, **kwargs)
+
+    def get_queryset(self, request):
+        # Circles are not a staff member's to see here either.
+        qs = super().get_queryset(request)
+        return qs if request.user.is_superuser else qs.functional()
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = tuple(super().get_readonly_fields(request, obj))
+        if not request.user.is_superuser:
+            fields += self.CIRCLE_ONLY_FIELDS
+        return fields
+
+    def has_change_permission(self, request, obj=None):
+        if obj is not None and obj.is_circle and not request.user.is_superuser:
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        if obj is not None and obj.is_circle and not request.user.is_superuser:
+            return False
+        return super().has_delete_permission(request, obj)
+
+    def save_model(self, request, obj, form, change):
+        # The read-only fields keep a crafted POST out already; this is the
+        # second layer, for a route that bypasses the form.
+        if not request.user.is_superuser and (obj.is_circle or obj.regen_speeds()):
+            from django.core.exceptions import PermissionDenied
+
+            raise PermissionDenied("Only a superuser makes a circle.")
+        super().save_model(request, obj, form, change)
 
     def get_inline_instances(self, request, obj=None):
         # A circle grants nothing, so its page offers no grant to fill in.
