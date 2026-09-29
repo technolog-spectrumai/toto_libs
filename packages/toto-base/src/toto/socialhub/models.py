@@ -34,6 +34,13 @@ CIRCLE_CARRIES_NOTHING = _(
     "community's before making it a circle.")
 CIRCLE_STANDS_ALONE = _(
     "A circle stands alone: it has no parent and is no community's parent.")
+#: How many circles a platform may have at once (2026-09-28, the owner's
+#: rule): a circle is a rank — seniors, newcomers, board — and a handful is
+#: the point. An eighth is refused, and so is turning a community into a
+#: circle when seven exist.
+MAX_CIRCLES = 7
+TOO_MANY_CIRCLES = _(
+    "A platform has at most %(max)d circles. Remove one before making another.")
 CIRCLE_ONLY_SPEED = _(
     "Only a circle sets how fast mana refills: clear the speeds before making "
     "this a functional community.")
@@ -212,7 +219,16 @@ class Community(DomainEntity):
                 slug = f"{base_slug}-{counter}"
                 counter += 1
             self.slug = slug
+        if self.is_circle and self._would_exceed_the_circle_cap():
+            raise ValidationError({"is_circle": TOO_MANY_CIRCLES % {"max": MAX_CIRCLES}})
         super().save(*args, **kwargs)
+
+    def _would_exceed_the_circle_cap(self) -> bool:
+        """Whether saving this row as a circle makes one circle too many —
+        a new one, or a functional community turned into one; a circle
+        that already counts is never refused its own save."""
+        others = Community.objects.circles().exclude(pk=self.pk) if self.pk else Community.objects.circles()
+        return others.count() >= MAX_CIRCLES
 
     def clean(self):
         """A community changes axis only when nothing of the other one holds it.
@@ -225,6 +241,8 @@ class Community(DomainEntity):
         there.
         """
         super().clean()
+        if self.is_circle and self._would_exceed_the_circle_cap():
+            raise ValidationError({"is_circle": TOO_MANY_CIRCLES % {"max": MAX_CIRCLES}})
         if self.is_circle and self.carries_the_money_axis():
             raise ValidationError({"is_circle": CIRCLE_CARRIES_NOTHING})
         if self.is_circle and self.parent_id:

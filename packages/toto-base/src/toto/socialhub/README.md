@@ -19,6 +19,7 @@ Since 2026-09-28 a community is one of two kinds, told apart by one column,
 | Joined | by application, accepted by a referee | through the admin, by a superuser |
 | Shown to members | yes — directory, profiles, map, API | never; its page is a 404 to them |
 | Tree (`parent`) | offers inherit down it | none: a circle has no parent and is no parent |
+| How many | any number | at most **seven** on a platform (`MAX_CIRCLES`): an eighth, or a community turned into one at the cap, is refused on save |
 
 A person is usually in one of each. A senior engineer is in `devs` and
 `seniors`; the CTO in `devs` and `board`; a junior tester in `testers` and

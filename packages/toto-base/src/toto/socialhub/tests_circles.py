@@ -22,6 +22,7 @@ from toto.core.models import Platform
 from toto.people.models import Person
 from toto.socialhub import privileges
 from toto.socialhub.models import (
+    MAX_CIRCLES,
     Community,
     CommunityNewsPost,
     CommunityPrivilege,
@@ -85,6 +86,35 @@ class CircleKindTests(CircleTestCase):
         with self.assertRaises(ValidationError) as caught:
             self.devs.full_clean()
         self.assertIn("is_circle", caught.exception.message_dict)
+
+
+class CircleCapTests(CircleTestCase):
+    """At most seven circles on a platform (2026-09-28)."""
+
+    def fill(self):
+        for n in range(Community.objects.circles().count(), MAX_CIRCLES):
+            Community.objects.create(name=f"circle{n}", slug=f"circle{n}", is_circle=True)
+
+    def test_an_eighth_circle_is_refused_by_clean_and_by_save(self):
+        self.fill()
+        eighth = Community(name="eighth", slug="eighth", is_circle=True)
+        with self.assertRaises(ValidationError):
+            eighth.full_clean()
+        with self.assertRaises(ValidationError):
+            eighth.save()
+        self.assertEqual(Community.objects.circles().count(), MAX_CIRCLES)
+
+    def test_a_community_cannot_become_a_circle_at_the_cap(self):
+        self.fill()
+        self.devs.is_circle = True
+        with self.assertRaises(ValidationError):
+            self.devs.save()
+
+    def test_a_circle_that_already_counts_saves_and_a_functional_one_is_free(self):
+        self.fill()
+        self.seniors.name = "the seniors"
+        self.seniors.save()                                       # its own save is never refused
+        Community.objects.create(name="testers", slug="testers")  # functional: no cap
 
 
 class CirclePrivilegeTests(CircleTestCase):
