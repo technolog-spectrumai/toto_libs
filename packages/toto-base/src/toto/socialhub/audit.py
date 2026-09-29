@@ -7,7 +7,7 @@ membership flow, the wiki's Clearances page, the ingress, a shell:
 |---|---|
 | `SOCIALHUB.COMMUNITY_CREATED` / `_CHANGED` / `_DELETED` | a community is made, edited (the fields that change, before and after), removed |
 | `SOCIALHUB.MEMBER_ADDED` / `_REMOVED` | a person joins or leaves a community — `Person.communities`, from either side, a `clear()` included |
-| `SOCIALHUB.CLEARANCE_CREATED` / `_CHANGED` / `_DELETED` | a clearance is made, edited (name, slug, the refill speeds), removed (2026-09-29) |
+| `SOCIALHUB.CLEARANCE_CREATED` / `_CHANGED` / `_DELETED` | a clearance is made, edited (name, slug, the refill speeds), removed — with a `CLEARANCE_MEMBER_REMOVED` for everybody who held it, and their slugs in `holders` (2026-09-29) |
 | `SOCIALHUB.CLEARANCE_MEMBER_ADDED` / `_REMOVED` | a person is given or loses a clearance — `Person.clearances`, from either side, a `clear()` included |
 | `SOCIALHUB.SENIOR_ADDED` / `_REMOVED` | a senior member named or dropped |
 | `SOCIALHUB.PRIVILEGE_CHANGED` / `_REMOVED` | a community's grants (`may_*`) set or cleared |
@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 
 from django.apps import apps
-from django.db.models.signals import m2m_changed, post_delete, post_save, pre_save
+from django.db.models.signals import m2m_changed, post_delete, post_save, pre_delete, pre_save
 
 log = logging.getLogger("toto.socialhub")
 
@@ -137,8 +137,18 @@ def _clearance_after(sender, instance, created, **kwargs):
                       for f in sorted(changed)})
 
 
+def _clearance_leaving(sender, instance, **kwargs):
+    # The delete cascades Person.clearances rows without m2m_changed, so the
+    # holders are read here, before they go, and recorded after.
+    instance._audit_holders = list(instance.members.all())
+
+
 def _clearance_deleted(sender, instance, **kwargs):
-    _clearance(instance, "clearance_deleted")
+    holders = getattr(instance, "_audit_holders", None) or []
+    instance._audit_holders = None
+    for person in holders:
+        _clearance(instance, "clearance_member_removed", **_person(person))
+    _clearance(instance, "clearance_deleted", holders=[person.slug for person in holders])
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +296,8 @@ def connect() -> None:
                         dispatch_uid=uid + "members")
     pre_save.connect(_clearance_before, sender=Clearance, weak=False, dispatch_uid=uid + "cl_before")
     post_save.connect(_clearance_after, sender=Clearance, weak=False, dispatch_uid=uid + "cl_after")
+    pre_delete.connect(_clearance_leaving, sender=Clearance, weak=False,
+                       dispatch_uid=uid + "cl_leaving")
     post_delete.connect(_clearance_deleted, sender=Clearance, weak=False,
                         dispatch_uid=uid + "cl_deleted")
     m2m_changed.connect(_holders, sender=Person.clearances.through, weak=False,
