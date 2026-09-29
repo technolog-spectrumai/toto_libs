@@ -63,6 +63,9 @@ class CoreAsset:
     supply: Decimal
     description: str
     metadata: dict = field(default_factory=dict)
+    #: The four-letter short name, the key of the asset's page (2026-09-30).
+    code: str = ""
+    symbol: str = ""
 
     @property
     def reference(self) -> str:
@@ -77,9 +80,14 @@ class CoreAsset:
 
 #: The two currencies every install has, in the order they are created.
 #:
-#: ASR and TPLN carry the supplies they were first seeded with, deliberately
+#: ASR and FLOR carry the supplies they were first seeded with, deliberately
 #: frozen: re-running ingress against an already-seeded ledger must not trip the
 #: immutability re-check.
+#:
+#: No asset is named after a real currency (the owner's rule, 2026-09-30,
+#: economy.md): a historic coin is fine — the Assarion (Roman), the Florin
+#: (Florentine gold) — a living one is not. FLOR replaced TPLN, the "Toto
+#: Złoty", on 2026-09-30.
 #:
 #: MANA stood first in this list from 8/2026 until 2026-09-23, as the default
 #: settlement asset. It was retired in favour of the three coloured pools of
@@ -90,18 +98,21 @@ CORE_ASSETS: tuple[CoreAsset, ...] = (
     CoreAsset(
         unit_name="ASR", name="Assarion", decimals=9,
         supply=Decimal("6666.666666667"),
-        description=("Assarion — fine-grained unit of account of the platform. "
-                     "9 decimal places."),
+        description=("Assarion — fine-grained unit of account of the platform, "
+                     "named after the Roman coin. 9 decimal places."),
         metadata={"kind": "currency", "family": "toto_currency",
                   "plural": "Assari", "seeded_by": "ingress"},
+        code="ASAR", symbol="ASR",
     ),
     CoreAsset(
-        unit_name="TPLN", name="Toto Złoty", decimals=2,
+        unit_name="FLOR", name="Florin", decimals=2,
         supply=Decimal("76658.70"),
-        description=("Internal accounting currency of the platform. "
-                     "2 decimal places."),
+        description=("Florin — internal accounting currency of the platform, "
+                     "named after the historic gold florin; no real currency "
+                     "stands behind it. 2 decimal places."),
         metadata={"kind": "currency", "family": "toto_currency",
-                  "seeded_by": "ingress"},
+                  "plural": "Florins", "seeded_by": "ingress"},
+        code="FLOR", symbol="ƒ",
     ),
 )
 
@@ -135,7 +146,7 @@ class DefaultFaucet:
 #: to say the same thing, and "how much does this person get" would stop being a
 #: single number.
 #:
-#: TPLN gets none: it is the accounting currency, not something people are paid
+#: FLOR gets none: it is the accounting currency, not something people are paid
 #: in, and a faucet nobody will ever switch on is a row that only invites
 #: somebody to wonder what it is for.
 DEFAULT_FAUCETS: tuple[DefaultFaucet, ...] = (
@@ -223,7 +234,7 @@ def ensure_currency_reserve():
 
 
 def ensure_core_assets(*, reporter=None) -> dict:
-    """ASR and TPLN — created if absent, left alone if present.
+    """ASR and FLOR — created if absent, left alone if present.
 
     Returns ``{unit_name: Asset}`` for whatever exists afterwards, which on a
     host that cannot issue is simply whatever was already there.
@@ -267,6 +278,8 @@ def ensure_core_assets(*, reporter=None) -> dict:
             reference=core.reference,
             description=core.description,
             metadata=dict(core.metadata),
+            code=core.code,
+            symbol=core.symbol,
         )
         asset.reserve_account = reserve
         asset.backing_document = (

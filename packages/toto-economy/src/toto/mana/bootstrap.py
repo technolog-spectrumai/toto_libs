@@ -33,6 +33,8 @@ DECIMALS = 9
 #: The retired asset. Deactivated, never deleted: balances somebody holds are
 #: ledger history, and an inactive asset still reads.
 LEGACY_UNIT = "MANA"
+#: Each pool's short name, the key of its asset page (2026-09-30).
+CODE = {"security": "SECU", "compute": "COMP", "storage": "STOR"}
 LEGACY_FAUCET_SLUG = "default-mana"
 
 _NAMES = {"security": "Security mana", "compute": "Compute mana",
@@ -45,6 +47,8 @@ class ManaAsset:
     unit_name: str
     name: str
     metadata: dict = field(default_factory=dict)
+    #: The four-letter short name, the key of the asset's page (2026-09-30).
+    code: str = ""
 
     @property
     def reference(self) -> str:
@@ -56,6 +60,7 @@ MANA_ASSETS: tuple[ManaAsset, ...] = tuple(
         role=role,
         unit_name=TICKER[role],
         name=_NAMES[role],
+        code=CODE[role],
         metadata={"kind": "mana", "family": "toto_mana", "role": role,
                   "hue": HUE[role], "plural": _NAMES[role],
                   "seeded_by": "ingress"},
@@ -123,7 +128,7 @@ def ensure_mana_assets(*, reporter=None) -> dict:
         asset = create_currency(
             name=spec.name, unit_name=spec.unit_name, total_supply=SUPPLY,
             decimals=DECIMALS, reserve_account=reserve,
-            reference=spec.reference,
+            reference=spec.reference, code=spec.code,
             description=(f"{spec.name} — one of the three pools a member "
                          f"sees. Refills hourly up to a cap."),
             metadata=dict(spec.metadata))
