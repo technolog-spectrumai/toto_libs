@@ -196,7 +196,10 @@ class Clearance(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = unique_slug(self, self.name, fallback="clearance")
+            # Cut to the column, leaving room for unique_slug's "-N": a long
+            # name must not become a slug PostgreSQL refuses to store.
+            room = self._meta.get_field("slug").max_length - 4
+            self.slug = unique_slug(self, slugify(self.name)[:room].strip("-"), fallback="clearance")
         if self._would_exceed_the_cap():
             raise ValidationError({"name": TOO_MANY_CLEARANCES % {"max": MAX_CLEARANCES}})
         super().save(*args, **kwargs)
