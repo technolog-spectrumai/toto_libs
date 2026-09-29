@@ -810,6 +810,7 @@ class ClearanceAddDraftTests(ClearanceAddCase):
             "open": True, "name": "Restricted docs", "error": "fast is not a number.",
             "speeds": {"security": "5", "compute": "fast", "storage": ""},
             "people": [{"pk": self.cy.pk, "name": "Cy", "username": "cy"}],
+            "targets": [],
         })
         self.assertEqual(self.said(response), [])          # inside the modal, not flashed
         self.assertContains(response, 'data-testid="clearance-new-error"')

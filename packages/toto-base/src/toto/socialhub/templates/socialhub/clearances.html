@@ -11,13 +11,16 @@
 {{ draft|json_script:"clearance-draft" }}
 <script>
 document.addEventListener('alpine:init', () => {
-  Alpine.data('clearanceNew', (searchUrl) => {
+  Alpine.data('clearanceNew', (searchUrl, targetsUrl, firstKind) => {
     const draft = JSON.parse(document.getElementById('clearance-draft').textContent);
     return {
       open: !!draft.open,
       name: draft.name || '',
       speeds: Object.assign({security: '', compute: '', storage: ''}, draft.speeds || {}),
       chosen: draft.people || [],
+      // What it clears: things of the apps' kinds (socialhub:clearance_targets).
+      kind: firstKind || '', tq: '', found: [], tsearching: false, tsearched: false, ttimer: null, tseq: 0,
+      targets: draft.targets || [],
       error: draft.error || '',
       q: '', results: [], searching: false, searched: false, timer: null, seq: 0,
       show() { this.open = true; this.$nextTick(() => this.$refs.name && this.$refs.name.focus()); },
@@ -52,6 +55,40 @@ document.addEventListener('alpine:init', () => {
         this.$nextTick(() => this.$refs.search && this.$refs.search.focus());
       },
       drop(pk) { this.chosen = this.chosen.filter(c => c.pk !== pk); },
+      tcancel() { clearTimeout(this.ttimer); this.tseq++; this.tsearching = false; },
+      has(key, pk) { return this.targets.some(t => t.key === key && t.pk === pk); },
+      tsearch() {
+        this.tcancel();
+        this.found = []; this.tsearched = false;
+        const q = this.tq.trim();
+        if (!q || !this.kind) return;
+        const kind = this.kind;
+        this.ttimer = setTimeout(async () => {
+          const mine = ++this.tseq;
+          this.tsearching = true;
+          try {
+            const r = await fetch(targetsUrl + '?kind=' + encodeURIComponent(kind) + '&q=' + encodeURIComponent(q),
+                                  {headers: {'Accept': 'application/json'}, credentials: 'same-origin'});
+            const data = r.ok ? await r.json() : {results: []};
+            if (mine !== this.tseq) return;
+            this.found = (data.results || []).filter(x => !this.has(kind, x.pk));
+            this.tsearched = true;
+          } catch (e) {
+            if (mine === this.tseq) { this.found = []; this.tsearched = true; }
+          } finally {
+            if (mine === this.tseq) this.tsearching = false;
+          }
+        }, 200);
+      },
+      tpick(item) {
+        this.tcancel();
+        const kind = this.$refs.kind.selectedOptions[0];
+        if (!this.has(this.kind, item.pk))
+          this.targets.push({key: this.kind, kind: kind.textContent.trim(), icon: kind.dataset.icon, ...item});
+        this.tq = ''; this.found = []; this.tsearched = false;
+        this.$nextTick(() => this.$refs.tsearch && this.$refs.tsearch.focus());
+      },
+      tdrop(key, pk) { this.targets = this.targets.filter(t => !(t.key === key && t.pk === pk)); },
     };
   });
 });
@@ -71,7 +108,7 @@ document.addEventListener('alpine:init', () => {
     </header>
 
     {% with mana="toto.mana"|app_installed %}
-    <div x-data="clearanceNew('{% url 'socialhub:clearance_people' %}')" @keydown.escape.window="hide()"
+    <div x-data="clearanceNew('{% url 'socialhub:clearance_people' %}', '{% url 'socialhub:clearance_targets' %}', '{% if target_kinds %}{{ target_kinds.0.key }}{% endif %}')" @keydown.escape.window="hide()"
          x-init="open && $nextTick(() => $refs.name && $refs.name.focus())" class="space-y-6">
 
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -219,6 +256,52 @@ document.addEventListener('alpine:init', () => {
               <p x-show="searched && !searching && !results.length && q.trim()" x-cloak class="mt-1 text-xs opacity-60">{% trans "Nobody found (or everybody found is already chosen)." %}</p>
             </div>
           </div>
+
+          {% if target_kinds %}
+          <div class="space-y-2" data-testid="clearance-targets">
+            <label for="clearance-target-search" class="text-xs font-semibold opacity-70">{% trans "What it clears" %}</label>
+            <p class="text-xs opacity-60">{% trans "Everything chosen here is closed to everyone else: only the clearance's holders, each thing's owner and superusers will read it." %}</p>
+            <ul class="flex flex-wrap gap-2" data-testid="clearance-targets-chosen">
+              <template x-for="item in targets" :key="item.key + ':' + item.pk">
+                <li class="inline-flex items-center gap-1 rounded-full border border-current/30 px-2 py-0.5">
+                  <i class="fa-solid opacity-60" :class="'fa-' + (item.icon || 'file')" aria-hidden="true"></i>
+                  <span class="text-xs opacity-60" x-text="item.kind"></span>
+                  <span x-text="item.label"></span>
+                  <input type="hidden" name="target" :value="item.key + ':' + item.pk">
+                  <button type="button" @click="tdrop(item.key, item.pk)" class="opacity-60 hover:opacity-100"
+                          :aria-label="'{% trans "Take out" %} ' + item.label"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                </li>
+              </template>
+              <li x-show="!targets.length" class="text-xs opacity-60">{% trans "Nothing yet — it can be given things later, in each app." %}</li>
+            </ul>
+            <div class="flex flex-col gap-2 sm:flex-row">
+              <select x-ref="kind" x-model="kind" @change="tsearch()" aria-label="{% trans 'Kind of thing' %}" data-testid="clearance-target-kind"
+                      :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                      class="rounded border px-2 py-2 sm:w-44">
+                {% for k in target_kinds %}<option value="{{ k.key }}" data-icon="{{ k.icon }}">{{ k.title }}</option>{% endfor %}
+              </select>
+              <input id="clearance-target-search" type="search" x-ref="tsearch" x-model="tq" @input="tsearch()"
+                     @keydown.enter.prevent="!tsearching && found.length && tpick(found[0])" autocomplete="off"
+                     placeholder="{% trans 'Search by name' %}" data-testid="clearance-target-search"
+                     role="combobox" aria-autocomplete="list" aria-controls="clearance-target-results" :aria-expanded="found.length > 0"
+                     :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                     class="w-full flex-1 rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-current/20">
+            </div>
+            <i x-show="tsearching" x-cloak class="fa-solid fa-circle-notch fa-spin opacity-60" aria-hidden="true"></i>
+            <ul id="clearance-target-results" role="listbox" x-show="found.length" x-cloak
+                :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+                class="max-h-56 w-full overflow-y-auto rounded border shadow-sm">
+              <template x-for="item in found" :key="item.pk">
+                <li role="option">
+                  <button type="button" @click="tpick(item)" class="flex w-full items-baseline justify-between gap-2 px-3 py-2 text-left hover:bg-current/10">
+                    <span x-text="item.label"></span><span class="truncate text-xs opacity-60" x-text="item.detail"></span>
+                  </button>
+                </li>
+              </template>
+            </ul>
+            <p x-show="tsearched && !tsearching && !found.length && tq.trim()" x-cloak class="text-xs opacity-60">{% trans "Nothing found (or everything found is already chosen)." %}</p>
+          </div>
+          {% endif %}
 
           <div class="flex justify-end gap-2 pt-1">
             <button type="button" @click="hide()" class="rounded border border-current/25 px-3 py-2">{% trans "Cancel" %}</button>
