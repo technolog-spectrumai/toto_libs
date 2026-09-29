@@ -38,12 +38,12 @@ def accessible_files(user, *, file_types=None, bucket=None, exclude_pk=None,
              | Q(directory__allowed_users=user))
     if include_public:
         claim = claim | Q(is_public=True)
-    # The circles (2026-09-29): a file kept to circles is read by their
+    # The clearances (2026-09-29): a file kept to clearances is read by their
     # members and its owner alone, whatever the claim above says of it; a
     # file kept to none is read by the claim.
-    from toto.socialhub.circle_access import gate
+    from toto.socialhub.clearance_access import gate
 
-    return gate(user, qs, rows="circle_rows", open=claim, owner=Q(owner=user))
+    return gate(user, qs, rows="clearance_rows", open=claim, owner=Q(owner=user))
 
 
 def _row(f) -> dict:

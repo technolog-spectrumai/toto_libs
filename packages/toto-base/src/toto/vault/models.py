@@ -545,34 +545,29 @@ class VaultFile(models.Model):
             return None
 
 
-class VaultFileCircle(models.Model):
-    """One circle reading one file (2026-09-29).
+class VaultFileClearance(models.Model):
+    """One clearance reading one file (2026-09-29).
 
     A file with rows here is kept to their members, its owner and superusers
     — the public flag and a folder's ACL no longer open it (``access.may_read``
-    and ``filetree.accessible_files``, through ``socialhub.circle_access``).
-    A file with none is what it always was. The circle is PROTECTED: a circle
+    and ``filetree.accessible_files``, through ``socialhub.clearance_access``).
+    A file with none is what it always was. The clearance is PROTECTED: a clearance
     that still keeps a file cannot be deleted, which would open the file.
     Sheets, decks and every other file type share this one table.
     """
 
-    file = models.ForeignKey(VaultFile, on_delete=models.CASCADE, related_name="circle_rows")
-    circle = models.ForeignKey("socialhub.Community", on_delete=models.PROTECT,
-                               related_name="vault_file_rows",
-                               limit_choices_to={"is_circle": True})
+    file = models.ForeignKey(VaultFile, on_delete=models.CASCADE, related_name="clearance_rows")
+    clearance = models.ForeignKey("socialhub.Clearance", on_delete=models.PROTECT,
+                               related_name="vault_file_rows")
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["file", "circle"], name="vault_file_circle_once"),
+            models.UniqueConstraint(fields=["file", "clearance"], name="vault_file_clearance_once"),
         ]
 
     def __str__(self):
-        return f"{self.file.title} — {self.circle.name}"
+        return f"{self.file.title} — {self.clearance.name}"
 
-    def clean(self):
-        super().clean()
-        if self.circle_id and not self.circle.is_circle:
-            raise ValidationError({"circle": "Only a circle can be given a file to read."})
 
 
 class FileGateway(models.Model):

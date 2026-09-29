@@ -41,11 +41,11 @@ def _file_for(request, pk: int) -> VaultFile:
     vault_file = get_object_or_404(VaultFile, pk=pk)
     if vault_file.owner_id == request.user.pk or request.user.is_superuser:
         return vault_file
-    # A file kept to circles (2026-09-29) is theirs alone: no folder ACL,
+    # A file kept to clearances (2026-09-29) is theirs alone: no folder ACL,
     # no public flag, no lending app opens its history or its lock.
-    from toto.socialhub.circle_access import hidden
+    from toto.socialhub.clearance_access import hidden
 
-    if hidden(request.user, vault_file, rows="circle_rows"):
+    if hidden(request.user, vault_file, rows="clearance_rows"):
         raise Http404("No such file.")
     if request.user.is_staff:
         return vault_file

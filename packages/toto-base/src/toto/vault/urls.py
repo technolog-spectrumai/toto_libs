@@ -1,7 +1,7 @@
 from django.urls import path
 
 from . import views
-from . import circles
+from . import clearances
 from django.views.generic import RedirectView
 from .api_views import (
     StrongboxApiView,
@@ -61,7 +61,7 @@ urlpatterns = [
     # The wand's listing half. In the vault because the registry is, and
     # because a host without toto-media-ops still has files to act on.
     path("files/<int:file_pk>/services/", views.file_services, name="file_services"),
-    path("files/<int:pk>/access/", circles.file_access, name="file_access"),
+    path("files/<int:pk>/access/", clearances.file_access, name="file_access"),
     path("gateways/dir/<int:dir_pk>/", FileGatewayPageView.as_view(), name="gateway_page"),
     path("gateways/dir/<int:dir_pk>/upload/", FileGatewayUploadView.as_view(), name="gateway_upload"),
     path("metrics/", VaultMetricsView.as_view(), name="metrics"),

@@ -1,9 +1,9 @@
-"""Who reads a file: its circles (2026-09-29).
+"""Who reads a file: its clearances (2026-09-29).
 
-The rule is ``socialhub.circle_access`` (no circle → the vault's five
-clauses; circles → their members, the owner, superusers) and it is enforced
+The rule is ``socialhub.clearance_access`` (no clearance → the vault's five
+clauses; clearances → their members, the owner, superusers) and it is enforced
 in ``access.may_read`` and ``filetree.accessible_files``. This module is the
-door for CHANGING a file's circles — one page, ``files/<pk>/access/``, that
+door for CHANGING a file's clearances — one page, ``files/<pk>/access/``, that
 the apps showing files (sheets, decks) link to from their own toolbars with
 ``?next=`` — and the helpers their templates ask.
 
@@ -20,12 +20,12 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_http_methods
 
-from toto.socialhub import circle_access
+from toto.socialhub import clearance_access
 from toto.ui import PageProcessor
 
 from .models import VaultFile
 
-ROWS = "circle_rows"
+ROWS = "clearance_rows"
 
 
 def may_manage(user, vault_file) -> bool:
@@ -34,13 +34,13 @@ def may_manage(user, vault_file) -> bool:
     return user.is_superuser or vault_file.owner_id == user.pk
 
 
-def circles_of(vault_file) -> list:
-    return circle_access.circles_of(vault_file, rows=ROWS)
+def clearances_of(vault_file) -> list:
+    return clearance_access.clearances_of(vault_file, rows=ROWS)
 
 
-def set_circles(vault_file, circles, *, actor):
-    return circle_access.set_circles(vault_file, circles, rows=ROWS, actor=actor,
-                                     action="file.circles_changed", app_label="vault",
+def set_clearances(vault_file, clearances, *, actor):
+    return clearance_access.set_clearances(vault_file, clearances, rows=ROWS, actor=actor,
+                                     action="file.clearances_changed", app_label="vault",
                                      file=vault_file.pk, title=vault_file.title,
                                      file_type=vault_file.file_type)
 
@@ -60,7 +60,7 @@ def _ids(values) -> set:
 @login_required
 @require_http_methods(["GET", "POST"])
 def file_access(request, pk):
-    """The file's circles, chosen by its owner or a superuser. A member who
+    """The file's clearances, chosen by its owner or a superuser. A member who
     may not even read the file gets the 404 a missing file gets."""
     from .access import may_read
 
@@ -74,20 +74,16 @@ def file_access(request, pk):
     next_url = request.GET.get("next") or request.POST.get("next") or ""
     if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
         next_url = ""
-    choices = circle_access.shareable_circles(request.user, vault_file, rows=ROWS)
+    choices = clearance_access.shareable_clearances(request.user, vault_file, rows=ROWS)
     if request.method == "POST":
-        picked = choices.filter(pk__in=_ids(request.POST.getlist("circle")))
-        try:
-            before, after = set_circles(vault_file, picked, actor=request.user)
-        except circle_access.CircleRefused as exc:
-            messages.error(request, str(exc))
-        else:
-            messages.success(request, _("Saved.") if before != after else _("Nothing changed."))
+        picked = choices.filter(pk__in=_ids(request.POST.getlist("clearance")))
+        before, after = set_clearances(vault_file, picked, actor=request.user)
+        messages.success(request, _("Saved.") if before != after else _("Nothing changed."))
         return redirect(next_url or access_url(vault_file))
-    current = {c.pk for c in circles_of(vault_file)}
+    current = {c.pk for c in clearances_of(vault_file)}
     return render(request, "vault/file_access.html", PageProcessor().decorate({
         "vault_file": vault_file,
-        "circles": [{"circle": c, "on": c.pk in current} for c in choices],
+        "clearances": [{"clearance": c, "on": c.pk in current} for c in choices],
         "restricted": bool(current),
         "next": next_url,
         "active_tab": "files",

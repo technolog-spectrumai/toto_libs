@@ -29,10 +29,10 @@ def may_read(user, vault_file) -> bool:
     clauses ``accessible_files`` uses as a queryset — this is the per-object
     twin, for the paths that already hold one row.
 
-    **Circles come first (2026-09-29).** A file kept to circles
-    (``VaultFileCircle`` rows) is read by their members, its owner and
+    **Clearances come first (2026-09-29).** A file kept to clearances
+    (``VaultFileClearance`` rows) is read by their members, its owner and
     superusers, and by nobody else — not through the public flag, not through
-    a folder's ACL. ``socialhub.circle_access`` is the rule.
+    a folder's ACL. ``socialhub.clearance_access`` is the rule.
 
     **Anonymous gets the public arm only.** Nothing else: an unauthenticated
     request has no ownership and no ACL membership to check.
@@ -40,16 +40,16 @@ def may_read(user, vault_file) -> bool:
     if vault_file is None:
         return False
     if user is None or not getattr(user, "is_authenticated", False):
-        return bool(vault_file.is_public) and not vault_file.circle_rows.exists()
+        return bool(vault_file.is_public) and not vault_file.clearance_rows.exists()
     if user.is_superuser:
         return True
     if vault_file.owner_id == user.id:
         return True
-    from toto.socialhub.circle_access import hidden, kept
+    from toto.socialhub.clearance_access import hidden, kept
 
-    if kept(vault_file, rows="circle_rows"):
-        # Kept to circles: theirs (and the owner's, above) alone.
-        return not hidden(user, vault_file, rows="circle_rows")
+    if kept(vault_file, rows="clearance_rows"):
+        # Kept to clearances: theirs (and the owner's, above) alone.
+        return not hidden(user, vault_file, rows="clearance_rows")
     if vault_file.is_public:
         return True
     if vault_file.bucket_id and vault_file.bucket.owner_id == user.id:
