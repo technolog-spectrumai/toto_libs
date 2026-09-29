@@ -315,11 +315,7 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
               href="{% url 'socialhub:community_detail' community.slug %}"
               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
               class="flex flex-1 min-w-0 items-center gap-2 text-sm font-semibold transition hover:opacity-85">
-              {% if community.is_circle %}
-                <i class="fa-solid fa-circle-nodes text-xs" title="{% trans 'Circle' context 'community kind' %}"></i>
-              {% else %}
-                <i class="fa-solid fa-users text-xs"></i>
-              {% endif %}
+              <i class="fa-solid fa-users text-xs"></i>
               <span class="truncate">{{ community.name }}</span>
               <i class="fa-solid fa-arrow-right text-xs opacity-50 ml-auto"></i>
             </a>

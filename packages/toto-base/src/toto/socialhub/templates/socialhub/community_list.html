@@ -77,13 +77,6 @@
               <td class="px-4 py-2 font-medium">{{ community.name }}</td>
               <td class="px-4 py-2">
                 {{ community.get_org_type_display }}
-                {% comment %}Only a superuser is shown circles at all
-                   (Community.objects.listed_for); this tells them apart.{% endcomment %}
-                {% if community.is_circle %}
-                  <span :class="darkMode ? 'border-accent-1 text-accent-dark' : 'border-accent-2 text-accent-light'"
-                        class="ml-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold">
-                    <i class="fa-solid fa-circle-nodes text-[10px]"></i>{% trans "Circle" context "community kind" %}</span>
-                {% endif %}
               </td>
               <td class="px-4 py-2">{{ community.established_year|default:"—" }}</td>
               <td class="px-4 py-2">
@@ -120,7 +113,7 @@
             <div>
               <p class="font-semibold text-base">{{ community.name }}</p>
               <p class="text-xs text-gray-500">
-                {{ community.get_org_type_display }}{% if community.is_circle %} · {% trans "Circle" context "community kind" %}{% endif %}
+                {{ community.get_org_type_display }}
               </p>
             </div>
           </div>

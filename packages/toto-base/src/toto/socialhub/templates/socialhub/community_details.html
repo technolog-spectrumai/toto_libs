@@ -125,7 +125,7 @@
           <div class="min-w-0 flex-1">
             <p
               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-              class="text-xs font-semibold uppercase tracking-wide">{% if community.is_circle %}{% trans "Circle" context "community kind" %}{% else %}{% trans "Community" %}{% endif %}</p>
+              class="text-xs font-semibold uppercase tracking-wide">{% trans "Community" %}</p>
 
             <h2 class="mt-1 break-words text-2xl font-bold">
               {{ community.name }}
@@ -134,13 +134,6 @@
             <p class="mt-2 text-sm opacity-70">
               {{ community.get_org_type_display }}
             </p>
-            {% comment %}Only a superuser reaches a circle's page — it is a 404
-               to everybody else (CommunityDetailView.get_queryset).{% endcomment %}
-            {% if community.is_circle %}
-            <p class="mt-2 text-sm opacity-70">
-              <i class="fa-solid fa-circle-nodes mr-1"></i>{% trans "A circle decides who reads wiki pages, never what anybody buys. Members do not see it listed, and only a superuser adds people to it." %}
-            </p>
-            {% endif %}
           </div>
 
           <div

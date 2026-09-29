@@ -20,14 +20,14 @@ def require_news_manager(request, community):
 
 
 def _posts_for(user):
-    # A circle's news is as hidden as the circle: 404 to a member (2026-09-28).
+    # A clearance's news is as hidden as the clearance: 404 to a member (2026-09-28).
     return CommunityNewsPost.objects.select_related("community").filter(
-        community__in=Community.objects.listed_for(user))
+        community__in=Community.objects.all())
 
 
 @login_required
 def community_news_create(request, community_slug):
-    community = get_object_or_404(Community.objects.listed_for(request.user), slug=community_slug)
+    community = get_object_or_404(Community.objects.all(), slug=community_slug)
     require_news_manager(request, community)
 
     initial = {"author": current_person(request)}

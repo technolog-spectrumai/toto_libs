@@ -27,10 +27,10 @@ Before this the platform had the idea twice as single booleans —
 and three ad-hoc re-implementations of "get from a user to their communities",
 one of which had never worked at all.
 
-**A circle grants nothing** (2026-09-28). Circles decide who reads wiki pages
-and are joined through the admin, not by application; a right is held through
-a functional community only, so :func:`has_privilege` skips circles even where
-a privilege row names one (the model refuses to save such a row).
+**A clearance grants nothing** (2026-09-28). Clearances decide who reads and
+are given by a superuser, never applied for; a right is held through a
+community only, and since 2026-09-29 a clearance is its own model
+(``socialhub.Clearance``), so no privilege row can name one.
 
 **Everything degrades to the commoner.** No person, anonymous, a database
 mid-migrate — every failure answers "no rights, no headroom" and never raises. A
@@ -89,7 +89,7 @@ def has_privilege(user, right: str) -> bool:
     if person is None:
         return False
     try:
-        return person.communities.functional().filter(
+        return person.communities.all().filter(
             **{f"privilege__{right}": True}).exists()
     except DatabaseError:
         return False

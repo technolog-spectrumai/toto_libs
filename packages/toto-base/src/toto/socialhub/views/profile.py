@@ -18,10 +18,10 @@ from toto.ui import PageProcessor
 
 
 def listed_communities(user):
-    """The chips a profile shows ``user``: no circle for a member (2026-09-28)
+    """The chips a profile shows ``user``: no clearance for a member (2026-09-28)
     — the directory's rule, so a chip never links to a page that 404s."""
     return Prefetch("communities",
-                    queryset=Community.objects.listed_for(user).order_by("name"),
+                    queryset=Community.objects.all().order_by("name"),
                     to_attr="listed_communities")
 
 

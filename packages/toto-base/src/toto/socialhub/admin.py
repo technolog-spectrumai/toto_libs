@@ -1,8 +1,6 @@
 from django import forms
 from django.contrib import admin
 from django.contrib.admin.widgets import FilteredSelectMultiple
-from django.core.exceptions import ValidationError
-from django.forms.models import BaseInlineFormSet
 from django.utils.translation import gettext_lazy as _
 
 from toto.core.base_admin import TotoModelAdmin
@@ -10,7 +8,7 @@ from toto.people.models import Person
 from toto.verbena.admin import make_section_form
 
 from .models import (
-    CIRCLE_GRANTS_NO_PRIVILEGE,
+    Clearance,
     Community,
     CommunityForum,
     CommunityNewsPost,
@@ -21,39 +19,20 @@ from .models import (
 )
 
 
-class CommunityPrivilegeFormSet(BaseInlineFormSet):
-    """A circle grants nothing. The community on this page may be becoming a
-    circle in the very request that adds its grant, before either is saved —
-    so the formset reads the posted community, which the model cannot yet."""
-
-    def clean(self):
-        super().clean()
-        if not getattr(self.instance, "is_circle", False):
-            return
-        for form in self.forms:
-            data = getattr(form, "cleaned_data", None) or {}
-            if data and not data.get("DELETE") and (form.instance.pk or form.has_changed()):
-                raise ValidationError(CIRCLE_GRANTS_NO_PRIVILEGE)
-
-
 class CommunityPrivilegeInline(admin.StackedInline):
-    """The grant, editable where the community is edited — for a functional
-    community only; `CommunityAdmin.get_inline_instances` leaves it off a
-    circle's page."""
+    """The grant, editable where the community is edited."""
     model = CommunityPrivilege
-    formset = CommunityPrivilegeFormSet
     can_delete = True
     extra = 0
 
 
-class CircleAdminForm(forms.ModelForm):
-    """Who is in a circle, edited on the circle's own page (2026-09-28).
+class ClearanceAdminForm(forms.ModelForm):
+    """Who holds a clearance, edited on the clearance's own page (2026-09-28).
 
-    A circle is joined through the admin and nowhere else, so its page lists
-    its members. Written through ``community.members.set`` — the relation's
-    own door, so a change here is the same ``m2m_changed`` as one made on the
-    person. A functional community has no such field: members come in by
-    application, and a person's communities are edited on the person.
+    A clearance is given through the admin, the Clearances tab or the console
+    and nowhere else, so its page lists its holders. Written through
+    ``clearance.members.set`` — the relation's own door, so a change here is
+    the same ``m2m_changed`` as one made on the person.
     """
 
     members = forms.ModelMultipleChoiceField(
@@ -64,7 +43,7 @@ class CircleAdminForm(forms.ModelForm):
     )
 
     class Meta:
-        model = Community
+        model = Clearance
         fields = "__all__"
 
     def __init__(self, *args, **kwargs):
@@ -83,7 +62,6 @@ class CommunityAdmin(TotoModelAdmin):
         'name',
         'slug',
         'org_type',
-        'is_circle',
         'established_year',
         'head_display',
         'parent',
@@ -100,7 +78,6 @@ class CommunityAdmin(TotoModelAdmin):
     )
 
     list_filter = (
-        'is_circle',
         'org_type',
         'established_year',
         'location',
@@ -112,56 +89,6 @@ class CommunityAdmin(TotoModelAdmin):
     autocomplete_fields = ('parent',)
     inlines = (CommunityPrivilegeInline,)
 
-    #: Only a superuser makes a circle, or turns a community into one, or
-    #: sets its refill speeds (2026-09-29, the owner's rule) — the Circles
-    #: tab is theirs and so is this page. A staff member with the add or
-    #: change right on communities makes functional ones alone.
-    CIRCLE_ONLY_FIELDS = ("is_circle", "regen_security", "regen_compute", "regen_storage")
-
-    def get_form(self, request, obj=None, change=False, **kwargs):
-        # A circle's page carries its members; see CircleAdminForm.
-        if obj is not None and obj.is_circle and self.has_change_permission(request, obj):
-            kwargs["form"] = CircleAdminForm
-        return super().get_form(request, obj, change=change, **kwargs)
-
-    def get_queryset(self, request):
-        # Circles are not a staff member's to see here either.
-        qs = super().get_queryset(request)
-        return qs if request.user.is_superuser else qs.functional()
-
-    def get_readonly_fields(self, request, obj=None):
-        fields = tuple(super().get_readonly_fields(request, obj))
-        if not request.user.is_superuser:
-            fields += self.CIRCLE_ONLY_FIELDS
-        return fields
-
-    def has_change_permission(self, request, obj=None):
-        if obj is not None and obj.is_circle and not request.user.is_superuser:
-            return False
-        return super().has_change_permission(request, obj)
-
-    def has_delete_permission(self, request, obj=None):
-        if obj is not None and obj.is_circle and not request.user.is_superuser:
-            return False
-        return super().has_delete_permission(request, obj)
-
-    def save_model(self, request, obj, form, change):
-        # The read-only fields keep a crafted POST out already; this is the
-        # second layer, for a route that bypasses the form.
-        if not request.user.is_superuser and (obj.is_circle or obj.regen_speeds()):
-            from django.core.exceptions import PermissionDenied
-
-            raise PermissionDenied("Only a superuser makes a circle.")
-        super().save_model(request, obj, form, change)
-
-    def get_inline_instances(self, request, obj=None):
-        # A circle grants nothing, so its page offers no grant to fill in.
-        inlines = super().get_inline_instances(request, obj)
-        if obj is not None and obj.is_circle:
-            inlines = [inline for inline in inlines
-                       if not isinstance(inline, CommunityPrivilegeInline)]
-        return inlines
-
     def head_display(self, obj):
         return obj.head.display_name if obj.head else "-"
     head_display.short_description = _("Head of Community")
@@ -171,6 +98,39 @@ class CommunityAdmin(TotoModelAdmin):
         return obj.is_foreign
     is_foreign_display.boolean = True
     is_foreign_display.short_description = "Foreign"
+
+
+@admin.register(Clearance)
+class ClearanceAdmin(TotoModelAdmin):
+    """Superusers only (2026-09-29, the owner's rule): a clearance decides who
+    reads and how fast mana refills, so no staff right reaches this page —
+    not to see it, not to add, change or delete. The Clearances tab in the
+    socialhub is the same door with fewer fields."""
+
+    form = ClearanceAdminForm
+    list_display = ("name", "slug", "regen_security", "regen_compute", "regen_storage", "holders")
+    search_fields = ("name", "slug")
+    ordering = ("name",)
+    prepopulated_fields = {"slug": ("name",)}
+
+    def holders(self, obj):
+        return obj.members.count()
+    holders.short_description = _("Holders")
+
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_add_permission(self, request):
+        return request.user.is_superuser
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
 
 
 

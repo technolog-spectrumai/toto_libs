@@ -11,7 +11,7 @@ class SocialHubConfig(AppConfig):
         autodiscover_plugins("plugins.profile_plugins")
         autodiscover_plugins("plugins.community_plugins")
 
-        # Communities, circles, members, applications and references on the
+        # Communities, clearances, members, applications and references on the
         # audit chain (2026-09-28): audit.py.
         from . import audit
 

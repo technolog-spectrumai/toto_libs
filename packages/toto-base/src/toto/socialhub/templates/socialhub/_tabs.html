@@ -1,7 +1,7 @@
 {% load i18n %}
 {% comment %}The socialhub's strip (2026-09-29): Profiles, Communities and — for a
-superuser — Circles. Included with active_tab = profiles | communities |
-circles. Circles are hidden from members everywhere (a circle decides who
+superuser — Clearances. Included with active_tab = profiles | communities |
+clearances. Clearances are hidden from members everywhere (a clearance decides who
 reads and how fast mana refills, never what anybody buys), so the tab is
 chrome shown to superusers only; the view re-checks.{% endcomment %}
 <nav class="flex flex-wrap gap-2" aria-label="{% trans 'People and communities' %}">
@@ -23,14 +23,14 @@ chrome shown to superusers only; the view re-checks.{% endcomment %}
      {% endif %}
      class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
     <i class="fa-solid fa-people-group" aria-hidden="true"></i>{% trans "Communities" %}</a>
-  {% if user.is_superuser %}{% url 'socialhub:circles' as circles_url %}
-  <a href="{{ circles_url }}" data-testid="tab-circles"
-     {% if active_tab == 'circles' %}aria-current="page"
+  {% if user.is_superuser %}{% url 'socialhub:clearances' as clearances_url %}
+  <a href="{{ clearances_url }}" data-testid="tab-clearances"
+     {% if active_tab == 'clearances' %}aria-current="page"
        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
      {% else %}
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
      {% endif %}
      class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-    <i class="fa-solid fa-circle-nodes" aria-hidden="true"></i>{% trans "Circles" %}</a>
+    <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>{% trans "Clearances" %}</a>
   {% endif %}
 </nav>

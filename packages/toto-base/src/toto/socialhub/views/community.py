@@ -26,11 +26,10 @@ class CommunityListView(ListView):
         listing everything — a filter that quietly ignores itself is worse
         than an empty page.
 
-        Circles are not listed to members (2026-09-28): a circle decides who
-        reads, it is joined through the admin, and a superuser alone sees it
-        here — marked, beside the functional communities.
+        Clearances are their own model (2026-09-29) and are never listed
+        here: they have no page and no directory.
         """
-        queryset = Community.objects.listed_for(self.request.user).order_by("name")
+        queryset = Community.objects.all().order_by("name")
         wanted = (self.request.GET.get("org_type") or "").strip()
         if wanted:
             queryset = queryset.filter(org_type=wanted)
@@ -51,9 +50,9 @@ class CommunityDetailView(DetailView):
     slug_url_kwarg = "slug"
 
     def get_queryset(self):
-        # A circle's page is a 404 to a member, the same answer as a missing
+        # A clearance's page is a 404 to a member, the same answer as a missing
         # community: its existence is not theirs to learn here.
-        return Community.objects.listed_for(self.request.user)
+        return Community.objects.all()
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -79,7 +78,7 @@ class CommunityDetailView(DetailView):
 
 
 def community_org_chart_data_by_slug(request, company_slug):
-    community = get_object_or_404(Community.objects.listed_for(request.user), slug=company_slug)
+    community = get_object_or_404(Community.objects.all(), slug=company_slug)
 
     # Members belonging to this community
     members = Person.objects.filter(
@@ -107,9 +106,9 @@ def community_chain_graph_data(request, slug):
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden()
 
-    # The chain is the hierarchy of what a viewer may open: circles stand
+    # The chain is the hierarchy of what a viewer may open: clearances stand
     # outside every tree and are drawn for a superuser alone.
-    all_communities = list(Community.objects.listed_for(request.user)
+    all_communities = list(Community.objects.all()
                            .select_related("parent", "head"))
     drawn = {c.pk for c in all_communities}
 
@@ -168,7 +167,7 @@ class AdministrataView(DetailView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_queryset(self):
-        return Community.objects.listed_for(self.request.user)
+        return Community.objects.all()
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

@@ -10,10 +10,10 @@ from toto.socialhub.models import Community
 
 
 def _with_listed_communities(request, queryset):
-    """People with the communities this caller may see — no circle for a
+    """People with the communities this caller may see — no clearance for a
     member (2026-09-28), the same rule as the pages."""
     return queryset.prefetch_related(Prefetch(
-        "communities", queryset=Community.objects.listed_for(request.user).order_by("name"),
+        "communities", queryset=Community.objects.all().order_by("name"),
         to_attr="listed_communities"))
 
 
@@ -72,7 +72,7 @@ class ProfileDetailApiView(MeshGatedApiView):
 @method_decorator(csrf_exempt, name="dispatch")
 class CommunityListApiView(MeshGatedApiView):
     def get(self, request):
-        communities = (Community.objects.listed_for(request.user)
+        communities = (Community.objects.all()
                        .prefetch_related("senior_members").order_by("name")[:100])
         return JsonResponse({"communities": [_community_to_dict(c) for c in communities]})
 
@@ -81,7 +81,7 @@ class CommunityListApiView(MeshGatedApiView):
 class CommunityDetailApiView(MeshGatedApiView):
     def get(self, request, slug):
         try:
-            community = (Community.objects.listed_for(request.user)
+            community = (Community.objects.all()
                          .prefetch_related("senior_members").get(slug=slug))
         except Community.DoesNotExist:
             return JsonResponse({"error": "Community not found."}, status=404)
@@ -102,7 +102,7 @@ class CommunityDetailApiView(MeshGatedApiView):
 class CommunityOrgChartApiView(MeshGatedApiView):
     def get(self, request, slug):
         try:
-            community = Community.objects.listed_for(request.user).get(slug=slug)
+            community = Community.objects.all().get(slug=slug)
         except Community.DoesNotExist:
             return JsonResponse({"error": "Community not found."}, status=404)
         members = Person.objects.filter(communities=community).select_related("patron")
