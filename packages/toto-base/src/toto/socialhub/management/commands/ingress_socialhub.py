@@ -7,6 +7,7 @@ from django.utils.text import slugify
 from toto.ingress import IngressCommand
 from toto.people.models import Person
 from toto.socialhub.models import (
+    Clearance,
     Community,
     CommunityNewsPost,
     CommunityNewsTopic,
@@ -105,7 +106,7 @@ class Command(IngressCommand):
         self.stdout.write(self.style.SUCCESS(f"✔ Created child community: {child_b.name}"))
 
         self.create_company(address)
-        self.ensure_circles(tester_person, members)
+        self.ensure_clearances(tester_person, members)
 
         self.stdout.write(self.style.SUCCESS("✅ SocialHub ingress complete."))
 
@@ -379,36 +380,38 @@ class Command(IngressCommand):
         return member
 
     # ---------------------------------------------------------
-    # Circles — who reads what, and how fast mana refills (2026-09-28)
+    # Clearances — who reads what, and how fast mana refills (2026-09-28)
     # ---------------------------------------------------------
 
-    #: (slug, name, speed per hour for every pool or None). The speeds are
-    #: placeholders to tune; newcomers set none, so they keep the pool's own.
-    CIRCLES = [
-        ("seniors", "seniors", Decimal("8")),
-        ("board", "board", Decimal("12")),
-        ("newcomers", "newcomers", None),
+    #: (slug, name, speed per hour for every pool or None) — named after what
+    #: each opens, never after who holds it. The speeds are placeholders to
+    #: tune; onboarding sets none, so its holders keep the pool's own.
+    CLEARANCES = [
+        ("internal", "internal", Decimal("8")),
+        ("confidential", "confidential", Decimal("12")),
+        ("onboarding", "onboarding", None),
     ]
 
-    def ensure_circles(self, tester_person, members):
-        """The demo circles beside the functional community: the tester is a
-        senior, the head sits on the board, the last two members are new.
-        Idempotent: found by slug, speeds and membership only ever added."""
+    def ensure_clearances(self, tester_person, members):
+        """The demo clearances beside the community: the tester reads the
+        internal pages, the head the confidential ones, the last two members
+        are onboarding. Idempotent: found by slug, speeds and membership only
+        ever added."""
         found = {}
-        for slug, name, speed in self.CIRCLES:
-            circle, created = Community.objects.get_or_create(
-                slug=slug, defaults={"name": name, "is_circle": True})
+        for slug, name, speed in self.CLEARANCES:
+            clearance, created = Clearance.objects.get_or_create(
+                slug=slug, defaults={"name": name})
             if created and speed is not None:
-                circle.regen_security = circle.regen_compute = circle.regen_storage = speed
-                circle.save()
-            found[slug] = circle
+                clearance.regen_security = clearance.regen_compute = clearance.regen_storage = speed
+                clearance.save()
+            found[slug] = clearance
         if tester_person:
-            tester_person.communities.add(found["seniors"])
+            tester_person.clearances.add(found["internal"])
         if members:
-            members[0].communities.add(found["board"])
+            members[0].clearances.add(found["confidential"])
             for person in members[-2:]:
-                person.communities.add(found["newcomers"])
-        self.stdout.write(self.style.SUCCESS("✔ Circles: seniors (8/h), board (12/h), newcomers"))
+                person.clearances.add(found["onboarding"])
+        self.stdout.write(self.style.SUCCESS("✔ Clearances: internal (8/h), confidential (12/h), onboarding"))
 
     def assign_senior_members(self, community, tester_person, members):
         senior_members = [tester_person, *members[:2]]
