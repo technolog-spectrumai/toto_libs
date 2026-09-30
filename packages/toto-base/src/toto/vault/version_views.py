@@ -4,11 +4,25 @@ Kept out of ``views.py``, which is already 1,400 lines, and out of the three
 editors, which must not each grow their own copy — that is how primula ended up
 with a versioning scheme the other two never got.
 
-Authorisation reuses what the vault already decides. There is no new gate: if a
-caller may open the file in an editor, they may read its history; if they may
-write it, they may cut a version. cyprian deliberately lets a team edit a wiki
-page none of them owns, so an owner-only rule here would break the one app that
-most needs the history.
+Authorisation reuses what the vault already decides, split in two (2026-09-30):
+
+* **READ doors** — the history list — follow ``access.may_read``, the rule the
+  download door and every listing use, bucket clearances first;
+* **WRITE doors** — taking, beating and releasing the lock, cutting a version,
+  restoring one — follow ``access.may_write``, the rule the editors' own save
+  doors use (the owner, the app that lends the file out, a superuser on the
+  Superuser plan), and only after the read gate.
+
+A file the caller may not read is 404, as everywhere in the vault; one they may
+read but not change is 403. They used to be one gate that asked "may this
+person work with the file", read off the folder ACL and the public flag: a
+folder whose ACL is empty (every folder, until someone fills it) let any
+signed-in account in, and a public file let every reader take the lock and
+restore an old body over its owner's work.
+
+cyprian deliberately lets a team edit a wiki page none of them owns, and that
+is still so: the lending app's answer counts as a write right, and a writer may
+always read.
 """
 
 from __future__ import annotations
@@ -33,46 +47,55 @@ HTTP_LOCKED = 423
 
 
 def _file_for(request, pk: int) -> VaultFile:
-    """The file, if this user may work with it. 404 otherwise.
+    """The file, if this user may READ it. 404 otherwise.
 
     404 rather than 403 for a file they cannot reach: the vault does not confirm
     the existence of other people's documents.
+
+    Readers are ``access.may_read``'s — superuser, owner, public, the bucket's
+    owner, a folder ACL that names them — and a writer is always a reader: the
+    app that lends a file out (a cyprian project-wiki page is held by the lead
+    and written by the team) opens its history to the people it lets write,
+    none of whom ``may_read`` knows about. Both rules put the bucket's
+    clearances first, so a file in a bucket kept to clearances the caller holds
+    none of is missing here too, to its owner and to a lending app alike.
     """
-    vault_file = get_object_or_404(VaultFile, pk=pk)
-    if request.user.is_superuser:
+    vault_file = get_object_or_404(
+        VaultFile.objects.select_related("bucket", "directory", "owner"), pk=pk)
+    if access.may_read(request.user, vault_file):
         return vault_file
-    # A file in a bucket kept to clearances (2026-09-30) is the holders' alone:
-    # not its owner, no folder ACL, no public flag, no lending app opens its
-    # history or its lock to anyone who holds none of the bucket's clearances.
-    if access.bucket_hidden(request.user, vault_file):
-        raise Http404("No such file.")
-    if vault_file.owner_id == request.user.pk:
-        return vault_file
-    if request.user.is_staff:
-        return vault_file
-    directory = vault_file.directory
-    if directory is not None and directory.user_can_access(request.user):
-        return vault_file
-    if vault_file.is_public:
-        return vault_file
-    # A file another app lends out — a cyprian project-wiki page is held by the
-    # project lead and written by the team. The module docstring above always
-    # promised this ("cyprian deliberately lets a team edit a wiki page none of
-    # them owns, so an owner-only rule here would break the one app that most
-    # needs the history"), but the four clauses above never asked, so a
-    # collaborator could save through cyprian and still be refused the lock and
-    # the history by these endpoints.
-    if access.may_edit_via_app(request.user, vault_file):
+    if access.may_write(request.user, vault_file):
         return vault_file
     raise Http404("No such file.")
 
 
-def _lock_state(vault_file, user) -> dict:
-    """What the editor needs to know about who is holding this, as plain data."""
+def _refuse_unless_writable(request, vault_file):
+    """403 when the caller may read this file but not change it, else None.
+
+    Asked by every WRITE door straight after :func:`_file_for`, before a lock is
+    looked at: a reader is not a writer who has to wait, and a 423 would tell
+    them to try again later.
+    """
+    if access.may_write(request.user, vault_file):
+        return None
+    return JsonResponse(
+        {"error": _("You can read this file, but you may not change it."),
+         "can_write": False},
+        status=403)
+
+
+def _lock_state(vault_file, user, *, can_write: bool = True) -> dict:
+    """What the editor needs to know about who is holding this, as plain data.
+
+    ``can_write`` tells the versions panel whether to offer the lock, "Save
+    version" and "Restore" at all, so a reader is never shown a button these
+    doors would refuse.
+    """
     lock = locks.holder_of(vault_file)
     if lock is None:
         return {"locked": False, "mine": False, "holder": "",
-                "heartbeat_seconds": locks.HEARTBEAT_SECONDS}
+                "heartbeat_seconds": locks.HEARTBEAT_SECONDS,
+                "can_write": can_write}
     mine = lock.holder_id == getattr(user, "pk", None)
     return {
         "locked": True,
@@ -80,6 +103,7 @@ def _lock_state(vault_file, user) -> dict:
         "holder": lock.holder.get_username(),
         "expires_at": lock.expires_at.isoformat(),
         "heartbeat_seconds": locks.HEARTBEAT_SECONDS,
+        "can_write": can_write,
     }
 
 
@@ -92,6 +116,9 @@ def _lock_state(vault_file, user) -> dict:
 def lock_acquire(request, pk: int):
     """Claim the file for editing, or be told who has it."""
     vault_file = _file_for(request, pk)
+    refusal = _refuse_unless_writable(request, vault_file)
+    if refusal is not None:
+        return refusal
     try:
         locks.acquire(vault_file, request.user)
     except locks.Locked as held:
@@ -112,6 +139,12 @@ def lock_heartbeat(request, pk: int):
     out, on its next beat, that the document moved on without it.
     """
     vault_file = _file_for(request, pk)
+    # A write door too: a reader must not keep a lock alive that they could
+    # not have taken — one inherited from before 2026-09-30, or held by
+    # somebody who has since lost the right to write.
+    refusal = _refuse_unless_writable(request, vault_file)
+    if refusal is not None:
+        return refusal
     held = locks.heartbeat(vault_file, request.user)
     return JsonResponse({"held": held, **_lock_state(vault_file, request.user)})
 
@@ -121,10 +154,16 @@ def lock_heartbeat(request, pk: int):
 def lock_release(request, pk: int):
     """Give the lock up. Sent by ``navigator.sendBeacon`` on page hide.
 
-    Always 200, even when the caller held nothing: a beacon has nobody to report
-    an error to, and expiry is the backstop that makes losing this harmless.
+    200 for every writer, even when the caller held nothing: a beacon has nobody
+    to report an error to, and expiry is the backstop that makes losing this
+    harmless. A reader gets the write doors' 403 — the panel never sends them
+    a beacon, and a lock they still hold from before they lost the right
+    expires on its own.
     """
     vault_file = _file_for(request, pk)
+    refusal = _refuse_unless_writable(request, vault_file)
+    if refusal is not None:
+        return refusal
     locks.release(vault_file, request.user)
     return JsonResponse({"released": True})
 
@@ -148,11 +187,12 @@ def _version_json(version) -> dict:
 
 @login_required
 def version_list(request, pk: int):
-    """This file's history, newest first."""
+    """This file's history, newest first. The one READ door."""
     vault_file = _file_for(request, pk)
     return JsonResponse({
         "versions": [_version_json(v) for v in versions.list_versions(vault_file)],
-        **_lock_state(vault_file, request.user),
+        **_lock_state(vault_file, request.user,
+                      can_write=access.may_write(request.user, vault_file)),
     })
 
 
@@ -166,6 +206,9 @@ def version_save(request, pk: int):
     and what they wanted to call it.
     """
     vault_file = _file_for(request, pk)
+    refusal = _refuse_unless_writable(request, vault_file)
+    if refusal is not None:
+        return refusal
     if not access.is_local_content(vault_file):
         return JsonResponse(
             {"error": _("This file's bytes live on remote storage — "
@@ -197,6 +240,9 @@ def version_restore(request, pk: int, version_pk: int):
     and a current state.
     """
     vault_file = _file_for(request, pk)
+    refusal = _refuse_unless_writable(request, vault_file)
+    if refusal is not None:
+        return refusal
     if not access.is_local_content(vault_file):
         return JsonResponse(
             {"error": _("This file's bytes live on remote storage — "
