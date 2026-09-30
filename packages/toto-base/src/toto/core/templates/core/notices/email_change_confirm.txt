@@ -4,7 +4,7 @@
 
 {{ link }}
 
-{% blocktranslate count counter=hours %}The link works once, for {{ counter }} hour.{% plural %}The link works once, for {{ counter }} hours.{% endblocktranslate %} {% translate "Until it is opened, your account keeps its old address." %}
+{% if hours %}{% blocktranslate count counter=hours %}The link works once, for {{ counter }} hour.{% plural %}The link works once, for {{ counter }} hours.{% endblocktranslate %} {% endif %}{% translate "Until it is opened, your account keeps its old address." %}
 
 {% translate "If you did not ask for this, ignore this mail: nothing changes." %}
 {% endautoescape %}
