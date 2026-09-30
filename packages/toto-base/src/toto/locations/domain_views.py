@@ -126,12 +126,19 @@ def _audit(action, obj, actor, **metadata):
         logger.exception("audit: could not record domain.%s", action)
 
 
-def _set_clearances(domain, clearances, actor):
+def set_domain_clearances(domain, clearances, *, actor):
+    """Make ``clearances`` the domain's clearances — the one door (this page,
+    and the socialhub's New clearance modal through the domain plugin), which
+    records LOCATIONS.DOMAIN.CLEARANCES_CHANGED."""
     from toto.socialhub import clearance_access
 
     return clearance_access.set_clearances(
         domain, clearances, rows="clearance_rows", actor=actor,
         action="domain.clearances_changed", app_label="locations", domain=domain.name)
+
+
+def _set_clearances(domain, clearances, actor):
+    return set_domain_clearances(domain, clearances, actor=actor)
 
 
 def _add_items(domain, resolved, actor) -> int:
