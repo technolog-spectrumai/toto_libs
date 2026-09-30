@@ -215,6 +215,19 @@ class ImageUploadApiViewTests(TestCase):
         )
         self.assertEqual(res.status_code, 415)
 
+    def test_an_office_file_declared_as_an_image_is_refused(self):
+        # Stage 34's review (2026-10-01): the declared type alone let it in.
+        from toto.vault.tests_office_refusal import SENTENCE, ooxml
+
+        self.client.force_login(self.user)
+        for name in ("photo.png", "photo.docx"):
+            with self.subTest(name=name):
+                f = SimpleUploadedFile(name, ooxml(), content_type="image/png")
+                res = self.client.post(
+                    f"/forum/api/channels/{self.channel.slug}/upload/", {"image": f})
+                self.assertEqual(res.status_code, 415)
+                self.assertIn(SENTENCE, res.json()["error"])
+
     def test_upload_no_file(self):
         self.client.force_login(self.user)
         res = self.client.post(f"/forum/api/channels/{self.channel.slug}/upload/")

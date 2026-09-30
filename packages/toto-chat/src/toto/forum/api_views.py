@@ -428,6 +428,11 @@ class MediaUploadApiView(CorsApiView):
         content_type = file.content_type or ""
         if not self._accepts(content_type):
             return JsonResponse({"error": self.error_label}, status=415)
+        # The content type is the sender's word; the bytes are not. An Office
+        # file declared as a PNG is still one (stage 34's review, 2026-10-01).
+        from toto.vault.models import is_office_file, office_refusal_sentence
+        if is_office_file(file.name or "", file):
+            return JsonResponse({"error": office_refusal_sentence()}, status=415)
 
         if file.size > _MAX_MEDIA_BYTES:
             return JsonResponse(
