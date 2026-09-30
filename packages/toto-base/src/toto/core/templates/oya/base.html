@@ -153,6 +153,12 @@
        the 402 page renders this footer with no platform in the context at all.{% endcomment %}
     {% firstof platform.author platform.site_name as copyright_holder %}
     <p>&copy; {% blocktrans with author=copyright_holder %}{{ author }}. All rights reserved.{% endblocktrans %}</p>
+    {% comment %}The privacy notice (2026-10-01). "as" so a host without the
+       socialhub's routes renders no link rather than a NoReverseMatch.{% endcomment %}
+    {% url 'socialhub:privacy_notice' as privacy_notice_url %}
+    {% if privacy_notice_url %}
+    <p class="mt-1 text-xs"><a href="{{ privacy_notice_url }}" class="underline opacity-80 hover:opacity-100">{% translate "Privacy notice" %}</a></p>
+    {% endif %}
   </footer>
   {% endblock %}
 

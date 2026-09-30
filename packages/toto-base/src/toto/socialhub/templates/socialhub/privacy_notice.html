@@ -1,0 +1,73 @@
+{% extends "oya/base.html" %}
+{% load i18n tz %}
+
+{% block title %}{% translate "Privacy notice" %}{% endblock %}
+
+{% block content %}
+{% comment %}The privacy notice (2026-10-01), public: the current version or
+one named by its number (views/privacy.py). The text is plain text from the
+database, drawn escaped — urlize escapes everything it does not link, and
+linebreaks then only adds paragraphs. Never |safe here.{% endcomment %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-3xl space-y-6">
+
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div>
+        {% if notice %}
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs font-semibold uppercase tracking-wide">
+          {% blocktranslate with version=notice.version %}Version {{ version }}{% endblocktranslate %}
+          · {% blocktranslate with date=notice.published_at|date:"DATE_FORMAT" %}published {{ date }}{% endblocktranslate %}
+        </p>
+        {% endif %}
+        <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+          <i class="fa-solid fa-user-shield"></i>{% translate "Privacy notice" %}</h1>
+      </div>
+      <nav class="flex flex-wrap gap-2">
+        {% if notice %}
+        <a href="?lang={{ other_language }}" lang="{{ other_language }}"
+           :class="darkMode
+             ? 'border-accent-1 bg-sunken-dark text-text-main-dark'
+             : 'border-accent-2 bg-sunken-light text-text-main-light'"
+           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-language"></i>{% if other_language == "pl" %}Polski{% else %}English{% endif %}</a>
+        {% endif %}
+        {% if may_publish %}
+        <a href="{% url 'socialhub:privacy_notice_edit' %}"
+           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-pen"></i>{% translate "Publish a new version" %}</a>
+        {% endif %}
+      </nav>
+    </header>
+
+    {% if notice and not is_current and current %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="flex items-start gap-3 rounded-xl border p-4 text-sm shadow-sm">
+      <i class="fa-solid fa-clock-rotate-left mt-0.5"></i>
+      <p>
+        {% blocktranslate with version=notice.version %}This is an earlier version ({{ version }}), kept as it was published.{% endblocktranslate %}
+        <a href="{% url 'socialhub:privacy_notice' %}" class="font-semibold underline">
+          {% blocktranslate with version=current.version %}Read the current version ({{ version }}).{% endblocktranslate %}</a>
+      </p>
+    </div>
+    {% endif %}
+
+    <article lang="{{ language }}"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="space-y-4 break-words rounded-2xl border p-5 leading-relaxed shadow-sm sm:p-8">
+      {% if notice %}
+        {{ text|urlize|linebreaks }}
+      {% else %}
+        <p class="opacity-70">{% translate "No privacy notice has been published yet." %}</p>
+      {% endif %}
+    </article>
+
+  </div>
+</section>
+{% endblock %}

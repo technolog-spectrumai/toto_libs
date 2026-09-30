@@ -23,6 +23,7 @@ from toto.socialhub.views.community_news import (
 )
 from toto.socialhub.views.clearances import (clearance_add, clearance_delete, clearance_graph,
                                              clearance_people, clearance_targets, clearances)
+from toto.socialhub.views.privacy import privacy_notice, privacy_notice_edit, privacy_notice_version
 from toto.socialhub.views.application import membership_application_view, application_success_view, \
     verification_success_view, reference_request_view, reference_next, verify_application_view, reference_accept, \
     reference_reject
@@ -64,6 +65,12 @@ urlpatterns = [
     path("community-news/<int:pk>/delete/", community_news_delete, name="community_news_delete"),
     path("community/org-chart/data/<slug:company_slug>/", community_org_chart_data_by_slug,
          name="community_org_chart_data_by_slug"),
+
+    # The privacy notice (2026-10-01): public, every version at its own
+    # address; published by a superuser on the plan (views/privacy.py).
+    path("privacy/", privacy_notice, name="privacy_notice"),
+    path("privacy/v<int:version>/", privacy_notice_version, name="privacy_notice_version"),
+    path("privacy/edit/", privacy_notice_edit, name="privacy_notice_edit"),
 
     path("apply/membership/", membership_application_view, name="membership_application"),
     path("apply/success/<str:username>/", application_success_view, name="application_success"),

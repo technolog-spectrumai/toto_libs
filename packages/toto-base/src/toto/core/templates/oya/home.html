@@ -161,6 +161,16 @@
       </div>
     </div>
 
+    {% url 'socialhub:privacy_notice' as privacy_notice_url %}
+    {% if privacy_notice_url %}
+    <p class="text-center text-sm">
+      <a href="{{ privacy_notice_url }}" data-testid="welcome-privacy-notice"
+         :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="inline-flex items-center gap-1.5 font-semibold hover:opacity-80">
+        <i class="fa-solid fa-user-shield"></i>{% trans "How we handle your data: the privacy notice" %}</a>
+    </p>
+    {% endif %}
+
   </div>
 </section>
 {% endblock %}
