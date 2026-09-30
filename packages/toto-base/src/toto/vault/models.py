@@ -471,6 +471,21 @@ class FileOrigin(models.TextChoices):
     MIRROR = "mirror", "Mirrored"
 
 
+#: How long a trashed file waits before the nightly purge takes it (the
+#: owner's decision, 2026-10-01). Read through :func:`trash_days`, the one
+#: place pages and the purge ask.
+DEFAULT_TRASH_DAYS = 30
+
+
+def trash_days() -> int:
+    """Days a trashed file is kept: ``settings.VAULT_TRASH_DAYS``, else 30."""
+    try:
+        days = int(getattr(settings, "VAULT_TRASH_DAYS", DEFAULT_TRASH_DAYS))
+    except (TypeError, ValueError):
+        return DEFAULT_TRASH_DAYS
+    return days if days > 0 else DEFAULT_TRASH_DAYS
+
+
 class LiveFileManager(models.Manager):
     """``VaultFile.objects``: the files that are NOT in the trash.
 
