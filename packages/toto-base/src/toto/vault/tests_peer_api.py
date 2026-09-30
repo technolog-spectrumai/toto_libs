@@ -45,7 +45,7 @@ class PeerApiTestCase(TestCase):
     def _get(self, name, key=None, query="", **extra):
         url = self._url(name, **({"key": key} if key else {}))
         return self.client.get(url + query, **{
-            "HTTP_X_VAULT_API_KEY": extra.pop("api_key", self.raw_key)})
+            "HTTP_X_VAULT_API_KEY": extra.pop("api_key", self.raw_key), **extra})
 
     def _file(self, key="doc", content=b"hello bytes", **kw):
         vf = VaultFile(owner=self.owner, title=f"{key}.txt", key=key,
@@ -94,6 +94,21 @@ class AuthOrderTests(PeerApiTestCase):
         self.assertEqual(stored.read_count, 2)
         self.assertIsNotNone(stored.last_read_at)
         self.assertEqual(stored.last_peer_ip, "127.0.0.1")
+
+    @override_settings(TRUSTED_PROXIES=["172.16.0.0/12"])
+    def test_the_peer_address_is_nginx_s_real_ip_not_the_proxy(self):
+        """Behind nginx REMOTE_ADDR is the proxy; a forged X-Forwarded-For
+        names nobody (2026-09-30)."""
+        resp = self._get("peer_manifest", REMOTE_ADDR="172.18.0.5",
+                         HTTP_X_REAL_IP="203.0.113.7",
+                         HTTP_X_FORWARDED_FOR="198.51.100.66, 203.0.113.7")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(BucketGrant.objects.get(pk=self.grant.pk).last_peer_ip,
+                         "203.0.113.7")
+        self._get("peer_manifest", REMOTE_ADDR="192.0.2.9",
+                  HTTP_X_REAL_IP="203.0.113.7")
+        self.assertEqual(BucketGrant.objects.get(pk=self.grant.pk).last_peer_ip,
+                         "192.0.2.9")
 
     def test_urls_match_the_peer_path_constant(self):
         # The client builds URLs from PEER_PATH; a drift between urls.py and

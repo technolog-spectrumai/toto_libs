@@ -34,6 +34,8 @@ from django.utils.text import slugify
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from toto.core.client_ip import client_ip
+
 from . import scanning as _scanning
 from . import storage_backends as _storage_backends
 from .models import VaultFile
@@ -72,7 +74,9 @@ def _resolve_grant(request, grant_uid, magic_token):
         return None, _plain("Bad api key.", 403)
     BucketGrant.objects.filter(pk=grant.pk).update(
         last_read_at=timezone.now(), read_count=F("read_count") + 1,
-        last_peer_ip=request.META.get("REMOTE_ADDR") or None)
+        # The peer's own address, not nginx's (2026-09-30): REMOTE_ADDR behind
+        # the proxy named the proxy on every grant.
+        last_peer_ip=client_ip(request) or None)
     return grant, None
 
 
