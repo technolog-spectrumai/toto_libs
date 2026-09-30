@@ -2,6 +2,13 @@
 {% comment %}Versions panel + editing-lock banner, shared by every vault editor.
    Caller passes: file_pk, and optionally can_write (defaults to true).
 
+   can_write is honoured since 2026-09-30 — it used to be accepted and ignored,
+   so a reader of somebody's public drawing claimed its lock just by opening
+   the page. False makes this a reader's panel: the history and who is
+   editing, no lock claimed, no "Save version", no "Restore". The server
+   narrows it further on its own answers (oya/file_versions.js), because the
+   vault's doors refuse a reader whatever the page said.
+
    Lives in oya/ rather than in cyprian, memo or primula for the reason
    oya/_media_tabs.html records: Django loads template dirs only for INSTALLED
    apps, so a partial living in one editor's templates vanishes on a host that
@@ -15,7 +22,7 @@
 
    Dark/light stays Alpine; state comes from the server.{% endcomment %}
 
-<div x-data="fileVersions({{ file_pk }})" x-init="init()" class="space-y-3">
+<div x-data="fileVersions({{ file_pk }}, {% if can_write is False %}false{% else %}true{% endif %})" x-init="init()" class="space-y-3">
 
   {% comment %}Lock banner moved to oya/_lock_banner.html, which the editors
          render beside their toolbar. This panel is collapsed by default, so
@@ -23,8 +30,8 @@
          The inputs below still disable themselves from the same lock
          state.{% endcomment %}
 
-  {# ---- Save version ---- #}
-  <div class="flex flex-wrap items-center gap-2">
+  {# ---- Save version — writers only ---- #}
+  <div x-show="canWrite" class="flex flex-wrap items-center gap-2">
     <input x-model="label" type="text" maxlength="200"
            placeholder="{% trans 'Name this version (optional)' %}"
            :disabled="lock.locked && !lock.mine"
@@ -37,8 +44,11 @@
       <i class="fa-solid fa-bookmark"></i>{% trans "Save version" %}
     </button>
   </div>
-  <p class="text-xs opacity-60">
+  <p x-show="canWrite" class="text-xs opacity-60">
     {% trans "Your work is saved continuously. A version is a point you choose to be able to come back to." %}
+  </p>
+  <p x-show="!canWrite" x-cloak class="text-xs opacity-60">
+    <i class="fa-solid fa-eye"></i> {% trans "You can read this file, but you may not change it." %}
   </p>
 
   <template x-if="error">
@@ -69,12 +79,14 @@
             <td class="py-2 pr-3 opacity-70" x-text="item.author || '—'"></td>
             <td class="py-2 pr-3 opacity-70" x-text="when(item.created_at)"></td>
             <td class="py-2 text-right">
-              <button @click="restore(item)" type="button"
-                      :disabled="busy || (lock.locked && !lock.mine)"
-                      class="text-xs font-semibold hover:opacity-80 disabled:opacity-40"
-                      :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-                {% trans "Restore" %}
-              </button>
+              <template x-if="canWrite">
+                <button @click="restore(item)" type="button"
+                        :disabled="busy || (lock.locked && !lock.mine)"
+                        class="text-xs font-semibold hover:opacity-80 disabled:opacity-40"
+                        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+                  {% trans "Restore" %}
+                </button>
+              </template>
             </td>
           </tr>
         </template>

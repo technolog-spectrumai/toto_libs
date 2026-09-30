@@ -30,7 +30,8 @@ Renders nothing until the server has answered and somebody else holds the file.
       <p class="font-semibold">
         <span x-text="lock.holder"></span> {% trans "is editing this right now." %}
       </p>
-      <p class="mt-1 opacity-70">
+      {# Only to somebody who could write it once the holder leaves (2026-09-30): a reader's changes never save, so "until they close it" would be a promise. #}
+      <p x-show="lock.can_write !== false" class="mt-1 opacity-70">
         {% trans "You can read it, but your changes will not save until they close it. It frees up automatically a couple of minutes after they leave." %}
       </p>
     </div>
