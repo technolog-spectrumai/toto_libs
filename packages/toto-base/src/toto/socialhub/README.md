@@ -236,6 +236,39 @@ Every string the page, its forms and its messages show is marked for
 translation (`{% translate %}`, `{% blocktranslate %}`, `gettext`); the
 Polish catalogue is filled in separately.
 
+## Privacy notice
+
+Since 2026-10-01 (RODO / GDPR) the platform has a versioned privacy notice,
+`PrivacyNotice` — a version number, the text in Polish and in English, when
+and by whom it was published. It lives here rather than in `toto.core`
+because it is what an applicant accepts on the membership application, and
+the socialhub is where a person first hands the platform their data.
+
+- **Public pages** (`views/privacy.py`): `/socialhub/privacy/` shows the
+  current version in the reader's language (Polish for a `pl` reader, English
+  otherwise; `?lang=pl|en` shows the other), and `/socialhub/privacy/v<N>/`
+  shows any version, kept word for word — what somebody accepted stays
+  readable after it is replaced. A host with a site-wide login gate lists
+  both routes as public (zenobia: `PUBLIC_ROUTES`). Linked from the footer
+  of every page (`oya/base.html`) and from the welcome page.
+- **Publishing** (`/socialhub/privacy/edit/`): a superuser on the Superuser
+  plan (just a superuser where no such plan is sold) edits both texts,
+  pre-filled with the current version, and publishing saves a NEW version —
+  no version is ever edited (`privacy.publish`). Both texts are required, at
+  most 50,000 characters each, and an unchanged text is refused; a refusal
+  is Post/Redirect/Get with the typed text kept. Every version is listed
+  with its date and publisher.
+- **Plain text**, drawn escaped through `urlize` and `linebreaks` (the
+  wiki's own chain): a blank line starts a paragraph and a web or e-mail
+  address becomes a link. Nothing from the database reaches the page as HTML.
+- **Seeded**: `ingress_socialhub` publishes version 1 in the realistic and
+  full modes when there is none — a clearly marked placeholder in both
+  languages (`PLACEHOLDER — replace with your organisation's privacy notice`
+  as the first line), with every fact the platform cannot know in
+  [brackets]. The real text is the organisation's.
+- **Audited**: `PRIVACY.NOTICE_PUBLISHED`, with the version, the one it
+  replaces and each text's length — never the text.
+
 ## On the audit chain
 
 Since 2026-09-28 every community and clearance operation is a record on the
@@ -247,7 +280,8 @@ losing a clearance (`CLEARANCE_MEMBER_ADDED`/`_REMOVED`), from either side of
 the relation and through a `clear()`; senior members; privileges; an application submitted and
 each of its steps; a reference asked for, given (the applicant admitted) or
 declined; a member's own profile or time zone changed on My account
-(`PROFILE_CHANGED`, the field names only). Communities and clearances are recorded apart — the chain is where
+(`PROFILE_CHANGED`, the field names only); a privacy notice version published
+(`PRIVACY.NOTICE_PUBLISHED`). Communities and clearances are recorded apart — the chain is where
 a crossing of the two axes would show. Sign-ins, sign-outs and
 accounts are recorded by `toto.audit.identity`. See `toto/audit/README.md`.
 
