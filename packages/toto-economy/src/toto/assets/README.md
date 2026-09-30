@@ -33,6 +33,31 @@ grouped by Community, filtered by Community and source, each faucet with its
 payouts and runs — shows every way a balance grows. The transactions page and
 the flow data take `?community=` too: rows touching a member's account.
 
+## Short names and the Florin (2026-09-30)
+
+Every asset has a **short name** (`Asset.code`): four capital letters, unique,
+and the key of its page — `/assets/assets/FLOR/`, never `/assets/assets/2/`.
+The old pk URL still answers, with a 301 to the short-name one. The short name
+is a display key, not identity: the ticker (`unit_name`) and the name are
+hashed into the currency and never change once issued; the short name can.
+An asset issued without one gets a free code derived from its ticker
+(`derive_asset_code`: its letters, padded with X, varied at the tail); the
+issuance desk takes an optional one. Codes are chosen by meaning:
+
+| Asset | Ticker | Short name | Symbol |
+|---|---|---|---|
+| Assarion | `ASR` | `ASAR` | ASR |
+| Florin | `FLOR` | `FLOR` | ƒ |
+| Security / Compute / Storage mana | `BLUE` / `RED` / `GREEN` | `SECU` / `COMP` / `STOR` | |
+| legacy mana | `MANA` | `MANA` | |
+| demo Banana / Makaroni tokens (`--full`) | `BANANA` / `MAKARONI` | `BNNA` / `MACA` | |
+
+**No real currency, anywhere** (economy.md): no asset is named after, priced
+in, pegged to or converted through a living currency. A historic coin is fine —
+the Assarion is Roman, the Florin Florentine gold. The Florin (2 decimals,
+supply 76,658.70) is the platform's accounting currency; it replaced TPLN, the
+"Toto Złoty", on 2026-09-30.
+
 ## Amounts
 
 All amounts are stored as **integer base units** internally, exactly like Algorand.
@@ -134,7 +159,8 @@ This app came back from `toto_libs/limbo` and now lives in the zenobia host tree
 - `Tokenization` is gone — it FK'd `inventory.RealWorldObject`, and `inventory`
   is still parked. Anchoring assets to physical objects returns with that app.
 - The ingress seeder mints exactly two currencies, **ASR** (Assarion) and
-  **TPLN** (Toto Złoty). The gold/silver bullion framing (AUR/Aureus, the
+  **TPLN** (Toto Złoty) — since 2026-09-30 the second is the **Florin**
+  (`FLOR`, ƒ); see "Short names and the Florin". The gold/silver bullion framing (AUR/Aureus, the
   virtual bullion vault, the chest tokenizations) and the demo TUSD/TEUR seeds
   were all dropped.
 - `get_stablecoin_for_currency()` is now `get_currency_asset()`.
