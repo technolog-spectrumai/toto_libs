@@ -87,6 +87,20 @@ class EdgeApiTests(TestCase):
         mock.assert_called_once()
         self.assertEqual(mock.call_args[0][0], ["e1", "e2"])
 
+    def test_batch_delete_never_follows_an_off_site_next(self):
+        # An open redirect until 2026-09-30 (toto.core.safe_next).
+        from toto.core.models import Platform
+        Platform.objects.create(site_name="T", author="T", publication_year=2024, active=True)
+        self.client.login(username="api", password="pw")
+        with patch.object(gs, "delete_edges", return_value=1):
+            resp = self.client.post(reverse("bento:edge_batch_delete"),
+                                    {"ids": ["e1"], "next": "https://evil.example.com/"})
+        self.assertEqual(resp["Location"], reverse("bento:edge_list"))
+        with patch.object(gs, "delete_edges", return_value=1):
+            resp = self.client.post(reverse("bento:edge_batch_delete"),
+                                    {"ids": ["e1"], "next": "/bento/edges/?page=2"})
+        self.assertEqual(resp["Location"], "/bento/edges/?page=2")
+
 
 class TemplateApiTests(TestCase):
     def test_categories_and_edge_types_listed(self):
