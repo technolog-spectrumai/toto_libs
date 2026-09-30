@@ -185,3 +185,55 @@ def prune(vault_file) -> int:
             blob.data.delete(save=False)
             blob.delete()
     return len(pks)
+
+
+def version_blob_ids(vault_file) -> set:
+    """The blobs this file's versions cite — read BEFORE the file is deleted
+    (its versions cascade away with it; the blobs do not)."""
+    from .models import FileVersion
+
+    if not getattr(vault_file, "pk", None):
+        return set()
+    return set(FileVersion.objects.filter(file_id=vault_file.pk).values_list("blob_id", flat=True))
+
+
+def drop_orphan_blobs(blob_ids, *, strict: bool = False) -> int:
+    """Delete each of these blobs that no version cites any more: the row,
+    then its bytes. Returns how many went.
+
+    For a file deleted for good (``purge.purge_file``): its versions cascade
+    with it, but a blob has no link back to a file, so without this every
+    saved version's full body stayed on this server, unreferenced, forever.
+    Blobs are shared by digest across files, so "no version cites it" is
+    checked per blob, and the row goes first: a version that cites it again
+    meanwhile (PROTECT) keeps it, bytes and all.
+
+    ``strict`` raises when bytes cannot be deleted (a bucket purge, which must
+    not report success over remnants); otherwise the failure is logged.
+    """
+    import logging
+
+    from django.db.models import ProtectedError
+
+    from .models import VersionBlob
+
+    log = logging.getLogger("toto.vault")
+    dropped = 0
+    for blob in VersionBlob.objects.filter(pk__in=set(blob_ids or ())):
+        if blob.versions.exists():
+            continue
+        name, storage = blob.data.name, blob.data.storage
+        try:
+            with transaction.atomic():
+                blob.delete()
+        except ProtectedError:
+            continue                    # cited again meanwhile: not an orphan
+        if name:
+            try:
+                storage.delete(name)
+            except Exception:  # noqa: BLE001 - the one sentence is the caller's
+                if strict:
+                    raise
+                log.warning("vault: could not delete version body %r", name, exc_info=True)
+        dropped += 1
+    return dropped

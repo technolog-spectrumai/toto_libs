@@ -107,3 +107,53 @@ def encrypt_workflow_run(run_id, password, owner_password=None) -> dict:
     run.completed_at = now
     run.save(update_fields=["status", "output_data", "completed_at"])
     return {"ok": True, "raw_url": output["data"]["raw_url"]}
+
+
+@shared_task(name="toto.vault.tasks.purge_bucket_task", soft_time_limit=1500)
+def purge_bucket_task(bucket_pk, actor_pk=None) -> dict:
+    """Storage → Management's Delete, on a worker: every file of the bucket
+    (row and bytes, S3 objects; a mount's listing rows only), then the bucket.
+
+    Carries ids only — never a credential: the S3 key is opened from the
+    bucket's sealed secret inside the job and dies with it. Safe to run twice
+    (``bucket_lifecycle.purge_bucket`` resumes and is a no-op once the bucket
+    is gone).
+
+    One run works for at most ``PURGE_BUDGET_SECONDS`` and then queues the
+    next, so none runs near the time limits. Nothing ends a run silently: the
+    soft time limit, an error that escapes the purge, and the worker being
+    stopped are stamped on ``deletion_error`` and audited
+    (``bucket_lifecycle.stop_purge``) — the bucket then reads "Deletion
+    stopped" and offers Delete again, which resumes."""
+    import logging
+
+    from celery.exceptions import SoftTimeLimitExceeded
+    from django.utils.translation import gettext
+
+    from .bucket_lifecycle import PURGE_BUDGET_SECONDS, purge_bucket, queue_purge, stop_purge
+
+    try:
+        result = purge_bucket(bucket_pk, actor_pk=actor_pk, budget=PURGE_BUDGET_SECONDS)
+    except SoftTimeLimitExceeded:
+        # Every file handled so far is gone for good; the rest waits for the
+        # next confirmation, which resumes where this stopped.
+        return stop_purge(bucket_pk, gettext(
+            "The deletion ran out of time before every file was gone. Confirm "
+            "Delete again to continue."), actor_pk=actor_pk)
+    except Exception as exc:  # noqa: BLE001 - whatever escaped: said, not hidden
+        logging.getLogger("toto.vault").exception("vault: the purge of bucket %s failed", bucket_pk)
+        return stop_purge(bucket_pk, gettext(
+            "The deletion stopped on an error: %(reason)s. Confirm Delete again to "
+            "continue.") % {"reason": str(exc)[:300]}, actor_pk=actor_pk)
+    except BaseException:
+        # The worker is going away (a warm shutdown's SystemExit, an
+        # interrupt): say so while there is still a process to say it.
+        stop_purge(bucket_pk, gettext(
+            "The deletion was interrupted because the worker stopped. Confirm "
+            "Delete again to continue."), actor_pk=actor_pk)
+        raise
+    if result.get("more") and not queue_purge(bucket_pk, actor_pk=actor_pk):
+        return stop_purge(bucket_pk, gettext(
+            "The deletion paused and no worker took the rest. Start one, then "
+            "confirm Delete again to continue."), actor_pk=actor_pk)
+    return result

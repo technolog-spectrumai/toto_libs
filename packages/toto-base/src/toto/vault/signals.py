@@ -29,7 +29,15 @@ transfer_file_landed = Signal()
 
 @receiver(post_delete, sender=VaultFile)
 def delete_file_on_disk(sender, instance, **kwargs):
-    """Deletes the physical file when a VaultFile record is removed."""
+    """Deletes the physical file when a VaultFile record is removed.
+
+    Never for a mirror stub: its ``file.name`` is the PEER's key, and a key
+    that happens to spell a relative path on this disk would unlink another
+    file's bytes. Deleting a stub (a refresh's prune, a mount's delete) is a
+    row delete and nothing else.
+    """
+    if getattr(instance, "origin", "") == "mirror":
+        return
     if instance.file and os.path.isfile(instance.file.path):
         try:
             os.remove(instance.file.path)

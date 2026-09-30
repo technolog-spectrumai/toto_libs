@@ -89,6 +89,56 @@ class PurgeFileTests(TestCase):
         self.assertTrue(VaultFile.objects.filter(pk=vf.pk).exists())
         self.assertTrue(os.path.exists(path))
 
+    def test_version_bodies_only_this_file_cited_go_with_it(self):
+        """A file's versions cascade with it; their bodies (VersionBlob) have
+        no link back to the file and used to stay on disk for good."""
+        from django.core.files.storage import default_storage
+
+        from toto.vault import versions
+        from toto.vault.models import VersionBlob
+
+        vf = make_file(self.user, 10)
+        keeper = make_file(self.user, 11)
+        versions.save_version(vf, body=b"only mine", author=self.user)
+        versions.save_version(vf, body=b"shared body", author=self.user)
+        versions.save_version(keeper, body=b"shared body", author=self.user)
+        mine = VersionBlob.objects.get(content_hash=versions._digest(b"only mine"))
+        shared = VersionBlob.objects.get(content_hash=versions._digest(b"shared body"))
+        mine_name = mine.data.name
+        self.assertTrue(default_storage.exists(mine_name))
+
+        with self.captureOnCommitCallbacks(execute=True):
+            purge_file(vf)
+
+        self.assertFalse(VersionBlob.objects.filter(pk=mine.pk).exists())
+        self.assertFalse(default_storage.exists(mine_name))
+        self.assertTrue(VersionBlob.objects.filter(pk=shared.pk).exists())
+        self.assertTrue(default_storage.exists(shared.data.name))
+
+    def test_nothing_of_a_pinned_file_goes(self):
+        from toto.vault import versions
+        from toto.vault.models import VersionBlob
+
+        vf = make_file(self.user, 10)
+        versions.save_version(vf, body=b"pinned body", author=self.user)
+        with patch.object(VaultFile, "delete", side_effect=ProtectedError("pinned", set())):
+            with self.assertRaises(ProtectedError):
+                with self.captureOnCommitCallbacks(execute=True):
+                    purge_file(vf, strict=True)
+        self.assertTrue(VersionBlob.objects.filter(
+            content_hash=versions._digest(b"pinned body")).exists())
+
+    def test_strict_bytes_that_will_not_go_keep_the_row(self):
+        vf = make_file(self.user, 10)
+        pk = vf.pk
+        driver = MagicMock()
+        driver.delete_strict.side_effect = RuntimeError("AccessDenied")
+        with self.assertRaises(RuntimeError):
+            with self.captureOnCommitCallbacks(execute=True):
+                purge_file(vf, driver=driver, strict=True)
+        self.assertTrue(VaultFile.objects.filter(pk=pk).exists())
+        driver.delete.assert_not_called()
+
 
 @override_settings(MEDIA_ROOT=_MEDIA)
 class NoEnforcementTests(TestCase):
