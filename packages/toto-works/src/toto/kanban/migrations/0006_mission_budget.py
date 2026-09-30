@@ -29,6 +29,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='mission',
             name='budget_currency',
-            field=models.CharField(blank=True, help_text='Currency symbol or code, e.g. ASR, EUR, PLN.', max_length=12),
+            field=models.CharField(blank=True, help_text='Currency symbol or code, e.g. ASR, FLOR.', max_length=12),
         ),
     ]
