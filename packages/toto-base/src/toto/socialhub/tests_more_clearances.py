@@ -34,7 +34,9 @@ from django.urls import NoReverseMatch, reverse
 
 from toto.audit.models import AuditRecord
 from toto.core.models import Platform
-from toto.locations.models import MapLayer, MapLayerClearance
+from django.db.models import OuterRef
+
+from toto.locations.models import MapDomain, MapDomainClearance, MapLayer, MapLayerInDomain
 from toto.people.models import Person
 from toto.socialhub import clearance_access
 from toto.socialhub.models import MAX_CLEARANCES, Clearance, Community
@@ -126,22 +128,50 @@ class ClearanceRuleTests(ClearanceFixture):
 
 
 class ClearanceAccessTests(ClearanceFixture):
-    ROWS = "clearance_rows"
+    """The group rule (2026-09-30): clearances go on groups — here map domains,
+    the socialhub's own fixture — and an item is read by the rule of its groups,
+    pessimistically: a clearance of EVERY kept group it is in."""
 
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        cls.open_layer = MapLayer.objects.create(name="Open", slug="open")
-        cls.internal_layer = MapLayer.objects.create(name="Internal only", slug="internal-only")
-        MapLayerClearance.objects.create(layer=cls.internal_layer, clearance=cls.internal)
-        cls.shared_layer = MapLayer.objects.create(name="Both clearances", slug="both")
-        MapLayerClearance.objects.create(layer=cls.shared_layer, clearance=cls.internal)
-        MapLayerClearance.objects.create(layer=cls.shared_layer, clearance=cls.confidential)
-        cls.inactive = MapLayer.objects.create(name="Inactive", slug="inactive", is_active=False)
+
+        def domain(name, *clearances):
+            made = MapDomain.objects.create(name=name)
+            for clearance in clearances:
+                MapDomainClearance.objects.create(domain=made, clearance=clearance)
+            return made
+
+        def layer(slug, *domains, **extra):
+            made = MapLayer.objects.create(name=slug, slug=slug, **extra)
+            for group in domains:
+                MapLayerInDomain.objects.create(domain=group, map_layer=made)
+            return made
+
+        cls.d_internal = domain("Internal", cls.internal)
+        cls.d_confidential = domain("Confidential", cls.confidential)
+        cls.d_either = domain("Either", cls.internal, cls.confidential)
+        cls.d_open = domain("Open domain")
+        cls.open_layer = layer("open")
+        cls.in_open_domain = layer("in-open-domain", cls.d_open)
+        cls.internal_layer = layer("internal-only", cls.d_internal)
+        cls.either_layer = layer("either", cls.d_either)
+        cls.two_domains = layer("two-domains", cls.d_internal, cls.d_confidential)
+        cls.half_kept = layer("half-kept", cls.d_internal, cls.d_open)
+        cls.inactive = layer("inactive", is_active=False)
+
+    @staticmethod
+    def groups():
+        return MapDomain.objects.filter(map_layer_rows__map_layer=OuterRef("pk"))
 
     def readable(self, user, **kwargs):
-        return set(clearance_access.gate(user, MapLayer.objects.all(), rows=self.ROWS, **kwargs)
-                   .values_list("slug", flat=True))
+        return set(clearance_access.group_gate(user, MapLayer.objects.all(), groups=self.groups(),
+                                               **kwargs).values_list("slug", flat=True))
+
+    def hidden(self, user, layer):
+        return clearance_access.group_hidden(user, MapDomain.objects.filter(map_layer_rows__map_layer=layer))
+
+    OPEN = {"open", "in-open-domain", "inactive"}
 
     def test_person_of_and_clearance_ids_of_know_nobody_without_a_person(self):
         stray = User.objects.create_user("stray", password="pw")
@@ -153,87 +183,74 @@ class ClearanceAccessTests(ClearanceFixture):
         self.assertEqual(clearance_access.clearance_ids_of(self.ada.user), {self.internal.pk})
         self.assertEqual(clearance_access.clearance_ids_of(self.cy.user), set())
 
-    def test_a_kept_object_is_read_by_its_clearances_members_only(self):
-        everyone = {"open", "inactive"}
-        self.assertEqual(self.readable(self.cy.user), everyone)
-        self.assertEqual(self.readable(AnonymousUser()), everyone)
-        self.assertEqual(self.readable(self.ada.user), everyone | {"internal-only", "both"})
-        self.assertEqual(self.readable(self.bob.user), everyone | {"both"})
-        self.assertEqual(self.readable(self.root), everyone | {"internal-only", "both"})
+    def test_an_item_in_no_kept_group_is_everybodys(self):
+        self.assertEqual(self.readable(self.cy.user), self.OPEN)
+        self.assertEqual(self.readable(AnonymousUser()), self.OPEN)
 
-    def test_the_apps_own_rule_applies_to_open_objects_only(self):
-        """A clearance both keeps and grants: the `open` rule narrows what has no
-        clearance, and a member reads a kept object whatever that rule says."""
-        MapLayerClearance.objects.create(layer=self.inactive, clearance=self.confidential)
-        active = Q(is_active=True)
-        self.assertEqual(self.readable(self.cy.user, open=active), {"open"})
-        self.assertEqual(self.readable(self.bob.user, open=active), {"open", "both", "inactive"})
+    def test_one_clearance_of_each_kept_group_opens_it(self):
+        # Ada holds internal: the internal domain, and the domain either clearance opens.
+        self.assertEqual(self.readable(self.ada.user),
+                         self.OPEN | {"internal-only", "either", "half-kept"})
+        # Bob holds confidential: only the domain either clearance opens.
+        self.assertEqual(self.readable(self.bob.user), self.OPEN | {"either"})
 
-    def test_the_owner_reads_a_kept_object_without_holding_its_clearance(self):
+    def test_an_item_in_two_kept_groups_needs_a_clearance_of_each(self):
+        self.assertNotIn("two-domains", self.readable(self.ada.user))
+        self.confidential.members.add(self.ada)
+        self.assertIn("two-domains", self.readable(self.ada.user))
+
+    def test_a_group_without_clearances_does_not_constrain(self):
+        """half-kept is in the internal domain and an open one: the kept one decides."""
+        self.assertIn("half-kept", self.readable(self.ada.user))
+        self.assertNotIn("half-kept", self.readable(self.cy.user))
+
+    def test_a_superuser_reads_everything(self):
+        self.assertEqual(self.readable(self.root), set(MapLayer.objects.values_list("slug", flat=True)))
+
+    def test_the_owner_is_no_reader_of_a_kept_item(self):
         self.internal_layer.owner = self.cy
         self.internal_layer.save()
-        owner = Q(owner=self.cy)
-        self.assertIn("internal-only", self.readable(self.cy.user, owner=owner))
-        # The owner clause is never offered to an anonymous visitor.
-        ownerless = Q(owner__isnull=True)
-        self.assertIn("both", self.readable(self.cy.user, owner=ownerless))
-        self.assertNotIn("both", self.readable(AnonymousUser(), owner=ownerless))
+        self.assertNotIn("internal-only", self.readable(self.cy.user))
+        self.assertTrue(self.hidden(self.cy.user, self.internal_layer))
 
-    def test_an_object_in_two_of_my_clearances_is_listed_once(self):
+    def test_the_apps_own_rule_applies_to_items_in_no_kept_group_only(self):
+        """A clearance both keeps and grants: ``open`` narrows what is not kept,
+        and a holder reads a kept item whatever that rule says."""
+        MapLayerInDomain.objects.create(domain=self.d_confidential, map_layer=self.inactive)
+        active = Q(is_active=True)
+        self.assertEqual(self.readable(self.cy.user, open=active), {"open", "in-open-domain"})
+        self.assertIn("inactive", self.readable(self.bob.user, open=active))
+
+    def test_an_item_is_listed_once_however_many_groups_open_it(self):
         self.confidential.members.add(self.ada)
-        rows = list(clearance_access.gate(self.ada.user, MapLayer.objects.filter(slug="both"),
-                                          rows=self.ROWS))
+        rows = list(clearance_access.group_gate(self.ada.user, MapLayer.objects.filter(slug="two-domains"),
+                                                groups=self.groups()))
         self.assertEqual(len(rows), 1)
 
-    def test_hidden_is_the_per_object_twin_of_gate(self):
+    def test_hidden_is_the_per_object_twin_of_the_gate(self):
         for user in (self.ada.user, self.bob.user, self.cy.user, AnonymousUser(), self.root):
             readable = self.readable(user)
-            for layer in (self.open_layer, self.internal_layer, self.shared_layer):
+            for layer in MapLayer.objects.all():
                 with self.subTest(user=getattr(user, "username", "anonymous"), layer=layer.slug):
-                    self.assertEqual(not clearance_access.hidden(user, layer, rows=self.ROWS),
-                                     layer.slug in readable)
+                    self.assertEqual(not self.hidden(user, layer), layer.slug in readable)
 
-    def test_hidden_answers_missing_for_nothing_and_open_for_the_owner(self):
-        self.assertTrue(clearance_access.hidden(self.root, None, rows=self.ROWS))
-        self.assertFalse(clearance_access.hidden(self.cy.user, self.internal_layer, rows=self.ROWS,
-                                                 is_owner=True))
+    def test_item_groups_kept_says_whether_any_of_its_groups_is_kept(self):
+        kept = clearance_access.item_groups_kept
+        self.assertTrue(kept(MapDomain.objects.filter(map_layer_rows__map_layer=self.half_kept)))
+        self.assertFalse(kept(MapDomain.objects.filter(map_layer_rows__map_layer=self.in_open_domain)))
+        self.assertFalse(kept(MapDomain.objects.filter(map_layer_rows__map_layer=self.open_layer)))
 
-    def test_kept_says_whether_any_clearance_holds_it(self):
-        self.assertTrue(clearance_access.kept(self.internal_layer, rows=self.ROWS))
-        self.assertFalse(clearance_access.kept(self.open_layer, rows=self.ROWS))
-
-    def test_clearances_of_lists_by_name(self):
-        self.assertEqual(clearance_access.clearances_of(self.shared_layer, rows=self.ROWS),
+    def test_clearances_of_a_group_by_name(self):
+        self.assertEqual(clearance_access.clearances_of(self.d_either, rows="clearance_rows"),
                          [self.confidential, self.internal])
-        self.assertEqual(clearance_access.clearances_of(self.open_layer, rows=self.ROWS), [])
-
-    def test_a_member_shares_with_their_own_clearances_and_the_objects_own(self):
-        self.assertEqual(list(clearance_access.shareable_clearances(self.ada.user, self.open_layer,
-                                                                    rows=self.ROWS)), [self.internal])
-        # Bob does not hold `internal`, but the layer already is: he sees it to keep it.
-        self.assertEqual(list(clearance_access.shareable_clearances(self.bob.user, self.internal_layer,
-                                                                    rows=self.ROWS)),
-                         [self.confidential, self.internal])
-        self.assertEqual(list(clearance_access.shareable_clearances(self.cy.user, self.open_layer,
-                                                                    rows=self.ROWS)), [])
-        self.assertEqual(list(clearance_access.shareable_clearances(self.root, self.open_layer,
-                                                                    rows=self.ROWS)),
-                         [self.confidential, self.internal])
-
-    def test_a_viewer_who_does_not_manage_sees_only_their_own_clearances_named(self):
-        self.assertEqual(clearance_access.visible_clearances_of(self.bob.user, self.shared_layer,
-                                                                rows=self.ROWS, manages=False),
-                         [self.confidential])
-        self.assertEqual(clearance_access.visible_clearances_of(self.bob.user, self.shared_layer,
-                                                                rows=self.ROWS, manages=True),
-                         [self.confidential, self.internal])
+        self.assertEqual(clearance_access.clearances_of(self.d_open, rows="clearance_rows"), [])
 
 
 class SetClearancesTests(ClearanceFixture):
     ROWS = "clearance_rows"
 
     def setUp(self):
-        self.layer = MapLayer.objects.create(name="Layer", slug="layer")
+        self.layer = MapDomain.objects.create(name="Layer")       # any group with clearance_rows
 
     def records(self):
         return AuditRecord.objects.filter(action="LOCATIONS.LAYER_CLEARANCES")
@@ -526,8 +543,8 @@ class ClearancesTabPageTests(ClearanceFixture):
 
     def test_a_clearance_that_keeps_something_says_so_and_cannot_be_deleted(self):
         for slug in ("kept-1", "kept-2"):
-            layer = MapLayer.objects.create(name=slug, slug=slug)
-            MapLayerClearance.objects.create(layer=layer, clearance=self.internal)
+            domain = MapDomain.objects.create(name=slug)
+            MapDomainClearance.objects.create(domain=domain, clearance=self.internal)
         response = self.page()
         rows = {row["clearance"].slug: row for row in response.context["rows"]}
         self.assertEqual((rows["internal"]["kept"], rows["confidential"]["kept"]), (2, 0))
@@ -872,9 +889,9 @@ class ClearanceAddDraftTests(ClearanceAddCase):
 
 class ClearanceDeleteTests(ClearanceFixture):
     def test_a_clearance_that_still_keeps_something_is_not_removed(self):
-        """A real PROTECT (a map layer kept to the clearance), not a patched one."""
-        layer = MapLayer.objects.create(name="Kept", slug="kept")
-        MapLayerClearance.objects.create(layer=layer, clearance=self.internal)
+        """A real PROTECT (a map domain kept to the clearance), not a patched one."""
+        domain = MapDomain.objects.create(name="Kept")
+        MapDomainClearance.objects.create(domain=domain, clearance=self.internal)
         response = client_for(self.root).post(
             reverse("socialhub:clearance_delete", args=[self.internal.pk]), follow=True)
         self.assertContains(response, "internal still decides who reads something")

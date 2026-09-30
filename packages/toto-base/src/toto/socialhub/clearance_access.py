@@ -96,77 +96,12 @@ def group_hidden(user, groups) -> bool:
     return kept_groups.exclude(clearance_rows__clearance__in=mine).exists()
 
 
-def gate(user, queryset, *, rows: str, open: Q | None = None, owner: Q | None = None):
-    """The objects in ``queryset`` that ``user`` may read.
-
-    ``open`` is the app's own rule for an object with NO clearance (public, a
-    claim, everyone — ``None`` means everyone); ``owner`` a Q naming the
-    object's owner, who reads it whatever its clearances. An object WITH
-    clearances is read by their members and its owner only — the app's rule
-    no longer applies to it, in either direction: a clearance both keeps and
-    grants.
-    """
-    if getattr(user, "is_superuser", False):
-        return queryset
-    no_clearance = Q(**{f"{rows}__isnull": True})
-    rule = no_clearance & open if open is not None else no_clearance
-    mine = clearance_ids_of(user)
-    if mine:
-        rule = rule | Q(**{f"{rows}__clearance__in": mine})
-    if owner is not None and getattr(user, "is_authenticated", False):
-        rule = rule | owner
-    return queryset.filter(rule).distinct()
-
-
-def kept(obj, *, rows: str) -> bool:
-    """Whether ``obj`` is kept to clearances at all."""
-    return getattr(obj, rows).exists()
-
-
-def hidden(user, obj, *, rows: str, is_owner: bool = False) -> bool:
-    """Whether clearances hide ``obj`` from ``user`` — the per-object twin of
-    ``gate`` for an object that IS kept (``kept``); False for one that is
-    not, where the app's own rule decides."""
-    if obj is None:
-        return True
-    if getattr(user, "is_superuser", False) or is_owner:
-        return False
-    clearance_rows = getattr(obj, rows)
-    if not clearance_rows.exists():
-        return False
-    mine = clearance_ids_of(user)
-    return not (mine and clearance_rows.filter(clearance__in=mine).exists())
-
-
 def clearances_of(obj, *, rows: str) -> list:
     """The object's clearances, by name ([] = open)."""
     from .models import Clearance
 
     return list(Clearance.objects.filter(pk__in=getattr(obj, rows).values("clearance_id"))
                 .order_by("name"))
-
-
-def shareable_clearances(user, obj, *, rows: str):
-    """The clearances ``user`` may give ``obj`` to: every one for a superuser;
-    otherwise those they hold plus the object's own — clearances are hidden
-    from members, so an owner never sees one they do not hold."""
-    from .models import Clearance
-
-    clearances = Clearance.objects.order_by("name")
-    if getattr(user, "is_superuser", False):
-        return clearances
-    return clearances.filter(Q(pk__in=clearance_ids_of(user))
-                             | Q(pk__in=getattr(obj, rows).values("clearance_id"))).distinct()
-
-
-def visible_clearances_of(user, obj, *, rows: str, manages: bool) -> list:
-    """The object's clearances as ``user`` may see them: all of them for
-    whoever manages the object, otherwise only those the viewer holds."""
-    clearances = clearances_of(obj, rows=rows)
-    if manages:
-        return clearances
-    mine = clearance_ids_of(user)
-    return [c for c in clearances if c.pk in mine]
 
 
 @transaction.atomic
