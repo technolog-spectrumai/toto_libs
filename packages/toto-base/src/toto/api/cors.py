@@ -66,6 +66,18 @@ def _try_bearer_auth(request):
     request._toto_bearer_auth = True
 
 
+def bearer_auth(request) -> bool:
+    """Resolve a Bearer token on ``request``; is it signed in afterwards?
+
+    The public name of the door above, for a host whose own gate runs before
+    the view does (2026-09-30): zenobia's login gate answers in
+    ``process_view``, ahead of ``CorsApiView.dispatch``, so it has to ask
+    here or the desktop's token never reaches a JSON door.
+    """
+    _try_bearer_auth(request)
+    return bool(getattr(request.user, "is_authenticated", False))
+
+
 class CorsApiView(View):
     """Base view: handles CORS preflight, injects CORS headers, and accepts Bearer auth."""
 
