@@ -544,6 +544,9 @@ class PendingEmailChange(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE,
                                 related_name="pending_email_change")
     new_email = models.EmailField()
+    #: The account's address when the link was asked for: the link acts only
+    #: while the account still has it (review, 2026-10-01).
+    old_email = models.EmailField(blank=True, default="")
     token_hash = models.CharField(max_length=64, unique=True)
     created = models.DateTimeField(default=timezone.now)
 

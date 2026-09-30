@@ -415,10 +415,18 @@ def account_email(request):
         messages.error(request, _("Your account signs in through another service; "
                                   "change your e-mail address there."))
         return redirect("account:home")
+    if email_change.throttled(request.user):
+        messages.error(request, _("You have asked for a new address too often. "
+                                  "Try again in an hour."))
+        return redirect(f"{reverse('account:home')}#email")
     form = AccountEmailForm(request.POST, user=request.user)
     if not form.is_valid():
         return _page(request, email_form=form, status=400)
     address = form.cleaned_data["new_email"]
+    if email_change.throttled(request.user, address):
+        messages.error(request, _("That address has been sent enough links for today. "
+                                  "Try again tomorrow."))
+        return redirect(f"{reverse('account:home')}#email")
     if email_change.request_change(request.user, address, request=request):
         messages.success(request, _("A link is on its way to %(address)s. Open it while "
                                     "signed in here to use that address; until then "
@@ -458,7 +466,8 @@ def account_email_confirm(request):
     outcome = email_change.confirm_change(request.user, request.GET.get("token", ""),
                                           request=request)
     if outcome == email_change.CHANGED:
-        messages.success(request, _("Your e-mail address is now %(address)s.")
+        messages.success(request, _("Your e-mail address is now %(address)s. Your other "
+                                    "sign-ins were ended.")
                          % {"address": request.user.email})
     else:
         messages.error(request, EMAIL_REFUSALS[outcome])

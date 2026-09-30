@@ -17,7 +17,7 @@ membership flow, a management command.
 | `AUTH.SESSION_ENDED` | a member ended one of their own sessions from My account (`toto.core.user_sessions`, 2026-09-30); its `kind` (`browser` or `token`) and `session_id`, the row's id — never the key |
 | `AUTH.SIGNED_OUT_EVERYWHERE` | a member ended every session but the one in use (My account, 2026-09-30); `sessions_ended` |
 | `AUTH.EMAIL_CHANGE_REQUESTED` | a member asked from My account to move their account to a new e-mail address and a confirmation link was mailed there (`toto.socialhub.email_change`, 2026-09-30); `new_email` masked (`j***@example.org`) |
-| `AUTH.EMAIL_CHANGED` | the member opened that link, signed in, and the address changed; `old_email` and `new_email`, both masked |
+| `AUTH.EMAIL_CHANGED` | the member opened that link, signed in, and the address changed; `old_email` and `new_email`, both masked; `sessions_ended`, their other sign-ins ended with it |
 | `AUTH.KEY_STORE_CREATED` | a member created their own key store from My account (`toto.gervazy.personal`, 2026-10-01); `strongbox_id` only — never the passphrase nor anything derived from it |
 | `AUTH.PASSWORD_RESET` | a password set through a reset link (`sso_core.password_reset`, 2026-09-30); `flow` is `email` (the mailed link) or `recovery` (a patron's one-time link) |
 | `AUTH.ACCOUNT_CREATED` | a `User` row is created, by whatever door |
@@ -204,14 +204,16 @@ def on_email_change_requested(user, *, new_email, request=None):
                    metadata={"new_email": str(new_email)})
 
 
-def on_email_changed(user, *, old_email, new_email, request=None):
+def on_email_changed(user, *, old_email, new_email, sessions_ended=0, request=None):
     """The member confirmed a new address through the mailed link (2026-09-30).
 
     Both addresses masked, as above. The link travels as a query parameter,
     which ``request_source`` does not keep (it records the path only).
+    ``sessions_ended``: the member's other sign-ins, ended with it (2026-10-01).
     """
     return _record("email_changed", user, actor_user=user, request=request,
-                   metadata={"old_email": str(old_email), "new_email": str(new_email)})
+                   metadata={"old_email": str(old_email), "new_email": str(new_email),
+                             "sessions_ended": int(sessions_ended)})
 
 
 def on_key_store_created(user, *, strongbox_id, request=None):

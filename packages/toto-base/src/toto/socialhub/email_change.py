@@ -30,6 +30,15 @@ would hand their acceptance to this account. An address any of them holds for
 someone else is refused, compared without case, at the request AND again at
 the click.
 
+**Review, 2026-10-01.** The link is bound to the address the account had
+when it was asked for: if that has changed since (an administrator moved the
+account back, say), the link is spent and changes nothing. A confirmed change
+ends every OTHER session of the member, as a password change does — whoever
+else is signed in could otherwise watch the account move away and keep it.
+Asking is rate-limited (``throttled``): per member, so no one makes the
+platform mail an address over and over, and per address, so several accounts
+together cannot either.
+
 A federated account (no usable password here) takes its address from its
 provider at every sign-in (``sso_client``); a local change would be undone,
 so the page says to change it there, as for the password.
@@ -54,6 +63,15 @@ log = logging.getLogger("toto.socialhub")
 
 #: How long the mailed link works.
 LINK_HOURS = 24
+
+#: Requests a member may make, and mails one address may be sent, per window
+#: (``toto.core.ratelimit``, 2026-10-01). A refused form counts too: the
+#: "taken" answer says whether an address is someone's, and that is not to be
+#: asked a thousand times.
+REQUESTS_PER_MEMBER = 5
+MEMBER_WINDOW = 3600
+MAILS_PER_ADDRESS = 3
+ADDRESS_WINDOW = 24 * 3600
 
 #: What ``confirm_change`` answers.
 CHANGED = "changed"
@@ -93,6 +111,24 @@ def address_taken(address: str, user) -> bool:
     return MembershipApplication.objects.filter(email__iexact=address).exists()
 
 
+def throttled(user, address: str = "") -> int:
+    """Count one request; the seconds to wait when over a limit, else 0.
+
+    Without ``address`` it counts the member's asking (every POST, before the
+    form is read); with one, a mail about to go to that address.
+    """
+    from toto.core import ratelimit
+
+    if address:
+        tag = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:32]
+        hit = ratelimit.hit(f"account:email:to:{tag}", limit=MAILS_PER_ADDRESS,
+                            window=ADDRESS_WINDOW)
+    else:
+        hit = ratelimit.hit(f"account:email:by:{user.pk}", limit=REQUESTS_PER_MEMBER,
+                            window=MEMBER_WINDOW)
+    return 0 if hit.allowed else hit.retry_after
+
+
 def _on_chain(name, user, request, **values):
     from django.apps import apps
 
@@ -117,6 +153,7 @@ def request_change(user, new_email: str, *, request) -> bool:
     with transaction.atomic():
         PendingEmailChange.objects.filter(user=user).delete()
         PendingEmailChange.objects.create(user=user, new_email=new_email,
+                                          old_email=(user.email or "").strip(),
                                           token_hash=_hash(token))
     link = (request.build_absolute_uri(reverse("account:email_confirm"))
             + "?" + urlencode({"token": token}))
@@ -176,13 +213,22 @@ def confirm_change(user, token: str, *, request) -> str:
             return TAKEN
         account = get_user_model().objects.select_for_update().get(pk=user.pk)
         old = (account.email or "").strip()
+        if old.lower() != (row.old_email or "").strip().lower():
+            # The account's address moved since the link was asked for: the
+            # link was about an address the account no longer has.
+            row.delete()
+            return INVALID
         account.email = new
         account.save(update_fields=["email"])
         user.email = new
         _sync_person(user, old, new)
         row.delete()
+    from toto.core.user_sessions import end_other_sessions
+
+    session = getattr(request, "session", None)
+    ended = end_other_sessions(user, keep=getattr(session, "session_key", None) or "")
     _on_chain("on_email_changed", user, request,
-              old_email=mask_email(old), new_email=mask_email(new))
+              old_email=mask_email(old), new_email=mask_email(new), sessions_ended=ended)
     if old and old.lower() != new.lower():
         send_notice(user, "email_changed",
                     {"new_masked": mask_email(new), "address": client_ip(request)}, to=old)

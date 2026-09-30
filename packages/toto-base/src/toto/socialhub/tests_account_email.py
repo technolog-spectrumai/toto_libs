@@ -32,6 +32,11 @@ NEW = "ada.new@example.org"
 @override_settings(EMAIL_BACKEND=LOCMEM)
 class EmailTestCase(TestCase):
     def setUp(self):
+        from django.core.cache import cache
+
+        # The request limits count in the cache, which no test rolls back.
+        cache.clear()
+        self.addCleanup(cache.clear)
         Platform.objects.create(site_name="Test", author="Tests",
                                 publication_year=2026, active=True)
         self.user = User.objects.create_user("ada", OLD, "Correct-horse-9")
@@ -167,7 +172,8 @@ class ConfirmTests(EmailTestCase):
         self.client.get(self.link())
         record = AuditRecord.objects.get(action="AUTH.EMAIL_CHANGED")
         self.assertEqual(record.metadata, {"old_email": "a***@example.test",
-                                           "new_email": "a***@example.org"})
+                                           "new_email": "a***@example.org",
+                                           "sessions_ended": 0})
         # The token rides in the query string, which the chain does not keep.
         self.assertEqual(record.request_source["path"], "/account/email/confirm/")
         self.assertNotIn(token, str(record.request_source))
@@ -234,6 +240,64 @@ class ConfirmTests(EmailTestCase):
         self.person.refresh_from_db()
         self.assertEqual(self.person.email, "desk@example.test")
         self.assertEqual(self.address(), NEW)
+
+
+class ReviewTests(EmailTestCase):
+    """Review 2026-10-01: asking had no limit, a confirmed change left the
+    member's other sessions signed in, and the link ignored the address the
+    account had when it was asked for."""
+
+    def test_asking_is_limited_per_member(self):
+        for n in range(email_change.REQUESTS_PER_MEMBER):
+            self.ask(f"ada{n}@example.org")
+        sent = len(mail.outbox)
+        response = self.ask("ada.more@example.org")
+        self.assertRedirects(response, reverse("account:home") + "#email",
+                             fetch_redirect_response=False)
+        self.assertEqual(len(mail.outbox), sent)
+        self.assertNotEqual(PendingEmailChange.objects.get(user=self.user).new_email,
+                            "ada.more@example.org")
+
+    def test_refused_forms_count_too(self):
+        for _ in range(email_change.REQUESTS_PER_MEMBER):
+            self.ask("not an address")
+        self.ask()
+        self.assertEqual(mail.outbox, [])
+
+    def test_one_address_gets_a_few_links_a_day_whoever_asks(self):
+        for n in range(email_change.MAILS_PER_ADDRESS):
+            member = User.objects.create_user(f"m{n}", f"m{n}@example.test", "x")
+            self.client.force_login(member)
+            self.ask("victim@example.org")
+        self.assertEqual(len(mail.outbox), email_change.MAILS_PER_ADDRESS)
+        self.client.force_login(self.user)
+        self.ask("victim@example.org")
+        self.assertEqual(len(mail.outbox), email_change.MAILS_PER_ADDRESS)
+        self.assertFalse(PendingEmailChange.objects.filter(user=self.user).exists())
+
+    def test_a_confirmed_change_ends_the_other_sessions(self):
+        from django.test import Client
+
+        other = Client()
+        other.force_login(self.user)
+        self.assertEqual(other.get(reverse("account:home")).status_code, 200)
+        self.ask()
+        self.client.get(self.link())
+        self.assertEqual(self.address(), NEW)
+        self.assertEqual(other.get(reverse("account:home")).status_code, 302)
+        self.assertEqual(self.client.get(reverse("account:home")).status_code, 200)
+        record = AuditRecord.objects.get(action="AUTH.EMAIL_CHANGED")
+        self.assertEqual(record.metadata["sessions_ended"], 1)
+
+    def test_the_link_is_bound_to_the_old_address(self):
+        self.ask()
+        link = self.link()
+        self.user.email = "moved.back@example.test"
+        self.user.save(update_fields=["email"])
+        self.client.get(link)
+        self.assertEqual(self.address(), "moved.back@example.test")
+        self.assertFalse(PendingEmailChange.objects.exists())
+        self.assertFalse(AuditRecord.objects.filter(action="AUTH.EMAIL_CHANGED").exists())
 
 
 class LabelTests(EmailTestCase):
