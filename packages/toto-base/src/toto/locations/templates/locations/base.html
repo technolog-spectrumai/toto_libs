@@ -19,7 +19,7 @@
 
   <!-- Sticky tab nav -->
   <nav :class="darkMode ? 'border-accent-1/30 bg-primary-bg-dark/90' : 'border-accent-2/30 bg-primary-bg-light/90'"
-       class="sticky top-0 z-40 flex items-center gap-1 border-b px-4 py-2 backdrop-blur sm:px-6">
+       class="sticky top-0 z-40 flex flex-wrap items-center gap-1 border-b px-4 py-2 backdrop-blur sm:px-6">
     <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
           class="mr-3 text-xs font-bold uppercase tracking-widest">{% trans "Locations" %}</span>
     <a href="{% url 'locations:locations_all' %}"
@@ -45,6 +45,14 @@
        :class="{% if request.resolver_match.namespace == 'places' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
       <i class="fa-solid fa-building fa-fw"></i> {% trans "Places" %}
+    </a>
+    {% endif %}
+    {% if request.user.is_superuser %}
+    {# Map domains (2026-09-30): superusers group map items and keep the groups to clearances. #}
+    <a href="{% url 'locations:domains' %}" data-testid="locations-tab-domains"
+       :class="{% if request.resolver_match.url_name == 'domains' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
+       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
+      <i class="fa-solid fa-object-group fa-fw"></i> {% trans "Domains" %}
     </a>
     {% endif %}
     {% if "toto.travels"|app_installed %}

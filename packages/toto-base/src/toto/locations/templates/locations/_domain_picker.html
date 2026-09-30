@@ -1,0 +1,30 @@
+{% load i18n %}{# Find an item by kind and name and click it to add it. Expects `picker` (the modal's name). #}
+<div class="flex flex-col gap-2 sm:flex-row">
+  <label class="sr-only" for="domain-kind-{{ picker }}">{% trans "Kind" %}</label>
+  <select id="domain-kind-{{ picker }}" x-model="kind" @change="search()" data-testid="domain-kind-{{ picker }}"
+          :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+          class="rounded border px-2 py-2">
+    <template x-for="k in kinds" :key="k.key"><option :value="k.key" x-text="k.title"></option></template>
+  </select>
+  <div class="relative min-w-0 flex-1">
+    <input type="search" x-ref="search_{{ picker }}" x-model="q" @input="search()"
+           @keydown.enter.prevent="!searching && results.length && pick(results[0])" autocomplete="off"
+           placeholder="{% trans 'Search by name' %}" data-testid="domain-search-{{ picker }}"
+           role="combobox" aria-autocomplete="list" aria-controls="domain-results-{{ picker }}" :aria-expanded="results.length > 0"
+           :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+           class="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-current/20">
+    <i x-show="searching" x-cloak class="fa-solid fa-circle-notch fa-spin absolute right-3 top-3 opacity-60" aria-hidden="true"></i>
+    <ul id="domain-results-{{ picker }}" role="listbox" x-show="results.length" x-cloak
+        :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+        class="mt-1 max-h-56 w-full overflow-y-auto rounded border shadow-sm">
+      <template x-for="item in results" :key="ref(item)">
+        <li role="option">
+          <button type="button" @click="pick(item)" class="flex w-full items-baseline justify-between gap-2 px-3 py-2 text-left hover:bg-current/10">
+            <span class="min-w-0 break-words" x-text="item.label"></span><span class="shrink-0 text-xs opacity-60" x-text="item.detail"></span>
+          </button>
+        </li>
+      </template>
+    </ul>
+    <p x-show="searched && !searching && !results.length && q.trim()" x-cloak class="mt-1 text-xs opacity-60">{% trans "Nothing found (or everything found is already in)." %}</p>
+  </div>
+</div>

@@ -1,0 +1,15 @@
+{% load i18n %}{# The clearance checkboxes of the New domain and Clearances modals, bound to the Alpine array named by `ticks`. #}
+<fieldset class="space-y-1">
+  <legend class="text-xs font-semibold opacity-70">{% trans "Clearances" %}</legend>
+  {% if all_clearances %}
+  <ul class="flex flex-wrap gap-2">
+    {% for clearance in all_clearances %}
+    <li><label :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="inline-flex items-center gap-2 rounded-full border px-3 py-1">
+      <input type="checkbox" name="clearance" value="{{ clearance.pk }}" x-model="{{ ticks }}" class="h-4 w-4 rounded">{{ clearance.name }}</label></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="text-xs opacity-70">{% trans "There are no clearances yet; superusers make them on the Clearances tab of Communities." %}</p>
+  {% endif %}
+  <p class="text-xs opacity-60">{% trans "None ticked: the domain keeps nothing and its items are every member's. Ticked: only superusers and whoever holds one of them — for every kept domain an item is in." %}</p>
+</fieldset>

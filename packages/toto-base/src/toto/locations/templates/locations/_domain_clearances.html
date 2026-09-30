@@ -1,0 +1,5 @@
+{% load i18n %}{# One domain's clearances, or "open". Expects `row`. #}
+<ul class="mt-1 flex flex-wrap gap-1.5" data-testid="domain-clearances-{{ row.domain.slug }}">
+  {% for clearance in row.clearances %}<li class="rounded-full border border-current/30 px-2 py-0.5 text-xs"><i class="fa-solid fa-shield-halved mr-1 opacity-60" aria-hidden="true"></i>{{ clearance.name }}</li>
+  {% empty %}<li class="text-xs opacity-60"><i class="fa-solid fa-lock-open mr-1" aria-hidden="true"></i>{% trans "None: open to every member." %}</li>{% endfor %}
+</ul>

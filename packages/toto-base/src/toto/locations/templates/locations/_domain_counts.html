@@ -1,0 +1,5 @@
+{% load i18n %}{# How many items of each kind one domain holds. Expects `row`. #}
+<ul class="mt-1 flex flex-wrap gap-1.5" data-testid="domain-counts-{{ row.domain.slug }}">
+  {% for c in row.counts %}<li class="rounded-full border border-current/30 px-2 py-0.5 text-xs" data-kind="{{ c.key }}"><i class="{{ c.icon }} mr-1 opacity-60" aria-hidden="true"></i>{{ c.title }}: {{ c.count }}</li>
+  {% empty %}<li class="text-xs opacity-60">{% trans "No items yet." %}</li>{% endfor %}
+</ul>

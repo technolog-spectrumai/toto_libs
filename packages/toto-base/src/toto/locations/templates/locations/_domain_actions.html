@@ -1,0 +1,12 @@
+{% load i18n %}{# A domain's three doors: its items, its clearances, delete — each a modal. Expects `row`. #}
+<div class="inline-flex flex-wrap justify-end gap-1.5">
+  <button type="button" @click="show('items', {{ row.domain.pk }})" data-testid="domain-items-{{ row.domain.slug }}"
+          class="inline-flex items-center gap-1 rounded border border-current/25 px-2.5 py-1 text-xs font-semibold transition hover:opacity-80">
+    <i class="fa-solid fa-list" aria-hidden="true"></i>{% trans "Items" %}</button>
+  <button type="button" @click="show('clearances', {{ row.domain.pk }})" data-testid="domain-clearances-open-{{ row.domain.slug }}"
+          class="inline-flex items-center gap-1 rounded border border-current/25 px-2.5 py-1 text-xs font-semibold transition hover:opacity-80">
+    <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>{% trans "Clearances" %}</button>
+  <button type="button" @click="show('delete', {{ row.domain.pk }})" data-testid="domain-delete-{{ row.domain.slug }}"
+          class="inline-flex items-center gap-1 rounded border border-current/25 px-2.5 py-1 text-xs font-semibold transition hover:opacity-80">
+    <i class="fa-solid fa-trash" aria-hidden="true"></i>{% trans "Delete" %}</button>
+</div>
