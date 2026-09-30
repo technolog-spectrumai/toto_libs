@@ -24,7 +24,7 @@ from toto.assets.services.bootstrap import (CORE_ASSETS, DEFAULT_FAUCETS,
                                             ensure_monetary_issuer)
 from toto.assets.testing import TEST_ISSUER_KEY
 
-CORE_UNITS = {"ASR", "TPLN"}
+CORE_UNITS = {"ASR", "FLOR"}
 
 
 def core_units():
@@ -216,10 +216,10 @@ class DefaultFaucetTests(TestCase):
             set(self.faucets().values_list("asset__unit_name", flat=True)),
             {"ASR"})
 
-    def test_tpln_gets_none(self):
+    def test_flor_gets_none(self):
         """The accounting currency, not something people are paid in. A faucet
         nobody will switch on is a row that only invites a question."""
-        self.assertFalse(self.faucets().filter(asset__unit_name="TPLN").exists())
+        self.assertFalse(self.faucets().filter(asset__unit_name="FLOR").exists())
 
     def test_each_one_is_switched_off(self):
         for faucet in self.faucets():

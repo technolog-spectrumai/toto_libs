@@ -32,10 +32,10 @@ class SettlementTestCase(TestCase):
         bootstrap_economy()
         self.staff = User.objects.create_user("staff", password="pw", is_staff=True)
         self.punter = User.objects.create_user("punter", password="pw")
-        # TPLN as "an active currency that is not the default": with ASR the
+        # FLOR, the Florin, as "an active currency that is not the default": with ASR the
         # default since MANA was retired, choosing ASR would be
         # indistinguishable from choosing nothing.
-        self.tpln = Asset.objects.get(unit_name="TPLN")
+        self.flor = Asset.objects.get(unit_name="FLOR")
         self.asr = Asset.objects.get(unit_name="ASR")
 
 
@@ -57,8 +57,8 @@ class DefaultTests(SettlementTestCase):
 class ChoosingTests(SettlementTestCase):
 
     def test_a_choice_is_honoured(self):
-        set_settlement_asset(self.tpln, actor=self.staff)
-        self.assertEqual(settlement_asset().unit_name, "TPLN")
+        set_settlement_asset(self.flor, actor=self.staff)
+        self.assertEqual(settlement_asset().unit_name, "FLOR")
 
     def test_a_choice_records_who_made_it(self):
         set_settlement_asset(self.asr, actor=self.staff)
@@ -67,9 +67,9 @@ class ChoosingTests(SettlementTestCase):
     def test_choosing_again_replaces_rather_than_accumulates(self):
         """One platform, one row — the database refuses a second."""
         set_settlement_asset(self.asr, actor=self.staff)
-        set_settlement_asset(self.tpln, actor=self.staff)
+        set_settlement_asset(self.flor, actor=self.staff)
         self.assertEqual(SettlementAsset.objects.count(), 1)
-        self.assertEqual(settlement_asset().unit_name, "TPLN")
+        self.assertEqual(settlement_asset().unit_name, "FLOR")
 
     def test_an_inactive_currency_is_refused(self):
         self.asr.active = False
@@ -84,9 +84,9 @@ class ChoosingTests(SettlementTestCase):
     def test_a_choice_that_later_goes_inactive_falls_through_to_the_default(self):
         """Settling in a retired currency is the failure this order avoids.
         Falling through beats refusing to pay anybody."""
-        set_settlement_asset(self.tpln, actor=self.staff)
-        self.tpln.active = False
-        self.tpln.save(update_fields=["active"])
+        set_settlement_asset(self.flor, actor=self.staff)
+        self.flor.active = False
+        self.flor.save(update_fields=["active"])
         self.assertEqual(settlement_asset().unit_name, DEFAULT_UNIT)
 
 
@@ -98,18 +98,18 @@ class OneServiceTests(SettlementTestCase):
 
         set_settlement_asset(self.asr, actor=self.staff)
         self.assertEqual(gas_asset().unit_name, "ASR")
-        set_settlement_asset(self.tpln, actor=self.staff)
-        self.assertEqual(gas_asset().unit_name, "TPLN")
+        set_settlement_asset(self.flor, actor=self.staff)
+        self.assertEqual(gas_asset().unit_name, "FLOR")
 
     @override_settings(GAS_ASSET="ASR")
     def test_a_stale_gas_setting_no_longer_overrides_the_choice(self):
         """`settings.GAS_ASSET` survives only as a genesis-time seed hint. A
         host that switched settlement asset still granted newcomers the old one
         while `prepaid` read that setting directly."""
-        set_settlement_asset(self.tpln, actor=self.staff)
+        set_settlement_asset(self.flor, actor=self.staff)
         from toto.tariffs.rate_card import gas_asset
 
-        self.assertEqual(gas_asset().unit_name, "TPLN")
+        self.assertEqual(gas_asset().unit_name, "FLOR")
 
 
 class ViewTests(SettlementTestCase):
@@ -124,11 +124,11 @@ class ViewTests(SettlementTestCase):
         self.assertEqual(settlement_asset().unit_name, "ASR")
 
     def test_the_current_choice_is_shown(self):
-        set_settlement_asset(self.tpln, actor=self.staff)
+        set_settlement_asset(self.flor, actor=self.staff)
         self.client.force_login(self.staff)
         body = self.client.get(reverse("assets:asset_list")).content.decode()
         self.assertIn("Settles in", body)
-        self.assertIn("TPLN", body)
+        self.assertIn("FLOR", body)
 
     def test_an_ordinary_user_may_see_it_but_not_change_it(self):
         self.client.force_login(self.punter)

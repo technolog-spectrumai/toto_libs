@@ -104,7 +104,7 @@ class OtherPriceWritersTests(PricingTestCase):
         from toto.tariffs.rate_card import default_tariff
 
         tariff = default_tariff()
-        tariff.default_asset = Asset.objects.get(unit_name="TPLN")
+        tariff.default_asset = Asset.objects.get(unit_name="FLOR")
         tariff.save(update_fields=["default_asset"])
         self.assertTrue(rates.set_price("workflows.run", "3"))
         self.assertEqual(self.item("workflows.run").charged_asset.unit_name, "RED")
@@ -114,9 +114,9 @@ class OtherPriceWritersTests(PricingTestCase):
 
         self.ingress()
         self.assertTrue(rates.set_price("subscription.month", "1"))
-        tpln = Asset.objects.get(unit_name="TPLN")
-        rates.set_charging_currency(tpln.pk)
-        self.assertEqual(self.item("subscription.month").charged_asset.unit_name, "TPLN")
+        flor = Asset.objects.get(unit_name="FLOR")
+        rates.set_charging_currency(flor.pk)
+        self.assertEqual(self.item("subscription.month").charged_asset.unit_name, "FLOR")
         self.assertEqual(self.item("storage.request").charged_asset.unit_name, "GREEN")
 
 

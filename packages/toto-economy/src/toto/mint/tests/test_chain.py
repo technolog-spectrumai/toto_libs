@@ -199,11 +199,11 @@ class AppendTests(TestCase):
     def test_one_chain_spans_every_currency(self):
         # Per-currency supply is a filtered sum; the ORDER is platform-wide,
         # because there is one authority making these decisions.
-        other = make_asset(unit_name="TPLN")
+        other = make_asset(unit_name="FLOR")
         first = append_event(asset=self.asset, kind="mint",
                              amount_base_units=1000, reason="asr")
         second = append_event(asset=other, kind="mint",
-                              amount_base_units=2000, reason="tpln")
+                              amount_base_units=2000, reason="flor")
 
         self.assertEqual(second.prev_hash, first.event_hash)
         self.assertEqual(

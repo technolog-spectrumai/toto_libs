@@ -61,9 +61,9 @@ class CurrencyRowTests(TestCase):
         self.assertFalse(row.reserve_matches_supply)
 
     def test_an_engraved_but_unminted_currency_shows_a_full_headroom(self):
-        engrave_currency(name="Zloty", unit_name="TPLN",
+        engrave_currency(name="Florin", unit_name="FLOR",
                          max_supply=Decimal("500"), decimals=2)
-        row = next(r for r in currency_rows() if r.asset.unit_name == "TPLN")
+        row = next(r for r in currency_rows() if r.asset.unit_name == "FLOR")
 
         self.assertEqual(row.supply, Decimal("0.00"))
         self.assertEqual(row.unminted, Decimal("500.00"))

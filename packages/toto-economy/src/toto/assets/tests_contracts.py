@@ -28,7 +28,7 @@ class NodeIdentityTests(TestCase):
 class AssignTests(TestCase):
     def setUp(self):
         self.asset = make_asset(unit_name="ASR")
-        self.other = make_asset(unit_name="TPLN")
+        self.other = make_asset(unit_name="FLOR")
 
     def test_the_master_self_contracts(self):
         contract = assign_contract(node=node_id(), asset=self.asset)

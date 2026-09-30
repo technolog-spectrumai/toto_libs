@@ -763,9 +763,9 @@ class GasGrantTests(TestCase):
         from toto.quota.rates import set_charging_currency
 
         item = self.seed()
-        set_charging_currency(Asset.objects.get(unit_name="TPLN").pk)
+        set_charging_currency(Asset.objects.get(unit_name="FLOR").pk)
         item.refresh_from_db()
-        self.assertEqual(item.charged_asset.unit_name, "TPLN")
+        self.assertEqual(item.charged_asset.unit_name, "FLOR")
 
         user = self.newcomer("switched")
         self.assertEqual(self.held(user, item.charged_asset), Decimal("0.1"))

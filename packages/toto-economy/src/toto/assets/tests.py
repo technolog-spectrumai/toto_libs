@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.test import override_settings
 from toto.assets.testing import LedgerTestCase as TestCase
+from toto.assets.testing import TEST_ISSUER_KEY
 
 _SIMPLE_STATIC = "django.contrib.staticfiles.storage.StaticFilesStorage"
 
@@ -373,40 +374,42 @@ class WithoutBourseTests(TestCase):
 # ---------------------------------------------------------------------------
 
 class IngressAssetsTests(TestCase):
-    """The seeder mints exactly two currencies: ASR and TPLN."""
+    """The seeder mints exactly two currencies: ASR, the Assarion, and FLOR,
+    the Florin, which replaced TPLN on 2026-09-30."""
 
     def setUp(self):
         from django.core.management import call_command
         from io import StringIO
         self.call = lambda: call_command("ingress_assets", stdout=StringIO(), stderr=StringIO())
 
-    def test_seeds_asr_and_tpln_only(self):
+    def test_seeds_asr_and_flor_only(self):
         self.call()
 
         asr = Asset.objects.get(unit_name="ASR")
-        tpln = Asset.objects.get(unit_name="TPLN")
+        flor = Asset.objects.get(unit_name="FLOR")
         self.assertEqual(asr.name, "Assarion")
         self.assertEqual(asr.decimals, 9)
         self.assertEqual(asr.max_supply_display, Decimal("6666.666666667"))
-        self.assertEqual(tpln.name, "Toto Złoty")
-        self.assertEqual(tpln.decimals, 2)
-        self.assertEqual(tpln.max_supply_display, Decimal("76658.70"))
-        # The display code lives on the asset now — there is one kind of thing,
-        # and what makes it a platform's CURRENCY is that platform's contract.
-        self.assertEqual(asr.code, "ASR")
-        self.assertEqual(tpln.code, "TPLN")
-        self.assertEqual(tpln.symbol, "tzł")
+        self.assertEqual(flor.name, "Florin")
+        self.assertEqual(flor.decimals, 2)
+        self.assertEqual(flor.max_supply_display, Decimal("76658.70"))
+        # The short name and the symbol live on the asset — there is one kind
+        # of thing, and what makes it a platform's CURRENCY is that platform's
+        # contract. The short name is not the ticker: ASR's is ASAR.
+        self.assertEqual((asr.code, asr.symbol), ("ASAR", "ASR"))
+        self.assertEqual((flor.code, flor.symbol), ("FLOR", "ƒ"))
 
         self.assertFalse(Asset.objects.filter(unit_name="AUR").exists())
+        self.assertFalse(Asset.objects.filter(unit_name="TPLN").exists())
         self.assertEqual(
-            sorted(Asset.objects.exclude(code="").values_list("code", flat=True)),
-            ["ASR", "TPLN"],
+            sorted(Asset.objects.exclude(symbol="").values_list("code", flat=True)),
+            ["ASAR", "FLOR"],
         )
 
     def test_currency_wording_is_neutral(self):
         self.call()
 
-        for asset in Asset.objects.exclude(code=""):
+        for asset in Asset.objects.exclude(symbol=""):
             # The descriptive text lives on the asset's creation transaction.
             creation = LedgerTransaction.objects.filter(
                 asset=asset, transaction_type=TransactionType.ASSET_CREATE,
@@ -418,16 +421,42 @@ class IngressAssetsTests(TestCase):
             self.assertNotIn("stablecoin", blob)
             self.assertNotIn("peg", blob)
 
+    def test_no_seeded_asset_mentions_a_real_currency(self):
+        """economy.md, "No real currency, anywhere": no asset — the demo tokens
+        included — is named after, priced in or converted through a real
+        currency. Historic coins (the florin, the assarion) are fine."""
+        import re
+        from django.core.management import call_command
+        from io import StringIO
+
+        call_command("ingress_assets", full=True, stdout=StringIO(), stderr=StringIO())
+
+        real = re.compile(
+            r"\b(pln|usd|eur|euros?|gbp|chf|jpy|tpln|dollars?)\b|z[łl]oty|zł|"
+            r"\$|€|£", re.IGNORECASE)
+        for asset in Asset.objects.all():
+            creation = LedgerTransaction.objects.filter(
+                asset=asset, transaction_type=TransactionType.ASSET_CREATE,
+            ).first()
+            blob = " ".join([
+                asset.name, asset.unit_name, asset.code, asset.symbol,
+                asset.backing_document, asset.minting_authority,
+                str(asset.metadata), creation.description if creation else "",
+            ])
+            self.assertIsNone(real.search(blob), f"{asset.unit_name}: {blob}")
+
     def test_reseeding_is_idempotent(self):
         self.call()
         self.call()
 
         self.assertFalse(Asset.objects.filter(unit_name="MANA").exists())
         self.assertEqual(Asset.objects.filter(unit_name="ASR").count(), 1)
-        self.assertEqual(Asset.objects.filter(unit_name="TPLN").count(), 1)
+        self.assertEqual(Asset.objects.filter(unit_name="FLOR").count(), 1)
+        self.assertEqual(Asset.objects.get(unit_name="FLOR").code, "FLOR")
+        self.assertEqual(Asset.objects.get(unit_name="ASR").code, "ASAR")
 
     def test_a_base_build_has_exactly_the_two_core_currencies(self):
-        # ASR is the gas and the settlement default, TPLN is the unit of
+        # ASR is the gas and the settlement default, FLOR is the unit of
         # account. Everything else is demo material and must not reach a real
         # deployment.
         #
@@ -441,7 +470,7 @@ class IngressAssetsTests(TestCase):
         self.assertEqual(
             sorted(Asset.objects.exclude(metadata__family="toto_mana")
                    .values_list("unit_name", flat=True)),
-            ["ASR", "TPLN"],
+            ["ASR", "FLOR"],
         )
         for asset in Asset.objects.all():
             self.assertNotEqual((asset.metadata or {}).get("kind"), "platform_token")
@@ -455,12 +484,15 @@ class IngressAssetsTests(TestCase):
         units = set(Asset.objects.values_list("unit_name", flat=True))
         self.assertIn("BANANA", units)
         self.assertIn("MAKARONI", units)
-        # The demo tokens carry no display code, so nothing quotes a price in
-        # bananas by accident. Whether an asset is anyone's CURRENCY is a
-        # contract question, asked per platform.
+        # Every asset has a short name, the demo tokens too...
+        self.assertEqual(Asset.objects.get(unit_name="BANANA").code, "BNNA")
+        self.assertEqual(Asset.objects.get(unit_name="MAKARONI").code, "MACA")
+        # ...but they carry no symbol, so nothing quotes a price in bananas by
+        # accident. Whether an asset is anyone's CURRENCY is a contract
+        # question, asked per platform.
         self.assertEqual(
-            sorted(Asset.objects.exclude(code="").values_list("code", flat=True)),
-            ["ASR", "TPLN"])
+            sorted(Asset.objects.exclude(symbol="").values_list("code", flat=True)),
+            ["ASAR", "FLOR"])
 
 
 # ---------------------------------------------------------------------------
@@ -930,3 +962,406 @@ class AuthorizationGrantSigningTests(TestCase):
         other_key = _make_ledger_account_key(other_ledger, other_epk, other_pub)
         with self.assertRaises(ValueError):
             sign_authorization_grant(self.auth, other_key, other_session)
+
+
+# ---------------------------------------------------------------------------
+# Short names (2026-09-30): every asset has four capital letters, the key of
+# its page — /assets/assets/FLOR/, never /assets/assets/2/.
+# ---------------------------------------------------------------------------
+
+def _never_taken(code):
+    return False
+
+
+class DeriveAssetCodeTests(TestCase):
+    """``derive_asset_code``: the ticker's letters, padded with X, the tail
+    varied until the code is free."""
+
+    def derive(self, unit_name, taken=_never_taken):
+        from .models import derive_asset_code
+
+        return derive_asset_code(unit_name, taken)
+
+    def test_it_keeps_the_first_four_letters_of_the_ticker(self):
+        self.assertEqual(self.derive("BANANA"), "BANA")
+        self.assertEqual(self.derive("FLOR"), "FLOR")
+
+    def test_it_takes_letters_only_and_upper_cases_them(self):
+        self.assertEqual(self.derive("a1-b2c3d"), "ABCD")
+        self.assertEqual(self.derive("gld"), "GLDX")
+
+    def test_a_short_ticker_is_padded_with_x(self):
+        self.assertEqual(self.derive("ASR"), "ASRX")
+        self.assertEqual(self.derive("Z"), "ZXXX")
+
+    def test_a_ticker_with_no_letters_at_all_still_gets_a_code(self):
+        self.assertEqual(self.derive("123"), "XXXX")
+        self.assertEqual(self.derive(""), "XXXX")
+        self.assertEqual(self.derive(None), "XXXX")
+
+    def test_a_taken_code_varies_the_tail(self):
+        self.assertEqual(self.derive("ASR", {"ASRX"}.__contains__), "ASRA")
+        self.assertEqual(self.derive("ASR", {"ASRX", "ASRA"}.__contains__), "ASRB")
+
+    def test_when_the_last_letter_runs_out_it_varies_the_last_two(self):
+        import string
+
+        taken = {"ASRX"} | {"ASR" + c for c in string.ascii_uppercase}
+        self.assertEqual(self.derive("ASR", taken.__contains__), "ASAA")
+
+    def test_every_derived_code_is_valid_and_unique(self):
+        import re
+
+        from .models import ASSET_CODE_RE
+
+        taken = set()
+        for _ in range(60):
+            code = self.derive("GAS", taken.__contains__)
+            self.assertRegex(code, ASSET_CODE_RE)
+            self.assertNotIn(code, taken)
+            taken.add(code)
+        self.assertTrue(all(re.fullmatch(ASSET_CODE_RE, c) for c in taken))
+
+    def test_when_every_code_is_taken_it_says_so(self):
+        with self.assertRaises(ValidationError):
+            self.derive("GAS", lambda code: True)
+
+
+class AssetShortNameTests(TestCase):
+    """``Asset.code``: given, or derived by ``save``; four capital letters;
+    unique in the database."""
+
+    def test_a_blank_short_name_is_derived_on_save(self):
+        from .testing import make_asset
+
+        self.assertEqual(make_asset(unit_name="GAS").code, "GASX")
+
+    def test_a_derived_short_name_steps_around_a_taken_one(self):
+        from .testing import make_asset
+
+        make_asset(unit_name="GAS")
+        self.assertEqual(make_asset(unit_name="GAS1").code, "GASA")
+
+    def test_a_given_short_name_is_kept(self):
+        from .testing import make_asset
+
+        self.assertEqual(make_asset(unit_name="ASR", code="ASAR").code, "ASAR")
+
+    def test_a_malformed_short_name_is_refused_on_create(self):
+        from .testing import make_asset
+
+        for code in ("ASR", "ASSAR", "asar", "Asar", "AS1R", "AS R", "ÄSAR", "A-SR"):
+            with self.subTest(code=code):
+                with self.assertRaises(ValidationError) as caught:
+                    make_asset(unit_name="BAD", code=code)
+                self.assertIn("code", caught.exception.message_dict)
+                self.assertFalse(Asset.objects.filter(unit_name="BAD").exists())
+
+    def test_a_malformed_short_name_is_refused_on_update(self):
+        from .testing import make_asset
+
+        asset = make_asset(unit_name="FLOR", code="FLOR")
+        asset.code = "fl0r"
+        with self.assertRaises(ValidationError):
+            asset.save()
+        asset.refresh_from_db()
+        self.assertEqual(asset.code, "FLOR")
+
+    def test_the_database_refuses_a_second_asset_with_the_same_short_name(self):
+        from django.db import IntegrityError, transaction
+
+        from .testing import make_asset
+
+        make_asset(unit_name="FLOR", code="FLOR")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            make_asset(unit_name="FLORIN", code="FLOR")
+
+    def test_the_database_refuses_it_even_past_save(self):
+        from django.db import IntegrityError, transaction
+
+        from .testing import make_asset
+
+        make_asset(unit_name="FLOR", code="FLOR")
+        other = make_asset(unit_name="GOLD")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Asset.objects.filter(pk=other.pk).update(code="FLOR")
+
+    def test_the_page_is_keyed_by_the_short_name_and_not_the_number(self):
+        from django.urls import reverse
+
+        from .testing import make_asset
+
+        asset = make_asset(unit_name="FLOR", code="FLOR")
+        url = asset.get_absolute_url()
+        self.assertEqual(url, reverse("assets:asset_detail", args=["FLOR"]))
+        self.assertTrue(url.endswith("/assets/FLOR/"), url)
+        self.assertNotIn(f"/{asset.pk}/", url)
+
+
+@override_settings(STATICFILES_STORAGE=_SIMPLE_STATIC)
+class AssetPageByShortNameTests(TestCase):
+    """/assets/assets/FLOR/: the page, the old numeric address, and the
+    distribution door, all keyed by the short name."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+
+        _make_platform()
+        self.staff = get_user_model().objects.create_user(
+            username="keeper", password="pw", is_staff=True)
+        self.client.force_login(self.staff)
+        self.reserve = make_account("flor-reserve", "reserve")
+        self.asset = create_currency(
+            name="Florin", unit_name="FLOR", total_supply=Decimal("1000"),
+            decimals=2, reserve_account=self.reserve, reference="create-flor-page",
+            code="FLOR", symbol="ƒ")
+
+    def base(self):
+        from django.urls import reverse
+
+        return reverse("assets:asset_list") + "assets/"
+
+    def test_the_page_answers_at_its_short_name(self):
+        response = self.client.get(self.base() + "FLOR/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["asset"], self.asset)
+
+    def test_an_unknown_short_name_is_a_404(self):
+        self.assertEqual(self.client.get(self.base() + "ZZZZ/").status_code, 404)
+
+    def test_anything_but_four_capital_letters_is_not_an_asset_address(self):
+        from django.urls import Resolver404, resolve
+
+        for bad in ("flor", "Flor", "FLO", "FLORI", "FL0R"):
+            with self.subTest(path=bad):
+                path = self.base() + bad + "/"
+                with self.assertRaises(Resolver404):
+                    resolve(path)
+                self.assertEqual(self.client.get(path).status_code, 404)
+
+    def test_the_old_numeric_address_moves_permanently_to_the_short_name(self):
+        from django.urls import reverse
+
+        old = reverse("assets:asset_detail_by_pk", args=[self.asset.pk])
+        self.assertEqual(old, self.base() + f"{self.asset.pk}/")
+        response = self.client.get(old)
+        self.assertRedirects(response, self.asset.get_absolute_url(),
+                             status_code=301)
+
+    def test_an_old_numeric_address_nothing_has_is_a_404(self):
+        from django.urls import reverse
+
+        missing = reverse("assets:asset_detail_by_pk", args=[self.asset.pk + 999])
+        self.assertEqual(self.client.get(missing).status_code, 404)
+
+    def test_distribution_is_addressed_by_the_short_name(self):
+        from django.urls import reverse
+
+        url = reverse("assets:asset_distribute", args=["FLOR"])
+        self.assertEqual(url, self.base() + "FLOR/distribute/")
+        alice = make_account("alice-flor")
+        response = self.client.post(
+            url, {"amount": "25", "recipient_account": str(alice.pk)})
+        self.assertRedirects(response, self.asset.get_absolute_url(),
+                             fetch_redirect_response=False)
+        self.assertEqual(get_asset_balance_display(self.asset, alice),
+                         Decimal("25.00"))
+
+    def test_distribution_to_an_unknown_short_name_is_a_404(self):
+        from django.urls import reverse
+
+        alice = make_account("alice-flor")
+        response = self.client.post(
+            reverse("assets:asset_distribute", args=["ZZZZ"]),
+            {"amount": "25", "recipient_account": str(alice.pk)})
+        self.assertEqual(response.status_code, 404)
+
+    def test_the_detail_page_links_distribution_by_the_short_name(self):
+        from django.urls import reverse
+
+        body = self.client.get(self.asset.get_absolute_url()).content.decode()
+        self.assertIn(reverse("assets:asset_distribute", args=["FLOR"]), body)
+
+
+@override_settings(STATICFILES_STORAGE=_SIMPLE_STATIC)
+class WalletCurrenciesTests(TestCase):
+    """The wallet's currencies are the assets carrying a symbol — not the ones
+    carrying a code, which since 2026-09-30 is every asset."""
+
+    def test_only_active_assets_with_a_symbol_are_currencies(self):
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+
+        from .testing import make_asset
+
+        _make_platform()
+        flor = make_asset(unit_name="FLOR", code="FLOR", symbol="ƒ")
+        make_asset(unit_name="BANANA", code="BNNA")               # no symbol
+        make_asset(unit_name="OLD", code="OLDX", symbol="o", active=False)
+        user = get_user_model().objects.create_user(username="holder", password="pw")
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("assets:wallet"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context["currencies"]), [flor])
+
+
+@override_settings(MONETARY_ISSUER_KEY=TEST_ISSUER_KEY, ASSETS_MONETARY_MASTER=True)
+class SeededShortNameTests(TestCase):
+    """The seeds carry the owner's short names: the Assarion ASAR (ticker ASR),
+    the Florin FLOR, the mana pools SECU/COMP/STOR."""
+
+    def test_the_core_currencies(self):
+        from .services.bootstrap import ensure_core_assets
+
+        core = ensure_core_assets()
+
+        asr, flor = core["ASR"], core["FLOR"]
+        self.assertEqual((asr.name, asr.code, asr.symbol), ("Assarion", "ASAR", "ASR"))
+        self.assertEqual((flor.name, flor.code, flor.symbol), ("Florin", "FLOR", "ƒ"))
+        self.assertEqual(flor.decimals, 2)
+        self.assertEqual(flor.max_supply_display, Decimal("76658.70"))
+        self.assertEqual(set(core), {"ASR", "FLOR"})
+        self.assertFalse(Asset.objects.filter(unit_name="TPLN").exists())
+
+    def test_the_mana_pools(self):
+        from django.apps import apps
+
+        if not apps.is_installed("toto.mana"):
+            self.skipTest("this build has no mana")
+        from .services.bootstrap import bootstrap_economy
+
+        bootstrap_economy()
+
+        codes = dict(Asset.objects.filter(metadata__family="toto_mana")
+                     .values_list("unit_name", "code"))
+        self.assertEqual(codes, {"BLUE": "SECU", "RED": "COMP", "GREEN": "STOR"})
+        # Mana is not a currency: no symbol, so the wallet does not list it.
+        self.assertFalse(Asset.objects.filter(metadata__family="toto_mana")
+                         .exclude(symbol="").exists())
+
+    def test_reseeding_keeps_the_short_names(self):
+        from .services.bootstrap import bootstrap_economy
+
+        bootstrap_economy()
+        bootstrap_economy()
+        self.assertEqual(Asset.objects.get(unit_name="ASR").code, "ASAR")
+        self.assertEqual(Asset.objects.get(unit_name="FLOR").code, "FLOR")
+
+
+def _short_name_migration():
+    import importlib
+
+    return importlib.import_module("toto.assets.migrations.0010_asset_short_name")
+
+
+class _FakeRows:
+    """Just enough of a historical model manager for ``fill_codes``:
+    ``order_by`` and ``filter(pk=...).update(code=...)``."""
+
+    class _Row:
+        def __init__(self, pk, unit_name, code):
+            self.pk, self.unit_name, self.code = pk, unit_name, code
+
+    def __init__(self, *rows):
+        self.rows = [self._Row(pk, unit, code)
+                     for pk, (unit, code) in enumerate(rows, start=1)]
+
+    # the manager
+    def order_by(self, field):
+        assert field == "pk", field
+        return sorted(self.rows, key=lambda r: r.pk)
+
+    def filter(self, pk):
+        rows = self
+
+        class _One:
+            def update(self, code):
+                for row in rows.rows:
+                    if row.pk == pk:
+                        row.code = code
+
+        return _One()
+
+    # the apps registry
+    def get_model(self, app_label, model_name):
+        assert (app_label, model_name) == ("assets", "Asset")
+        fake = self
+
+        class _Model:
+            objects = fake
+
+        return _Model
+
+    def codes(self):
+        return {row.unit_name: row.code for row in self.rows}
+
+
+class ShortNameMigrationTests(TestCase):
+    """0010_asset_short_name's ``fill_codes``: keep a valid free code, give the
+    seeded tickers the owner's choice, derive the rest uniquely."""
+
+    def fill(self, apps):
+        _short_name_migration().fill_codes(apps, None)
+
+    def test_against_the_real_table(self):
+        from .testing import make_asset
+
+        rows = {
+            # unit_name: the code it had before the migration
+            "GOLD1": "GOLD",       # valid and free: kept
+            "ASR": "ASR",          # the old ingress display code: chosen ASAR
+            "BLUE": "BLU",         # a mana pool: chosen SECU
+            "RED": "red",
+            "GREEN": "GRN",
+            "BANANA": "BAN",       # demo token: chosen BNNA
+            "MAKARONI": "MAK",     # demo token: chosen MACA
+            "GOLDEN": "gold",      # derived GOLD is taken: the tail varies
+            "XY": "xy",            # short: padded
+        }
+        assets = {}
+        for unit in rows:
+            assets[unit] = make_asset(unit_name=unit)
+        for unit, before in rows.items():
+            # Past save(), which would refuse these: they are what the column
+            # held before the rule existed.
+            Asset.objects.filter(pk=assets[unit].pk).update(code=before)
+
+        class Apps:
+            @staticmethod
+            def get_model(app_label, model_name):
+                return Asset
+
+        self.fill(Apps)
+
+        after = dict(Asset.objects.values_list("unit_name", "code"))
+        self.assertEqual(after, {
+            "GOLD1": "GOLD", "ASR": "ASAR", "BLUE": "SECU", "RED": "COMP",
+            "GREEN": "STOR", "BANANA": "BNNA", "MAKARONI": "MACA",
+            "GOLDEN": "GOLA", "XY": "XYXX",
+        })
+
+    def test_a_valid_code_is_kept_only_once(self):
+        """Two rows claiming the same valid code: the older keeps it."""
+        rows = _FakeRows(("OLD", "SAME"), ("NEW", "SAME"))
+        self.fill(rows)
+        self.assertEqual(rows.codes(), {"OLD": "SAME", "NEW": "NEWX"})
+
+    def test_a_chosen_code_already_held_is_not_taken_from_its_holder(self):
+        rows = _FakeRows(("ZZZ", "ASAR"), ("ASR", "ASR"))
+        self.fill(rows)
+        self.assertEqual(rows.codes(), {"ZZZ": "ASAR", "ASR": "ASRX"})
+
+    def test_every_code_it_writes_is_four_capital_letters_and_unique(self):
+        import re
+
+        rows = _FakeRows(*[("GAS" + str(i), "") for i in range(40)],
+                         ("FLOR", "flor"), ("MANA", ""), ("", None))
+        self.fill(rows)
+        codes = list(rows.codes().values())
+        self.assertEqual(len(codes), len(set(codes)))
+        for code in codes:
+            self.assertTrue(re.fullmatch(r"[A-Z]{4}", code), code)
+        self.assertEqual(rows.codes()["FLOR"], "FLOR")
+        self.assertEqual(rows.codes()["MANA"], "MANA")

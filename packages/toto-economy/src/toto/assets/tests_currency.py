@@ -54,8 +54,8 @@ class CanonicalisationTests(SimpleTestCase):
             canonical({"supply": Decimal("5")})
 
     def test_unicode_in_names_is_preserved_not_escaped(self):
-        one = compute_currency_hash(_document(name="Złoty"))
-        other = compute_currency_hash(_document(name="Zloty"))
+        one = compute_currency_hash(_document(name="Dénier"))
+        other = compute_currency_hash(_document(name="Denier"))
         self.assertNotEqual(one, other)
 
 
@@ -94,8 +94,8 @@ class CurrencyHashTests(SimpleTestCase):
         baseline = compute_currency_hash(_document())
         variations = {
             "issuer_fingerprint": "c" * 64,
-            "unit_name": "TPLN",
-            "name": "Toto Zloty",
+            "unit_name": "FLOR",
+            "name": "Florin",
             "decimals": 2,
             "max_supply_base_units": 42,
             "genesis_nonce": "d" * 64,

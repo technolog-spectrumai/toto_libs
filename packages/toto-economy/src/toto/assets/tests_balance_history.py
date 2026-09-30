@@ -37,7 +37,7 @@ from .views import BALANCE_HISTORY_DAYS, _balance_history_json
 User = get_user_model()
 
 
-def _asset(code="ASR", decimals=2):
+def _asset(unit_name="ASR", code="ASAR", decimals=2):
     """An engraved currency with no supply — a legitimate state, and the one
     these tests want.
 
@@ -47,8 +47,11 @@ def _asset(code="ASR", decimals=2):
     the test wrote. A bare ``Asset.objects.create`` is not an option either —
     the model carries a genesis-hash CHECK constraint, because every asset here
     carries provenance.
+
+    The chart labels a line with the asset's short name (four capital
+    letters since 2026-09-30), so the fixture names one.
     """
-    return engrave_currency(name=code, unit_name=code, code=code,
+    return engrave_currency(name=unit_name, unit_name=unit_name, code=code,
                             max_supply=Decimal("1000000"), decimals=decimals)
 
 
@@ -176,22 +179,22 @@ class BalanceHistoryTests(TestCase):
             self.assertIsInstance(point, float)
 
     def test_one_line_per_asset(self):
-        other = _asset(code="GLD", decimals=3)
+        other = _asset(unit_name="GLD", code="GOLD", decimals=3)
         self._hold(10_000)
         self._hold(2_000, asset=other)
 
         payload = json.loads(_balance_history_json(self.user, [self.account.pk]))
 
         self.assertEqual({d["label"] for d in payload["datasets"]},
-                         {"ASR", "GLD"})
+                         {"ASAR", "GOLD"})
 
     def test_decimals_are_per_asset(self):
-        other = _asset(code="GLD", decimals=3)
+        other = _asset(unit_name="GLD", code="GOLD", decimals=3)
         self._hold(10_000)
         self._hold(2_000, asset=other)
 
-        self.assertEqual(self._series("ASR")[-1], 100.0)
-        self.assertEqual(self._series("GLD")[-1], 2.0)
+        self.assertEqual(self._series("ASAR")[-1], 100.0)
+        self.assertEqual(self._series("GOLD")[-1], 2.0)
 
     def test_an_asset_spent_to_nothing_still_gets_a_line(self):
         """No holding row, but movements in the window — "you had some and now

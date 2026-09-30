@@ -145,14 +145,14 @@ class ManualGrantTests(FaucetTestCase):
         account, _ = get_or_create_prepaid_account(self.ada)
         asset = self.pools["security"].asset
         self.client.force_login(self.staff)
-        response = self.client.post(reverse("assets:asset_distribute", args=[asset.pk]),
+        response = self.client.post(reverse("assets:asset_distribute", args=[asset.code]),
                                     {"amount": "5", "recipient_account": account.pk}, follow=True)
         self.assertContains(response, "mana pool")
         self.assertFalse(ManaGrant.objects.filter(user=self.ada, key__startswith="dist").exists())
         from toto.assets.models import LedgerTransaction
 
         self.assertFalse(LedgerTransaction.objects.filter(reference__startswith="dist-").exists())
-        self.assertContains(self.client.get(reverse("assets:asset_detail", args=[asset.pk])),
+        self.assertContains(self.client.get(asset.get_absolute_url()),
                             'data-testid="mana-no-distribute"')
 
     def test_the_admin_cannot_type_a_balance(self):

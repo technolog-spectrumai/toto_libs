@@ -229,7 +229,7 @@ class ConservationTests(TestCase):
             decimals=2, reserve_account=self.reserve, reference="one")
         other_reserve = _account("reserve-2")
         two = create_currency(
-            name="Zloty", unit_name="TPLN", total_supply=Decimal("500"),
+            name="Florin", unit_name="FLOR", total_supply=Decimal("500"),
             decimals=2, reserve_account=other_reserve, reference="two")
 
         self.assertEqual(supply(one), 10_000)

@@ -192,7 +192,7 @@ class SafetyTests(PayoutTestCase):
         """THE isolation property. A dry reserve for one member must not be a
         dry reserve for the run."""
         self.add(self.ada, "2")
-        broken_asset = Asset.objects.get(unit_name="TPLN")   # not the healthy faucet's ASR
+        broken_asset = Asset.objects.get(unit_name="FLOR")   # not the healthy faucet's ASR
         broken_asset.reserve_account = None
         broken_asset.save(update_fields=["reserve_account"])
         broken = Faucet.objects.create(name="Broken", asset=broken_asset,
@@ -213,7 +213,7 @@ class SafetyTests(PayoutTestCase):
 
     def test_a_failure_records_why_in_words(self):
         """"failed" with nothing beside it is a state an operator cannot act on."""
-        broken_asset = Asset.objects.get(unit_name="TPLN")
+        broken_asset = Asset.objects.get(unit_name="FLOR")
         broken_asset.reserve_account = None
         broken_asset.save(update_fields=["reserve_account"])
         broken = Faucet.objects.create(name="Broken", asset=broken_asset,
@@ -228,7 +228,7 @@ class SafetyTests(PayoutTestCase):
         """A failed hour stays failed. Re-running claims the hour again and
         finds it taken, rather than paying it a second time once the cause is
         fixed — a faucet drips, it does not backfill."""
-        broken_asset = Asset.objects.get(unit_name="TPLN")
+        broken_asset = Asset.objects.get(unit_name="FLOR")
         broken_asset.reserve_account = None
         broken_asset.save(update_fields=["reserve_account"])
         broken = Faucet.objects.create(name="Broken", asset=broken_asset,
@@ -266,7 +266,7 @@ class AuditTests(PayoutTestCase):
         self.assertEqual((runs[1].paid, runs[1].skipped), (0, 1))
 
     def test_failures_are_named_on_the_run_as_well(self):
-        broken_asset = Asset.objects.get(unit_name="TPLN")
+        broken_asset = Asset.objects.get(unit_name="FLOR")
         broken_asset.reserve_account = None
         broken_asset.save(update_fields=["reserve_account"])
         broken = Faucet.objects.create(name="Broken", asset=broken_asset,

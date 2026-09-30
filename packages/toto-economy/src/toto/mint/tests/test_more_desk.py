@@ -109,7 +109,7 @@ class IndexTests(DeskTestCase):
 class EngraveTests(DeskTestCase):
     def _post(self, **over):
         data = {"name": "Desk coin", "unit_name": "dkc", "total_supply": "500",
-                "decimals": "2", "code": "dk", "symbol": "¤",
+                "decimals": "2", "code": "desk", "symbol": "¤",
                 "reason": "The desk needs a coin."}
         data.update(over)
         return self.client.post(reverse("mint:issue"), data)
@@ -119,7 +119,7 @@ class EngraveTests(DeskTestCase):
         self.assertRedirects(response, reverse("mint:index"),
                              fetch_redirect_response=False)
         asset = Asset.objects.get(unit_name="DKC")    # upper-cased
-        self.assertEqual(asset.code, "DK")
+        self.assertEqual(asset.code, "DESK")          # and the short name too
         self.assertEqual(supply(asset), 50_000)
         record = IssuanceRecord.objects.get(asset=asset)
         self.assertEqual(record.actor, self.staff)
@@ -144,9 +144,22 @@ class EngraveTests(DeskTestCase):
         self.assertFalse(Asset.objects.filter(unit_name="DKC").exists())
         self.assertFalse(IssuanceRecord.objects.exists())
 
+    def test_a_short_name_that_is_not_four_letters_is_a_message_not_a_500(self):
+        for code in ("dk", "DESKS", "DE5K"):
+            with self.subTest(code=code):
+                response = self._post(code=code)
+                self.assertEqual(response.status_code, 302)
+                self.assertIn("four capital letters", _messages(response))
+                self.assertFalse(Asset.objects.filter(unit_name="DKC").exists())
+
+    def test_a_blank_short_name_is_derived_from_the_ticker(self):
+        self._post(code="")
+        self.assertEqual(Asset.objects.get(unit_name="DKC").code, "DKCX")
+
     def test_engraving_a_ticker_twice_is_refused_and_keeps_the_first(self):
         self._post()
-        response = self._post(name="Impostor", reason="again")
+        # A blank short name, so it is the TICKER that collides and not the code.
+        response = self._post(name="Impostor", reason="again", code="")
         self.assertEqual(response.status_code, 302)
         self.assertTrue(_messages(response))
         self.assertEqual(Asset.objects.filter(unit_name="DKC").count(), 1)

@@ -75,7 +75,7 @@ class SuccessTests(MintingTestCase):
         response = self.post()
         asset = Asset.objects.get(unit_name="MANA")
         self.assertRedirects(
-            response, reverse("assets:asset_detail", args=[asset.pk]))
+            response, asset.get_absolute_url())
         self.assertEqual(asset.name, "Mana")
         self.assertEqual(asset.decimals, 6)
 
@@ -243,7 +243,7 @@ class DistributeTests(MintingTestCase):
         super().setUp()
         self.post()
         self.asset = Asset.objects.get(unit_name="MANA")
-        self.url = reverse("assets:asset_distribute", args=[self.asset.pk])
+        self.url = reverse("assets:asset_distribute", args=[self.asset.code])
         self.target = LedgerAccount.objects.create(
             code="alice", name="Alice", account_type=AccountType.USER, active=True)
 
@@ -274,3 +274,40 @@ class DistributeTests(MintingTestCase):
         response = self.client.post(
             self.url, {"amount": "10", "recipient_account": str(self.target.pk)})
         self.assertEqual(response.status_code, 403)
+
+
+class ShortNameTests(MintingTestCase):
+    """The desk's "Short name" field (2026-09-30): four letters, the key of the
+    asset's page; blank for one derived from the ticker."""
+
+    def test_the_form_asks_for_it(self):
+        body = self.client.get(reverse("assets:asset_create")).content.decode()
+        self.assertIn('name="code"', body)
+
+    def test_a_valid_short_name_is_kept_and_keys_the_page(self):
+        response = self.post(code="ARCN")
+        asset = Asset.objects.get(unit_name="MANA")
+        self.assertEqual(asset.code, "ARCN")
+        self.assertRedirects(response, reverse("assets:asset_detail", args=["ARCN"]))
+
+    def test_lower_case_is_upper_cased(self):
+        self.post(code=" arcn ")
+        self.assertEqual(Asset.objects.get(unit_name="MANA").code, "ARCN")
+
+    def test_a_blank_short_name_is_derived_from_the_ticker(self):
+        self.post(unit_name="SPRITE", code="")
+        self.assertEqual(Asset.objects.get(unit_name="SPRITE").code, "SPRI")
+
+    def test_the_wrong_length_or_characters_are_refused_in_words(self):
+        for code in ("ARC", "ARCNA", "AR1N", "AR-N", "AR N", "ÄRCN"):
+            with self.subTest(code=code):
+                self.assertRefused(self.post(code=code), needle="short name")
+                self.assertFalse(Asset.objects.filter(unit_name="MANA").exists())
+                self.assertFalse(LedgerAccount.objects.filter(code="RES-MANA").exists())
+
+    def test_a_taken_short_name_is_refused_in_words(self):
+        self.post(name="Arcana", unit_name="ARCANA", code="ARCN")
+        text = self.assertRefused(self.post(code="arcn"), needle="is taken")
+        self.assertIn("ARCN", text)
+        self.assertFalse(Asset.objects.filter(unit_name="MANA").exists())
+        self.assertEqual(Asset.objects.get(code="ARCN").unit_name, "ARCANA")
