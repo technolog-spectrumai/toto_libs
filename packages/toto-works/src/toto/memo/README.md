@@ -24,12 +24,13 @@ already has, and it means a presentation can never half-exist.
 The vault's **Play** and **Edit** buttons on a deck go to the player and the
 editor. There is no longer a raw-XML surface.
 
-**Who sees a deck is the vault's answer** (2026-09-29): the gallery lists
-what `accessible_files` allows and the player asks `may_read`, so a deck kept
-to **clearances** (`vault.VaultFileClearance`) is seen by their members, its owner
-and superusers only, public or not, and answers 404 to anyone else. The owner
-keeps it to clearances from the card and the read page ("Who can read" → the
-vault's `files/<pk>/access/`). Tests: `tests_read.DeckClearanceTests`.
+**Who sees a deck is the vault's answer** (2026-09-29; bucket clearances
+2026-09-30): the gallery lists what `accessible_files` allows and the player
+asks `may_read`, so a deck in a bucket kept to **clearances**
+(`vault.BucketClearance`) is seen by superusers and the holders of one of the
+bucket's clearances only — not its owner, public or not — and answers 404 to
+anyone else. Clearances are set on the bucket (superusers, on the bucket's page
+in the vault), never on a deck. Tests: `tests_read.DeckClearanceTests`.
 
 ## The editing surface is the slide
 

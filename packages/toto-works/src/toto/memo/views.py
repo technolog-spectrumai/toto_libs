@@ -40,7 +40,6 @@ from toto.editor.views import BaseFileDisplayView
 from toto.core import assistant
 from toto.ui import PageProcessor
 from toto.vault import access, editing, locks, versions
-from toto.vault import clearances as file_clearances
 from toto.vault.filetree import accessible_files
 from toto.vault.views import create_empty_vault_file, resolve_new_file_target
 from toto.quota import QuotaExceeded, check_quota, record_usage
@@ -113,10 +112,13 @@ def _get_owned_file(request, file_pk) -> VaultFile:
     The type is the whole check now. Reading the bytes to confirm the file
     really is a deck bought nothing here — this view is about to parse it
     anyway, and a mistyped file renders as an empty deck rather than a 404.
+
+    Its bucket's clearances (2026-09-30) come first: a deck in a kept bucket
+    whose owner holds none of them is missing to its owner too.
     """
     return get_object_or_404(
-        VaultFile.objects.select_related("bucket", "directory", "owner")
-        .filter(access.local_content_q()),
+        access.gate_by_bucket(request.user, VaultFile.objects.select_related(
+            "bucket", "directory", "owner").filter(access.local_content_q())),
         pk=file_pk,
         owner=request.user,
         file_type__in=DECK_TYPES,
@@ -156,8 +158,9 @@ class PresentationView(View):
         if vault_file.is_encrypted:
             return HttpResponseForbidden("Cannot display an encrypted file.")
 
-        # The vault's one read rule (2026-09-29), clearances included: a deck
-        # kept to clearances is theirs alone, public or not. A visitor is sent
+        # The vault's one read rule, its bucket's clearances included
+        # (2026-09-30): a deck in a kept bucket is its holders' alone, public
+        # or not, its owner included. A visitor is sent
         # to log in; a member who may not read it gets the 404 a missing
         # deck gets — its existence is not theirs to learn here.
         if not access.may_read(request.user, vault_file):
@@ -315,12 +318,10 @@ class PresentationIndexView(View):
         # off disk on every visit — including anonymous ones — to find out
         # which generic .xml rows were decks, and rewrote their file_type as a
         # side effect of rendering a page. Decks say what they are now.
-        # The vault's read rule (2026-09-29): what this person may open —
-        # their own, public decks, decks shared with them — less the decks
-        # kept to clearances they are not in. A visitor sees public decks kept
-        # to no clearance.
-        from toto.socialhub.clearance_access import gate
-
+        # The vault's read rule: what this person may open — their own,
+        # public decks, decks shared with them — less the decks in buckets
+        # kept to clearances they hold none of (2026-09-30). A visitor sees
+        # public decks in no kept bucket.
         qs = VaultFile.objects.filter(
             file_type__in=DECK_TYPES, is_encrypted=False
         ).filter(access.local_content_q()
@@ -328,7 +329,7 @@ class PresentationIndexView(View):
         if request.user.is_authenticated:
             qs = qs.filter(pk__in=accessible_files(request.user, file_types=DECK_TYPES))
         else:
-            qs = gate(request.user, qs, rows="clearance_rows", open=Q(is_public=True))
+            qs = access.gate_by_bucket(request.user, qs, open=Q(is_public=True))
         qs = qs.order_by("-uploaded_at", "title")
 
         page = Paginator(qs, self.PER_PAGE).get_page(request.GET.get("page"))
@@ -344,11 +345,6 @@ class PresentationIndexView(View):
                 "is_owner": request.user.is_authenticated and f.owner_id == request.user.id,
                 "present_url": reverse("memo:present", args=[f.pk]),
                 "read_url": reverse("memo:read", args=[f.pk]),
-                # Who reads it: the owner's (and a superuser's) door, in the
-                # vault, back here afterwards.
-                "access_url": (file_clearances.access_url(f, request.get_full_path())
-                               if file_clearances.may_manage(request.user, f) else ""),
-                "clearances": ", ".join(c.name for c in file_clearances.clearances_of(f)),
                 # Only the current page is parsed — which is the point of
                 # paginating at all. A gallery of 300 decks used to read and
                 # fully parse all 300 files on every visit.
@@ -450,7 +446,6 @@ class PresentationReadView(LoginRequiredMixin, View):
             # `memo:edit` does not exist — an unguarded reverse here would
             # 500 the READ page, which is the half such a host actually wants.
             "edit_url": _maybe_reverse("memo:edit", vault_file.pk),
-            "access_url": file_clearances.access_url(vault_file, request.get_full_path()),
         }, request))
 
 

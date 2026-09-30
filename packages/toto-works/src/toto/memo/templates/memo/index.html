@@ -115,11 +115,6 @@ component the day a translation contains an apostrophe.{% endcomment %}
               <div class="flex gap-3 pt-1 text-sm">
                 <a href="{{ p.present_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
                   <i class="fa-solid fa-play"></i> {% trans "Present" %}</a>
-                {% if p.access_url %}
-                  <a href="{{ p.access_url }}" data-testid="deck-access" class="inline-flex items-center gap-2 underline hover:opacity-80"
-                     title="{% if p.clearances %}{% blocktrans with clearances=p.clearances %}Kept to: {{ clearances }}{% endblocktrans %}{% else %}{% trans 'Who can read this deck' %}{% endif %}">
-                    <i class="fa-solid {% if p.clearances %}fa-lock{% else %}fa-lock-open{% endif %}"></i> {% trans "Who can read" %}</a>
-                {% endif %}
                 {% if p.is_owner %}
                   <a href="{{ p.read_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
                     <i class="fa-solid fa-book-open"></i> {% trans "Read" %}</a>

@@ -1,10 +1,12 @@
 """The reading half of memo, as people use it: who sees which deck, where.
 
 The gallery, the player and the read page each answer "may this person see
-this deck?" and since 2026-09-29 clearances are part of that answer: a deck kept
-to clearances belongs to their members, its owner and superusers — not to the
-public flag, not to a folder share, not to the bucket's owner. Hidden decks are
-missing decks (404 in the player, absent from the gallery).
+this deck?" and clearances are part of that answer — on the deck's BUCKET
+(2026-09-30), never on the deck: a deck in a kept bucket belongs to superusers
+and the holders of one of the bucket's clearances — not to its owner, not to
+the public flag, not to a folder share, not to the bucket's owner. Hidden decks
+are missing decks (404 in the player and the read page, absent from the
+gallery). Only a superuser keeps a bucket, on the vault's bucket page.
 
 Everything here goes through the URLs this host mounts (`memo.reader_urls`),
 so the authoring routes are never touched. The one exception is the small
@@ -24,11 +26,10 @@ from django.core.files.base import ContentFile
 from django.test import SimpleTestCase, TestCase, modify_settings, override_settings
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.http import urlencode
 from django.utils.text import slugify
 
 from toto.core.models import Platform
-from toto.vault.models import Bucket, VaultDirectory, VaultFile, VaultFileClearance
+from toto.vault.models import Bucket, BucketClearance, VaultDirectory, VaultFile
 
 from . import presentation_format as pf
 
@@ -43,7 +44,7 @@ HOST_LOGIN_GATE = "zenobia.middleware.LoginRequiredEverywhereMiddleware"
 #: read page answer 500 and the gallery card loses its cover.
 #: The player renders a legacy v1 `html` block with trust_html=True for EVERY
 #: reader may_read admits (public decks, folder shares, bucket owners, clearance
-#: members), not only the deck's owner — the gallery escapes it and the read
+#: holders), not only the deck's owner — the gallery escapes it and the read
 #: page is owner-only, the player is neither. No CSP is configured on this
 #: host, so a public deck with `<body><script>` runs in any member's session.
 LEGACY_HTML_XSS = ("suspected production bug: memo/templates/memo/present.html:84 renders "
@@ -58,7 +59,7 @@ def _slide(title, *blocks, layout="title-content"):
 
 
 class DeckFixture(TestCase):
-    """Owner, clearance member, stranger, superuser; a bucket; a clearance."""
+    """Owner, clearance holder, stranger, superuser; a bucket; a clearance."""
 
     def setUp(self):
         media = tempfile.mkdtemp(prefix="memo-more-")
@@ -103,9 +104,20 @@ class DeckFixture(TestCase):
         vault_file.file.save(f"{slugify(name)}.pxml", ContentFile(body), save=True)
         return vault_file
 
+    _kept = 0
+
     def keep(self, vault_file, *clearances):
+        """Keep the deck's BUCKET to ``clearances``: the deck moves to a fresh
+        bucket of its old bucket's owner, so no other deck is kept with it."""
+        type(self)._kept += 1
+        n = type(self)._kept
+        owner = vault_file.bucket.owner if vault_file.bucket_id else vault_file.owner
+        bucket = Bucket.objects.create(owner=owner, name=f"Kept {n}", slug=f"kept-{n}",
+                                       storage_backend="local")
+        VaultFile.objects.filter(pk=vault_file.pk).update(bucket=bucket)
+        vault_file.bucket = bucket
         for clearance in clearances:
-            VaultFileClearance.objects.create(file=vault_file, clearance=clearance)
+            BucketClearance.objects.create(bucket=bucket, clearance=clearance)
         return vault_file
 
     def gallery(self, user, **params):
@@ -139,12 +151,19 @@ class GalleryVisibilityTests(DeckFixture):
         xml = self.deck("looks-like-one", file_type="xml", public=True)
         self.assertNotIn(xml.pk, self.listed(self.owner))
 
-    def test_a_deck_kept_to_a_clearance_is_listed_to_its_members_its_owner_and_a_superuser(self):
+    def test_a_deck_in_a_kept_bucket_is_listed_to_its_holders_and_a_superuser_only(self):
         kept = self.keep(self.deck("board-pack", public=True), self.internal)
-        self.assertIn(kept.pk, self.listed(self.owner))
         self.assertIn(kept.pk, self.listed(self.member))
         self.assertIn(kept.pk, self.listed(self.root))
         self.assertNotIn(kept.pk, self.listed(self.stranger))
+        self.assertNotIn(kept.pk, self.listed(self.owner))       # its owner holds nothing
+
+    def test_an_owner_who_holds_a_clearance_of_the_bucket_sees_their_deck(self):
+        from toto.people.models import Person
+
+        kept = self.keep(self.deck("board-pack"), self.internal)
+        Person.objects.create(user=self.owner, display_name="O").clearances.add(self.internal)
+        self.assertIn(kept.pk, self.listed(self.owner))
 
     def test_a_legacy_spelled_deck_kept_to_a_clearance_is_hidden_the_same_way(self):
         legacy = self.keep(self.deck("legacy", file_type="presentation", public=True),
@@ -161,7 +180,7 @@ class GalleryVisibilityTests(DeckFixture):
         self.keep(shared, self.internal)
         self.assertNotIn(shared.pk, self.listed(self.stranger))
 
-    def test_the_owner_of_the_bucket_loses_a_deck_kept_to_a_clearance_they_are_not_in(self):
+    def test_the_owner_of_the_bucket_loses_a_deck_in_it_once_it_is_kept(self):
         # The bucket is the stranger's; the deck is the owner's, kept to internal.
         their_bucket = Bucket.objects.create(owner=self.stranger, name="Theirs",
                                              slug="theirs", storage_backend="local")
@@ -170,64 +189,39 @@ class GalleryVisibilityTests(DeckFixture):
         self.keep(guest, self.internal)
         self.assertNotIn(guest.pk, self.listed(self.stranger))
 
-    def test_being_in_any_one_of_a_decks_clearances_is_enough(self):
+    def test_holding_any_one_of_the_buckets_clearances_is_enough(self):
         both = self.keep(self.deck("both"), self.internal, self.staff_clearance)
         self.assertIn(both.pk, self.listed(self.member))
         self.assertNotIn(both.pk, self.listed(self.stranger))
 
 
 class GalleryCardTests(DeckFixture):
-    def test_only_the_owner_and_a_superuser_get_the_who_can_read_door(self):
-        deck = self.keep(self.deck("board-pack"), self.internal)
-        door = reverse("vault:file_access", args=[deck.pk])
-        for user, offered in ((self.owner, True), (self.root, True), (self.member, False)):
-            with self.subTest(user=user.username):
-                card = next(row for row in self.gallery(user).context["presentations"]
-                            if row["file_pk"] == deck.pk)
-                if offered:
-                    # ...and it brings them back to the gallery afterwards.
-                    self.assertEqual(card["access_url"],
-                                     f"{door}?{urlencode({'next': reverse('memo:gallery')})}")
-                else:
-                    self.assertEqual(card["access_url"], "")
-                    self.assertNotContains(self.gallery(user), door)
-
-    def test_the_access_link_keeps_a_deck_to_a_clearance_and_comes_back_to_the_gallery(self):
+    def test_no_card_carries_a_who_can_read_door(self):
+        # Clearances sit on buckets (2026-09-30): a deck has no door of its own.
         from toto.people.models import Person
 
         Person.objects.create(user=self.owner, display_name="O").clearances.add(self.internal)
+        deck = self.keep(self.deck("board-pack"), self.internal)
+        for user in (self.owner, self.root, self.member):
+            with self.subTest(user=user.username):
+                response = self.gallery(user)
+                card = next(row for row in response.context["presentations"]
+                            if row["file_pk"] == deck.pk)
+                self.assertNotIn("access_url", card)
+                self.assertNotIn("clearances", card)
+                self.assertNotContains(response, 'data-testid="deck-access"')
+                self.assertNotContains(response, f"/vault/files/{deck.pk}/access/")
+
+    def test_a_superuser_keeping_the_bucket_takes_the_deck_off_the_gallery(self):
         deck = self.deck("open-deck", public=True)
         self.assertIn(deck.pk, self.listed(self.stranger))
-        card = next(row for row in self.gallery(self.owner).context["presentations"]
-                    if row["file_pk"] == deck.pk)
-        response = self.client.post(card["access_url"], {"clearance": [self.internal.pk],
-                                                         "next": reverse("memo:gallery")})
-        self.assertRedirects(response, reverse("memo:gallery"), fetch_redirect_response=False)
+        self.client.force_login(self.root)
+        self.client.post(reverse("vault:bucket_clearances", args=[self.bucket.slug]),
+                         {"clearance": [self.internal.pk]})
         self.assertNotIn(deck.pk, self.listed(self.stranger))
+        self.assertNotIn(deck.pk, self.listed(self.owner))
         self.assertIn(deck.pk, self.listed(self.member))
         self.assertEqual(self.present(self.stranger, deck).status_code, 404)
-
-    def test_the_access_link_will_not_send_the_owner_off_site(self):
-        deck = self.deck("open-deck")
-        self.client.force_login(self.owner)
-        url = reverse("vault:file_access", args=[deck.pk])
-        response = self.client.post(url, {"next": "https://evil.example/"})
-        self.assertRedirects(response, url, fetch_redirect_response=False)
-
-    def test_the_card_names_every_clearance_a_deck_is_kept_to_in_order(self):
-        deck = self.keep(self.deck("board-pack"), self.internal, self.staff_clearance)
-        response = self.gallery(self.owner)
-        card = next(row for row in response.context["presentations"]
-                    if row["file_pk"] == deck.pk)
-        self.assertEqual(card["clearances"], "internal, restricted")
-        self.assertContains(response, "Kept to: internal, restricted")
-        self.assertContains(response, "fa-solid fa-lock\"")
-
-    def test_an_open_deck_shows_an_open_lock_to_its_owner(self):
-        self.deck("open-deck")
-        response = self.gallery(self.owner)
-        self.assertContains(response, "fa-lock-open")
-        self.assertContains(response, "Who can read this deck")
 
     def test_the_read_link_is_offered_to_the_owner_only(self):
         deck = self.deck("public-deck", public=True)
@@ -341,9 +335,13 @@ class PlayerTests(DeckFixture):
         deck = self.keep(self.deck("board-pack"), self.internal)
         self.assertEqual(self.present(self.root, deck).status_code, 200)
 
-    def test_the_owner_plays_their_own_kept_deck(self):
+    def test_the_owner_does_not_play_their_deck_in_a_bucket_kept_away_from_them(self):
+        deck = self.keep(self.deck("board-pack", public=True), self.internal)
+        self.assertEqual(self.present(self.owner, deck).status_code, 404)
+
+    def test_a_holder_plays_a_private_deck_in_a_kept_bucket(self):
         deck = self.keep(self.deck("board-pack"), self.internal)
-        self.assertEqual(self.present(self.owner, deck).status_code, 200)
+        self.assertEqual(self.present(self.member, deck).status_code, 200)
 
     def test_an_encrypted_deck_is_refused_even_to_its_owner(self):
         sealed = self.deck("sealed", encrypted=True)
@@ -410,15 +408,17 @@ class ReadPageTests(DeckFixture):
         self.client.force_login(self.stranger)
         self.assertEqual(self.client.get(reverse("memo:read", args=[deck.pk])).status_code, 404)
 
-    def test_the_access_link_brings_the_owner_back_to_the_read_page(self):
-        deck = self.deck("mine")
-        read = reverse("memo:read", args=[deck.pk])
+    def test_the_owners_read_page_is_missing_once_the_bucket_is_kept_away_from_them(self):
+        deck = self.keep(self.deck("mine"), self.internal)
         self.client.force_login(self.owner)
-        response = self.client.get(read)
-        expected = (reverse("vault:file_access", args=[deck.pk])
-                    + "?" + urlencode({"next": read}))
-        self.assertEqual(response.context["access_url"], expected)
-        self.assertContains(response, 'data-testid="deck-access"')
+        self.assertEqual(self.client.get(reverse("memo:read", args=[deck.pk])).status_code, 404)
+
+    def test_the_read_page_has_no_who_can_read_door(self):
+        deck = self.deck("mine")
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("memo:read", args=[deck.pk]))
+        self.assertNotIn("access_url", response.context)
+        self.assertNotContains(response, 'data-testid="deck-access"')
 
     def test_every_slide_is_on_the_page(self):
         deck = self.deck("three", slides=[_slide("alpha"), _slide("beta"), _slide("gamma")])

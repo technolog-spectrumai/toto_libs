@@ -294,21 +294,32 @@ class MediaEmbedTests(Fixture):
         self.assertEqual(self.embed(self.owner, private.pk).status_code, 404)
         self.assertEqual(self.embed(self.owner, public.pk).status_code, 200)
 
-    def test_an_image_kept_to_a_clearance_you_are_not_in_cannot_be_embedded(self):
+    def test_an_image_in_a_bucket_kept_to_a_clearance_you_lack_cannot_be_embedded(self):
         from toto.people.models import Person
         from toto.socialhub.models import Clearance
-        from toto.vault.models import Bucket, VaultFileClearance
+        from toto.vault.models import Bucket, BucketClearance
 
         internal = Clearance.objects.create(name="internal", slug="internal")
         Person.objects.create(user=self.owner, display_name="W")
         elsewhere = Bucket.objects.create(owner=self.other, name="Theirs", slug="theirs",
                                           storage_backend="local")
+        BucketClearance.objects.create(bucket=elsewhere, clearance=internal)
         kept = self.image("kept.png", _png(), owner=self.other, bucket=elsewhere,
                           public=True)
-        VaultFileClearance.objects.create(file=kept, clearance=internal)
         self.assertEqual(self.embed(self.owner, kept.pk).status_code, 404)
         self.owner.community_profile.clearances.add(internal)
         self.assertEqual(self.embed(self.owner, kept.pk).status_code, 200)
+
+    def test_your_own_image_in_a_bucket_kept_to_a_clearance_you_lack_cannot_be_embedded(self):
+        from toto.socialhub.models import Clearance
+        from toto.vault.models import Bucket, BucketClearance
+
+        internal = Clearance.objects.create(name="internal", slug="internal")
+        kept_bucket = Bucket.objects.create(owner=self.owner, name="Kept", slug="kept",
+                                            storage_backend="local")
+        BucketClearance.objects.create(bucket=kept_bucket, clearance=internal)
+        mine = self.image("mine.png", _png(), owner=self.owner, bucket=kept_bucket)
+        self.assertEqual(self.embed(self.owner, mine.pk).status_code, 404)
 
     def test_an_encrypted_image_cannot_be_embedded(self):
         sealed = self.image("sealed.png", b"ciphertext", encrypted=True)

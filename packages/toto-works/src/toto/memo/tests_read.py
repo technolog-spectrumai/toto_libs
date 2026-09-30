@@ -26,7 +26,10 @@ _MEDIA = tempfile.mkdtemp(prefix="memo-read-")
 
 
 @override_settings(MEDIA_ROOT=_MEDIA)
-class PresentationReadTests(TestCase):
+class _ReadFixture(TestCase):
+    """The owner, a stranger, a bucket and a deck — no tests of its own, so a
+    class that changes who may read (the clearances below) inherits none."""
+
     def setUp(self):
         # A THEMED platform, because an unthemed one is not the shape any host
         # actually runs — and the page's palette is exactly what is under test.
@@ -62,6 +65,8 @@ class PresentationReadTests(TestCase):
         return self.client.get(
             reverse("memo:read", args=[(vault_file or self.deck).pk]))
 
+
+class PresentationReadTests(_ReadFixture):
     # ── the regression ───────────────────────────────────────────────────────
 
     def test_the_page_carries_a_theme(self):
@@ -206,28 +211,30 @@ class PresentationReadTests(TestCase):
         self.assertContains(response, reverse("memo:export_pdf", args=[self.deck.pk]))
 
 
-class DeckClearanceTests(PresentationReadTests):
-    """A deck kept to clearances (2026-09-29) is theirs alone: gone from the
-    gallery, a 404 in the player, whatever its public flag."""
+class DeckClearanceTests(_ReadFixture):
+    """A deck in a bucket kept to clearances (2026-09-30) is the holders'
+    alone: gone from the gallery, a 404 in the player and the read page,
+    whatever its public flag — to its owner too."""
 
     def setUp(self):
         super().setUp()
         from toto.people.models import Person
         from toto.socialhub.models import Clearance
-        from toto.vault.models import VaultFileClearance
+        from toto.vault.models import BucketClearance
 
         self.internal = Clearance.objects.create(name="internal", slug="internal")
         self.member = User.objects.create_user("member", password="pw")
         Person.objects.create(user=self.member, display_name="M").clearances.add(self.internal)
         self.deck.is_public = True
         self.deck.save()
-        VaultFileClearance.objects.create(file=self.deck, clearance=self.internal)
+        BucketClearance.objects.create(bucket=self.bucket, clearance=self.internal)
 
     def test_the_gallery_and_the_player(self):
         gallery, present = reverse("memo:gallery"), reverse("memo:present", args=[self.deck.pk])
-        self.client.force_login(self.other)
-        self.assertNotContains(self.client.get(gallery), "deck.pxml")
-        self.assertEqual(self.client.get(present).status_code, 404)
+        for user in (self.other, self.user):                     # a stranger, the owner
+            self.client.force_login(user)
+            self.assertNotContains(self.client.get(gallery), "deck.pxml")
+            self.assertEqual(self.client.get(present).status_code, 404)
         self.client.force_login(self.member)
         self.assertContains(self.client.get(gallery), "deck.pxml")
         self.assertEqual(self.client.get(present).status_code, 200)
@@ -239,10 +246,20 @@ class DeckClearanceTests(PresentationReadTests):
             self.assertEqual(response.status_code, 302, url)
             self.assertNotIn("deck.pxml", response.content.decode())
 
-    def test_the_owner_has_the_door(self):
+    def test_the_owners_read_page_is_missing_until_they_hold_a_clearance(self):
+        from toto.people.models import Person
+
         self.client.force_login(self.user)
-        self.assertContains(self.client.get(reverse("memo:gallery")), 'data-testid="deck-access"')
-        self.assertContains(self.client.get(reverse("memo:read", args=[self.deck.pk])),
-                            reverse("vault:file_access", args=[self.deck.pk]))
-        self.client.force_login(self.member)
+        self.assertEqual(self.read().status_code, 404)
+        Person.objects.create(user=self.user, display_name="U").clearances.add(self.internal)
+        self.assertEqual(self.read().status_code, 200)
+
+    def test_no_card_or_page_carries_a_door_of_its_own(self):
+        from toto.people.models import Person
+
+        Person.objects.create(user=self.user, display_name="U").clearances.add(self.internal)
+        self.client.force_login(self.user)
         self.assertNotContains(self.client.get(reverse("memo:gallery")), 'data-testid="deck-access"')
+        response = self.read()
+        self.assertNotContains(response, 'data-testid="deck-access"')
+        self.assertNotIn("access_url", response.context)
