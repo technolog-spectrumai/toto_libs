@@ -82,9 +82,12 @@ def user_for_session_key(session_key, *, door, request=None):
         session = _session_store(session_key)
         raw_user_id = session.get(SESSION_KEY)
         backend_path = session.get(BACKEND_SESSION_KEY)
-    except Exception:  # noqa: BLE001 - a store that cannot be read signs nobody in
-        # The key is a credential: it is never logged, not even in part.
-        log.warning("api token: the session store could not be read", exc_info=True)
+    except Exception as exc:  # noqa: BLE001 - a store that cannot be read signs nobody in
+        # The key is a credential: it is never logged, not even in part — and
+        # neither is the exception's text, which a cache-backed store can
+        # write the key into. Its class is enough to go and look.
+        log.warning("api token: the session store could not be read (%s)",
+                    type(exc).__name__)
         return None
     if raw_user_id is None:
         return None
@@ -111,10 +114,11 @@ def user_for_session_key(session_key, *, door, request=None):
             return user
         return _refuse(session, user_id, "session_hash", door=door, request=request,
                        user=user)
-    except Exception:  # noqa: BLE001 - never flush a session on a passing fault
+    except Exception as exc:  # noqa: BLE001 - never flush a session on a passing fault
         # A database hiccup is not a refusal: the session is kept, so the next
         # request can succeed, and nothing is recorded.
-        log.warning("api token: the sign-in could not be checked", exc_info=True)
+        log.warning("api token: the sign-in could not be checked (%s)",
+                    type(exc).__name__)
         return None
 
 

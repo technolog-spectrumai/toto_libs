@@ -258,6 +258,17 @@ class CheckTests(TokenCase):
         self.assertFalse(self.refusals().exists())
         self.assertEqual(user_for_session_key(token, door="api"), self.ada)
 
+    def test_a_fault_that_quotes_the_key_does_not_log_it(self):
+        token = self.token()
+        fault = RuntimeError(f"cache key django.contrib.sessions.cache{token}")
+        with mock.patch("django.contrib.auth.load_backend", side_effect=fault), \
+                self.assertLogs("toto.api", "WARNING") as logs:
+            user_for_session_key(token, door="api")
+        self.assertEqual(logs.output,
+                         ["WARNING:toto.api:api token: the sign-in could not be checked "
+                          "(RuntimeError)"])
+        self.assertTrue(all(record.exc_info is None for record in logs.records))
+
     def test_nothing_that_is_not_a_key_is_looked_up(self):
         for value in (None, "", 42, b"bytes"):
             with self.subTest(value=value):
