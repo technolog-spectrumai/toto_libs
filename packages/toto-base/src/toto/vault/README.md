@@ -317,6 +317,23 @@ A file in a bucket connected from another Zenobia never reaches the trash
 (its delete is immediate, above); the page says so. The audit records carry
 ids only, never a name. Tests: `tests_trash_page`.
 
+### The nightly purge (`trash.purge_expired`, beat `vault-trash-purge`)
+
+At 03:50 — before the 04:15 storage levy, so an expired file stops costing
+that day — `tasks.purge_expired_trash` deletes for good every file trashed
+more than `VAULT_TRASH_DAYS` ago (host setting from the environment, default
+30; `VAULT_TRASH_PURGE=0` turns the beat entry off and keeps every trashed
+file, and its cost). Through `purge.purge_file` in STRICT mode: bytes that
+cannot be deleted keep the row, so a failed file stays in the trash (still
+counted) for the next night, its reason logged; a file an app still pins
+waits the same way; one failure never stops the rest. In batches of 200 pks
+fixed at the start of the run, with a 20-minute budget — what is left waits
+for the next night. Idempotent: a purged row is gone, and a second run finds
+nothing due. Files of a bucket being deleted are left to the bucket purge,
+which takes the trash of every age (`all_objects`). Audited per file as
+`FILE_PURGED`, door `trash_expired`, no actor, ids only. Tests:
+`tests_trash_purge`.
+
 ## Buckets: types, custody and deletion (2026-09-30)
 
 Storage → Management (Superuser plan) creates, edits, tests and deletes buckets.
