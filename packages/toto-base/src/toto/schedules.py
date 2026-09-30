@@ -39,6 +39,9 @@ def beat_schedule(
     sweep=False,
     anastasia=False,
     anastasia_minutes=2,
+    vault_trash=False,
+    vault_trash_hour=3,
+    vault_trash_minute=50,
 ):
     """Build the CELERY_BEAT_SCHEDULE dict for the enabled features."""
     schedule = {}
@@ -153,6 +156,18 @@ def beat_schedule(
             "task": "toto.ocr.tasks.ocr_cleanup",
             "schedule": crontab(hour=ocr_cleanup_hour,
                                 minute=ocr_cleanup_minute),
+        }
+
+    if vault_trash:
+        from celery.schedules import crontab
+
+        # 03:50, after the hosted-git sample and BEFORE the 04:15 levy: a
+        # file whose VAULT_TRASH_DAYS ran out stops costing that very day.
+        # Idempotent (a purged row is gone; a second fire finds nothing
+        # due), and a file that fails stays trashed for the next night.
+        schedule["vault-trash-purge"] = {
+            "task": "toto.vault.tasks.purge_expired_trash",
+            "schedule": crontab(hour=vault_trash_hour, minute=vault_trash_minute),
         }
 
     if tax:

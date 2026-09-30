@@ -157,3 +157,14 @@ def purge_bucket_task(bucket_pk, actor_pk=None) -> dict:
             "The deletion paused and no worker took the rest. Start one, then "
             "confirm Delete again to continue."), actor_pk=actor_pk)
     return result
+
+
+@shared_task(name="toto.vault.tasks.purge_expired_trash", soft_time_limit=1500)
+def purge_expired_trash() -> dict:
+    """The nightly trash purge (2026-10-01): files trashed more than
+    ``VAULT_TRASH_DAYS`` ago are deleted for good (``trash.purge_expired``).
+    Idempotent — a second fire finds nothing due; a file that failed stays in
+    the trash, its reason logged, for the next night."""
+    from .trash import purge_expired
+
+    return purge_expired()
