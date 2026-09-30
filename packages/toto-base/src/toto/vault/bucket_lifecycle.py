@@ -348,12 +348,14 @@ def purge_bucket(bucket_pk: int, *, actor_pk=None, budget: float | None = None) 
                          % {"reason": exc})
 
     deleted, held, failed, failures, handled, out_of_time = 0, [], "", 0, 0, False
-    pks = list(VaultFile.objects.filter(bucket_id=bucket.pk).order_by("pk")
+    # all_objects (2026-10-01): the trash goes with its bucket too — a
+    # trashed file is still in it, and PROTECT would hold the bucket.
+    pks = list(VaultFile.all_objects.filter(bucket_id=bucket.pk).order_by("pk")
                .values_list("pk", flat=True))
     for start in range(0, len(pks), PURGE_CHUNK):
         if failures >= PURGE_MAX_FAILURES or out_of_time:
             break
-        chunk = VaultFile.objects.filter(pk__in=pks[start:start + PURGE_CHUNK]).select_related("bucket")
+        chunk = VaultFile.all_objects.filter(pk__in=pks[start:start + PURGE_CHUNK]).select_related("bucket")
         for vault_file in chunk:
             if budget is not None and handled and time.monotonic() - started >= budget:
                 out_of_time = True
@@ -389,13 +391,13 @@ def purge_bucket(bucket_pk: int, *, actor_pk=None, budget: float | None = None) 
         # them first again, and could spend its whole time there.
         return {"ok": False, "more": True, "files_deleted": deleted}
     if failed and not held:
-        left = VaultFile.objects.filter(bucket_id=bucket.pk).count()
+        left = VaultFile.all_objects.filter(bucket_id=bucket.pk).count()
         return _stop(bucket, actor, _(
             "%(count)s file(s) could not be deleted: %(reason)s. Confirm Delete again "
             "once that is fixed.") % {"count": left, "reason": failed},
             files_deleted=deleted, files_left=left)
-    if held or VaultFile.objects.filter(bucket_id=bucket.pk).exists():
-        left = VaultFile.objects.filter(bucket_id=bucket.pk).count()
+    if held or VaultFile.all_objects.filter(bucket_id=bucket.pk).exists():
+        left = VaultFile.all_objects.filter(bucket_id=bucket.pk).count()
         names = ", ".join(held[:5]) + ("…" if len(held) > 5 else "")
         return _stop(bucket, actor, _(
             "%(count)s file(s) could not be deleted because another part of Zenobia "

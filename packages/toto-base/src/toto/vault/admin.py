@@ -193,9 +193,15 @@ class BucketAdmin(admin.ModelAdmin):
 class VaultFileAdmin(admin.ModelAdmin):
     list_display = ('title', 'owner', 'file_type', 'is_encrypted', 'is_public',
                     'uploaded_at', 'bucket', 'directory', 'key', 'public_url_display')
-    list_filter = ('file_type', 'is_encrypted', 'is_public', 'uploaded_at', 'bucket', 'directory')
+    list_filter = ('file_type', 'is_encrypted', 'is_public', 'uploaded_at', 'bucket', 'directory',
+                   ('trashed_at', admin.EmptyFieldListFilter))
     search_fields = ('title', 'owner__username')
-    readonly_fields = ('uploaded_at', 'content_hash')
+    readonly_fields = ('uploaded_at', 'content_hash', 'trashed_at', 'trashed_by', 'trashed_from')
+
+    def get_queryset(self, request):
+        # Every row, the trash included (2026-10-01): the default manager
+        # hides trashed files, and the admin is where staff see them.
+        return VaultFile.all_objects.select_related("owner", "bucket", "directory")
     actions = ['encrypt_selected_files', 'decrypt_selected_files', 'generate_content_hashes']
 
     def get_urls(self):
@@ -227,7 +233,7 @@ class VaultFileAdmin(admin.ModelAdmin):
 
     def encrypt_view(self, request):
         ids = request.GET.get('ids', '').split(',')
-        queryset = VaultFile.objects.filter(pk__in=ids)
+        queryset = VaultFile.all_objects.filter(pk__in=ids)
         strategy = queryset.first().get_strategy() if queryset.exists() else None
         form = strategy.get_encrypt_form(request, ids) if strategy else None
 
@@ -256,7 +262,7 @@ class VaultFileAdmin(admin.ModelAdmin):
 
     def decrypt_view(self, request):
         ids = request.GET.get('ids', '').split(',')
-        queryset = VaultFile.objects.filter(pk__in=ids)
+        queryset = VaultFile.all_objects.filter(pk__in=ids)
         strategy = queryset.first().get_strategy() if queryset.exists() else None
         form = strategy.get_decrypt_form(request, ids) if strategy else None
 

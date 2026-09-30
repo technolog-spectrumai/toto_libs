@@ -784,7 +784,8 @@ def plain_files(user, limit: int = 10) -> tuple[list, int]:
 
     from toto.quota import rates
 
-    qs = provider._billable(VaultFile.objects.filter(owner=user))
+    # all_objects, like the levy itself (2026-10-01): a trashed file still drains.
+    qs = provider._billable(VaultFile.all_objects.filter(owner=user))
     total = qs.count()
     price = _price("security.plain_gb_day", rates.member_discount(user)[0]) or Decimal(0)
     rows = []

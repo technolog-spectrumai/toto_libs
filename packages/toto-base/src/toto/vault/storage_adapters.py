@@ -403,7 +403,8 @@ def file_totals(bucket) -> tuple[int, int]:
 
     from .models import VaultFile
 
-    row = VaultFile.objects.filter(bucket=bucket).aggregate(n=Count("pk"), size=Sum("file_size_bytes"))
+    # Trashed files too (2026-10-01): their bytes are still held.
+    row = VaultFile.all_objects.filter(bucket=bucket).aggregate(n=Count("pk"), size=Sum("file_size_bytes"))
     return row["n"] or 0, row["size"] or 0
 
 

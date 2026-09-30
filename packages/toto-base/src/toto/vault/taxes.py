@@ -27,7 +27,7 @@ class StorageLevy(LevyProvider):
 
         from .models import VaultFile
 
-        rows = (self._billable(VaultFile.objects)
+        rows = (self._billable(VaultFile.all_objects)
                 .values("owner_id")
                 .annotate(total=Sum("file_size_bytes")))
         for row in rows:
@@ -38,12 +38,15 @@ class StorageLevy(LevyProvider):
 
         from .models import VaultFile
 
-        agg = (self._billable(VaultFile.objects.filter(owner=user))
+        agg = (self._billable(VaultFile.all_objects.filter(owner=user))
                .aggregate(total=Sum("file_size_bytes")))
         return int(agg["total"] or 0)
 
     @staticmethod
     def _billable(qs):
+        # Callers pass ``VaultFile.all_objects`` (2026-10-01): a file in the
+        # trash still holds its bytes, so it still bills — otherwise the trash
+        # would be a free place to keep them for a month.
         # Rows in a mounted remote bucket are mirror stubs: the bytes are held
         # (and billed) on the exporting host, so charging them here would bill
         # the same gigabyte twice. S3 rows keep billing — this host pays the
