@@ -2,14 +2,16 @@
 
 The chain recorded documents and money and said nothing about people coming
 and going. Now it does, from Django's own signals — so every door is covered
-at once: the login form, the SSO provider, axes' lockouts, the admin, the
+at once: the login form, the SSO provider, the sign-in lockout, the admin, the
 membership flow, a management command.
 
 | action | when |
 |---|---|
 | `AUTH.LOGIN` | a session starts (`user_logged_in`) |
 | `AUTH.LOGOUT` | a session ends (`user_logged_out`) |
-| `AUTH.LOGIN_FAILED` | credentials refused, a lockout included (`user_login_failed`); `success=False`, the attempted username only |
+| `AUTH.LOGIN_FAILED` | credentials refused, a lockout included (`user_login_failed`); `success=False`, the attempted username only; a try the sign-in lockout refused carries `refused` (`delay`, `locked`, `address_locked`) and is recorded at most once a minute per name and address |
+| `AUTH.LOCKED` | the sign-in lockout paused a name at an address, or a whole address (`toto.core.signin_lockout`, 2026-09-30); `success=False`, the scope, the typed name, the address, the failures and the minutes |
+| `AUTH.UNLOCKED` | a pause lifted from the console (`manage.py unlock_signin`); the name, the address or `all` |
 | `AUTH.TOKEN_REFUSED` | a session key presented as an API or WebSocket token named an account and was refused (`toto.api.tokens`, 2026-09-30); `success=False`, the door and the reason only |
 | `AUTH.ACCOUNT_CREATED` | a `User` row is created, by whatever door |
 | `AUTH.ACCOUNT_ACTIVATED` / `_DEACTIVATED` | `is_active` changes |
@@ -80,8 +82,57 @@ def on_login_failed(sender, credentials, request=None, **kwargs):
 
     credentials = credentials or {}
     attempted = str(credentials.get("username") or credentials.get("email") or "")[:150]
+    metadata = {"username": attempted}
+    # The sign-in lockout's refusal, when it was that (2026-09-30). A paused
+    # guesser's try costs no hashing, so a record per knock would be a cheap
+    # way to fill the chain: the lockout marks the first knock each minute
+    # per name and address, and only that one is written.
+    refused = getattr(request, "signin_refusal", None) if request is not None else None
+    if refused is not None:
+        if not getattr(refused, "record", True):
+            return
+        metadata["refused"] = str(getattr(refused, "reason", ""))
     _record("login_failed", username=attempted, actor_user=SYSTEM, request=request,
-            success=False, metadata={"username": attempted})
+            success=False, metadata=metadata)
+
+
+def on_signin_locked(*, scope, address, failures, minutes, username="", request=None):
+    """The sign-in lockout paused a sign-in (2026-09-30).
+
+    Called by ``toto.core.signin_lockout`` once, when a count reaches its
+    threshold. ``scope`` is ``account_address`` (this name from this address)
+    or ``address`` (every name from it). The name is the one typed, whether or
+    not an account has it — the record does not look it up — and nothing else
+    from the credentials. The actor is the system: whoever was guessing is not
+    proven to be anybody.
+    """
+    from .services import SYSTEM
+
+    attempted = str(username or "")[:150]
+    metadata = {"scope": scope, "address": str(address), "failures": int(failures),
+                "minutes": int(minutes)}
+    if attempted:
+        metadata["username"] = attempted
+    _record("locked", username=attempted or str(address), actor_user=SYSTEM, request=request,
+            success=False, metadata=metadata)
+
+
+def on_signin_unlocked(*, username="", address="", everything=False):
+    """A pause lifted at the console (``manage.py unlock_signin``, 2026-09-30).
+
+    Returns the record, or None when it could not be written — the command
+    says so rather than pretending."""
+    from .services import SYSTEM
+
+    metadata = {}
+    if everything:
+        metadata["all"] = True
+    if username:
+        metadata["username"] = str(username)[:150]
+    if address:
+        metadata["address"] = str(address)
+    return _record("unlocked", username=str(username or address or "all")[:150],
+                   actor_user=SYSTEM, source="console", metadata=metadata)
 
 
 def on_token_refused(user, *, account_id, reason, door, request=None):
