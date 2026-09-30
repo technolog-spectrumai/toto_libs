@@ -257,6 +257,12 @@ def import_worktree(repo: GitRepo) -> dict:
     """worktree → vault DB after pull/merge/checkout.
     Returns {"created": [...], "updated": [...], "deleted": [...]}."""
     worktree = repo.worktree
+    # A trashed file has left the repo (2026-10-01), as export already says by
+    # dropping it: forget its mapping, so a pull neither writes into a file
+    # nobody can see nor deletes one that waits in the trash. A worktree path
+    # that still carries it comes back as a new file, the way it would after
+    # a delete.
+    repo.files.filter(vault_file__trashed_at__isnull=False).delete()
     by_relpath = {m.relpath: m for m in repo.files.select_related("vault_file")}
 
     created, updated = [], []
@@ -306,12 +312,17 @@ def import_worktree(repo: GitRepo) -> dict:
                     updated.append(relpath)
 
     # Paths tracked in the mapping but no longer in the worktree → a pulled /
-    # merged deletion; delete the vault file (post_delete removes the bytes).
+    # merged deletion. The vault file goes to the trash (2026-10-01), like any
+    # member's delete, and its mapping goes now; a file the trash cannot hold
+    # (a mounted remote bucket) is deleted, the mapping with it by cascade.
+    from toto.vault.trash import remove_file
+
     deleted = []
     for relpath, mapping in by_relpath.items():
         if relpath in present:
             continue
-        mapping.vault_file.delete()  # cascades to the mapping row
+        if remove_file(mapping.vault_file, by=repo.owner, door="repo_pull"):
+            mapping.delete()
         deleted.append(relpath)
 
     return {"created": created, "updated": updated, "deleted": deleted}

@@ -212,6 +212,41 @@ class ImportTests(RepoTestCase):
         self.assertEqual(summary, {"created": [], "updated": [], "deleted": []})
 
 
+class TrashTests(RepoTestCase):
+    """The vault's trash (2026-10-01): a pulled deletion trashes, and a file
+    already in the trash has left the repo."""
+
+    def test_a_pulled_deletion_moves_the_file_to_the_trash(self):
+        repo = self.make_repo()
+        (repo.worktree / "sub" / "deep.txt").unlink()
+        summary = sync.import_worktree(repo)
+        self.assertEqual(summary["deleted"], ["sub/deep.txt"])
+        row = VaultFile.all_objects.get(pk=self.f_deep.pk)
+        self.assertIsNotNone(row.trashed_at)
+        self.assertEqual(row.file.read(), b"deep content\n")
+        self.assertFalse(GitRepoFile.objects.filter(vault_file_id=self.f_deep.pk).exists())
+
+    def test_a_pull_never_writes_into_a_trashed_file(self):
+        repo = self.make_repo()
+        self.f_notes.trash(self.user)
+        (repo.worktree / "notes.txt").write_bytes(b"changed upstream\n")
+        summary = sync.import_worktree(repo)
+        self.assertEqual(summary["created"], ["notes.txt"])
+        trashed = VaultFile.all_objects.get(pk=self.f_notes.pk)
+        self.assertEqual(trashed.file.read(), b"hello notes\n")
+        fresh = GitRepoFile.objects.get(repo=repo, relpath="notes.txt").vault_file
+        self.assertNotEqual(fresh.pk, self.f_notes.pk)
+        self.assertIsNone(fresh.trashed_at)
+
+    def test_a_pull_never_deletes_a_file_waiting_in_the_trash(self):
+        repo = self.make_repo()
+        self.f_deep.trash(self.user)
+        (repo.worktree / "sub" / "deep.txt").unlink()
+        summary = sync.import_worktree(repo)
+        self.assertEqual(summary["deleted"], [])
+        self.assertTrue(VaultFile.all_objects.filter(pk=self.f_deep.pk).exists())
+
+
 class GuardTests(RepoTestCase):
     def test_nesting_guard_descendant(self):
         services.init_repo(self.sub, self.user)
