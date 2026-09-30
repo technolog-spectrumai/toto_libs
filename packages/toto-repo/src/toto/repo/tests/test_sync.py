@@ -212,6 +212,27 @@ class ImportTests(RepoTestCase):
         self.assertEqual(summary, {"created": [], "updated": [], "deleted": [],
                                    "refused": []})
 
+    def test_import_leaves_office_files_out_of_the_vault(self):
+        """No Microsoft Office file enters through a pull (2026-09-30), by
+        name or by content; an OpenDocument file does."""
+        import io
+        import zipfile
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("[Content_Types].xml", "<Types/>")
+            zf.writestr("word/document.xml", "<x/>")
+        repo = self._repo()
+        (repo.worktree / "minutes.docx").write_bytes(buf.getvalue())
+        (repo.worktree / "renamed.zip").write_bytes(buf.getvalue())
+        (repo.worktree / "old.xls").write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\0" * 64)
+        (repo.worktree / "letter.odt").write_bytes(b"PK\x03\x04 not office")
+        summary = sync.import_worktree(repo)
+        self.assertEqual(sorted(summary["refused"]), ["minutes.docx", "old.xls", "renamed.zip"])
+        self.assertEqual(summary["created"], ["letter.odt"])
+        self.assertFalse(VaultFile.objects.filter(
+            title__in=["minutes.docx", "renamed.zip", "old.xls"]).exists())
+
 
 class TrashTests(RepoTestCase):
     """The vault's trash (2026-10-01): a pulled deletion trashes, and a file
