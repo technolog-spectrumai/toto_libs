@@ -178,11 +178,16 @@ def execute_refresh_run(run_id: int):
 
 
 def _upsert_stub(run, bucket, row: dict, seen_keys: set) -> None:
-    from .models import FileOrigin, VaultFile
+    from .models import FileOrigin, VaultFile, is_office_file, office_refusal_sentence
 
     key = row.get("key") or ""
     if not key:
         run.add_skip("?", "The peer sent a listing row without a key.")
+        return
+    if is_office_file(row.get("title") or key) or is_office_file(key):
+        # Not listed here even as a stub (2026-09-30). Left out of seen_keys,
+        # so a stub made before the rule is pruned with the vanished ones.
+        run.add_skip(key, office_refusal_sentence())
         return
     seen_keys.add(key)
     fields = _stub_fields(row)

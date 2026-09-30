@@ -131,6 +131,13 @@ def execute_transfer_run(run_id: int) -> TransferRun:
                   "Content hash mismatch — the bytes do not match the row.")
             continue
 
+        # A file another host or an S3 bucket still holds, or a row from
+        # before the rule, does not come in through a copy either (2026-09-30).
+        from .models import is_office_file, office_refusal_sentence
+        if is_office_file(source_file.title or key_label, content):
+            _skip(run, idx, key_label, office_refusal_sentence())
+            continue
+
         verdict = _scanning.Verdict.clean(scanned=False)
         if not dest_remote and _scanning.should_scan(
                 source_file.owner, source_file.file_type, door="transfer"):
