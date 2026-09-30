@@ -93,9 +93,12 @@ class ModeInvariantsTests(SimpleTestCase):
         for mode in (MODE_LOCAL, MODE_PROVIDER, MODE_CONSUMER):
             self.assertEqual(login_url(resolve(TOTO_AUTH_MODE=mode)), "sso:login")
 
-    def test_model_backend_serves_every_mode(self):
+    def test_model_backend_serves_every_mode_behind_the_lockout(self):
+        # The sign-in lockout (2026-09-30) goes first in every mode: it must
+        # be asked before any backend compares a password.
         for mode in (MODE_LOCAL, MODE_PROVIDER, MODE_CONSUMER):
             self.assertEqual(
                 authentication_backends(resolve(TOTO_AUTH_MODE=mode)),
-                ["django.contrib.auth.backends.ModelBackend"],
+                ["toto.core.signin_lockout.SigninLockoutBackend",
+                 "django.contrib.auth.backends.ModelBackend"],
             )

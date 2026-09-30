@@ -93,7 +93,14 @@ def login_url(cfg: AuthConfig) -> str:
     return "sso:login"
 
 
+#: toto.core's sign-in lockout (2026-09-30). It authenticates nobody and must
+#: come before every backend that compares a password: while a sign-in is
+#: paused it stops ``authenticate()`` before one is asked.
+SIGNIN_LOCKOUT_BACKEND = "toto.core.signin_lockout.SigninLockoutBackend"
+
+
 def authentication_backends(cfg: AuthConfig) -> list:
-    """AUTHENTICATION_BACKENDS for the mode (the consumer callback names its
-    backend explicitly, so ModelBackend serves every current mode)."""
-    return ["django.contrib.auth.backends.ModelBackend"]
+    """AUTHENTICATION_BACKENDS for the mode: the sign-in lockout first, then
+    ModelBackend, which serves every current mode (the consumer callback
+    names its backend explicitly)."""
+    return [SIGNIN_LOCKOUT_BACKEND, "django.contrib.auth.backends.ModelBackend"]
