@@ -173,6 +173,16 @@ creates or deletes an account (console only; a first save creates the
   a "new sign-in" notice (`toto.core.user_sessions`, pairs kept as hashes in
   `KnownSignIn`); an account's first sign-in with nothing known is the
   baseline and mails nothing.
+- **Recent sign-ins** (2026-09-30): the member's own `AUTH.*` records of the
+  last 30 days — sign-ins and sign-outs, failed attempts typed with their
+  username or e-mail (any case), sign-in pauses naming them, password changes
+  and resets, ended sessions, changes to the account's flags — each with its
+  time (in their time zone), what, address and browser. Read through
+  `toto.audit.queries.member_auth_records`; the audit pages stay staff-only.
+  A change made by another account (a staff member) shows without that
+  person's address or browser. Paged on its own `?signins_page=` — the
+  Sessions list has `?page=`; `oya/partials/_server_pagination.html` takes a
+  `page_param` for that — and each list's link carries the other's page.
 
 Every profile or time-zone change is a `SOCIALHUB.PROFILE_CHANGED` record
 naming the fields (`fields`), never their values.

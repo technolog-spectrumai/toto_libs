@@ -19,6 +19,11 @@ fields, never their values; a password change is ``AUTH.PASSWORD_CHANGED``
 notice through ``toto.core.notices.send_notice``. Ending a session, one or
 all but this one, is ``AUTH.SESSION_ENDED`` / ``AUTH.SIGNED_OUT_EVERYWHERE``
 (``toto.core.user_sessions`` keeps the rows the list is made of).
+
+Recent sign-ins lists the member's own ``AUTH.*`` records of the last 30
+days, read through ``toto.audit.queries.member_auth_records`` — the audit
+pages stay staff-only; this is the one narrow read of rows about the member,
+guesses at their name included.
 """
 
 from __future__ import annotations
@@ -34,6 +39,7 @@ from django.core.paginator import Paginator
 from django.http import Http404
 from django.shortcuts import redirect, render
 from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
 from django.views.decorators.http import require_POST
 
 from toto.core.client_ip import client_ip
@@ -69,14 +75,103 @@ def _sessions_page(request):
     return Paginator(rows, SESSIONS_PER_PAGE).get_page(request.GET.get("page"))
 
 
+#: Sign-in records shown per page, how far back, and the page's own query
+#: parameter — the Sessions list already has ``?page=``.
+SIGNINS_PER_PAGE = 20
+SIGNINS_DAYS = 30
+SIGNINS_PAGE_PARAM = "signins_page"
+
+#: What each ``AUTH.*`` action is called on the list; one not named here
+#: shows as its action code rather than being hidden.
+SIGNIN_LABELS = {
+    "AUTH.LOGIN": gettext_lazy("Signed in"),
+    "AUTH.LOGOUT": gettext_lazy("Signed out"),
+    "AUTH.LOGIN_FAILED": gettext_lazy("Failed sign-in"),
+    "AUTH.LOCKED": gettext_lazy("Sign-in paused after failed attempts"),
+    "AUTH.UNLOCKED": gettext_lazy("Sign-in pause lifted"),
+    "AUTH.TOKEN_REFUSED": gettext_lazy("Desktop sign-in refused"),
+    "AUTH.PASSWORD_CHANGED": gettext_lazy("Password changed"),
+    "AUTH.PASSWORD_RESET": gettext_lazy("Password reset through a link"),
+    "AUTH.EMAIL_CHANGED": gettext_lazy("E-mail address changed"),
+    "AUTH.SESSION_ENDED": gettext_lazy("Session ended"),
+    "AUTH.SIGNED_OUT_EVERYWHERE": gettext_lazy("Signed out everywhere else"),
+    "AUTH.ACCOUNT_CREATED": gettext_lazy("Account created"),
+    "AUTH.ACCOUNT_ACTIVATED": gettext_lazy("Account activated"),
+    "AUTH.ACCOUNT_DEACTIVATED": gettext_lazy("Account deactivated"),
+    "AUTH.STAFF_GRANTED": gettext_lazy("Staff access granted"),
+    "AUTH.STAFF_REVOKED": gettext_lazy("Staff access removed"),
+    "AUTH.SUPERUSER_GRANTED": gettext_lazy("Superuser access granted"),
+    "AUTH.SUPERUSER_REVOKED": gettext_lazy("Superuser access removed"),
+}
+
+#: A refused sign-in's ``refused`` reason, said as a note beside it.
+REFUSAL_NOTES = {
+    "delay": gettext_lazy("refused: too many attempts, wait a moment"),
+    "locked": gettext_lazy("refused: sign-in paused"),
+    "address_locked": gettext_lazy("refused: this address is paused"),
+}
+
+
+def _signin_row(record, user):
+    """One record as the list shows it: never the record's own metadata.
+
+    The address and browser are those of whoever's request it was. When that
+    was ANOTHER account — a staff member changing this account's flags — they
+    are that person's, not the member's to see, and are left out.
+    """
+    by_other = bool(record.actor_user_id) and record.actor_user_id != user.pk
+    source = record.request_source or {}
+    metadata = record.metadata or {}
+    address = "" if by_other else (source.get("ip_address") or "")
+    if not address and not by_other and record.action == "AUTH.LOCKED":
+        address = metadata.get("address") or ""
+    return {
+        "timestamp": record.timestamp,
+        "action": record.action,
+        "label": SIGNIN_LABELS.get(record.action, record.action),
+        "note": REFUSAL_NOTES.get(str(metadata.get("refused", "")), ""),
+        "success": record.success,
+        "by_other": by_other,
+        "address": address,
+        "user_agent": "" if by_other else (source.get("user_agent") or ""),
+    }
+
+
+def _signins_page(request):
+    from django.apps import apps
+
+    if not apps.is_installed("toto.audit"):
+        return None
+    from toto.audit.queries import member_auth_records
+
+    records = member_auth_records(request.user, days=SIGNINS_DAYS)
+    page = Paginator(records, SIGNINS_PER_PAGE).get_page(
+        request.GET.get(SIGNINS_PAGE_PARAM))
+    page.rows = [_signin_row(record, request.user) for record in page.object_list]
+    return page
+
+
 def _page(request, *, profile_form=None, timezone_form=None, password_form=None,
           status=200):
     person = own_person(request.user)
     sessions = _sessions_page(request)
+    signins = _signins_page(request)
+    # Each list pages on its own parameter and carries the other's along, so
+    # paging one does not send the other back to its first page.
+    sessions_query = ""
+    if signins is not None and signins.number > 1:
+        sessions_query = f"&{SIGNINS_PAGE_PARAM}={signins.number}"
+    signins_query = f"&page={sessions.number}" if sessions.number > 1 else ""
     context = {
         "page_obj": sessions,
         "is_paginated": sessions.has_other_pages(),
         "sessions": sessions.object_list,
+        "sessions_query": sessions_query + "#sessions",
+        "signins_page": signins,
+        "signins_paginated": bool(signins) and signins.has_other_pages(),
+        "signins_query": signins_query + "#signins",
+        "signins_page_param": SIGNINS_PAGE_PARAM,
+        "signins_days": SIGNINS_DAYS,
         # A federated account signs in at its provider and has no password
         # here to change: the section says so instead of offering a form
         # whose "current password" nothing could ever match.
