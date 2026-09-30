@@ -25,6 +25,13 @@ Note this is deliberately NOT the ``API_CONNECTOR_ALLOWED_HOSTS`` shape
 (``toto/api/client.py``), which fails **open** when unset. Here "unset" means
 steps 2-4 still apply, which is fail-closed on the ranges that matter.
 
+## Redirects
+
+The guard checks the URL a caller hands it, once. A redirect would send the
+next request somewhere it never saw, so the peer client never follows one
+(``allow_redirects=False``; a 3xx is refused as a broken peer —
+``peer_client.PeerClient._request``).
+
 ## Known residual: DNS rebinding
 
 The guard resolves at check time; a hostile resolver can answer differently at

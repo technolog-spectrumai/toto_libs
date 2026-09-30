@@ -279,12 +279,19 @@ class BucketPeer(models.Model):
 # aliases because tests import the old names from there.
 
 
-def pairing_code_for(grant, raw_key):
+def pairing_code_for(grant, raw_key, *, host: str = ""):
     """The one wire format for handing a grant to the peer's operator.
 
     base64 over JSON, versioned. Carries the raw api key, so it exists only in
     the message that shows it — never in a column (the grant stores a hash, the
     peer that pastes it stores sealed ciphertext).
+
+    ``expires_at`` (always, when the grant expires) and ``host`` (the exporting
+    host's base URL, when the minting door knows it — a request does) were
+    added on 2026-09-30 so the mounting side can SHOW what a code grants before
+    anything is saved. Both are optional keys inside v1: an older decoder
+    ignores them, an older code simply lacks them, and the mounting side says
+    "not stated" instead of guessing.
     """
     payload = {
         "v": 1,
@@ -294,6 +301,10 @@ def pairing_code_for(grant, raw_key):
         "bucket": grant.bucket.slug,
         "rights": [r for r in BUCKET_RIGHTS if getattr(grant, r)],
     }
+    if grant.expires_at:
+        payload["expires_at"] = grant.expires_at.isoformat()
+    if host:
+        payload["host"] = str(host).rstrip("/")
     return base64.b64encode(json.dumps(payload).encode()).decode()
 
 

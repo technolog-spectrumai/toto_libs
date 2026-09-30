@@ -11,6 +11,13 @@ A per-file 404 or an encrypted-file 409 is the peer ANSWERING, not the link
 failing, so those stamp ok and raise :class:`PeerStatusError` for the caller
 to interpret. Transport failures, auth refusals and 5xx stamp the error.
 
+**Redirects are never followed.** The SSRF guard (``outbound``) checks the
+peer's base URL once, here; a redirect would send the next request — with
+the api key header, and the body of whatever answered — to an address that
+check never saw (``169.254.169.254``, an internal service). The peer API
+never redirects, so a 3xx is a broken or hostile peer: stamped, refused, and
+its ``Location`` never fetched.
+
 ``_http()`` is the module-level seam tests patch (clearing's stated
 convention); ``requests`` is imported nowhere else, so a host without the
 ``remote-vault`` extra pays nothing until a peer is actually used.
@@ -95,9 +102,20 @@ class PeerClient:
                                          magic_token=peer.magic_token))
 
     # ── transport ─────────────────────────────────────────────────────────
+    def _redact(self, text: str) -> str:
+        """A transport exception quotes the URL it called, and that URL
+        carries the grant's magic token (and the grant id): an error stamped
+        on the row, shown on a page or put in JSON must carry neither."""
+        text = str(text)
+        for value in (self.peer.magic_token, str(self.peer.grant_uid or ""), self._api_key):
+            if value and len(value) >= 6:
+                text = text.replace(value, "…")
+        return text
+
     def _stamp(self, error: str = "") -> None:
         from .peering import BucketPeer
 
+        error = self._redact(error)
         fields = {"last_error": error}
         if not error:
             fields["last_ok_at"] = timezone.now()
@@ -105,18 +123,31 @@ class PeerClient:
 
     def _request(self, method, path, *, stream=False, **kwargs):
         headers = {API_KEY_HEADER: self._api_key or self.peer.get_api_key()}
+        # Never a caller's choice: the guard checked self._base and nothing else.
+        kwargs.pop("allow_redirects", None)
         try:
             resp = _http().request(
                 method, self._base + path, headers=headers,
-                timeout=DEFAULT_TIMEOUT, stream=stream, **kwargs)
+                timeout=DEFAULT_TIMEOUT, stream=stream, allow_redirects=False, **kwargs)
         except SoftTimeLimitExceeded:
             # The worker's clock, not the link: stamping it would badge a
             # working peer as broken, and a PeerError would fail the run.
             raise
         except Exception as exc:  # noqa: BLE001 - every transport failure, one shape
             self._stamp(f"{type(exc).__name__}: {exc}")
-            raise PeerError(
-                f"{self.peer.label}: {type(exc).__name__}: {exc}") from exc
+            raise PeerError(self._redact(
+                f"{self.peer.label}: {type(exc).__name__}: {exc}")) from exc
+        if 300 <= resp.status_code < 400:
+            # Neither the Location nor the body: both are the redirecting
+            # host's words, and the target is exactly what must stay unread.
+            try:
+                resp.close()
+            except Exception:  # noqa: BLE001 - a fake or an already-closed response
+                pass
+            self._stamp(f"HTTP {resp.status_code}: a redirect, which is never followed")
+            raise PeerError(self._redact(
+                f"{self.peer.label} answered with a redirect (HTTP {resp.status_code}), "
+                "which this server never follows: check the other Zenobia's address"))
         if resp.status_code >= 400:
             detail = _short_body(resp)
             # 404/409 are answers ABOUT A FILE from a working link; anything
@@ -126,7 +157,7 @@ class PeerClient:
             else:
                 self._stamp(f"HTTP {resp.status_code}: {detail}")
             raise PeerStatusError(
-                f"{self.peer.label} answered {resp.status_code}: {detail}",
+                self._redact(f"{self.peer.label} answered {resp.status_code}: {detail}"),
                 status=resp.status_code, reason=_reason(resp))
         self._stamp()
         return resp
