@@ -19,3 +19,6 @@ class VaultConfig(AppConfig):
         # a host without toto-media-ops still collects the plugins that do not
         # need its run substrate (the builder-backed ones).
         autodiscover_plugins("plugins.file_service_plugins")
+        # Bucket kinds for Storage → Management (toto.vault.storage_adapters):
+        # this server, S3 presets, another Zenobia.
+        autodiscover_plugins("plugins.storage_adapters")

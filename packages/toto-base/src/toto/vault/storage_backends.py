@@ -7,11 +7,15 @@ Backends
   s3           — boto3-backed S3-compatible store (AWS, OVH, MinIO, …)
   remote_toto  — a paired toto host's exported bucket, via the peer API
 
-Credentials are NEVER stored in the database (the peer's api key is the one
-exception, and it is Fernet-sealed on the BucketPeer row — see
-toto/vault/peering.py).
+Credentials never live in a readable column. Two are sealed under
+``FIELD_ENCRYPTION_KEY``: a peer's api key (on the BucketPeer row — see
+toto/vault/peering.py) and, since 2026-09-30, the S3 keys entered in
+Storage → Management (``models.BucketSecret``). ``get_bucket_storage`` opens a
+bucket's sealed secret per use and hands the dict to the driver it builds; the
+dict dies with the driver.
 
-S3 credentials come from the standard boto3 chain:
+S3 credentials, in order:
+  0. the bucket's BucketSecret, when it has one (Management-created buckets)
   1. AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env vars
   2. ~/.aws/credentials or a named profile via storage_config["aws_profile"]
   3. IAM instance role / container credentials
@@ -36,8 +40,15 @@ import os
 import re
 
 from django.core.files.base import ContentFile
+from django.utils.translation import gettext
 
 from toto.vault.storage import private_storage
+
+try:  # celery is optional in toto-base; without it nothing raises this
+    from celery.exceptions import SoftTimeLimitExceeded
+except ImportError:  # pragma: no cover
+    class SoftTimeLimitExceeded(Exception):
+        pass
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +112,18 @@ class BaseVaultStorageDriver:
 
     def delete(self, name: str) -> None:
         raise NotImplementedError
+
+    def delete_strict(self, name: str) -> None:
+        """Delete the stored bytes, and RAISE when that failed.
+
+        ``delete`` is lenient on purpose for its old callers (a row already
+        gone, an orphan better than a row pointing at nothing). A bucket
+        purge needs the opposite: a file counts as deleted only when its
+        bytes are, so a key without delete permission, a deactivated key or
+        an unwritable disk stops the purge instead of passing for success.
+        Already-absent bytes are success (deleting is idempotent).
+        """
+        self.delete(name)
 
 
 # ---------------------------------------------------------------------------
@@ -289,9 +312,16 @@ class S3CompatibleVaultStorageDriver(BaseVaultStorageDriver):
 
     def delete(self, name: str) -> None:
         try:
-            self._get_client().delete_object(Bucket=self._bucket_name, Key=name)
+            self.delete_strict(name)
+        except SoftTimeLimitExceeded:
+            raise                       # the worker's clock, never "a failed delete"
         except Exception as exc:
             logger.warning("S3 delete failed for key %r: %s", name, exc)
+
+    def delete_strict(self, name: str) -> None:
+        # S3 answers 204 for a key that is already gone: idempotent. A refusal
+        # (AccessDenied, InvalidAccessKeyId, a dead endpoint) raises.
+        self._get_client().delete_object(Bucket=self._bucket_name, Key=name)
 
 
 # ---------------------------------------------------------------------------
@@ -331,22 +361,66 @@ class RemoteTotoStorageDriver(BaseVaultStorageDriver):
     def delete(self, name: str) -> None:
         try:
             self._client.delete(name)
+        except SoftTimeLimitExceeded:
+            raise
         except Exception as exc:  # noqa: BLE001 - a purge must not 500 on a dead peer
             logger.warning("remote_toto delete failed for %r: %s", name, exc)
+
+    def delete_strict(self, name: str) -> None:
+        from .peer_client import PeerStatusError
+
+        try:
+            self._client.delete(name)
+        except PeerStatusError as exc:
+            if exc.status != 404:       # 404: already gone there
+                raise
 
 
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 
+class SealedCredentialUnreadable(RuntimeError):
+    """The bucket's sealed S3 credential cannot be opened here."""
+
+
+def sealed_credential(bucket) -> dict | None:
+    """The bucket's ``BucketSecret``, opened — or None when it has none.
+
+    Read fresh on every call and never cached: the plaintext lives only in the
+    driver built from it. A row sealed under a key this process does not hold
+    raises :class:`SealedCredentialUnreadable` with a sentence (never the
+    ciphertext, never the key) instead of silently falling back to whatever
+    credentials the environment happens to carry — that fallback would point
+    somebody else's keys at this bucket.
+    """
+    pk = getattr(bucket, "pk", None)
+    if not pk:
+        return None
+    from toto.vault.models import BucketSecret
+
+    row = BucketSecret.objects.filter(bucket_id=pk).first()
+    if row is None:
+        return None
+    try:
+        return row.open()
+    except Exception:  # noqa: BLE001 - InvalidToken, a truncated blob, bad JSON
+        raise SealedCredentialUnreadable(gettext(
+            "The stored credential of bucket '%(name)s' cannot be opened with "
+            "this server's FIELD_ENCRYPTION_KEY — the key changed since it was "
+            "sealed.") % {"name": getattr(bucket, "name", pk)}) from None
+
+
 def get_bucket_storage(bucket, *, credential: dict | None = None) -> BaseVaultStorageDriver:
     """Return the appropriate storage driver for *bucket*.
 
     ``credential`` is a plaintext credential an operator's storage PIN has just
     opened (or a queued run redeemed from a capability). Omit it and the driver
-    behaves exactly as it always has: boto3's ambient chain for S3, the
-    Fernet-sealed peer key for a mount. That is what ``credential_mode
-    == "ambient"`` means, and it is the default on every existing row.
+    uses the bucket's sealed S3 secret when it has one (``BucketSecret``,
+    opened here, per call), and otherwise behaves exactly as it always has:
+    boto3's ambient chain for S3, the Fernet-sealed peer key for a mount. That
+    is what ``credential_mode == "ambient"`` means, and it is the default on
+    every existing row.
     """
     backend = getattr(bucket, "storage_backend", None) or "local"
     config: dict = getattr(bucket, "storage_config", None) or {}
@@ -376,6 +450,8 @@ def get_bucket_storage(bucket, *, credential: dict | None = None) -> BaseVaultSt
                 merged["addressing_style"] = provider.addressing_style
             if "use_ssl" not in merged:
                 merged["use_ssl"] = provider.use_ssl
+        if credential is None:
+            credential = sealed_credential(bucket)
         return S3CompatibleVaultStorageDriver(merged, credential=credential)
 
     if backend == "remote_toto":
@@ -426,6 +502,13 @@ def persist_upload(vault_file, uploaded_file) -> None:
     import hashlib
 
     bucket = vault_file.bucket
+    if bucket is not None and bucket.pk:
+        # Before any byte is written: a bucket being deleted takes nothing new
+        # (models.VaultFile.save is the backstop; this is the sentence).
+        from toto.vault.models import Bucket, closed_bucket_sentence
+
+        if Bucket.objects.filter(pk=bucket.pk, deletion_requested_at__isnull=False).exists():
+            raise UploadRefused(closed_bucket_sentence(bucket))
     if bucket is None or bucket.is_local:
         vault_file.file.save(uploaded_file.name, uploaded_file, save=True)
         if not vault_file.content_hash:
