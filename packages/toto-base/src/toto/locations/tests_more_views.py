@@ -18,9 +18,9 @@ from toto.api.testutils import add_to_mesh
 from toto.core.models import Platform
 from toto.locations import access, views
 from toto.locations.models import (
-    HAS_GIS, Address, MapLayer, MapLayerClearance, Route, RouteChain, Territory, Zone,
+    HAS_GIS, Address, MapLayer, Route, RouteChain, Territory, Zone,
 )
-from toto.locations.tests_more_clearances import ClearanceFixture
+from toto.locations.tests_more_clearances import ClearanceFixture, domain, keep
 
 User = get_user_model()
 
@@ -59,8 +59,9 @@ class RouteSaveTests(PageTestCase):
                              fetch_redirect_response=False)
         self.assertEqual(route.geometry.geom_type, "MultiLineString")
         self.assertEqual(route.created_by, self.ada)
-        # The member who drew it chooses its clearances and edits its note.
-        self.assertTrue(access.may_manage_clearances(self.ada, route))
+        # The member who drew it edits its note; who reads it is a map
+        # domain's business, a superuser's.
+        self.assertFalse(access.may_manage_domains(self.ada))
         self.assertTrue(access.may_write(self.ada, route))
         self.assertFalse(access.may_write(self.bob, route))
 
@@ -166,17 +167,17 @@ class LayerImportTests(PageTestCase):
             self.feature(value=None), self.feature(geometry=line), self.feature(value=2.0)))
         self.assertEqual(response.json()["imported"][0]["polygon_count"], 1)
 
-    def test_reimporting_a_slug_replaces_its_polygons_and_keeps_its_clearances(self):
+    def test_reimporting_a_slug_replaces_its_polygons_and_keeps_its_domains(self):
         from toto.socialhub.models import Clearance
 
         self.upload(self.collection(self.feature(value=1.0), self.feature(value=2.0)))
         layer = MapLayer.objects.get(slug="rain")
         board = Clearance.objects.create(name="internal", slug="internal")
-        MapLayerClearance.objects.create(layer=layer, clearance=board)
+        keep(layer, domain("Board", board))
         self.upload(self.collection(self.feature(value=9.0)))
         layer.refresh_from_db()
         self.assertEqual(list(layer.polygons.values_list("value", flat=True)), [9.0])
-        self.assertEqual(list(layer.clearance_rows.values_list("clearance__name", flat=True)), ["internal"])
+        self.assertEqual(list(layer.domain_rows.values_list("domain__name", flat=True)), ["Board"])
         self.assertFalse(access.may_read(self.bob, layer))
 
     def test_what_is_not_a_feature_collection_is_refused(self):
@@ -429,19 +430,28 @@ class RouteChainTests(ClearanceFixture):
         self.assertEqual((rows["Territory"]["detail"], rows["Zone"]["detail"]),
                          ("Territory", "Inside North"))
 
-    @skip("suspected bug: route_chain_geometry and the chain rows (map page, api/map, "
-          "detail page, connector) join every route of the chain, so a route kept to a "
-          "clearance is drawn, counted and located for a stranger through its chain")
     def test_a_kept_route_is_not_drawn_through_its_chain(self):
+        """Fixed 2026-09-30: a chain is drawn and counted from its reader's
+        readable routes — the map page, api/map, the detail page, the connector."""
+        from toto.core.connectors import execute_connector_type
+
         Route.objects.filter(pk=self.kept.pk).update(route_chain=self.chain, sequence=3)
         kept_line = [[19.0, 50.0], [19.5, 50.5]]
         row = self.chain_row(self.stranger)
         self.assertNotIn(kept_line, row["geometry"]["coordinates"])
         self.assertEqual(row["detail"], "2 routes")
+        self.assertEqual(self.chain_row(self.member)["detail"], "3 routes")
+        self.assertIn(kept_line, self.chain_row(self.member)["geometry"]["coordinates"])
         self.client.force_login(add_to_mesh(self.stranger))
         api_chain = next(row for row in self.client.get(reverse("locations:api_map_data")).json()
                          ["locations"] if row["type"] == "Route Chain")
         self.assertNotIn(kept_line, api_chain["geometry"]["coordinates"])
+        self.assertEqual(api_chain["detail"], "2 routes")
+        self.assertNotIn(kept_line, views.route_chain_geometry(self.chain)["coordinates"])
+        self.assertIn(kept_line, views.route_chain_geometry(self.chain, self.member)["coordinates"])
+        chain = execute_connector_type("locations_read", {"resource": "route_chain", "action": "get",
+                                                          "value": self.chain.pk}, {})
+        self.assertEqual(chain["data"]["route_chain"]["route_count"], 2)
 
 
 class RoutingTests(SimpleTestCase):
@@ -568,17 +578,24 @@ class LabelTests(PageTestCase):
         route = Route.objects.create(geometry=MultiLineString(LineString((0, 0), (1, 1))))
         self.assertEqual(str(route), f"Route {route.pk}")
 
-    def test_a_clearance_row_names_the_thing_and_the_clearance(self):
+    def test_a_domains_rows_name_the_thing_and_the_domain(self):
         from django.contrib.gis.geos import LineString, MultiLineString
 
-        from toto.locations.models import RouteClearance
+        from toto.locations.models import MapDomainClearance, MapLayerInDomain, RouteInDomain
         from toto.socialhub.models import Clearance
 
         board = Clearance.objects.create(name="internal", slug="internal")
+        coastal = domain("Coastal")
         route = Route.objects.create(name="Coast", geometry=MultiLineString(LineString((0, 0), (1, 1))))
         layer = MapLayer.objects.create(name="Rain", slug="rain")
-        self.assertEqual(str(RouteClearance.objects.create(route=route, clearance=board)), "Coast — internal")
-        self.assertEqual(str(MapLayerClearance.objects.create(layer=layer, clearance=board)), "Rain — internal")
+        self.assertEqual(str(coastal), "Coastal")
+        self.assertEqual(coastal.slug, "coastal")
+        self.assertEqual(domain("Coastal!").slug, "coastal-2")
+        self.assertEqual(str(MapDomainClearance.objects.create(domain=coastal, clearance=board)),
+                         "Coastal — internal")
+        self.assertEqual(str(RouteInDomain.objects.create(domain=coastal, route=route)), "Coast in Coastal")
+        self.assertEqual(str(MapLayerInDomain.objects.create(domain=coastal, map_layer=layer)),
+                         "Rain in Coastal")
 
 
 class JsonDoorRefusalTests(PageTestCase):

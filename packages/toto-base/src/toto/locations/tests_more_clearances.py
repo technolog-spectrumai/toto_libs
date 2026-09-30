@@ -1,10 +1,13 @@
-"""Routes and map layers kept to clearances (2026-09-29), rule by rule.
+"""Map domains keep map items to clearances (2026-09-30), rule by rule.
 
-`tests_clearances` pins the headline: a hidden route is a missing one. These
-walk the rule's corners — who reads (members, the creator or owner,
-superusers; not staff, not a community), who chooses the clearances,
-what `clearances_save` refuses, what the detail page's section shows to whom,
-and that the map page and the two JSON doors agree with the per-object door.
+`tests_clearances` pins the headline: a hidden item is a missing one on every
+locations door. These walk the rule's corners for all five kinds here
+(routes, map layers, addresses, zones, territories): who reads (superusers,
+and whoever holds a clearance of EVERY kept domain of the item — not its
+creator or owner, not staff, not a community), what a domain with no
+clearances does, what a domain with two clearances does, and that the map
+page and the JSON doors agree with the per-object door. The Domains tab
+itself is `tests_domains`.
 """
 
 import json
@@ -12,21 +15,34 @@ from unittest import skipUnless
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
-from django.contrib.messages import get_messages
+from django.db.models import ProtectedError
 from django.test import TestCase
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 
 from toto.api.testutils import add_to_mesh
-from toto.audit.models import AuditRecord
 from toto.core.models import Platform
 from toto.locations import access
 from toto.locations.models import (
-    HAS_GIS, Address, MapLayer, MapLayerClearance, Route, RouteClearance, Territory,
+    HAS_GIS, Address, AddressInDomain, MapDomain, MapDomainClearance, MapLayer,
+    MapLayerInDomain, Route, RouteChain, RouteInDomain, Territory, TerritoryInDomain, Zone,
+    ZoneInDomain,
 )
 from toto.people.models import Person
 from toto.socialhub.models import Clearance, Community
 
 User = get_user_model()
+
+SQUARE = "POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))"
+MULTI_SQUARE = "MULTIPOLYGON(((0 0, 1 0, 1 1, 0 1, 0 0)))"
+
+#: The typed membership table of each kind, and its FK to the item.
+THROUGH = {
+    Route: (RouteInDomain, "route"),
+    MapLayer: (MapLayerInDomain, "map_layer"),
+    Address: (AddressInDomain, "address"),
+    Zone: (ZoneInDomain, "zone"),
+    Territory: (TerritoryInDomain, "territory"),
+}
 
 
 def fresh(user):
@@ -35,11 +51,29 @@ def fresh(user):
     return User.objects.get(pk=user.pk)
 
 
+def keep(item, *domains):
+    """Put ``item`` in ``domains``."""
+    through, field = THROUGH[type(item)]
+    for domain in domains:
+        through.objects.create(domain=domain, **{field: item})
+    return item
+
+
+def domain(name, *clearances):
+    made = MapDomain.objects.create(name=name)
+    for clearance in clearances:
+        MapDomainClearance.objects.create(domain=made, clearance=clearance)
+    return made
+
+
 @skipUnless(HAS_GIS, "routes and layers draw on geometry; the map 404s without GIS")
 class ClearanceFixture(TestCase):
     """Two clearances and a plain community; readers of every kind; four
-    routes (open, kept, kept to both clearances, kept with no creator) and four
-    layers (open, kept with an owner, kept with none, inactive)."""
+    domains (kept to ``internal``, kept to ``confidential``, kept to either,
+    kept to nothing); four routes (open; in the internal domain; in the
+    internal AND the confidential domain; in the internal domain with no
+    creator) and four layers (open; in the internal domain with an owner;
+    the same with none; inactive)."""
 
     @classmethod
     def setUpTestData(cls):
@@ -59,6 +93,8 @@ class ClearanceFixture(TestCase):
         cls.both = User.objects.create_user("both", password="x")
         Person.objects.create(user=cls.both, display_name="Both").clearances.add(
             cls.board, cls.seniors)
+        cls.senior = User.objects.create_user("senior", password="x")
+        Person.objects.create(user=cls.senior, display_name="Senior").clearances.add(cls.seniors)
         cls.guildsman = User.objects.create_user("guildsman", password="x")
         Person.objects.create(user=cls.guildsman, display_name="Guildsman").communities.add(cls.guild)
         cls.stranger = User.objects.create_user("stranger", password="x")
@@ -67,37 +103,40 @@ class ClearanceFixture(TestCase):
         cls.owner = User.objects.create_user("owner", password="x")
         cls.owner_person = Person.objects.create(user=cls.owner, display_name="Owner")
 
+        cls.board_domain = domain("Board", cls.board)
+        cls.senior_domain = domain("Seniors", cls.seniors)
+        cls.either_domain = domain("Either", cls.board, cls.seniors)
+        cls.loose_domain = domain("Loose")                                  # keeps nothing
+
         def line(*points):
             return MultiLineString(LineString(*points))
 
         cls.open = Route.objects.create(name="OpenRoute", created_by=cls.creator,
                                         geometry=line((18.0, 54.0), (18.5, 54.5)))
-        cls.kept = Route.objects.create(name="BoardRoute", created_by=cls.creator,
-                                        geometry=line((19.0, 50.0), (19.5, 50.5)))
-        RouteClearance.objects.create(route=cls.kept, clearance=cls.board)
-        cls.double = Route.objects.create(name="DoubleRoute", created_by=cls.creator,
-                                          geometry=line((20.0, 51.0), (20.5, 51.5)))
-        RouteClearance.objects.create(route=cls.double, clearance=cls.board)
-        RouteClearance.objects.create(route=cls.double, clearance=cls.seniors)
-        cls.orphan = Route.objects.create(name="OrphanRoute",
-                                          geometry=line((21.0, 52.0), (21.5, 52.5)))
-        RouteClearance.objects.create(route=cls.orphan, clearance=cls.board)
+        cls.kept = keep(Route.objects.create(name="BoardRoute", created_by=cls.creator,
+                                             geometry=line((19.0, 50.0), (19.5, 50.5))),
+                        cls.board_domain)
+        cls.double = keep(Route.objects.create(name="DoubleRoute", created_by=cls.creator,
+                                               geometry=line((20.0, 51.0), (20.5, 51.5))),
+                          cls.board_domain, cls.senior_domain)
+        cls.orphan = keep(Route.objects.create(name="OrphanRoute",
+                                               geometry=line((21.0, 52.0), (21.5, 52.5))),
+                          cls.board_domain)
 
         square = Polygon(((0, 0), (1, 0), (1, 1), (0, 1), (0, 0)), srid=4326)
         cls.open_layer = MapLayer.objects.create(name="Open layer", slug="open-layer")
-        cls.board_layer = MapLayer.objects.create(name="Board layer", slug="board-layer",
-                                                  owner=cls.owner_person)
-        MapLayerClearance.objects.create(layer=cls.board_layer, clearance=cls.board)
-        cls.nobodys_layer = MapLayer.objects.create(name="Nobodys layer", slug="nobodys-layer")
-        MapLayerClearance.objects.create(layer=cls.nobodys_layer, clearance=cls.board)
+        cls.board_layer = keep(MapLayer.objects.create(name="Board layer", slug="board-layer",
+                                                       owner=cls.owner_person), cls.board_domain)
+        cls.nobodys_layer = keep(MapLayer.objects.create(name="Nobodys layer", slug="nobodys-layer"),
+                                 cls.board_domain)
         cls.idle_layer = MapLayer.objects.create(name="Idle layer", slug="idle-layer",
                                                  is_active=False)
         for layer in (cls.open_layer, cls.board_layer, cls.nobodys_layer, cls.idle_layer):
             MapLayerPolygon.objects.create(layer=layer, geometry=square, center=square.centroid,
                                            value=1.0, name=f"{layer.name} cell")
 
-        cls.readers = (cls.creator, cls.member, cls.both, cls.guildsman, cls.stranger,
-                       cls.staff, cls.root, cls.owner)
+        cls.readers = (cls.creator, cls.member, cls.both, cls.senior, cls.guildsman,
+                       cls.stranger, cls.staff, cls.root, cls.owner)
         cls.routes = (cls.open, cls.kept, cls.double, cls.orphan)
         cls.layers = (cls.open_layer, cls.board_layer, cls.nobodys_layer, cls.idle_layer)
 
@@ -105,38 +144,88 @@ class ClearanceFixture(TestCase):
     def names(queryset):
         return set(queryset.values_list("name", flat=True))
 
+    def other_kinds(self):
+        """An open and a kept (internal domain) address, zone and territory."""
+        self.open_address = Address.objects.create(street="Open St", locality_name="Gdańsk",
+                                                   latitude=54.35, longitude=18.65)
+        self.kept_address = keep(Address.objects.create(street="Kept St", locality_name="Gdańsk",
+                                                        latitude=54.36, longitude=18.66,
+                                                        created_by=self.creator),
+                                 self.board_domain)
+        self.open_territory = Territory.objects.create(name="OpenLand", geometry=SQUARE)
+        self.kept_territory = keep(Territory.objects.create(name="KeptLand", geometry=SQUARE,
+                                                            capital=self.kept_address),
+                                   self.board_domain)
+        self.open_zone = Zone.objects.create(name="OpenZone", geometry=MULTI_SQUARE,
+                                             territory=self.kept_territory)
+        self.kept_zone = keep(Zone.objects.create(name="KeptZone", geometry=MULTI_SQUARE),
+                              self.board_domain)
+
 
 class ReadingRuleTests(ClearanceFixture):
     def test_a_stranger_reads_only_the_open_routes(self):
         self.assertEqual(self.names(access.readable_routes(self.stranger)), {"OpenRoute"})
 
-    def test_a_clearance_member_reads_the_routes_kept_to_their_clearance(self):
+    def test_a_route_in_two_kept_domains_needs_a_clearance_of_each(self):
         self.assertEqual(self.names(access.readable_routes(self.member)),
+                         {"OpenRoute", "BoardRoute", "OrphanRoute"})
+        self.assertEqual(self.names(access.readable_routes(self.senior)), {"OpenRoute"})
+        self.assertEqual(self.names(access.readable_routes(self.both)),
                          {"OpenRoute", "BoardRoute", "DoubleRoute", "OrphanRoute"})
+        self.assertFalse(access.may_read(self.member, self.double))
+        self.assertTrue(access.may_read(self.both, self.double))
 
-    def test_a_route_kept_to_two_clearances_is_listed_once_for_a_member_of_both(self):
+    def test_a_route_in_two_kept_domains_is_listed_once_for_a_holder_of_both(self):
         rows = list(access.readable_routes(self.both).values_list("name", flat=True))
         self.assertEqual(rows.count("DoubleRoute"), 1)
 
-    def test_the_creator_reads_their_kept_routes_without_being_in_the_clearance(self):
-        self.assertEqual(self.names(access.readable_routes(self.creator)),
-                         {"OpenRoute", "BoardRoute", "DoubleRoute"})
+    def test_one_domain_with_two_clearances_opens_to_a_holder_of_either(self):
+        route = keep(Route.objects.create(name="EitherRoute", geometry=self.open.geometry),
+                     self.either_domain)
+        for user in (self.member, self.senior, self.both):
+            with self.subTest(user=user.username):
+                self.assertTrue(access.may_read(user, route))
+        self.assertFalse(access.may_read(self.stranger, route))
 
-    def test_staff_is_not_a_clearance(self):
-        self.assertEqual(self.names(access.readable_routes(self.staff)), {"OpenRoute"})
-        self.assertFalse(access.may_read(self.staff, self.kept))
+    def test_a_domain_with_no_clearances_keeps_nothing(self):
+        route = keep(Route.objects.create(name="LooseRoute", geometry=self.open.geometry),
+                     self.loose_domain)
+        self.assertIn("LooseRoute", self.names(access.readable_routes(self.stranger)))
+        self.assertTrue(access.may_read(AnonymousUser(), route))
+        keep(route, self.board_domain)                    # a kept domain besides: kept
+        self.assertFalse(access.may_read(self.stranger, route))
+        self.assertTrue(access.may_read(self.member, route))
 
-    def test_a_superuser_reads_every_route_and_layer(self):
+    def test_the_creator_does_not_read_their_kept_route(self):
+        self.assertEqual(self.names(access.readable_routes(self.creator)), {"OpenRoute"})
+        self.assertFalse(access.may_read(self.creator, self.kept))
+
+    def test_the_layer_owner_does_not_read_their_kept_layer(self):
+        self.assertNotIn("Board layer", self.names(access.readable_layers(self.owner)))
+        self.assertFalse(access.may_read(self.owner, self.board_layer))
+
+    def test_staff_and_a_community_are_not_clearances(self):
+        for user in (self.staff, self.guildsman):
+            with self.subTest(user=user.username):
+                self.assertEqual(self.names(access.readable_routes(user)), {"OpenRoute"})
+                self.assertFalse(access.may_read(user, self.kept))
+
+    def test_a_superuser_reads_every_item(self):
+        self.other_kinds()
         self.assertEqual(access.readable_routes(self.root).count(), len(self.routes))
         self.assertEqual(access.readable_layers(self.root).count(), len(self.layers))
+        self.assertEqual(access.readable_addresses(self.root).count(), 2)
+        self.assertEqual(access.readable_zones(self.root).count(), 2)
+        self.assertEqual(access.readable_territories(self.root).count(), 2)
 
-    def test_an_anonymous_visitor_reads_only_what_is_open(self):
-        anonymous = AnonymousUser()
-        self.assertEqual(self.names(access.readable_routes(anonymous)), {"OpenRoute"})
-        self.assertEqual(self.names(access.readable_layers(anonymous)),
-                         {"Open layer", "Idle layer"})
-        self.assertFalse(access.may_read(anonymous, self.kept))
-        self.assertTrue(access.may_read(anonymous, self.open))
+    def test_an_anonymous_visitor_and_nobody_read_only_what_is_open(self):
+        for user in (AnonymousUser(), None):
+            with self.subTest(user=user):
+                self.assertEqual(self.names(access.readable_routes(user)), {"OpenRoute"})
+                self.assertEqual(self.names(access.readable_layers(user)),
+                                 {"Open layer", "Idle layer"})
+                self.assertFalse(access.may_read(user, self.kept))
+                self.assertTrue(access.may_read(user, self.open))
 
     def test_the_given_queryset_is_narrowed_not_replaced(self):
         narrowed = access.readable_routes(self.member, Route.objects.filter(name__startswith="Board"))
@@ -144,273 +233,160 @@ class ReadingRuleTests(ClearanceFixture):
         self.assertEqual(self.names(access.readable_layers(
             self.member, MapLayer.objects.filter(is_active=False))), {"Idle layer"})
 
-    def test_the_layer_owner_reads_their_kept_layer(self):
-        self.assertIn("Board layer", self.names(access.readable_layers(self.owner)))
-        self.assertTrue(access.may_read(self.owner, self.board_layer))
-        self.assertNotIn("Nobodys layer", self.names(access.readable_layers(self.owner)))
+    def test_addresses_zones_and_territories_follow_the_same_rule(self):
+        self.other_kinds()
+        cases = (
+            (access.readable_addresses, {"Open St"}, {"Open St", "Kept St"}, "street"),
+            (access.readable_zones, {"OpenZone"}, {"OpenZone", "KeptZone"}, "name"),
+            (access.readable_territories, {"OpenLand"}, {"OpenLand", "KeptLand"}, "name"),
+        )
+        for readable, open_names, all_names, field in cases:
+            with self.subTest(readable=readable.__name__):
+                for user in (self.stranger, self.creator, self.staff, self.senior, None):
+                    self.assertEqual(set(readable(user).values_list(field, flat=True)), open_names)
+                for user in (self.member, self.both, self.root):
+                    self.assertEqual(set(readable(user).values_list(field, flat=True)), all_names)
 
-    def test_nobody_owns_a_layer_that_has_no_owner(self):
-        """A reader with no Person must not match `owner IS NULL`: a kept
-        layer with no owner stays hidden from them."""
-        self.assertNotIn("Nobodys layer", self.names(access.readable_layers(self.stranger)))
-        self.assertFalse(access.may_read(self.stranger, self.nobodys_layer))
-        self.assertFalse(access.may_manage_clearances(self.stranger, self.nobodys_layer))
+    def test_may_read_agrees_with_the_listings_for_every_reader_and_kind(self):
+        self.other_kinds()
+        listings = (
+            (access.readable_routes, self.routes),
+            (access.readable_layers, self.layers),
+            (access.readable_addresses, (self.open_address, self.kept_address)),
+            (access.readable_zones, (self.open_zone, self.kept_zone)),
+            (access.readable_territories, (self.open_territory, self.kept_territory)),
+        )
+        for user in (*self.readers, AnonymousUser()):
+            for readable, items in listings:
+                pks = set(readable(user).values_list("pk", flat=True))
+                for item in items:
+                    with self.subTest(user=str(user), item=str(item)):
+                        self.assertEqual(access.may_read(user, item), item.pk in pks)
 
-    def test_may_read_agrees_with_the_listings_for_every_reader(self):
-        for user in self.readers:
-            routes = set(access.readable_routes(user).values_list("pk", flat=True))
-            layers = set(access.readable_layers(user).values_list("pk", flat=True))
-            for route in self.routes:
-                with self.subTest(user=user.username, route=route.name):
-                    self.assertEqual(access.may_read(user, route), route.pk in routes)
-            for layer in self.layers:
-                with self.subTest(user=user.username, layer=layer.name):
-                    self.assertEqual(access.may_read(user, layer), layer.pk in layers)
+    def test_a_route_chain_is_in_no_domain(self):
+        chain = RouteChain.objects.create(name="Coast")
+        self.assertTrue(access.may_read(self.stranger, chain))
+        self.assertTrue(access.may_read(None, chain))
 
-    def test_anything_but_a_route_or_a_layer_is_open(self):
-        address = Address.objects.create(locality_name="Gdańsk")
-        territory = Territory.objects.create(
-            name="North", geometry="POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))")
-        for obj in (address, territory):
-            self.assertTrue(access.may_read(self.stranger, obj))
-            self.assertTrue(access.may_read(AnonymousUser(), obj))
+    def test_clearing_a_domains_clearances_or_deleting_it_opens_its_items(self):
+        self.board_domain.clearance_rows.all().delete()
+        self.assertTrue(access.may_read(self.stranger, self.kept))
+        self.assertFalse(access.may_read(self.stranger, self.double))    # the seniors' still
+        self.senior_domain.delete()
+        self.assertTrue(access.may_read(self.stranger, self.double))
+        self.assertTrue(Route.objects.filter(pk=self.double.pk).exists())
+
+    def test_a_clearance_that_keeps_a_domain_cannot_be_deleted(self):
+        with self.assertRaises(ProtectedError):
+            self.seniors.delete()
+
+    def test_the_clearance_is_read_afresh(self):
+        """A clearance given after the item was kept counts at once."""
+        self.assertFalse(access.may_read(self.owner, self.kept))
+        self.owner_person.clearances.add(self.board)
+        self.assertTrue(access.may_read(fresh(self.owner), self.kept))
 
 
-class ManagingRuleTests(ClearanceFixture):
-    def test_the_creator_and_superusers_choose_a_routes_clearances(self):
-        self.assertTrue(access.may_manage_clearances(self.creator, self.kept))
-        self.assertTrue(access.may_manage_clearances(self.creator, self.open))
-        self.assertTrue(access.may_manage_clearances(self.root, self.kept))
-
-    def test_staff_and_clearance_members_do_not(self):
-        for user in (self.staff, self.member, self.both, self.stranger):
-            with self.subTest(user=user.username):
-                self.assertFalse(access.may_manage_clearances(user, self.kept))
-
-    def test_a_route_nobody_created_is_the_superusers_alone(self):
-        self.assertFalse(access.may_manage_clearances(self.creator, self.orphan))
-        self.assertFalse(access.may_manage_clearances(self.member, self.orphan))
-        self.assertTrue(access.may_manage_clearances(self.root, self.orphan))
-
-    def test_the_layer_owner_chooses_the_layers_clearances(self):
-        self.assertTrue(access.may_manage_clearances(self.owner, self.board_layer))
-        self.assertFalse(access.may_manage_clearances(self.creator, self.board_layer))
-        self.assertFalse(access.may_manage_clearances(self.member, self.board_layer))
-
-    def test_an_anonymous_visitor_chooses_nothing(self):
-        self.assertFalse(access.may_manage_clearances(AnonymousUser(), self.open))
-        self.assertFalse(access.may_manage_clearances(AnonymousUser(), self.open_layer))
-
-    def test_other_kinds_have_no_clearances_for_a_member_to_choose(self):
-        address = Address.objects.create(locality_name="Gdańsk", created_by=self.creator)
-        self.assertFalse(access.may_manage_clearances(self.creator, address))
-
+class WritingRuleTests(ClearanceFixture):
     def test_an_anonymous_visitor_writes_nothing(self):
         self.assertFalse(access.may_write(AnonymousUser(), self.open))
         self.assertFalse(access.is_staff(AnonymousUser()))
 
+    def test_only_superusers_manage_domains(self):
+        self.assertTrue(access.may_manage_domains(self.root))
+        for user in (self.staff, self.member, self.both, self.creator, AnonymousUser(), None):
+            with self.subTest(user=str(user)):
+                self.assertFalse(access.may_manage_domains(user))
 
-class ClearancesSaveTests(ClearanceFixture):
-    def url(self, obj, kind="route"):
-        return reverse("locations:clearances_save", args=[kind, obj.pk])
-
-    def post(self, user, obj, clearances, kind="route", **extra):
-        self.client.force_login(user)
-        return self.client.post(self.url(obj, kind), {"clearance": clearances, **extra})
-
-    def clearance_names(self, obj):
-        return sorted(obj.clearance_rows.values_list("clearance__name", flat=True))
-
-    def said(self, response):
-        """What this response told the member (the last message queued)."""
-        return [str(m) for m in get_messages(response.wsgi_request)][-1:]
-
-    def test_only_routes_and_layers_have_clearances(self):
-        address = Address.objects.create(locality_name="Gdańsk")
-        self.client.force_login(self.root)
-        for kind, pk in (("address", address.pk), ("routechain", 1), ("zone", 1),
-                         ("territory", 1), ("nonsense", self.open.pk)):
-            with self.subTest(kind=kind):
-                response = self.client.post(reverse("locations:clearances_save", args=[kind, pk]),
-                                            {"clearance": [self.board.pk]})
-                self.assertEqual(response.status_code, 404)
-
-    def test_a_hidden_route_answers_404_not_403(self):
-        for user in (self.stranger, self.staff):
-            with self.subTest(user=user.username):
-                self.assertEqual(self.post(user, self.kept, []).status_code, 404)
-        self.assertEqual(self.clearance_names(self.kept), ["internal"])
-
-    def test_a_reader_who_does_not_manage_is_refused(self):
-        self.assertEqual(self.post(self.member, self.kept, []).status_code, 403)
-        self.assertEqual(self.post(self.staff, self.open, [self.board.pk]).status_code, 403)
-        self.assertEqual(self.clearance_names(self.kept), ["internal"])
-        self.assertEqual(self.clearance_names(self.open), [])
-
-    def test_saving_clearances_is_post_only(self):
-        self.client.force_login(self.creator)
-        self.assertEqual(self.client.get(self.url(self.open)).status_code, 405)
-
-    def test_an_anonymous_visitor_changes_nothing(self):
-        response = self.client.post(self.url(self.open), {"clearance": [self.board.pk]})
-        self.assertIn(response.status_code, (302, 401))
-        self.assertEqual(self.clearance_names(self.open), [])
-
-    def test_a_creator_cannot_keep_a_route_to_a_clearance_they_are_not_in(self):
-        Person.objects.create(user=self.creator, display_name="C").clearances.add(self.board)
-        response = self.post(self.creator, self.open, [self.seniors.pk])
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(self.clearance_names(self.open), [])
-        self.assertEqual(self.said(response), ["Nothing changed."])
-
-    def test_junk_values_are_ignored_not_a_crash(self):
-        response = self.post(self.root, self.open,
-                             ["abc", "-1", "１", "9" * 30, "", f"{self.board.pk}.0"])
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(self.clearance_names(self.open), [])
-
-    def test_a_superuser_keeps_a_route_to_any_clearance(self):
-        response = self.post(self.root, self.open, [self.seniors.pk, self.board.pk])
-        self.assertEqual(self.clearance_names(self.open), ["confidential", "internal"])
-        self.assertEqual(self.said(response), ["Saved."])
-        self.assertFalse(access.may_read(self.stranger, self.open))
-
-    def test_saving_the_same_clearances_again_changes_nothing_and_is_not_audited(self):
-        Person.objects.create(user=self.creator, display_name="C").clearances.add(self.board)
-        self.post(self.creator, self.open, [self.board.pk])
-        response = self.post(self.creator, self.open, [self.board.pk])
-        self.assertEqual(self.said(response), ["Nothing changed."])
-        self.assertEqual(AuditRecord.objects.filter(
-            action="LOCATIONS.ROUTE.CLEARANCES_CHANGED").count(), 1)
-
-    def test_the_creator_may_keep_a_clearance_they_are_not_in_that_the_route_already_has(self):
-        """The route's own clearances are always offered to its manager, so a
-        save of the page does not silently drop them."""
-        Person.objects.create(user=self.creator, display_name="C").clearances.add(self.board)
-        self.post(self.creator, self.double, [self.board.pk, self.seniors.pk])
-        self.assertEqual(self.clearance_names(self.double), ["confidential", "internal"])
-        self.post(self.creator, self.double, [self.board.pk])
-        self.assertEqual(self.clearance_names(self.double), ["internal"])
-        self.post(self.creator, self.double, [self.board.pk, self.seniors.pk])
-        self.assertEqual(self.clearance_names(self.double), ["internal"])     # gone from reach
-
-    def test_clearing_every_clearance_opens_the_route_and_the_audit_says_so(self):
-        response = self.post(self.creator, self.kept, [])
-        self.assertEqual(response.status_code, 302)
-        self.assertTrue(access.may_read(self.stranger, self.kept))
-        record = AuditRecord.objects.get(action="LOCATIONS.ROUTE.CLEARANCES_CHANGED")
-        self.assertEqual(record.metadata["before"], ["internal"])
-        self.assertEqual(record.metadata["after"], [])
-        self.assertTrue(record.metadata["open"])
-        self.assertEqual(record.metadata["kind"], "route")
-        self.assertEqual(record.actor_user_id, self.creator.pk)
-
-    def test_the_form_returns_to_next_or_to_the_detail_page(self):
-        response = self.post(self.creator, self.open, [])
-        self.assertEqual(response["Location"],
-                         reverse("locations:location_detail", args=["route", self.open.pk]))
-        response = self.post(self.creator, self.open, [], next="/locations/")
-        self.assertEqual(response["Location"], "/locations/")
-
-    def test_the_layer_owner_keeps_a_layer_to_a_clearance_and_it_is_audited(self):
-        layer = MapLayer.objects.create(name="Owned", slug="owned", owner=self.owner_person)
-        self.owner_person.clearances.add(self.seniors)
-        self.post(self.owner, layer, [self.seniors.pk], kind="maplayer")
-        self.assertEqual(self.clearance_names(layer), ["confidential"])
-        self.assertFalse(access.may_read(self.member, layer))
-        self.assertTrue(access.may_read(fresh(self.both), layer))
-        self.assertTrue(access.may_read(fresh(self.owner), layer))
-        record = AuditRecord.objects.get(action="LOCATIONS.MAPLAYER.CLEARANCES_CHANGED")
-        self.assertEqual((record.metadata["after"], record.metadata["open"]), (["confidential"], False))
-
-    def test_a_member_may_not_choose_a_layers_clearances(self):
-        self.assertEqual(self.post(self.member, self.board_layer, [], kind="maplayer").status_code, 403)
-        self.assertEqual(self.post(self.stranger, self.board_layer, [], kind="maplayer").status_code, 404)
-        self.assertEqual(self.clearance_names(self.board_layer), ["internal"])
+    def test_the_per_item_clearance_door_is_gone(self):
+        with self.assertRaises(NoReverseMatch):
+            reverse("locations:clearances_save", args=["route", self.open.pk])
+        self.assertFalse(hasattr(access, "CLEARANCED_KINDS"))
+        self.assertFalse(hasattr(access, "may_manage_clearances"))
 
 
-class DetailSectionTests(ClearanceFixture):
+class DetailPageTests(ClearanceFixture):
     def page(self, user, kind, obj):
         self.client.force_login(user)
         return self.client.get(reverse("locations:location_detail", args=[kind, obj.pk]))
 
-    def test_an_address_has_no_clearances_section(self):
-        address = Address.objects.create(locality_name="Gdańsk")
-        response = self.page(self.member, "address", address)
-        self.assertEqual(response.context["clearances_kind"], "")
-        self.assertEqual(response.context["clearances"], [])
-        self.assertNotContains(response, 'data-testid="location-clearances"')
+    def test_every_kind_is_missing_for_whoever_its_domains_hide_it_from(self):
+        self.other_kinds()
+        kept = (("route", self.kept), ("maplayer", self.board_layer),
+                ("address", self.kept_address), ("zone", self.kept_zone),
+                ("territory", self.kept_territory))
+        for kind, obj in kept:
+            for user in (self.stranger, self.staff, self.creator, self.owner, self.senior):
+                with self.subTest(kind=kind, user=user.username):
+                    self.assertEqual(self.page(user, kind, obj).status_code, 404)
+            for user in (self.member, self.root):
+                with self.subTest(kind=kind, user=user.username):
+                    self.assertEqual(self.page(user, kind, obj).status_code, 200)
 
-    def test_a_reader_sees_only_the_clearances_they_are_in(self):
-        response = self.page(self.member, "route", self.double)
-        self.assertEqual([c.name for c in response.context["clearances"]], ["internal"])
-        self.assertTrue(response.context["clearances_restricted"])
-        self.assertFalse(response.context["can_manage_clearances"])
-        self.assertEqual(response.context["clearance_choices"], [])
-        self.assertEqual(response.context["clearances_save_url"], "")
-        self.assertNotContains(response, "confidential")
-
-    def test_the_manager_sees_every_clearance_and_which_are_ticked(self):
-        Person.objects.create(user=self.creator, display_name="C").clearances.add(self.board)
-        response = self.page(self.creator, "route", self.kept)
-        self.assertTrue(response.context["can_manage_clearances"])
-        self.assertEqual([c.name for c in response.context["clearances"]], ["internal"])
-        choices = {row["clearance"].name: row["on"] for row in response.context["clearance_choices"]}
-        self.assertEqual(choices, {"internal": True})           # not the confidential: not theirs
-        self.assertContains(response, reverse("locations:clearances_save", args=["route", self.kept.pk]))
-
-    def test_the_manager_is_offered_the_routes_own_clearances_they_are_not_in(self):
-        response = self.page(self.creator, "route", self.double)
-        self.assertEqual({row["clearance"].name for row in response.context["clearance_choices"]},
-                         {"internal", "confidential"})
-        self.assertEqual([c.name for c in response.context["clearances"]], ["confidential", "internal"])
-
-    def test_a_superuser_is_offered_every_clearance(self):
-        response = self.page(self.root, "route", self.open)
-        choices = {row["clearance"].name: row["on"] for row in response.context["clearance_choices"]}
-        self.assertEqual(choices, {"internal": False, "confidential": False})
-
-    def test_an_open_route_says_every_member_sees_it(self):
-        response = self.page(self.stranger, "route", self.open)
-        self.assertFalse(response.context["clearances_restricted"])
-        self.assertContains(response, "Every member signed in.")
-
-    def test_a_manager_in_no_clearance_is_told_there_is_none_to_choose(self):
-        response = self.page(self.creator, "route", self.open)
-        self.assertTrue(response.context["can_manage_clearances"])
-        self.assertContains(response, "You are in no clearance, so there is none you can keep this to.")
-
-    def test_the_layer_page_shows_its_clearances_and_no_metadata_editor(self):
-        response = self.page(self.member, "maplayer", self.board_layer)
-        self.assertEqual(response.context["clearances_kind"], "maplayer")
-        self.assertEqual([c.name for c in response.context["clearances"]], ["internal"])
-        self.assertFalse(response.context["has_metadata"])
-        self.assertIn(("Polygons", 1), response.context["fields"])
-        self.assertIn(("Owner", "Owner"), response.context["fields"])
-
-    def test_the_owner_sees_the_layer_section_with_its_save_door(self):
-        response = self.page(self.owner, "maplayer", self.board_layer)
-        self.assertTrue(response.context["can_manage_clearances"])
-        self.assertEqual(response.context["clearances_save_url"],
-                         reverse("locations:clearances_save", args=["maplayer", self.board_layer.pk]))
-
-    def test_a_kept_route_is_missing_for_staff_on_every_page(self):
-        self.client.force_login(self.staff)
-        for url in (reverse("locations:location_detail", args=["route", self.kept.pk]),
-                    reverse("locations:route_detail", args=[self.kept.pk]),
-                    reverse("locations:route_review", args=[self.kept.pk])):
+    def test_the_short_doors_are_missing_too(self):
+        self.other_kinds()
+        self.client.force_login(self.stranger)
+        for url in (reverse("locations:route_detail", args=[self.kept.pk]),
+                    reverse("locations:route_review", args=[self.kept.pk]),
+                    reverse("locations:address_detail", args=[self.kept_address.pk]),
+                    reverse("locations:zone_detail", args=[self.kept_zone.pk])):
             with self.subTest(url=url):
                 self.assertEqual(self.client.get(url).status_code, 404)
+        self.client.force_login(self.member)
+        self.assertEqual(self.client.get(reverse("locations:zone_detail",
+                                                 args=[self.kept_zone.pk])).status_code, 200)
 
-    def test_a_hidden_routes_note_and_metadata_are_missing_too(self):
-        self.client.force_login(self.staff)
-        note = self.client.post(reverse("locations:note_save", args=["route", self.kept.pk]),
-                                {"note": "staff was here"})
-        metadata = self.client.post(reverse("locations:metadata_save", args=["route", self.kept.pk]),
-                                    {"metadata": "{}", "format": "json"})
-        self.assertEqual((note.status_code, metadata.status_code), (404, 404))
+    def test_the_page_has_no_per_item_clearances_section(self):
+        response = self.page(self.root, "route", self.kept)
+        self.assertNotContains(response, 'data-testid="location-clearances"')
+        self.assertNotIn("clearances_kind", response.context)
+
+    def test_a_hidden_items_note_and_metadata_are_missing_even_for_its_creator(self):
+        self.other_kinds()
+        self.client.force_login(self.creator)
+        for kind, obj in (("route", self.kept), ("address", self.kept_address)):
+            with self.subTest(kind=kind):
+                note = self.client.post(reverse("locations:note_save", args=[kind, obj.pk]),
+                                        {"note": "was here"})
+                metadata = self.client.post(reverse("locations:metadata_save", args=[kind, obj.pk]),
+                                            {"metadata": "{}", "format": "json"})
+                self.assertEqual((note.status_code, metadata.status_code), (404, 404))
         self.kept.refresh_from_db()
         self.assertEqual(self.kept.notes, "")
+
+    def test_a_readable_page_leaves_out_what_it_points_at_when_that_is_hidden(self):
+        self.other_kinds()
+        Route.objects.filter(pk=self.open.pk).update(start_address=self.kept_address,
+                                                     end_address=self.open_address)
+        response = self.page(self.stranger, "route", self.open)
+        fields = dict(response.context["fields"])
+        self.assertIsNone(fields["Start address"])
+        self.assertEqual(fields["End address"], str(self.open_address))
+        self.client.force_login(self.stranger)
+        payload = json.loads(self.client.get(reverse("locations:route_detail", args=[self.open.pk]))
+                             .context["route_payload_json"])
+        self.assertIsNone(payload["start_address"])
+        self.assertEqual(payload["end_address"]["id"], self.open_address.pk)
+        # A zone in a hidden territory, a territory with a hidden capital.
+        self.assertEqual(dict(self.page(self.stranger, "zone", self.open_zone).context["fields"])
+                         ["Territory"], None)
+        self.assertEqual(dict(self.page(self.member, "zone", self.open_zone).context["fields"])
+                         ["Territory"], "KeptLand")
+        self.client.force_login(self.stranger)
+        zone = json.loads(self.client.get(reverse("locations:zone_detail", args=[self.open_zone.pk]))
+                          .context["zone_payload_json"])
+        self.assertIsNone(zone["territory"])
+        self.assertIsNone(dict(self.page(self.stranger, "territory", self.open_territory)
+                               .context["fields"])["Capital"])
+
+    def test_a_chain_page_draws_and_counts_only_the_readable_routes(self):
+        chain = RouteChain.objects.create(name="Coast")
+        Route.objects.filter(pk__in=[self.open.pk, self.kept.pk]).update(route_chain=chain)
+        stranger = self.page(self.stranger, "routechain", chain)
+        self.assertIn(("Routes", 1), stranger.context["fields"])
+        self.assertEqual(len(json.loads(stranger.context["geometry_json"])["coordinates"]), 1)
+        member = self.page(self.member, "routechain", chain)
+        self.assertIn(("Routes", 2), member.context["fields"])
 
 
 class MapPageTests(ClearanceFixture):
@@ -429,7 +405,7 @@ class MapPageTests(ClearanceFixture):
     def test_each_reader_sees_their_layers(self):
         cases = {
             self.stranger: {"Open layer"},
-            self.owner: {"Open layer", "Board layer"},
+            self.owner: {"Open layer"},                       # owning is not a clearance
             self.member: {"Open layer", "Board layer", "Nobodys layer"},
             self.staff: {"Open layer"},
         }
@@ -444,7 +420,27 @@ class MapPageTests(ClearanceFixture):
         self.assertEqual(polygons[0]["geometry"]["type"], "Polygon")
         self.assertEqual(polygons[0]["center"]["type"], "Point")
 
-    def test_a_route_kept_to_two_clearances_is_drawn_once(self):
+    def test_every_kind_is_missing_from_the_map_of_whoever_it_is_hidden_from(self):
+        self.other_kinds()
+        names = {row["name"] for row in self.payload(self.stranger)[0]}
+        for name in ("BoardRoute", "DoubleRoute", "KeptZone", "KeptLand"):
+            self.assertNotIn(name, names)
+        self.assertNotIn(str(self.kept_address), names)
+        self.assertIn(str(self.open_address), names)
+        names = {row["name"] for row in self.payload(self.member)[0]}
+        for name in ("BoardRoute", "KeptZone", "KeptLand", str(self.kept_address)):
+            self.assertIn(name, names)
+        self.assertNotIn("DoubleRoute", names)
+
+    def test_a_row_names_nothing_hidden(self):
+        self.other_kinds()
+        rows = {row["name"]: row for row in self.payload(self.stranger)[0]}
+        self.assertEqual(rows["OpenZone"]["detail"], "Standalone zone")
+        rows = {row["name"]: row for row in self.payload(self.member)[0]}
+        self.assertEqual(rows["OpenZone"]["detail"], "Inside KeptLand")
+        self.assertEqual(rows["KeptLand"]["detail"], f"Capital: {self.kept_address}")
+
+    def test_a_route_in_two_kept_domains_is_drawn_once(self):
         locations, _layers = self.payload(self.both)
         self.assertEqual([row["name"] for row in locations if row["type"] == "Route"].count(
             "DoubleRoute"), 1)
@@ -471,21 +467,42 @@ class MapPageTests(ClearanceFixture):
 
 @skipUnless(HAS_GIS, "the map API reads geometry")
 class JsonDoorTests(ClearanceFixture):
-    def get(self, user, name):
+    def get(self, user, name, *args, status=200):
         self.client.force_login(add_to_mesh(user))
-        response = self.client.get(reverse(f"locations:{name}"))
-        self.assertEqual(response.status_code, 200)
+        response = self.client.get(reverse(f"locations:{name}", args=args))
+        self.assertEqual(response.status_code, status)
         return response.json()
 
-    def route_names(self, user):
+    def names(self, user, kind):
         return {row["name"] for row in self.get(user, "api_map_data")["locations"]
-                if row["type"] == "Route"}
+                if row["type"] == kind}
 
     def test_the_map_api_leaves_out_the_routes_a_caller_may_not_read(self):
-        self.assertEqual(self.route_names(self.stranger), {"OpenRoute"})
-        self.assertEqual(self.route_names(self.member),
-                         {"OpenRoute", "BoardRoute", "DoubleRoute", "OrphanRoute"})
-        self.assertEqual(self.route_names(self.creator), {"OpenRoute", "BoardRoute", "DoubleRoute"})
+        self.assertEqual(self.names(self.stranger, "Route"), {"OpenRoute"})
+        self.assertEqual(self.names(self.member, "Route"), {"OpenRoute", "BoardRoute", "OrphanRoute"})
+        self.assertEqual(self.names(self.creator, "Route"), {"OpenRoute"})
+
+    def test_the_map_api_leaves_out_every_other_hidden_kind(self):
+        self.other_kinds()
+        self.assertEqual(self.names(self.stranger, "Zone"), {"OpenZone"})
+        self.assertEqual(self.names(self.stranger, "Territory"), {"OpenLand"})
+        self.assertEqual(self.names(self.stranger, "Address"), {str(self.open_address)})
+        self.assertEqual(self.names(self.member, "Territory"), {"OpenLand", "KeptLand"})
+
+    def test_the_zone_and_address_lists_leave_out_the_hidden(self):
+        self.other_kinds()
+        zones = self.get(self.stranger, "api_zone_list")["zones"]
+        self.assertEqual([(z["name"], z["territory_name"]) for z in zones], [("OpenZone", None)])
+        zones = {z["name"]: z for z in self.get(self.member, "api_zone_list")["zones"]}
+        self.assertEqual(zones["OpenZone"]["territory_name"], "KeptLand")
+        streets = {a["street"] for a in self.get(self.stranger, "api_address_list")["addresses"]}
+        self.assertEqual(streets, {"Open St"})
+
+    def test_a_hidden_address_answers_404_by_id(self):
+        self.other_kinds()
+        self.get(self.stranger, "api_address_detail", self.kept_address.pk, status=404)
+        self.assertEqual(self.get(self.member, "api_address_detail", self.kept_address.pk)["street"],
+                         "Kept St")
 
     def test_the_layers_api_leaves_out_kept_and_inactive_layers(self):
         names = {layer["name"] for layer in self.get(self.stranger, "api_map_layers")["layers"]}
@@ -501,3 +518,79 @@ class JsonDoorTests(ClearanceFixture):
                 response = self.client.get(reverse(f"locations:{name}"))
                 self.assertEqual(response.status_code, 403)
                 self.assertTrue(response.json()["gated"])
+
+
+class AddressPickerTests(ClearanceFixture):
+    """The route search's address pickers and the route save offer only the
+    addresses the member may read."""
+
+    def setUp(self):
+        self.other_kinds()
+
+    def test_the_route_search_offers_only_readable_addresses(self):
+        self.client.force_login(self.stranger)
+        options = self.client.get(reverse("locations:route_search")).context["address_options"]
+        self.assertEqual({o["id"] for o in options}, {str(self.open_address.pk)})
+        self.client.force_login(self.member)
+        options = self.client.get(reverse("locations:route_search")).context["address_options"]
+        self.assertEqual({o["id"] for o in options},
+                         {str(self.open_address.pk), str(self.kept_address.pk)})
+
+    def test_a_hidden_address_is_not_available_as_an_end(self):
+        from toto.locations import views
+
+        with self.assertRaisesMessage(ValueError, "Start address is not available."):
+            views.selected_address_coordinates(self.kept_address.pk, "Start", self.stranger)
+        self.assertEqual(views.selected_address_coordinates(self.kept_address.pk, "Start", self.member),
+                         (18.66, 54.36))
+
+    def test_saving_a_route_ignores_a_hidden_end(self):
+        self.client.force_login(self.stranger)
+        self.client.post(reverse("locations:route_save"), {
+            "name": "Sneaky", "start_address": self.kept_address.pk,
+            "end_address": self.open_address.pk,
+            "route_json": json.dumps({"type": "LineString", "coordinates": [[18.6, 54.3], [21.0, 52.2]]}),
+        })
+        route = Route.objects.get(name="Sneaky")
+        self.assertIsNone(route.start_address)
+        self.assertEqual(route.end_address, self.open_address)
+
+
+class OtherDoorsKeepTheirRulesTests(ClearanceFixture):
+    """Addresses are gated on the LOCATIONS doors only: a person's profile, a
+    community and an event show an address by their own rules."""
+
+    def setUp(self):
+        self.other_kinds()
+
+    def test_your_own_profile_shows_your_kept_address(self):
+        person = Person.objects.create(user=self.stranger, display_name="Stranger",
+                                       slug="stranger", address=self.kept_address)
+        self.client.force_login(fresh(self.stranger))
+        response = self.client.get(reverse("socialhub:profile_details", args=[person.slug]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["address_shown"], str(self.kept_address))
+
+    def test_an_event_shows_its_kept_venue(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from toto.events.models import ScheduledEvent
+
+        start = timezone.now() + timedelta(days=1)
+        event = ScheduledEvent.objects.create(title="Meeting", start_time=start,
+                                              end_time=start + timedelta(hours=1),
+                                              address=self.kept_address)
+        self.client.force_login(self.stranger)
+        response = self.client.get(reverse("events:event_plan", args=[event.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, str(self.kept_address))
+
+    def test_a_community_keeps_its_kept_headquarters(self):
+        community = Community.objects.create(name="Harbour", slug="harbour",
+                                             location=self.kept_address)
+        self.client.force_login(self.stranger)
+        response = self.client.get(reverse("socialhub:community_detail", args=[community.slug]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, str(self.kept_address))

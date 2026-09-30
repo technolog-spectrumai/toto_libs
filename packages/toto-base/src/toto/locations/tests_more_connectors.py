@@ -1,9 +1,9 @@
 """What locations hands to code that is not a page: the workflow connector,
 the field-map features, and the plugin registries the map page merges.
 
-A workflow runs as nobody, so its connector reads only the open routes and
-layers; the field map and a map provider read as the viewer when there is
-one, and as nobody when there is not (2026-09-29).
+A workflow runs as nobody, so its connector reads only the items in no kept
+map domain; the field map and a map provider read as the viewer when there is
+one, and as nobody when there is not (2026-09-29; map domains 2026-09-30).
 """
 
 from types import SimpleNamespace
@@ -24,7 +24,7 @@ from toto.locations.models import HAS_GIS, Address, RouteChain, Territory, Zone
 from toto.locations.plugins.context_plugins import LocationContextPlugin
 from toto.locations.plugins.map_plugins import LocationMapPlugin
 from toto.locations.plugins.url_plugins import LocationUrlPlugin
-from toto.locations.tests_more_clearances import ClearanceFixture
+from toto.locations.tests_more_clearances import ClearanceFixture, keep
 
 
 def run(config, input_data=None):
@@ -136,6 +136,35 @@ class ConnectorOpenResourcesTests(ClearanceFixture):
         chains = run({"resource": "route_chain", "action": "search", "query": "sea"})
         self.assertEqual(chains["data"]["route_chains"][0]["route_count"], 1)
 
+    def test_a_kept_address_territory_and_capital_are_nobodys(self):
+        self.other_kinds()
+        listed = run({"resource": "address"})["data"]["addresses"]
+        self.assertEqual([row["id"] for row in listed], [self.open_address.pk])
+        with self.assertRaises(ConnectorExecutionError):
+            run({"resource": "address", "action": "get", "value": self.kept_address.pk})
+        names = [row["name"] for row in run({"resource": "territory"})["data"]["territories"]]
+        self.assertEqual(names, ["OpenLand"])
+        Territory.objects.filter(pk=self.open_territory.pk).update(capital=self.kept_address)
+        territory = run({"resource": "territory", "action": "get", "value": self.open_territory.pk})
+        self.assertIsNone(territory["data"]["territory"]["capital"])
+
+    def test_an_open_routes_kept_end_is_left_out(self):
+        self.other_kinds()
+        self.open.start_address = self.kept_address
+        self.open.end_address = self.open_address
+        self.open.save()
+        route = run({"resource": "route", "action": "get", "value": self.open.pk})["data"]["route"]
+        self.assertIsNone(route["start_address"])
+        self.assertEqual(route["end_address"]["id"], self.open_address.pk)
+
+    def test_a_route_chain_counts_its_open_routes_only(self):
+        chain = RouteChain.objects.create(name="Coast")
+        from toto.locations.models import Route
+
+        Route.objects.filter(pk__in=[self.open.pk, self.kept.pk]).update(route_chain=chain)
+        got = run({"resource": "route_chain", "action": "get", "value": chain.pk})
+        self.assertEqual(got["data"]["route_chain"]["route_count"], 1)
+
     def test_a_get_without_a_value_refuses(self):
         with self.assertRaises(ConnectorExecutionError):
             run({"resource": "address", "action": "get"})
@@ -161,10 +190,10 @@ class FieldMapFeatureTests(ClearanceFixture):
         self.assertEqual({f["properties"]["layer_slug"] for f in features
                           if f["properties"]["layer"] == "map_layer"}, {"open-layer"})
 
-    def test_a_clearance_member_gets_what_their_clearance_keeps(self):
+    def test_a_clearance_holder_gets_what_their_clearance_opens(self):
         features = self.features(self.member)
         self.assertEqual(self.layer_of(features, "route"),
-                         {"OpenRoute", "BoardRoute", "DoubleRoute", "OrphanRoute"})
+                         {"OpenRoute", "BoardRoute", "OrphanRoute"})     # not the double-kept one
         self.assertEqual({f["properties"]["layer_slug"] for f in features
                           if f["properties"]["layer"] == "map_layer"},
                          {"open-layer", "board-layer", "nobodys-layer"})
@@ -178,7 +207,19 @@ class FieldMapFeatureTests(ClearanceFixture):
     def test_an_anonymous_request_is_nobody_too(self):
         self.assertEqual(self.layer_of(self.features(AnonymousUser()), "route"), {"OpenRoute"})
 
-    def test_territories_zones_and_addresses_are_everyones(self):
+    def test_kept_territories_zones_and_addresses_are_missing(self):
+        self.other_kinds()
+        features = self.features(self.stranger)
+        self.assertEqual(self.layer_of(features, "territory"), {"OpenLand"})
+        self.assertEqual(self.layer_of(features, "zone"), {"OpenZone"})
+        zone = next(f for f in features if f["properties"]["layer"] == "zone")
+        self.assertEqual(zone["properties"]["territory"], "")               # its territory is kept
+        self.assertEqual(self.layer_of(features, "address"), {str(self.open_address)})
+        features = self.features(self.member)
+        self.assertEqual(self.layer_of(features, "territory"), {"OpenLand", "KeptLand"})
+        self.assertEqual(self.layer_of(features, "zone"), {"OpenZone", "KeptZone"})
+
+    def test_territories_zones_and_addresses_in_no_kept_domain_are_everyones(self):
         territory = Territory.objects.create(name="North",
                                              geometry="POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))")
         Zone.objects.create(name="Alpha", territory=territory,
@@ -191,14 +232,18 @@ class FieldMapFeatureTests(ClearanceFixture):
         self.assertEqual(zone["properties"]["territory"], "North")
         self.assertEqual(self.layer_of(features, "address"), {"Długa, Gdańsk"})
 
-    def test_the_metrics_section_counts_the_rows(self):
+    def test_the_metrics_section_counts_the_readable_rows(self):
         from toto.locations.plugins.field_plugins import locations_metrics_section
 
         Address.objects.create(locality_name="Gdańsk")
+        keep(Address.objects.create(locality_name="Sopot"), self.board_domain)
         section = locations_metrics_section()
         self.assertEqual(section["key"], "locations")
         kpis = {str(k["label"]): k["value"] for k in section["kpis"]}
-        self.assertEqual((kpis["Addresses"], kpis["Routes"]), (1, 4))
+        self.assertEqual((kpis["Addresses"], kpis["Routes"]), (1, 1))      # nobody: the open ones
+        section = locations_metrics_section(SimpleNamespace(user=self.both))
+        kpis = {str(k["label"]): k["value"] for k in section["kpis"]}
+        self.assertEqual((kpis["Addresses"], kpis["Routes"]), (2, 4))
 
 
 class MapProviderRegistryTests(SimpleTestCase):

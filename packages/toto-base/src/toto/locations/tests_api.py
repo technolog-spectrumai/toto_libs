@@ -103,3 +103,44 @@ class AddressDetailApiTests(TestCase):
     def test_detail_not_found(self):
         res = self.client.get("/locations/api/addresses/99999/")
         self.assertEqual(res.status_code, 404)
+
+
+class MapDomainApiTests(TestCase):
+    """Map domains (2026-09-30): an item kept to a clearance the caller does
+    not hold is missing from every JSON door, and a holder reads it."""
+
+    def setUp(self):
+        from toto.locations.models import AddressInDomain, MapDomain, MapDomainClearance, ZoneInDomain
+        from toto.people.models import Person
+        from toto.socialhub.models import Clearance
+
+        self.user = login_mesh_member(self)
+        board = Clearance.objects.create(name="internal", slug="internal")
+        self.holder = login_mesh_member(self, username="holder")
+        Person.objects.create(user=self.holder, display_name="Holder").clearances.add(board)
+        self.client.force_login(self.user)
+        domain = MapDomain.objects.create(name="Board")
+        MapDomainClearance.objects.create(domain=domain, clearance=board)
+        self.kept = Address.objects.create(street="Kept St", locality_name="Gdańsk")
+        AddressInDomain.objects.create(domain=domain, address=self.kept)
+        Address.objects.create(street="Open St", locality_name="Gdańsk")
+        zone = Zone.objects.create(name="Kept zone", geometry="MULTIPOLYGON(((0 0, 1 0, 1 1, 0 1, 0 0)))")
+        ZoneInDomain.objects.create(domain=domain, zone=zone)
+        Zone.objects.create(name="Open zone", geometry="MULTIPOLYGON(((2 2, 3 2, 3 3, 2 3, 2 2)))")
+
+    def streets(self):
+        return {a["street"] for a in self.client.get("/locations/api/addresses/").json()["addresses"]}
+
+    def zones(self):
+        return {z["name"] for z in self.client.get("/locations/api/zones/").json()["zones"]}
+
+    def test_a_kept_address_and_zone_are_missing(self):
+        self.assertEqual(self.streets(), {"Open St"})
+        self.assertEqual(self.zones(), {"Open zone"})
+        self.assertEqual(self.client.get(f"/locations/api/addresses/{self.kept.pk}/").status_code, 404)
+
+    def test_a_holder_reads_them(self):
+        self.client.force_login(self.holder)
+        self.assertEqual(self.streets(), {"Open St", "Kept St"})
+        self.assertEqual(self.zones(), {"Open zone", "Kept zone"})
+        self.assertEqual(self.client.get(f"/locations/api/addresses/{self.kept.pk}/").status_code, 200)
