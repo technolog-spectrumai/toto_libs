@@ -293,6 +293,12 @@ def _decode_inputs(raw):
         except (binascii.Error, ValueError):
             return None, _error(f"“{name}” is not valid base64.",
                                 code="bad_inputs")
+        # A staged input is a file entering the platform like any upload: no
+        # Microsoft Office, by name or by content (2026-10-01).
+        from toto.vault.models import is_office_file, office_refusal_sentence
+        if is_office_file(name, body):
+            return None, _error(f"“{name}”: {office_refusal_sentence()}",
+                                code="refused_type")
         total += len(body)
         if total > MAX_INPUT_BYTES:
             return None, _error(
@@ -609,6 +615,11 @@ def capsule_file_put(request, owner, uuid):
             f"that file is over the "
             f"{MAX_TRANSFER_BYTES // (1024 * 1024)} MB transfer limit",
             code="too_large", status=413)
+    # The vault's one Office rule holds for the Capsule too (2026-10-01): an
+    # Office file put here would be read, converted or copied out from here.
+    from toto.vault.models import is_office_file, office_refusal_sentence
+    if is_office_file(name, data):
+        return _error(office_refusal_sentence(), code="refused_type")
     try:
         result = backend.capsule_file_write(
             lease, name, data, replace=bool(payload.get("replace")))

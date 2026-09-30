@@ -941,3 +941,71 @@ class InputRoundTripTests(ApiTestCase):
         files = {"main.py": "print('hi')\n".encode("utf-8"),
                  "sub/helper.py": b"x = 1\n"}
         self.assertEqual(jobs_mod.files_from(jobs_mod.tar_of(files)), files)
+
+
+
+class OfficeRefusalTests(ApiTestCase):
+    """No Microsoft Office file enters a Capsule through the API either
+    (stage 34's review, 2026-10-01): not put into the files area, not staged
+    as a job's input — by name, and by content for one renamed to pass.
+
+    The views are called directly, token and all, so the test does not
+    depend on where a host mounts ``/api/v1/``."""
+
+    def setUp(self):
+        super().setUp()
+        self.lease = services.reserve(owner=self.user, name="lab",
+                                      limits=Limits(3000, 6144, 6144, 768))
+        services.mount(lease=self.lease, actor=self.user)
+        FakeRuntimeBackend.reset()
+
+    @staticmethod
+    def _b64(data):
+        import base64
+
+        return base64.b64encode(data).decode()
+
+    def _view(self, view, body):
+        from django.test import RequestFactory
+
+        request = RequestFactory().post(
+            "/", json.dumps(body), content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw}")
+        return view(request, uuid=self.lease.uuid)
+
+    def _put(self, name, data):
+        from toto.anastasia import api
+
+        return self._view(api.capsule_file_put,
+                          {"name": name, "data_b64": self._b64(data)})
+
+    def test_the_files_area_refuses_office_files(self):
+        from toto.vault.tests_office_refusal import OLE2, SENTENCE, ooxml
+
+        for name, data in (("report.docx", b"x"), ("old.xls", OLE2),
+                           ("harmless.zip", ooxml("xl/workbook.xml"))):
+            with self.subTest(name=name):
+                response = self._put(name, data)
+                body = json.loads(response.content)
+                self.assertEqual(response.status_code, 400, response.content)
+                self.assertEqual(body["code"], "refused_type")
+                self.assertIn(SENTENCE, body["error"])
+        self.assertEqual(FakeRuntimeBackend.files.get(str(self.lease.uuid), {}), {})
+        self.assertEqual(self._put("notes.txt", b"n").status_code, 201)
+
+    def test_a_job_input_is_refused_by_name_and_content(self):
+        from toto.anastasia import api
+        from toto.anastasia.models import Execution
+        from toto.vault.tests_office_refusal import SENTENCE, ooxml
+
+        before = Execution.objects.count()
+        for name, data in (("deck.pptx", b"x"), ("data.bin", ooxml())):
+            with self.subTest(name=name):
+                response = self._view(api.job_create, {
+                    "operation": "run_python", "inputs": {name: self._b64(data)}})
+                body = json.loads(response.content)
+                self.assertEqual(response.status_code, 400, response.content)
+                self.assertEqual(body["code"], "refused_type")
+                self.assertIn(name, body["error"])
+                self.assertIn(SENTENCE, body["error"])
+        self.assertEqual(Execution.objects.count(), before)

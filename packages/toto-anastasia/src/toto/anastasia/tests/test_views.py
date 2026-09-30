@@ -977,6 +977,19 @@ class FilesTabTests(DeskTestCase):
         self.assertEqual(self._held(), {"good.txt": b"y"})
         self.assertIn("bad.txt", " ".join(self._messages(response)))
 
+    def test_an_office_file_is_refused_by_name_and_the_rest_written(self):
+        # Stage 34's review (2026-10-01): the Capsule is a way in too.
+        from toto.vault.tests_office_refusal import SENTENCE, ooxml
+
+        response = self._upload(SimpleUploadedFile("report.docx", b"x"),
+                                SimpleUploadedFile("renamed.zip", ooxml()),
+                                SimpleUploadedFile("ok.txt", b"ok"))
+        self.assertEqual(self._held(), {"ok.txt": b"ok"})
+        said = " ".join(self._messages(response))
+        self.assertIn("report.docx", said)
+        self.assertIn("renamed.zip", said)
+        self.assertIn(SENTENCE, said)
+
     def test_a_windows_path_upload_name_becomes_its_leaf(self):
         self._upload(SimpleUploadedFile("C:\\fakepath\\notes.txt", b"n"))
         self.assertEqual(self._held(), {"notes.txt": b"n"})

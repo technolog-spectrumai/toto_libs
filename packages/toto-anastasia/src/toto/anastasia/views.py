@@ -979,6 +979,12 @@ def file_upload(request, uuid):
             refused.append((leaf, _("over the %(mb)s MB upload limit")
                             % {"mb": MAX_UPLOAD_BYTES // (1024 * 1024)}))
             continue
+        # No Microsoft Office in a Capsule either (2026-10-01): by name, and
+        # by content for one renamed to pass.
+        from toto.vault.models import is_office_file, office_refusal_sentence
+        if is_office_file(leaf, upload, getattr(upload, "content_type", "") or ""):
+            refused.append((leaf, office_refusal_sentence()))
+            continue
         name = f"{folder}/{leaf}" if folder else leaf
         try:
             writer(lease, name, upload.read(), replace=replace)
