@@ -471,6 +471,30 @@ class FileOrigin(models.TextChoices):
     MIRROR = "mirror", "Mirrored"
 
 
+class LiveFileManager(models.Manager):
+    """``VaultFile.objects``: the files that are NOT in the trash.
+
+    WHY THE DEFAULT MANAGER HIDES (2026-10-01). A trashed file must be absent
+    from every read door — the listing, the JSON API, search, the peer
+    manifest, the editors, previews, the zip builder and the many apps that
+    read the vault. Filtering at each door means a door that forgets the
+    filter LEAKS the file; filtering here means such a door HIDES it, which
+    is the failure the owner can live with. Reverse relations
+    (``bucket.files``, ``directory.files``) are built from this class, so
+    they hide too.
+
+    What must see trashed rows says so by name — ``VaultFile.all_objects``:
+    the purge (a file and a bucket), the admin, the storage levy and the
+    bucket usage figures (trashed bytes still count: the trash is not a free
+    hiding place), and the trash itself. Forward foreign keys
+    (``FileVersion.file``, a lock's file) resolve through ``all_objects``
+    as the base manager, so a trashed file's versions still find it.
+    """
+
+    def get_queryset(self):
+        return super().get_queryset().filter(trashed_at__isnull=True)
+
+
 class VaultFile(models.Model):
     FILE_TYPES = [
         ('pdf', 'PDF'),
@@ -639,11 +663,35 @@ class VaultFile(models.Model):
         'VaultDirectory', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='files'
     )
+    #: The trash (2026-10-01). A trashed file keeps its bytes, its versions
+    #: and its bucket (so the bucket's clearance still keeps it and its bytes
+    #: still count); it leaves its folder — ``directory`` is cleared and the
+    #: folder remembered in ``trashed_from`` for the restore. ``related_name``
+    #: '+' on both: a reverse manager would be built from the hiding default
+    #: manager and answer nothing anyway.
+    trashed_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    trashed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    trashed_from = models.ForeignKey(
+        'VaultDirectory', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+
+    objects = LiveFileManager()
+    all_objects = models.Manager()
 
     class Meta:
         verbose_name = "Vault File"
         verbose_name_plural = "Vault Files"
-        unique_together = ('bucket', 'key')
+        base_manager_name = "all_objects"
+        # One LIVE file per key in a bucket (2026-10-01): a trashed file keeps
+        # its key for the restore, and a new upload of the same name must
+        # still work — so the rule ignores the trash, and the restore finds a
+        # free key when the old one was taken meanwhile.
+        constraints = [
+            models.UniqueConstraint(
+                fields=["bucket", "key"], condition=models.Q(trashed_at__isnull=True),
+                name="vault_one_live_file_per_key"),
+        ]
 
     def __str__(self):
         return f"{self.title} ({self.owner.username})"
@@ -690,6 +738,33 @@ class VaultFile(models.Model):
 
         super().save(*args, **kwargs)
         self._loaded_bucket_id = self.bucket_id
+
+    @property
+    def can_be_trashed(self) -> bool:
+        """False where the trash cannot hold the bytes (2026-10-01): a row in
+        a mounted remote bucket, or a mirror stub, names the PEER's file —
+        this host cannot keep it for a restore — so those doors keep their
+        immediate delete."""
+        if getattr(self, "origin", "") == FileOrigin.MIRROR:
+            return False
+        bucket = self.bucket if self.bucket_id else None
+        return not (bucket is not None
+                    and bucket.storage_backend == StorageBackend.REMOTE_TOTO)
+
+    def trash(self, by=None) -> None:
+        """Move this file to the trash: hidden from every door that reads
+        ``VaultFile.objects``, bytes and versions kept, its folder remembered
+        for the restore. Idempotent — a file already in the trash keeps its
+        first stamp."""
+        if self.trashed_at is not None:
+            return
+        from django.utils import timezone
+
+        self.trashed_at = timezone.now()
+        self.trashed_by = by if getattr(by, "pk", None) else None
+        self.trashed_from = self.directory
+        self.directory = None
+        self.save(update_fields=["trashed_at", "trashed_by", "trashed_from", "directory"])
 
     def create_hash(self):
         """sha256 of the content, from wherever the bucket keeps it, or None.
