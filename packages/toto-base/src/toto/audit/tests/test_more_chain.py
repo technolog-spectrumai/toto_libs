@@ -396,6 +396,21 @@ class FileMiddlewareUnitTests(TestCase):
         FileAuditMiddleware(lambda r: HttpResponse())(request)
         self.assertFalse(self.vault_rows().exists())
 
+    def test_a_lock_claim_reaches_the_chain_only_when_refused(self):
+        # 2026-09-30: 403 (may read, may not write) and 404 (may not see) are
+        # somebody reaching for a file that is not theirs; 200 and 423 (a
+        # colleague is editing) are an editor opening, every page load.
+        for status in (200, 423, 405):
+            self._call(self.rf.post("/v/"), "lock_acquire", status=status, pk=9)
+        self.assertFalse(self.vault_rows().exists())
+        for status in (403, 404):
+            self._call(self.rf.post("/v/"), "lock_acquire", status=status, pk=9)
+        rows = self.vault_rows().order_by("sequence")
+        self.assertEqual([(r.action, r.success, r.object_id, r.metadata["status"])
+                          for r in rows],
+                         [("FILE_LOCK_REFUSED", False, "9", 403),
+                          ("FILE_LOCK_REFUSED", False, "9", 404)])
+
     def test_heartbeats_and_status_polls_never_reach_the_chain(self):
         for name in ("lock_heartbeat", "zip_status", "transfer_status"):
             self._call(self.rf.post("/v/"), name)
