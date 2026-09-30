@@ -14,6 +14,8 @@ membership flow, a management command.
 | `AUTH.UNLOCKED` | a pause lifted from the console (`manage.py unlock_signin`); the name, the address or `all` |
 | `AUTH.TOKEN_REFUSED` | a session key presented as an API or WebSocket token named an account and was refused (`toto.api.tokens`, 2026-09-30); `success=False`, the door and the reason only |
 | `AUTH.PASSWORD_CHANGED` | a member changed their own password while signed in (My account, 2026-09-30); `sessions_ended` — how many other sign-ins went with the old one |
+| `AUTH.SESSION_ENDED` | a member ended one of their own sessions from My account (`toto.core.user_sessions`, 2026-09-30); its `kind` (`browser` or `token`) and `session_id`, the row's id — never the key |
+| `AUTH.SIGNED_OUT_EVERYWHERE` | a member ended every session but the one in use (My account, 2026-09-30); `sessions_ended` |
 | `AUTH.PASSWORD_RESET` | a password set through a reset link (`sso_core.password_reset`, 2026-09-30); `flow` is `email` (the mailed link) or `recovery` (a patron's one-time link) |
 | `AUTH.ACCOUNT_CREATED` | a `User` row is created, by whatever door |
 | `AUTH.ACCOUNT_ACTIVATED` / `_DEACTIVATED` | `is_active` changes |
@@ -168,6 +170,23 @@ def on_password_changed(user, *, request=None, sessions_ended=0):
     nor anything derived from them, is recorded.
     """
     return _record("password_changed", user, actor_user=user, request=request,
+                   metadata={"sessions_ended": int(sessions_ended)})
+
+
+def on_session_ended(user, *, kind, session_id, request=None):
+    """A member ended one of their own sessions from My account (2026-09-30).
+
+    ``session_id`` is the ``UserSession`` row's id, which is all the page
+    ever names a session by; the session key is a credential and neither it
+    nor anything derived from it is recorded.
+    """
+    return _record("session_ended", user, actor_user=user, request=request,
+                   metadata={"kind": str(kind), "session_id": int(session_id)})
+
+
+def on_signed_out_everywhere(user, *, sessions_ended=0, request=None):
+    """A member ended every session but the one in use (2026-09-30)."""
+    return _record("signed_out_everywhere", user, actor_user=user, request=request,
                    metadata={"sessions_ended": int(sessions_ended)})
 
 

@@ -34,6 +34,7 @@ the list never shows a sign-in that no longer works.
 in from in ``KNOWN_FOR_DAYS`` days — mails them the ``new_sign_in`` notice.
 Except the first sign-in an account makes after this date: with nothing
 known yet everything is new, and a deploy should not mail every member.
+The pairs are kept as hashes only (``KnownSignIn``).
 """
 
 from __future__ import annotations
@@ -290,21 +291,24 @@ def _fingerprint(user_agent: str, address) -> str:
 def note_sign_in(user, request) -> bool:
     """Remember this sign-in's (user agent, address); was it a new pair?
 
-    New means not seen for this member in ``KNOWN_FOR_DAYS`` days, and never
-    on the first sign-in the member makes with nothing known yet.
+    New means not seen for this member in ``KNOWN_FOR_DAYS`` days — except
+    on the first sign-in of an account with nothing known at all. Lapsed
+    pairs are dropped only after this one is written, so a member back after
+    a long absence still has a row and their next sign-in is news again.
     """
     _, KnownSignIn = _models()
     now = _now()
     cutoff = now - timedelta(days=KNOWN_FOR_DAYS)
     fingerprint = _fingerprint(_user_agent(request), _address(request))
-    KnownSignIn.objects.filter(user=user, last_seen_at__lt=cutoff).delete()
     known = KnownSignIn.objects.filter(user=user)
     first_ever = not known.exists()
-    updated = known.filter(fingerprint=fingerprint).update(last_seen_at=now)
-    if updated:
-        return False
-    KnownSignIn.objects.create(user=user, fingerprint=fingerprint, last_seen_at=now)
-    return not first_ever
+    seen = known.filter(fingerprint=fingerprint, last_seen_at__gte=cutoff).update(
+        last_seen_at=now)
+    if not seen:
+        KnownSignIn.objects.update_or_create(user=user, fingerprint=fingerprint,
+                                             defaults={"last_seen_at": now})
+    known.filter(last_seen_at__lt=cutoff).delete()
+    return not seen and not first_ever
 
 
 # ── Signals ────────────────────────────────────────────────────────────────

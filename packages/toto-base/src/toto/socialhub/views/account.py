@@ -16,7 +16,9 @@ row on a first save, the way `set_my_address` does.
 Every successful change is a ``SOCIALHUB.PROFILE_CHANGED`` record naming the
 fields, never their values; a password change is ``AUTH.PASSWORD_CHANGED``
 (the auth trail's, where the member's sign-ins are) and mails the member a
-notice through ``toto.core.notices.send_notice``.
+notice through ``toto.core.notices.send_notice``. Ending a session, one or
+all but this one, is ``AUTH.SESSION_ENDED`` / ``AUTH.SIGNED_OUT_EVERYWHERE``
+(``toto.core.user_sessions`` keeps the rows the list is made of).
 """
 
 from __future__ import annotations
@@ -28,13 +30,15 @@ from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordChangeForm
+from django.core.paginator import Paginator
+from django.http import Http404
 from django.shortcuts import redirect, render
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
 from toto.core.client_ip import client_ip
 from toto.core.notices import send_notice
-from toto.core.user_sessions import end_other_sessions, rekey
+from toto.core.user_sessions import end_other_sessions, end_session, rekey, sessions_for
 from toto.people.models import Person
 from toto.socialhub import audit
 from toto.socialhub.forms import AccountProfileForm, TimeZoneForm, avatar_max_bytes
@@ -51,10 +55,28 @@ def own_person(user) -> Person:
     return person
 
 
+#: Sessions shown per page of the Sessions section.
+SESSIONS_PER_PAGE = 20
+
+
+def _sessions_page(request):
+    """The member's live sessions, the one in use first and marked."""
+    current = request.session.session_key
+    rows = sessions_for(request.user)
+    for row in rows:
+        row.is_current = bool(current) and row.session_key == current
+    rows.sort(key=lambda row: not row.is_current)  # stable: then most recent first
+    return Paginator(rows, SESSIONS_PER_PAGE).get_page(request.GET.get("page"))
+
+
 def _page(request, *, profile_form=None, timezone_form=None, password_form=None,
           status=200):
     person = own_person(request.user)
+    sessions = _sessions_page(request)
     context = {
+        "page_obj": sessions,
+        "is_paginated": sessions.has_other_pages(),
+        "sessions": sessions.object_list,
         # A federated account signs in at its provider and has no password
         # here to change: the section says so instead of offering a form
         # whose "current password" nothing could ever match.
@@ -165,4 +187,51 @@ def account_password(request):
                                     "were ended; sign in there again with the new one."))
     else:
         messages.success(request, _("Your password is changed."))
+    return redirect("account:home")
+
+
+def _on_chain(name, user, request, **values):
+    from django.apps import apps
+
+    if not apps.is_installed("toto.audit"):
+        return None
+    from toto.audit import identity
+
+    return getattr(identity, name)(user, request=request, **values)
+
+
+@require_POST
+@login_required
+def account_session_end(request, session_id):
+    """End one of the member's own sessions (2026-09-30).
+
+    ``session_id`` is the list's row id, never a key. Another member's id and
+    one that is already gone are the same 404. The session in use is not
+    ended here: that is signing out, which the top bar does.
+    """
+    current = request.session.session_key
+    if current and request.user.signed_in_sessions.filter(
+            pk=session_id, session_key=current).exists():
+        messages.info(request, _("That is the session you are using now; "
+                                 "sign out to end it."))
+        return redirect("account:home")
+    row = end_session(request.user, session_id, request=request)
+    if row is None:
+        raise Http404
+    _on_chain("on_session_ended", request.user, request, kind=row.kind, session_id=row.pk)
+    messages.success(request, _("That session is ended; it has to sign in again."))
+    return redirect("account:home")
+
+
+@require_POST
+@login_required
+def account_sessions_end_others(request):
+    """Sign out everywhere else: every session but this one (2026-09-30)."""
+    ended = end_other_sessions(request.user, keep=request.session.session_key)
+    _on_chain("on_signed_out_everywhere", request.user, request, sessions_ended=ended)
+    if ended:
+        messages.success(request, _("Every other session is ended; "
+                                    "you are signed in here only."))
+    else:
+        messages.info(request, _("There was no other session to end."))
     return redirect("account:home")

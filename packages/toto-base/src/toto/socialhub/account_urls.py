@@ -11,6 +11,8 @@ from toto.socialhub.views.account import (
     account,
     account_password,
     account_profile,
+    account_session_end,
+    account_sessions_end_others,
     account_timezone,
 )
 
@@ -21,4 +23,6 @@ urlpatterns = [
     path("profile/", account_profile, name="profile"),
     path("timezone/", account_timezone, name="timezone"),
     path("password/", account_password, name="password"),
+    path("sessions/<int:session_id>/end/", account_session_end, name="session_end"),
+    path("sessions/end-others/", account_sessions_end_others, name="sessions_end_others"),
 ]
