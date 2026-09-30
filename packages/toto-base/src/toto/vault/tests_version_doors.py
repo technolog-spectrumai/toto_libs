@@ -16,13 +16,17 @@ gate. A file the caller may not see is 404; one they may see but not change is
 
 import io
 import json
+import shutil
+import subprocess
 import tempfile
+from unittest import skipUnless
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.template.loader import render_to_string
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from toto.audit.models import AuditRecord
@@ -366,3 +370,142 @@ class ChainTests(_Fixture):
         self.client.post(self.u("lock_release", f))
         self.assertFalse(AuditRecord.objects.filter(app_label="vault",
                                                     object_id=str(f.pk)).exists())
+
+
+class PanelTemplateTests(SimpleTestCase):
+    """oya/_file_versions.html honours ``can_write`` (accepted and ignored until
+    2026-09-30, so a reader's page claimed the lock of a file it only showed)."""
+
+    def render(self, **context):
+        return render_to_string("oya/_file_versions.html", {"file_pk": 7, **context})
+
+    def test_the_page_says_first_and_writable_is_the_default(self):
+        self.assertIn("fileVersions(7, true)", self.render())
+        self.assertIn("fileVersions(7, true)", self.render(can_write=True))
+        self.assertIn("fileVersions(7, false)", self.render(can_write=False))
+        # A caller whose own flag is missing passes "" — still the default.
+        self.assertIn("fileVersions(7, true)", self.render(can_write=""))
+
+    def test_save_and_restore_are_writers_only(self):
+        body = self.render(can_write=False)
+        self.assertIn('x-show="canWrite" class="flex flex-wrap', body)
+        self.assertIn('<template x-if="canWrite">', body)
+        self.assertLess(body.index('<template x-if="canWrite">'), body.index("restore(item)"))
+        self.assertIn("you may not change it", body)
+
+    def test_the_banner_promises_a_turn_only_to_somebody_who_could_take_it(self):
+        body = render_to_string("oya/_lock_banner.html")
+        self.assertIn('x-show="lock.can_write !== false"', body)
+        self.assertLess(body.index('x-show="lock.can_write !== false"'),
+                        body.index("your changes will not save until they close it"))
+
+
+_HARNESS = r"""
+const [script, canWrite, answersJson] = process.argv.slice(1);
+const answers = JSON.parse(answersJson);
+const calls = [], events = [], listeners = {}, intervals = [];
+const nav = { sendBeacon: (url) => { calls.push(["BEACON", url]); return true; } };
+Object.defineProperty(globalThis, "navigator", { value: nav, configurable: true });
+globalThis.window = {
+  navigator: nav,
+  addEventListener: (name, fn) => { listeners[name] = fn; },
+  dispatchEvent: (event) => { events.push(event.detail); },
+  confirm: () => true,
+  location: { reload() {} },
+};
+globalThis.document = { cookie: "" };
+globalThis.CustomEvent = function (name, init) { this.detail = init.detail; };
+globalThis.setInterval = (fn) => { intervals.push(fn); return intervals.length; };
+globalThis.clearInterval = (id) => { intervals[id - 1] = null; };
+globalThis.fetch = (url, opts) => {
+  const method = (opts && opts.method) || "GET";
+  calls.push([method, url]);
+  const a = answers[method + " " + url] || { status: 404, body: null };
+  return Promise.resolve({
+    status: a.status, ok: a.status < 400,
+    json: () => a.body === null ? Promise.reject(new Error("not json")) : Promise.resolve(a.body),
+  });
+};
+require(script);
+const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+(async () => {
+  const panel = window.fileVersions(7, canWrite === "true");
+  panel.init();
+  await settle();
+  intervals.filter(Boolean).forEach((fn) => fn());
+  await settle();
+  intervals.filter(Boolean).forEach((fn) => fn());
+  await settle();
+  if (listeners.pagehide) listeners.pagehide();
+  await panel.saveVersion();
+  await panel.restore({ id: 1, number: 1 });
+  await settle();
+  console.log(JSON.stringify({ calls, canWrite: panel.canWrite,
+                               last: events[events.length - 1] || null }));
+})();
+"""
+
+
+@skipUnless(shutil.which("node"), "node is not installed")
+class PanelScriptTests(SimpleTestCase):
+    """oya/file_versions.js, run under node with the vault's answers faked: a
+    reader's panel sends nothing the write doors would refuse."""
+
+    LIST = "GET /vault/file/7/versions/"
+    LOCK = "POST /vault/file/7/lock/"
+    BEAT = "POST /vault/file/7/lock/beat/"
+
+    def run_panel(self, can_write, answers):
+        from django.contrib.staticfiles import finders
+
+        script = finders.find("oya/file_versions.js")
+        done = subprocess.run(
+            ["node", "-e", _HARNESS, script, "true" if can_write else "false",
+             json.dumps(answers)],
+            capture_output=True, text=True, timeout=30, check=True)
+        return json.loads(done.stdout)
+
+    def state(self, can_write, **extra):
+        return {"locked": False, "mine": False, "holder": "", "heartbeat_seconds": 30,
+                "can_write": can_write, **extra}
+
+    def test_a_page_that_says_read_only_only_reads(self):
+        out = self.run_panel(False, {self.LIST: {"status": 200, "body": {
+            "versions": [], **self.state(False)}}})
+        self.assertEqual(out["calls"], [["GET", "/vault/file/7/versions/"]])
+        self.assertFalse(out["canWrite"])
+        self.assertFalse(out["last"]["can_write"])
+
+    def test_a_refused_claim_turns_the_panel_into_a_readers(self):
+        out = self.run_panel(True, {
+            self.LOCK: {"status": 403, "body": {"error": "no", "can_write": False}},
+            self.LIST: {"status": 200, "body": {"versions": [], **self.state(False)}}})
+        self.assertEqual(out["calls"], [["POST", "/vault/file/7/lock/"],
+                                        ["GET", "/vault/file/7/versions/"]])
+        self.assertFalse(out["canWrite"])
+
+    def test_a_writer_claims_beats_saves_restores_and_lets_go(self):
+        out = self.run_panel(True, {
+            self.LOCK: {"status": 200, "body": self.state(True, locked=True, mine=True)},
+            self.BEAT: {"status": 200, "body": {"held": True, **self.state(True)}},
+            self.LIST: {"status": 200, "body": {"versions": [], **self.state(True)}},
+            "POST /vault/file/7/versions/save/": {"status": 200, "body": {"saved": True}},
+            "POST /vault/file/7/versions/1/restore/": {"status": 200, "body": {}}})
+        methods = [tuple(call) for call in out["calls"]]
+        self.assertEqual(methods.count(("POST", "/vault/file/7/lock/beat/")), 2)
+        self.assertIn(("BEACON", "/vault/file/7/lock/release/"), methods)
+        self.assertIn(("POST", "/vault/file/7/versions/save/"), methods)
+        self.assertIn(("POST", "/vault/file/7/versions/1/restore/"), methods)
+        self.assertTrue(out["canWrite"])
+
+    def test_a_refused_heartbeat_stops_the_beat_and_the_buttons(self):
+        out = self.run_panel(True, {
+            self.LOCK: {"status": 200, "body": self.state(True, locked=True, mine=True)},
+            self.BEAT: {"status": 403, "body": {"error": "no", "can_write": False}},
+            self.LIST: {"status": 200, "body": {"versions": [], **self.state(True)}}})
+        methods = [tuple(call) for call in out["calls"]]
+        self.assertEqual(methods.count(("POST", "/vault/file/7/lock/beat/")), 1)
+        self.assertNotIn(("BEACON", "/vault/file/7/lock/release/"), methods)
+        self.assertNotIn(("POST", "/vault/file/7/versions/save/"), methods)
+        self.assertFalse(out["canWrite"])
+        self.assertFalse(out["last"]["can_write"])
