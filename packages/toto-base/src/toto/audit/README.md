@@ -10,6 +10,11 @@ action, text) and verify it at `/audit/verify/`.
 person at the keyboard (`AuditContextMiddleware` puts the request in
 `context.py`); `SYSTEM` says "nobody did this, it happened"; metadata goes
 through `sanitize`, which drops anything that looks like a secret.
+`request_source` is the request's method, path (a UUID in it becomes
+`[uuid]`), user agent and address; the address is `toto.core.client_ip`'s,
+nginx's `X-Real-IP` from a trusted proxy (2026-09-30). Rows written before
+then name `X-Forwarded-For`'s first entry, which the client could write; they
+stay as they are, because the digest covers them.
 `suppress_audit()` switches the chain off for a block — bulk loaders and
 tests only, never a setting.
 

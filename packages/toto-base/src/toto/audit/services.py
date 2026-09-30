@@ -21,6 +21,7 @@ from django.utils import timezone
 from toto.audit.canonical import payload_hash
 from toto.audit.context import current_context, is_suppressed
 from toto.audit.models import AuditChain, AuditRecord, chain_key
+from toto.core.client_ip import client_ip
 
 SENSITIVE_PARTS = (
     "password", "passwd", "secret", "token", "credential", "private_key",
@@ -72,14 +73,16 @@ _UUID_SEGMENT = re.compile(
 
 
 def request_source(request):
+    # The address is toto.core.client_ip's (2026-09-30): nginx's X-Real-IP from
+    # a trusted proxy, else the peer. It used to be the first X-Forwarded-For
+    # entry, which is whatever the client wrote there, so any row could name
+    # any address. Rows written that way keep it: the digest covers them.
     if request is None:
         return {}
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    ip = forwarded.split(",", 1)[0].strip() if forwarded else request.META.get("REMOTE_ADDR", "")
     return sanitize({
         "method": request.method,
         "path": _UUID_SEGMENT.sub("[uuid]", request.path)[:1000],
-        "ip_address": ip,
+        "ip_address": client_ip(request),
         "user_agent": request.META.get("HTTP_USER_AGENT", "")[:500],
     })
 

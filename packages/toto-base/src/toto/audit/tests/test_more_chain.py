@@ -114,10 +114,21 @@ class RequestSourceTests(SimpleTestCase):
         self.assertEqual(source["path"], "/sso/recover/[uuid]/")
         self.assertNotIn(secret, str(source))
 
-    def test_the_client_address_is_the_first_forwarded_hop_else_the_peer(self):
-        forwarded = self.rf.get("/", HTTP_X_FORWARDED_FOR=" 203.0.113.1 , 10.0.0.2",
-                                REMOTE_ADDR="10.0.0.9")
-        self.assertEqual(request_source(forwarded)["ip_address"], "203.0.113.1")
+    @override_settings(TRUSTED_PROXIES=["172.16.0.0/12"])
+    def test_a_forged_forwarded_for_loses_to_the_proxy_s_real_ip(self):
+        """nginx appends to X-Forwarded-For, so its first entry is the client's
+        own word; X-Real-IP is nginx's, believed from a trusted proxy (2026-09-30)."""
+        request = self.rf.get("/", REMOTE_ADDR="172.18.0.5",
+                              HTTP_X_FORWARDED_FOR="198.51.100.66, 203.0.113.7",
+                              HTTP_X_REAL_IP="203.0.113.7")
+        self.assertEqual(request_source(request)["ip_address"], "203.0.113.7")
+
+    @override_settings(TRUSTED_PROXIES=["172.16.0.0/12"])
+    def test_without_a_trusted_proxy_the_peer_is_the_address(self):
+        request = self.rf.get("/", REMOTE_ADDR="192.0.2.9",
+                              HTTP_X_FORWARDED_FOR="198.51.100.66",
+                              HTTP_X_REAL_IP="203.0.113.7")
+        self.assertEqual(request_source(request)["ip_address"], "192.0.2.9")
         direct = self.rf.get("/", REMOTE_ADDR="10.0.0.9")
         self.assertEqual(request_source(direct)["ip_address"], "10.0.0.9")
 
@@ -128,6 +139,21 @@ class RequestSourceTests(SimpleTestCase):
     def test_a_query_string_is_not_part_of_the_path(self):
         source = request_source(self.rf.get("/sso/login/?next=/x&token=abc"))
         self.assertEqual(source["path"], "/sso/login/")
+
+
+class RequestSourceHistoryTests(TestCase):
+    def test_a_row_written_the_old_way_still_verifies(self):
+        """Rows that named the first X-Forwarded-For entry keep it: the digest
+        covers request_source, so rewriting them would break the chain."""
+        forged = RequestFactory().get("/", REMOTE_ADDR="127.0.0.1", HTTP_X_FORWARDED_FOR="198.51.100.66")
+        old_shape = {**request_source(forged), "ip_address": "198.51.100.66"}
+        with mock.patch("toto.audit.services.request_source", return_value=old_shape):
+            record("OLD", app_label="t", request=forged)
+        record("NEW", app_label="t", request=forged)
+        rows = AuditRecord.objects.filter(action__in=["OLD", "NEW"]).order_by("sequence")
+        self.assertEqual([row.request_source["ip_address"] for row in rows],
+                         ["198.51.100.66", "127.0.0.1"])
+        self.assertTrue(verify_chain().ok)
 
 
 class ActorTests(TestCase):

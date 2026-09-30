@@ -13,7 +13,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.contrib.auth.signals import user_login_failed
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.db import transaction
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, TestCase, override_settings
 
 from toto.audit import identity
 from toto.audit.context import AuditContext, reset_context, set_context
@@ -70,12 +70,15 @@ class SignInTests(IdentityCase):
         login(_request(), self.ada, backend=BACKEND)
         self.assertEqual(self.records("AUTH.LOGIN").get().metadata, {"backend": BACKEND})
 
+    @override_settings(TRUSTED_PROXIES=["198.51.100.0/24"])
     def test_a_sign_in_names_the_door_and_the_address_it_came_from(self):
-        login(_request(HTTP_X_FORWARDED_FOR="203.0.113.9, 10.0.0.1"), self.ada, backend=BACKEND)
+        login(_request(HTTP_X_FORWARDED_FOR="192.0.2.66, 203.0.113.9",
+                       HTTP_X_REAL_IP="203.0.113.9"), self.ada, backend=BACKEND)
         source = self.records("AUTH.LOGIN").get().request_source
         self.assertEqual(source["path"], "/sso/login/")
         self.assertEqual(source["method"], "POST")
-        # The first hop of X-Forwarded-For is the client; the rest is the proxy chain.
+        # The proxy's X-Real-IP, not X-Forwarded-For's first entry, which is
+        # whatever the client wrote there (2026-09-30).
         self.assertEqual(source["ip_address"], "203.0.113.9")
 
     def test_a_sign_in_is_about_the_account_itself(self):
