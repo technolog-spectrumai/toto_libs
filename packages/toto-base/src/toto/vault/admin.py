@@ -99,15 +99,26 @@ class StorageProviderAdmin(admin.ModelAdmin):
 @admin.register(Bucket)
 class BucketAdmin(admin.ModelAdmin):
     list_display = ('name', 'slug', 'owner', 'storage_backend', 'provider',
-                    'storage_quota_mb', 'ai_protected', 'connection_url_display')
+                    'storage_quota_mb', 'ai_protected', 'created_by', 'created_at',
+                    'connection_url_display')
     search_fields = ('name', 'owner__username')
     list_filter = ('owner', 'storage_backend', 'provider', 'ai_protected')
     ordering = ('owner', 'name')
-    readonly_fields = ('connection_url_display',)
+    #: Who made it and when are recorded by Storage → Management and never
+    #: edited; the sealed credential shows its hint only — never ciphertext.
+    readonly_fields = ('connection_url_display', 'created_by', 'created_at',
+                       'sealed_credential_display', 'deletion_requested_at',
+                       'deletion_error', 'last_probe_at', 'last_probe_error')
     fieldsets = (
         (None, {
             'fields': ('name', 'slug', 'owner', 'storage_quota_mb',
                        'ai_protected'),
+        }),
+        ('Record', {
+            'fields': ('created_by', 'created_at', 'sealed_credential_display',
+                       'last_probe_at', 'last_probe_error',
+                       'deletion_requested_at', 'deletion_error'),
+            'description': 'Set by Storage → Management; read-only here.',
         }),
         ('Storage backend', {
             'fields': ('storage_backend', 'provider', 'peer', 'storage_config', 'public_base_url'),
@@ -137,6 +148,19 @@ class BucketAdmin(admin.ModelAdmin):
         except Exception as exc:
             return f'(error: {exc})'
     connection_url_display.short_description = _('Connection URL')
+
+    def sealed_credential_display(self, obj):
+        """The access key's last four characters, or how the bucket gets its
+        credentials — never the ciphertext, never the key."""
+        from .models import BucketSecret
+
+        if not obj or not obj.pk:
+            return '—'
+        hint = BucketSecret.objects.filter(bucket_id=obj.pk).values_list('hint', flat=True).first()
+        if hint is not None:
+            return f'Stored key …{hint}'
+        return '—'
+    sealed_credential_display.short_description = _('Sealed credential')
 
     def get_readonly_fields(self, request, obj=None):
         """The POST-side half of the storage gate.

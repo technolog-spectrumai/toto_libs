@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils.text import slugify
+from django.utils.translation import gettext
 
 from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
 from toto.vault.strategy.pdf import PdfStrategy
@@ -29,6 +30,31 @@ def external_buckets_allowed() -> bool:
     remote-toto proxying, no public CDN base URLs. Default keeps the full
     backend matrix (zenobia unchanged)."""
     return getattr(settings, "VAULT_EXTERNAL_BUCKETS", True)
+
+
+def field_key_configured() -> bool:
+    """Is ``FIELD_ENCRYPTION_KEY`` a key this host will still have tomorrow?
+
+    Secrets sealed in the database (a bucket's S3 keys, a peer's api key) are
+    only as durable as the key that sealed them. Zenobia's settings fall back
+    to a RANDOM key per process when the environment names none — fine for a
+    peer key re-pairable in a minute, fatal for an S3 secret nobody can type
+    again. So a door that seals a secret asks this first and refuses when the
+    answer is no.
+
+    Configured means: the setting is non-empty AND it is the value the
+    environment carries (the random fallback never is), or the host says so
+    explicitly with ``VAULT_FIELD_KEY_PERSISTENT = True`` (a host that sets
+    the key from a secrets file rather than the environment).
+    """
+    key = getattr(settings, "FIELD_ENCRYPTION_KEY", None)
+    if not key:
+        return False
+    if getattr(settings, "VAULT_FIELD_KEY_PERSISTENT", False):
+        return True
+    if isinstance(key, bytes):
+        key = key.decode()
+    return os.environ.get("FIELD_ENCRYPTION_KEY", "") == key
 
 
 def file_edits_allowed() -> bool:
@@ -100,7 +126,21 @@ class StorageProvider(models.Model):
 
 class Bucket(models.Model):
     name = models.CharField(max_length=100, unique=True)
-    owner = models.ForeignKey(User, on_delete=models.CASCADE)
+    #: Who the bucket belongs to. SET_NULL since 2026-09-30 (the owner's
+    #: decision): deleting an account no longer deletes the buckets it owned —
+    #: a bucket holds other people's files, gateways and clearance keeping,
+    #: and only a deliberate delete (Storage → Management, a background purge)
+    #: may take those. An OWNERLESS bucket grants nothing to anybody through
+    #: the "bucket owner" clause (every such check compares against a real
+    #: user's pk, which is never None), writes that need an owner refuse with
+    #: a sentence, and a superuser on the Superuser plan gives it a new owner.
+    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    #: Who made it (Management records the actor; older rows and buckets made
+    #: by code carry nothing). Immutable: Edit never offers it.
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="buckets_created", editable=False)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     slug = models.SlugField(max_length=120, unique=True)
     storage_quota_mb = models.PositiveIntegerField(
         null=True, blank=True,
@@ -184,6 +224,20 @@ class Bucket(models.Model):
             "in editors, no file wand, no exceptions."
         ),
     )
+    #: The last connection test (Management's Test button, and the probe a
+    #: new S3 bucket must pass before it is saved). Stamped only by an
+    #: operator's click — no page render ever probes. A mount's health lives
+    #: on its BucketPeer (last_ok_at / last_error) instead.
+    last_probe_at = models.DateTimeField(null=True, blank=True, editable=False)
+    last_probe_error = models.TextField(blank=True, default="", editable=False)
+    #: Set when a superuser confirmed Delete: the background purge is taking
+    #: its files (rows and bytes) and then the bucket. A bucket in this state
+    #: is listed as being deleted and refuses Edit.
+    deletion_requested_at = models.DateTimeField(null=True, blank=True, editable=False)
+    #: Why the purge stopped, when it did (a file another app still pins, a
+    #: store that refused). The bucket stays "being deleted" and Delete may be
+    #: confirmed again once the cause is fixed.
+    deletion_error = models.TextField(blank=True, default="", editable=False)
 
     class Meta:
         verbose_name = "Bucket"
@@ -241,6 +295,10 @@ class Bucket(models.Model):
                     f"Bucket peer '{self.peer.label}' is deactivated.")
 
     @property
+    def is_being_deleted(self) -> bool:
+        return self.deletion_requested_at is not None
+
+    @property
     def is_local(self) -> bool:
         """This bucket's bytes are on this host's disk.
 
@@ -284,6 +342,124 @@ class Bucket(models.Model):
             return ""
         base = self.public_base_url.rstrip("/")
         return f"{base}/{file_key}"
+
+
+class BucketSecret(models.Model):
+    """A bucket's storage credential, sealed under ``FIELD_ENCRYPTION_KEY``.
+
+    The custody the owner chose on 2026-09-30 for S3 keys entered in
+    Storage → Management: the same Fernet key that seals a BucketPeer's api
+    key (``peering._fernet``). What that buys and what it does not, plainly:
+    a database dump alone yields ciphertext; a dump PLUS the deploy config
+    (which carries the key) yields the secret. That is weaker than the
+    storage-PIN custody in ``credentials.py`` and stronger than a plaintext
+    column, and it is what lets a background job purge a bucket with nobody
+    at the keyboard.
+
+    Never rendered, logged, put in JSON, a form draft or the admin — only
+    ``hint`` (the last four characters of the access key id) is shown, so an
+    operator can tell which key is live. The S3 driver receives the opened
+    dict per use (``storage_backends.get_bucket_storage``) and the dict dies
+    with the driver.
+    """
+
+    bucket = models.OneToOneField(Bucket, on_delete=models.CASCADE,
+                                  related_name="sealed_secret")
+    ciphertext = models.BinaryField(editable=False)
+    hint = models.CharField(max_length=16, blank=True)
+    sealed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Bucket secret"
+        verbose_name_plural = "Bucket secrets"
+
+    def __str__(self):
+        return f"Sealed credential of {self.bucket.name} (…{self.hint})"
+
+    #: The only keys a sealed credential may carry — what the S3 driver reads.
+    FIELDS = ("aws_access_key_id", "aws_secret_access_key", "session_token")
+
+    def seal(self, secret: dict) -> None:
+        """Encrypt ``secret`` into this row (the caller saves it).
+
+        Refuses, with a sentence, on a host whose ``FIELD_ENCRYPTION_KEY`` is
+        the per-process random fallback: the secret would be unreadable after
+        the next restart, and nobody can type an S3 secret twice.
+        """
+        import json
+
+        from .peering import _fernet
+
+        if not field_key_configured():
+            raise ValidationError(gettext(
+                "This server has no permanent FIELD_ENCRYPTION_KEY, so a secret "
+                "sealed now could not be opened after the next restart. Set "
+                "FIELD_ENCRYPTION_KEY in the deploy configuration first."))
+        clean = {k: str(v) for k, v in (secret or {}).items() if k in self.FIELDS and v}
+        if not clean.get("aws_access_key_id") or not clean.get("aws_secret_access_key"):
+            raise ValidationError(gettext("Both the access key id and the secret key are needed."))
+        self.ciphertext = _fernet().encrypt(json.dumps(clean).encode())
+        self.hint = clean["aws_access_key_id"][-4:]
+
+    def open(self) -> dict:
+        import json
+
+        from .peering import _fernet
+
+        return json.loads(_fernet().decrypt(bytes(self.ciphertext)).decode())
+
+
+def personal_bucket(user):
+    """The user's own ``personal-<username>`` bucket, created on first use.
+
+    The one shape every door that files something "somewhere of theirs" uses
+    (the vault API, the new-file picker, aralia's renders, the wiki). Since
+    owners are SET_NULL a bucket with that slug may belong to nobody — its
+    account was deleted — or to somebody else (Management gave it away).
+    Handing such a bucket to a NEW account that happens to carry the old
+    username would give them the previous holder's files through the
+    bucket-owner clause, so it is never reused: the next free
+    ``personal-<username>-<n>`` is taken instead. A personal bucket that is
+    being deleted is skipped the same way — nothing new lands in it.
+    """
+    from django.db import IntegrityError, transaction
+
+    base_slug = f"personal-{user.username}"
+    base_name = f"Personal — {user.username}"
+    for n in range(1, 100):
+        slug = base_slug if n == 1 else f"{base_slug}-{n}"
+        name = base_name if n == 1 else f"{base_name} ({n})"
+        found = Bucket.objects.filter(slug=slug).first()
+        if found is not None:
+            if found.owner_id == user.pk and not found.is_being_deleted:
+                return found
+            continue
+        if Bucket.objects.filter(name=name).exists():
+            continue
+        try:
+            with transaction.atomic():
+                return Bucket.objects.create(owner=user, slug=slug, name=name,
+                                             storage_backend=StorageBackend.LOCAL)
+        except IntegrityError:
+            # Two requests raced for the same slug: take theirs if it is ours.
+            found = Bucket.objects.filter(slug=slug, owner=user).first()
+            if found is not None and not found.is_being_deleted:
+                return found
+    raise RuntimeError(f"No free personal bucket slug for {user.username}.")
+
+
+class BucketClosed(RuntimeError):
+    """The bucket is being deleted: no file may be added to it or moved into it.
+
+    Raised by ``VaultFile.save`` — the backstop behind every door. The doors
+    that take uploads refuse earlier, with the same sentence, before any byte
+    is written (``storage_backends.persist_upload``).
+    """
+
+
+def closed_bucket_sentence(bucket) -> str:
+    return gettext("The bucket '%(name)s' is being deleted — nothing new can be "
+                   "added to it.") % {"name": getattr(bucket, "name", "") or "?"}
 
 
 class FileOrigin(models.TextChoices):
@@ -452,7 +628,13 @@ class VaultFile(models.Model):
         help_text="Mirrored rows are the peer's listing, not this host's "
                   "bytes; their metadata is changed on the origin host.",
     )
-    bucket = models.ForeignKey(Bucket, on_delete=models.SET_NULL, null=True, blank=True, related_name='files')
+    #: PROTECT since 2026-09-30: a bucket is deleted only by the Management
+    #: purge, which takes every file (row and bytes) first. SET_NULL used to
+    #: leave the bytes behind AND drop the files out of their bucket's
+    #: clearance keeping — a file in no bucket is read by its own rules, so a
+    #: deleted kept bucket opened its files. Nothing may end with bucket=None
+    #: by deleting its bucket.
+    bucket = models.ForeignKey(Bucket, on_delete=models.PROTECT, null=True, blank=True, related_name='files')
     directory = models.ForeignKey(
         'VaultDirectory', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='files'
@@ -466,7 +648,33 @@ class VaultFile(models.Model):
     def __str__(self):
         return f"{self.title} ({self.owner.username})"
 
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        # What the row said when read, so save() can tell a file MOVED into a
+        # bucket from one that was always there.
+        instance._loaded_bucket_id = instance.__dict__.get("bucket_id")
+        return instance
+
+    def _refuse_closed_bucket(self):
+        """Nothing new lands in a bucket that is being deleted (2026-09-30):
+        the background purge takes every file and then the bucket, and a file
+        arriving mid-purge would either block the final delete (PROTECT) or
+        vanish with it. Only a file that is NEW here is checked — a file
+        already in the bucket may still be saved (a scan stamp, a rename)."""
+        if not self.bucket_id:
+            return
+        arriving = self._state.adding or (
+            getattr(self, "_loaded_bucket_id", self.bucket_id) != self.bucket_id)
+        if not arriving:
+            return
+        closed = (Bucket.objects.filter(pk=self.bucket_id, deletion_requested_at__isnull=False)
+                  .only("name").first())
+        if closed is not None:
+            raise BucketClosed(closed_bucket_sentence(closed))
+
     def save(self, *args, **kwargs):
+        self._refuse_closed_bucket()
         if self.file and not self.key:
             base_name = os.path.splitext(os.path.basename(self.file.name))[0]
             candidate_key = slugify(base_name)
@@ -481,6 +689,7 @@ class VaultFile(models.Model):
                 pass
 
         super().save(*args, **kwargs)
+        self._loaded_bucket_id = self.bucket_id
 
     def create_hash(self):
         """sha256 of the content, from wherever the bucket keeps it, or None.
