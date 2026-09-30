@@ -132,18 +132,23 @@ Refused:
   OpenDocument). Before this rule an OOXML upload met the XML screener's
   generic refusal only by accident (its MIME type contains "xml").
   One rule, `models.upload_refusal(name, file_type=, content=, mime=)`:
-  `is_office_file` by extension (`OFFICE_EXTENSIONS`), by declared type
-  (msword, officedocument, ms-excel, ms-powerpoint, openxmlformats) and by
-  content — an OLE2 compound file (`D0 CF 11 E0`) or a zip holding
-  `[Content_Types].xml` and a `word/`, `xl/` or `ppt/` part — so a .docx
-  renamed .zip is refused and an .odt (a zip without that part) is not; then
-  the host's refused types. The doors that ask it: the gateway upload, the
-  API upload and create, the peer upload, rename, New file, a transfer's copy
-  (`transfer_runner`, skipped with the sentence), a mirror refresh (the peer's
-  Office rows are never stubbed, and old stubs are pruned), a git pull
+  `is_office_file` by extension (`OFFICE_EXTENSIONS`), by content and, only
+  where a door has no bytes to judge, by declared type (msword,
+  officedocument, ms-excel, ms-powerpoint, openxmlformats — Windows declares
+  ms-excel for every .csv where Excel is installed); the content — an OLE2
+  compound file (`D0 CF 11 E0`) or a zip holding `[Content_Types].xml` and a
+  `word/`, `xl/` or `ppt/` part — so a .docx renamed .zip is refused and an
+  .odt (a zip without that part) is not; then the host's refused types. The
+  doors that ask it: the gateway upload, the API upload and create, the peer
+  upload, rename (the page's and the API's PATCH), New file, a transfer's copy
+  (`transfer_runner`, skipped with the sentence), a copy between two local
+  buckets (refused, naming the files), a mirror refresh (the peer's Office
+  rows are never stubbed, and old stubs are pruned), a git pull
   (`toto.repo.sync.import_worktree` leaves them in the worktree and lists them
-  under `refused`), a capsule transfer (`toto.anastasia`), and on zenobia the
-  wiki's image upload and zip import. Tests: `tests_office_refusal`.
+  under `refused`), a capsule transfer and the Capsule's own ways in — the
+  desk's upload, the API's files/put and a job's staged inputs
+  (`toto.anastasia`) — and on zenobia the wiki's image upload and zip import.
+  Tests: `tests_office_refusal`.
 * **OpenDocument is not Microsoft** — .odt .ods .odp are unaffected and keep
   today's behaviour.
 * Whatever a host lists in `VAULT_REFUSED_FILE_TYPES` (e.g. `{"latex"}`),
