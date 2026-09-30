@@ -1,0 +1,15 @@
+{% load i18n %}
+          <!-- What the server did not do, file by file, and why -->
+          <p x-show="bulkError" x-text="bulkError" class="text-xs text-warn-light"></p>
+          <div x-show="bulkRefused.length > 0"
+               class="rounded-xl border border-warn-light/30 px-4 py-3 text-sm space-y-1">
+            <p class="font-semibold text-warn-light">
+              <span x-text="bulkResults.length - bulkRefused.length"></span> {% trans "done" %},
+              <span x-text="bulkRefused.length"></span> {% trans "refused (still selected):" %}
+            </p>
+            <ul class="max-h-40 overflow-y-auto space-y-1 text-xs">
+              <template x-for="r in bulkRefused" :key="r.id">
+                <li><span class="font-mono" x-text="titleOf(r.id)"></span> — <span x-text="r.reason"></span></li>
+              </template>
+            </ul>
+          </div>

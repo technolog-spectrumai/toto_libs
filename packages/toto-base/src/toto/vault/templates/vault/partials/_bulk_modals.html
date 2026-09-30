@@ -1,0 +1,126 @@
+{% load i18n %}
+{% comment %}Several files at once (bulk.py, 2026-10-01): "Move to the trash"
+   and "Move to…" for the ticked files. Inside the vaultTree() component of
+   public_file_list.html. The server answers per file; what it refused stays
+   ticked and is listed here with the reason.{% endcomment %}
+
+      <!-- Bulk: move to the trash -->
+      <div x-show="bulkModal === 'trash'"
+           x-cloak
+           x-transition.opacity
+           @keydown.escape.window="bulkModal = null"
+           class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="bulkModal = null"></div>
+        <div :class="darkMode
+                      ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+                      : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-md rounded-2xl border p-6 shadow-2xl space-y-5"
+             role="dialog" aria-modal="true" @click.stop>
+
+          <h2 class="flex items-center gap-2 text-base font-bold text-warn-light">
+            <i class="fa-solid fa-trash text-sm"></i>
+            {% trans "Move to the trash" %}
+            <span class="font-normal opacity-70">(<span x-text="selectedCount"></span>)</span>
+          </h2>
+
+          <p class="rounded-xl border border-current/20 px-4 py-3 text-sm opacity-80">
+            <i class="fa-solid fa-circle-info mr-1.5"></i>
+            {% blocktrans %}The files go to the trash with their versions and can be restored for {{ trash_days }} days; they still count toward your storage until then.{% endblocktrans %}
+          </p>
+          <p x-show="selectedRemote > 0"
+             class="rounded-xl border border-warn-light/30 bg-warn-light/10 px-4 py-3 text-sm text-warn-light font-medium">
+            <i class="fa-solid fa-circle-exclamation mr-1.5"></i>
+            <span x-text="selectedRemote"></span>
+            {% trans "of them live on another Zenobia: this server cannot keep them in a trash. Deleting them is permanent and cannot be undone." %}
+          </p>
+
+          {% include "vault/partials/_bulk_refused.html" %}
+
+          <div class="flex gap-3">
+            <button @click="submitBulkTrash"
+                    :disabled="bulkLoading || selectedCount === 0"
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition bg-warn-light text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+              <span x-show="!bulkLoading && selectedRemote === 0">{% trans "Move to the trash" %}</span>
+              <span x-show="!bulkLoading && selectedRemote > 0">{% trans "Trash, and delete the remote ones" %}</span>
+              <span x-show="bulkLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button @click="bulkModal = null"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              {% trans "Close" %}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bulk: move to… -->
+      <div x-show="bulkModal === 'move'"
+           x-cloak
+           x-transition.opacity
+           @keydown.escape.window="bulkModal = null"
+           class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="bulkModal = null"></div>
+        <div :class="darkMode
+                      ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+                      : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-md rounded-2xl border p-6 shadow-2xl space-y-5"
+             role="dialog" aria-modal="true" @click.stop>
+
+          <h2 class="flex items-center gap-2 text-base font-bold">
+            <i class="fa-solid fa-up-down text-sm"
+               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+            {% trans "Move to…" %}
+            <span class="font-normal opacity-70">(<span x-text="selectedCount"></span>)</span>
+          </h2>
+
+          <div class="space-y-3">
+            <label class="block">
+              <span class="mb-1 block text-xs font-semibold opacity-50">{% trans "Bucket" %}</span>
+              <select x-model="bulkBucket" @change="bulkDir = ''"
+                      :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+                      class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none">
+                <template x-for="b in moveTargets" :key="b.id">
+                  <option :value="String(b.id)" x-text="b.name" :selected="String(b.id) === bulkBucket"></option>
+                </template>
+              </select>
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-xs font-semibold opacity-50">{% trans "Folder" %}</span>
+              <select x-model="bulkDir"
+                      :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+                      class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none">
+                <option value="">{% trans "Bucket root" %}</option>
+                <template x-for="d in bulkDirs" :key="d.id">
+                  <option :value="String(d.id)" x-text="d.path"></option>
+                </template>
+              </select>
+            </label>
+            <p x-show="bulkTarget && !bulkTarget.into" class="text-xs opacity-70">
+              <i class="fa-solid fa-circle-info mr-1"></i>
+              {% trans "Only files already in this bucket move here; it is not yours to fill from other buckets." %}
+            </p>
+            <p class="text-xs opacity-60">
+              {% trans "Between buckets, only files on this server's disk move. For the rest, use Copy files." %}
+            </p>
+          </div>
+
+          {% include "vault/partials/_bulk_refused.html" %}
+
+          <div class="flex gap-3">
+            <button @click="submitBulkMove"
+                    :disabled="bulkLoading || selectedCount === 0 || !bulkBucket"
+                    :class="darkMode
+                      ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90'
+                      : 'bg-accent-light text-primary-bg-light hover:opacity-90'"
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition disabled:opacity-40 disabled:cursor-not-allowed">
+              <span x-show="!bulkLoading">{% trans "Move here" %}</span>
+              <span x-show="bulkLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button @click="bulkModal = null"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              {% trans "Close" %}
+            </button>
+          </div>
+        </div>
+      </div>

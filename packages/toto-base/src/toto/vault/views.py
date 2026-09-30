@@ -302,6 +302,10 @@ class PublicFileListView(TemplateView):
         from toto.vault.models import trash_days
 
         context["trash_days"] = trash_days()
+        # The "Move to…" picker for the selected files (bulk.py).
+        from toto.vault.bulk import move_targets
+
+        context["move_targets"] = move_targets(user)
         context["total_files"] = sum(1 for i in flat_items if i["t"] == "file")
         context["total_dirs"] = sum(1 for i in flat_items if i["t"] == "dir")
         # The metrics page is owner-or-superuser 404 now; render its link

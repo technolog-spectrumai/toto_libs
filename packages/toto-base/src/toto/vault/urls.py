@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import views
+from . import bulk
 from . import clearances
 from . import clearance_tab
 from . import manage_views
@@ -113,6 +114,10 @@ urlpatterns = [
     path("file/move/", MoveFileView.as_view(), name="move_file"),
     path("file/rename/", RenameFileView.as_view(), name="rename_file"),
     path("file/delete/", DeleteFileView.as_view(), name="delete_file"),
+    # Several files at once from the file list (bulk.py, 2026-10-01): each
+    # file checked and answered on its own.
+    path("files/bulk/trash/", bulk.bulk_trash, name="bulk_trash"),
+    path("files/bulk/move/", bulk.bulk_move, name="bulk_move"),
     path("buckets/<slug:bucket_slug>/clearances/", clearances.bucket_clearances,
          name="bucket_clearances"),
     path("buckets/<slug:bucket_slug>/connection-url/", BucketConnectionUrlView.as_view(), name="bucket_connection_url"),

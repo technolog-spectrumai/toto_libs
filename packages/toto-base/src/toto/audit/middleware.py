@@ -42,6 +42,8 @@ VAULT_ACTIONS = {
     "copy_files": "FILE_COPIED",
     "copy_files_ajax": "FILE_COPIED",
     "delete_file": "FILE_DELETED",
+    "bulk_trash": "FILE_TRASHED",
+    "bulk_move": "FILE_MOVED",
     "encrypt_file": "FILE_ENCRYPTED",
     "decrypt_file": "FILE_DECRYPTED",
     "create_zip": "FILE_ZIPPED",

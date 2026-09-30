@@ -14,6 +14,8 @@
   const _moveUrl      = "{% url 'vault:move_file' %}";
   const _renameUrl    = "{% url 'vault:rename_file' %}";
   const _deleteUrl    = "{% url 'vault:delete_file' %}";
+  const _bulkTrashUrl = "{% url 'vault:bulk_trash' %}";
+  const _bulkMoveUrl  = "{% url 'vault:bulk_move' %}";
   const _currentUser  = "{{ user.username|escapejs }}";
   const _servicesUrlTpl   = "{{ services_url_tpl }}";
   const _runServiceUrlTpl = "{{ run_service_url_tpl }}";
@@ -100,6 +102,17 @@
         deleteLoading: false,
         deleteError: '',
 
+        // several files at once (bulk.py): the ticked files, the dialog
+        // open ('trash' | 'move' | null) and what the server answered per file.
+        selected: {},
+        bulkModal: null,
+        bulkBucket: '',
+        bulkDir: '',
+        bulkLoading: false,
+        bulkError: '',
+        bulkResults: [],
+        moveTargets: [],
+
         // rename state
         renameModal: false,
         renameFileId: null,
@@ -175,6 +188,9 @@
           try {
             this.createTypes = JSON.parse(document.getElementById('vault-create-types').textContent);
           } catch { this.createTypes = []; }
+          try {
+            this.moveTargets = JSON.parse(document.getElementById('vault-move-targets').textContent);
+          } catch { this.moveTargets = []; }
           const clearSearchAutofill = () => {
             this.search = '';
             if (this.$refs.searchInput) this.$refs.searchInput.value = '';
@@ -560,6 +576,106 @@
           this.deleteLoading = false;
         },
 
+        // ── Several files at once ─────────────────────────────
+        // The server checks and answers each file on its own; the page only
+        // sends what is ticked and shows what came back (2026-10-01).
+        isSelected(item) { return !!this.selected[item.id]; },
+        toggleSelected(item) {
+          if (this.selected[item.id]) delete this.selected[item.id];
+          else this.selected[item.id] = true;
+        },
+        get selectedIds() { return Object.keys(this.selected).map(Number); },
+        get selectedCount() { return this.selectedIds.length; },
+        get selectedItems() {
+          return this.items.filter(i => i.t === 'file' && this.selected[i.id]);
+        },
+        get selectedRemote() { return this.selectedItems.filter(i => i.trashable === false).length; },
+        selectAllShown() {
+          for (const item of this.displayItems) {
+            if (item.t === 'file' && item.owner === this.currentUser && this.isVisible(item))
+              this.selected[item.id] = true;
+          }
+        },
+        clearSelected() { this.selected = {}; },
+        get bulkTarget() { return this.moveTargets.find(b => String(b.id) === String(this.bulkBucket)); },
+        get bulkDirs() { return this.bulkTarget ? this.bulkTarget.dirs : []; },
+        titleOf(id) { return (this.items.find(i => i.t === 'file' && i.id === id) || {}).title || ('#' + id); },
+        get bulkRefused() { return this.bulkResults.filter(r => r.status === 'refused'); },
+        openBulk(kind) {
+          this.bulkError = '';
+          this.bulkResults = [];
+          if (kind === 'move') {
+            const first = this.selectedItems[0];
+            const own = first && this.moveTargets.find(b => b.id === first.bpk);
+            this.bulkBucket = String((own || this.moveTargets[0] || {}).id || '');
+            this.bulkDir = '';
+          }
+          this.bulkModal = kind;
+        },
+        _csrf() {
+          return document.cookie.split(';')
+            .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+        },
+        async _bulkPost(url, extra) {
+          const body = new URLSearchParams(extra);
+          for (const id of this.selectedIds) body.append('files', id);
+          this.bulkLoading = true;
+          this.bulkError = '';
+          let data = null;
+          try {
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: { 'X-CSRFToken': this._csrf(), 'Content-Type': 'application/x-www-form-urlencoded' },
+              body,
+            });
+            data = await res.json();
+            if (!data.ok) { this.bulkError = data.error || '{{ _("Nothing was done.")|escapejs }}'; data = null; }
+          } catch {
+            this.bulkError = '{{ _("Network error. Please try again.")|escapejs }}';
+          }
+          this.bulkLoading = false;
+          return data;
+        },
+        _bulkDone(data) {
+          this.bulkResults = data.results;
+          const selected = {};
+          for (const r of data.results) if (r.status === 'refused') selected[r.id] = true;
+          this.selected = selected;
+          if (!this.bulkRefused.length) this.bulkModal = null;
+        },
+        async submitBulkTrash() {
+          const data = await this._bulkPost(_bulkTrashUrl,
+            this.selectedRemote ? { remote: 'yes' } : {});
+          if (!data) return;
+          const gone = new Set(data.results.filter(r => r.status !== 'refused').map(r => r.id));
+          this.items = this.items.filter(i => !(i.t === 'file' && gone.has(i.id)));
+          this._bulkDone(data);
+        },
+        async submitBulkMove() {
+          if (!this.bulkBucket) return;
+          const data = await this._bulkPost(_bulkMoveUrl, {
+            destination_bucket: this.bulkBucket, destination_directory: this.bulkDir });
+          if (!data) return;
+          const moved = {};
+          for (const r of data.results) if (r.status === 'moved') moved[r.id] = r;
+          const kept = [];
+          for (const item of this.items) {
+            const r = item.t === 'file' ? moved[item.id] : null;
+            if (r) {
+              // A folder this page does not list (another bucket, filtered
+              // out) takes the file off the page; a listed one takes it in.
+              const dir = r.pid === null ? null : this.dirMap[r.pid];
+              if (r.pid !== null && !dir) continue;
+              item.pid = r.pid;
+              item.bpk = r.bpk;
+              item.depth = dir ? dir.depth + 1 : 0;
+            }
+            kept.push(item);
+          }
+          this.items = kept;
+          this._bulkDone(data);
+        },
+
         openRename(item) {
           this.renameFileId   = item.id;
           this.renameOldTitle = item.title;
@@ -926,6 +1042,7 @@
     <!-- JSON data island -->
     {{ flat_items|json_script:"vault-items" }}
     {{ create_file_types|json_script:"vault-create-types" }}
+    {{ move_targets|json_script:"vault-move-targets" }}
 
     <!-- Tree -->
     <div x-data="vaultTree()">
@@ -1047,6 +1164,36 @@
         </div>
       </template>
 
+      <!-- Selection bar: several files at once (bulk.py) -->
+      <div x-show="items.length > 0 && currentUser" x-cloak
+           class="mb-3 flex flex-wrap items-center gap-2 text-xs">
+        <button type="button" @click="selectAllShown()"
+                :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                class="rounded-lg border px-3 py-1.5 font-semibold transition">
+          <i class="fa-regular fa-square-check mr-1"></i>{% trans "Select my shown files" %}
+        </button>
+        <template x-if="selectedCount > 0">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="font-semibold">
+              <span x-text="selectedCount"></span> {% trans "selected" %}
+            </span>
+            <button type="button" @click="clearSelected()"
+                    class="rounded-lg px-2 py-1.5 opacity-60 hover:opacity-100 transition">
+              {% trans "Clear" %}
+            </button>
+            <button type="button" @click="openBulk('move')"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="rounded-lg px-3 py-1.5 font-semibold transition hover:opacity-90">
+              <i class="fa-solid fa-up-down mr-1"></i>{% trans "Move to…" %}
+            </button>
+            <button type="button" @click="openBulk('trash')"
+                    class="rounded-lg bg-warn-light px-3 py-1.5 font-semibold text-white transition hover:opacity-90">
+              <i class="fa-solid fa-trash mr-1"></i>{% trans "Move to the trash" %}
+            </button>
+          </div>
+        </template>
+      </div>
+
       <!-- Tree container -->
       <template x-if="items.length > 0 && viewMode === 'tree'">
         <div
@@ -1129,7 +1276,11 @@
                     : 'border-b border-accent-2/20 hover:bg-bubble-bg-light/50'"
                   class="group flex items-center gap-3 py-2.5 pr-4 text-sm transition-colors duration-150">
 
-                  <i class="fa-regular fa-file w-3 shrink-0 text-xs opacity-30"></i>
+                  <input type="checkbox" x-show="item.owner === currentUser"
+                         :checked="isSelected(item)" @click.stop @change="toggleSelected(item)"
+                         :aria-label="`{% trans 'Select' %} ${item.title}`"
+                         class="h-3.5 w-3.5 shrink-0 cursor-pointer rounded">
+                  <i x-show="item.owner !== currentUser" class="fa-regular fa-file w-3 shrink-0 text-xs opacity-30"></i>
 
                   <span class="font-medium truncate flex-1 min-w-0" x-text="item.title"></span>
 
@@ -1250,6 +1401,12 @@
               <template x-for="item in gridFiles" :key="`grid-${item.id}`">
                 <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
                      class="group relative flex flex-col gap-2 rounded-xl border p-3 shadow-sm transition hover:shadow-md">
+
+                  <!-- Select (several files at once) -->
+                  <input type="checkbox" x-show="item.owner === currentUser"
+                         :checked="isSelected(item)" @click.stop @change="toggleSelected(item)"
+                         :aria-label="`{% trans 'Select' %} ${item.title}`"
+                         class="absolute top-2 left-2 h-3.5 w-3.5 cursor-pointer rounded">
 
                   <!-- Encrypted badge -->
                   <div x-show="item.encrypted" class="absolute top-2 right-2">
@@ -1817,6 +1974,8 @@
 
         </div>
       </div>
+
+      {% include "vault/partials/_bulk_modals.html" %}
 
       <!-- Rename modal -->
       <div x-show="renameModal"
