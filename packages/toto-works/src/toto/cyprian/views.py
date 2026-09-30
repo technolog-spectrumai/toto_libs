@@ -88,6 +88,20 @@ def _is_document_file(vault_file: VaultFile) -> bool:
 # it would have quietly resurrected the exact file type this change removes,
 # one file at a time, on a build that no longer has a reader for it.
 
+def _files(user):
+    """The vault files this app may hand ``user`` at all: the bucket's
+    clearances first (2026-09-30).
+
+    Every door here narrows this further — to the owner, or to a bridge's
+    team — but none of them may skip it: a file whose kept bucket ``user``
+    holds no clearance of is missing to its owner and to a lending app alike
+    ("no owner bypass"). `access.gate_by_bucket` is the vault's own spelling,
+    so the writer and the vault cannot disagree about what is hidden.
+    """
+    return access.gate_by_bucket(
+        user, VaultFile.objects.select_related("bucket", "directory", "owner"))
+
+
 def _get_owned_file(request, file_pk) -> VaultFile:
     """A DOCUMENT of this user's. Strict ownership, in the query.
 
@@ -98,10 +112,12 @@ def _get_owned_file(request, file_pk) -> VaultFile:
 
     `_open_document` below is the bridged gate, and it covers the two endpoints
     a shared document actually needs: opening the writer, and saving it.
+
+    Its bucket's clearances come first (2026-09-30), as on every door here:
+    `_files` below.
     """
     vault_file = get_object_or_404(
-        VaultFile.objects.select_related("bucket", "directory", "owner")
-        .filter(access.local_content_q()),
+        _files(request.user).filter(access.local_content_q()),
         pk=file_pk, owner=request.user, file_type="html")
     if not _is_document_file(vault_file):
         raise Http404("Not a document.")
@@ -128,10 +144,12 @@ def _open_document(request, file_pk):
     Returns `(vault_file, document)`. The document is None only for an encrypted
     file, which is returned unread so each caller's own `is_encrypted` branch can
     say its own sentence.
+
+    The row is fetched through `_files`, so a file its bucket's clearances hide
+    is 404 before the owner or any bridge is asked (2026-09-30).
     """
     vault_file = get_object_or_404(
-        VaultFile.objects.select_related("bucket", "directory", "owner")
-        .filter(access.local_content_q()),
+        _files(request.user).filter(access.local_content_q()),
         pk=file_pk, file_type="html")
 
     if vault_file.is_encrypted:
@@ -169,9 +187,10 @@ def _owned_file(request, file_pk, *, types=None) -> VaultFile:
     `_get_owned_file` above is for DOCUMENTS: it filters on the document types
     and adopts a stray `.xml`. Everything else this app touches — the
     `.contract` a body was opened from, the PDF a save produced — needs the
-    ownership check without the document assumption.
+    ownership check without the document assumption — and the clearance gate
+    with it (`_files`).
     """
-    query = VaultFile.objects.select_related("bucket", "directory", "owner")
+    query = _files(request.user)
     if types:
         query = query.filter(file_type__in=types)
     return get_object_or_404(query, pk=file_pk, owner=request.user)
