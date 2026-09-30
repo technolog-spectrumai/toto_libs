@@ -281,3 +281,15 @@ class OtherAppDoorTests(_Fixture):
         source = self.file("main", b"print(1)\n", file_type="text", ext="py")
         services.delete_file(workspace=None, vault_file=source, by=self.owner)
         self.assert_trashed(source)
+
+
+class AttachmentTests(_Fixture):
+    def test_an_attached_file_in_the_trash_is_not_readable(self):
+        from toto.vault.attach import readable, visible
+
+        vault_file = self.file("doc")
+        self.assertTrue(readable(self.owner, vault_file))
+        vault_file.trash(self.owner)
+        row = type("Row", (), {"vault_file": VaultFile.all_objects.get(pk=vault_file.pk)})()
+        self.assertFalse(readable(self.owner, row.vault_file))
+        self.assertEqual(visible(self.owner, [row]), [])

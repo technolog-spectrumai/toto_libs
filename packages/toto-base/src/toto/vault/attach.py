@@ -85,7 +85,11 @@ def readable(user, vault_file) -> bool:
     """
     from toto.vault.access import may_read
 
-    return bool(vault_file) and may_read(user, vault_file)
+    # A trashed file is a missing file (2026-10-01): the foreign key still
+    # finds it — the base manager sees the trash — so it is refused here.
+    if not vault_file or getattr(vault_file, "trashed_at", None) is not None:
+        return False
+    return may_read(user, vault_file)
 
 
 def visible(user, attachments, *, attr="vault_file"):
