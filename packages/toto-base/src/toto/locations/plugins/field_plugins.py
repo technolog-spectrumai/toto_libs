@@ -11,39 +11,42 @@ from django.utils.translation import gettext_lazy as _
 # ---------------------------------------------------------------------------
 
 def locations_map_features(request=None):
-    from toto.locations.models import Address, Territory, Zone, Route, MapLayer, MapLayerPolygon
-    features = []
+    """The viewer's map items (map domains, 2026-09-30): what their clearances
+    let them read, or with no request only the open ones."""
+    from toto.locations.access import (
+        readable_addresses, readable_layers, readable_routes, readable_territories, readable_zones,
+    )
+    from toto.locations.models import MapLayer, MapLayerPolygon
 
-    for t in Territory.objects.exclude(geometry=None):
+    user = getattr(request, "user", None)
+    features = []
+    territory_names = dict(readable_territories(user).values_list("pk", "name"))
+
+    for t in readable_territories(user).exclude(geometry=None):
         features.append({
             "type": "Feature",
             "geometry": json.loads(t.geometry.geojson),
             "properties": {"layer": "territory", "name": t.name, "id": t.pk},
         })
 
-    for z in Zone.objects.exclude(geometry=None).select_related("territory"):
+    for z in readable_zones(user).exclude(geometry=None):
         features.append({
             "type": "Feature",
             "geometry": json.loads(z.geometry.geojson),
             "properties": {
                 "layer": "zone", "name": z.name, "id": z.pk,
-                "territory": z.territory.name if z.territory else "",
+                "territory": territory_names.get(z.territory_id, ""),
             },
         })
 
-    # Routes and layers kept to clearances (2026-09-29): the viewer's, or with no
-    # request only the open ones.
-    from toto.locations.access import readable_layers, readable_routes
-
-    user = getattr(request, "user", None)
-    for r in readable_routes(user, Route.objects.exclude(geometry=None)):
+    for r in readable_routes(user).exclude(geometry=None):
         features.append({
             "type": "Feature",
             "geometry": json.loads(r.geometry.geojson),
             "properties": {"layer": "route", "name": str(r), "id": r.pk},
         })
 
-    for a in Address.objects.exclude(geometry=None):
+    for a in readable_addresses(user).exclude(geometry=None):
         features.append({
             "type": "Feature",
             "geometry": json.loads(a.geometry.geojson),
@@ -73,12 +76,16 @@ def locations_map_features(request=None):
 # ---------------------------------------------------------------------------
 
 def locations_metrics_section(request=None):
-    from toto.locations.models import Address, Territory, Zone, Route
+    """Counts of what the viewer may read — a hidden item is not counted."""
+    from toto.locations.access import (
+        readable_addresses, readable_routes, readable_territories, readable_zones,
+    )
 
-    addr_count = Address.objects.count()
-    territory_count = Territory.objects.count()
-    zone_count = Zone.objects.count()
-    route_count = Route.objects.count()
+    user = getattr(request, "user", None)
+    addr_count = readable_addresses(user).count()
+    territory_count = readable_territories(user).count()
+    zone_count = readable_zones(user).count()
+    route_count = readable_routes(user).count()
 
     return {
         "key": "locations",

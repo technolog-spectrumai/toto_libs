@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import domain_views, views
 from .api_views import (
     ZoneListApiView, AddressListCreateApiView, AddressDetailApiView,
     MapDataApiView, MapLayersApiView, RouteSearchApiView,
@@ -39,11 +39,19 @@ urlpatterns = [
     path("metadata/<str:kind>/<int:pk>/save/", views.metadata_save, name="metadata_save"),
     path("metadata/convert/", views.metadata_convert, name="metadata_convert"),
     path("note/<str:kind>/<int:pk>/save/", views.note_save, name="note_save"),
-    path("clearances/<str:kind>/<int:pk>/save/", views.clearances_save, name="clearances_save"),
     path("locations/search/", views.location_search_api, name="location_search_api"),
     path("geocode/search/", views.geocode_search, name="geocode_search"),
     path("geocode/reverse/", views.geocode_reverse, name="geocode_reverse"),
     path("layers/import/", views.api_import_layer, name="api_import_layer"),
+
+    # Map domains (2026-09-30): superusers group map items and keep the
+    # groups to clearances.
+    path("domains/", domain_views.domains, name="domains"),
+    path("domains/new/", domain_views.domain_add, name="domain_add"),
+    path("domains/search/", domain_views.domain_item_search, name="domain_item_search"),
+    path("domains/<int:pk>/items/", domain_views.domain_items, name="domain_items"),
+    path("domains/<int:pk>/clearances/", domain_views.domain_clearances, name="domain_clearances"),
+    path("domains/<int:pk>/delete/", domain_views.domain_delete, name="domain_delete"),
 ]
 
 
@@ -57,10 +65,15 @@ urlpatterns = [
 #
 # Geocoding is the exception (2026-09-28): it answers with text and floats,
 # needs no geometry column, and socialhub and the host's Places app use it on
-# any build.
+# any build. So do map domains (2026-09-30): a table of names and counts, and
+# the host's places sit in them whether or not the map can draw.
 from django.conf import settings as _settings  # noqa: E402
 
-GIS_FREE = {"geocode_search", "geocode_reverse"}
+GIS_FREE = {
+    "geocode_search", "geocode_reverse",
+    "domains", "domain_add", "domain_item_search", "domain_items", "domain_clearances",
+    "domain_delete",
+}
 
 if not getattr(_settings, "HAS_GIS", True):
     from django.http import Http404

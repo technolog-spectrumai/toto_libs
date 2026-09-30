@@ -215,28 +215,6 @@ class Route(DomainEntity):
         return self.name or f"Route {self.pk}"
 
 
-class RouteClearance(models.Model):
-    """One clearance reading one route (2026-09-29; `access.readable_routes`).
-
-    A route with rows here is seen by their members, its creator and
-    superusers — on the map, in the lists and on its pages. A route with
-    none is what it always was: every signed-in member's. The clearance is
-    PROTECTED: a clearance that still keeps a route cannot be deleted.
-    """
-
-    route = models.ForeignKey("Route", on_delete=models.CASCADE, related_name="clearance_rows")
-    clearance = models.ForeignKey("socialhub.Clearance", on_delete=models.PROTECT,
-                               related_name="route_rows")
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=["route", "clearance"], name="locations_route_clearance_once"),
-        ]
-
-    def __str__(self):
-        return f"{self.route} — {self.clearance.name}"
-
-
 class MapLayer(DomainEntity):
     """
     A map layer is a collection of continuous polygons.
@@ -288,23 +266,6 @@ class MapLayer(DomainEntity):
         return self.name
 
 
-class MapLayerClearance(models.Model):
-    """One clearance reading one map layer (2026-09-29; `access.readable_layers`),
-    the same shape as `RouteClearance`."""
-
-    layer = models.ForeignKey(MapLayer, on_delete=models.CASCADE, related_name="clearance_rows")
-    clearance = models.ForeignKey("socialhub.Clearance", on_delete=models.PROTECT,
-                               related_name="map_layer_rows")
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=["layer", "clearance"], name="locations_layer_clearance_once"),
-        ]
-
-    def __str__(self):
-        return f"{self.layer.name} — {self.clearance.name}"
-
-
 class MapLayerPolygon(DomainEntity):
     """
     One continuous polygon inside a map layer.
@@ -343,6 +304,136 @@ class MapLayerPolygon(DomainEntity):
         return self.name or f"{self.layer.name} Polygon {self.pk}"
 
 
+
+
+# ---------------------------------------------------------------------------
+# Map domains (2026-09-30): clearances go on groups, never on items.
+# ---------------------------------------------------------------------------
+
+
+class MapDomain(models.Model):
+    """A named group of map items — routes, map layers, addresses, zones,
+    territories, and whatever an installed app adds (the host's places) —
+    made and kept by superusers on the Domains tab.
+
+    Clearances go on a domain, never on an item (`MapDomainClearance`). An
+    item in no kept domain is every signed-in member's; an item in kept
+    domains is read by superusers and by whoever holds, for EVERY kept domain
+    of the item, one of that domain's clearances — not by its creator or owner
+    (`access`, the rule is `toto.socialhub.clearance_access.group_gate`).
+
+    Membership is one typed through table per kind (`RouteInDomain`, …;
+    never a generic key), each reached from the domain as ``<kind>_rows``
+    and from the item as ``domain_rows``.
+    """
+
+    name = models.CharField(max_length=120, unique=True)
+    slug = models.SlugField(max_length=140, unique=True, blank=True)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("name",)
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            from django.utils.text import slugify
+
+            base = slugify(self.name)[:120] or "domain"
+            slug, n = base, 2
+            while MapDomain.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug, n = f"{base}-{n}", n + 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
+class MapDomainClearance(models.Model):
+    """One clearance keeping one domain. The clearance is PROTECTED: one that
+    still keeps a domain cannot be deleted."""
+
+    domain = models.ForeignKey(MapDomain, on_delete=models.CASCADE, related_name="clearance_rows")
+    clearance = models.ForeignKey("socialhub.Clearance", on_delete=models.PROTECT,
+                                  related_name="map_domain_rows")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["domain", "clearance"],
+                                    name="locations_domain_clearance_once"),
+        ]
+
+    def __str__(self):
+        return f"{self.domain.name} — {self.clearance.name}"
+
+
+class RouteInDomain(models.Model):
+    domain = models.ForeignKey(MapDomain, on_delete=models.CASCADE, related_name="route_rows")
+    route = models.ForeignKey(Route, on_delete=models.CASCADE, related_name="domain_rows")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["domain", "route"], name="locations_route_in_domain_once"),
+        ]
+
+    def __str__(self):
+        return f"{self.route} in {self.domain.name}"
+
+
+class MapLayerInDomain(models.Model):
+    domain = models.ForeignKey(MapDomain, on_delete=models.CASCADE, related_name="map_layer_rows")
+    map_layer = models.ForeignKey(MapLayer, on_delete=models.CASCADE, related_name="domain_rows")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["domain", "map_layer"],
+                                    name="locations_layer_in_domain_once"),
+        ]
+
+    def __str__(self):
+        return f"{self.map_layer} in {self.domain.name}"
+
+
+class AddressInDomain(models.Model):
+    domain = models.ForeignKey(MapDomain, on_delete=models.CASCADE, related_name="address_rows")
+    address = models.ForeignKey(Address, on_delete=models.CASCADE, related_name="domain_rows")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["domain", "address"],
+                                    name="locations_address_in_domain_once"),
+        ]
+
+    def __str__(self):
+        return f"{self.address} in {self.domain.name}"
+
+
+class ZoneInDomain(models.Model):
+    domain = models.ForeignKey(MapDomain, on_delete=models.CASCADE, related_name="zone_rows")
+    zone = models.ForeignKey(Zone, on_delete=models.CASCADE, related_name="domain_rows")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["domain", "zone"], name="locations_zone_in_domain_once"),
+        ]
+
+    def __str__(self):
+        return f"{self.zone} in {self.domain.name}"
+
+
+class TerritoryInDomain(models.Model):
+    domain = models.ForeignKey(MapDomain, on_delete=models.CASCADE, related_name="territory_rows")
+    territory = models.ForeignKey(Territory, on_delete=models.CASCADE, related_name="domain_rows")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["domain", "territory"],
+                                    name="locations_territory_in_domain_once"),
+        ]
+
+    def __str__(self):
+        return f"{self.territory} in {self.domain.name}"
 
 
 # Metering (2026-09-28): server-side geocoding is charged per lookup, and the

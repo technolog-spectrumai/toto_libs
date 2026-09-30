@@ -14,6 +14,11 @@ from toto.core.connectors import (
 
 @register_connector
 class LocationsReadConnector(ReadOnlyModelConnector):
+    """Reads locations as nobody (map domains, 2026-09-30): a workflow holds
+    no clearance, so an item kept to one is not its to list or fetch, a route
+    chain counts its open routes only, and a hidden end or capital is left
+    out."""
+
     connector_type = "locations_read"
     label = _("Locations read")
     app_label = "locations"
@@ -46,9 +51,9 @@ class LocationsReadConnector(ReadOnlyModelConnector):
         raise ValueError(f"Unsupported locations resource: {resource}")
 
     def _execute_address(self, input_data: dict) -> dict:
-        from toto.locations.models import Address
+        from toto.locations.access import readable_addresses
 
-        qs = Address.objects.all()
+        qs = readable_addresses(None)
         if self.config.get("action", "list") == "get":
             address = get_object_by_config(qs, self, input_data, default_lookup="id")
             return {"data": {"address": serialize_address(address)}}
@@ -65,9 +70,9 @@ class LocationsReadConnector(ReadOnlyModelConnector):
         return {"data": {"addresses": [serialize_address(item) for item in qs.order_by("locality_name", "street")[:self.limit()]]}}
 
     def _execute_territory(self, input_data: dict) -> dict:
-        from toto.locations.models import Territory
+        from toto.locations.access import readable_territories
 
-        qs = Territory.objects.select_related("capital")
+        qs = readable_territories(None).select_related("capital")
         if self.config.get("action", "list") == "get":
             territory = get_object_by_config(qs, self, input_data, default_lookup="id")
             return {"data": {"territory": serialize_territory(territory)}}
@@ -78,7 +83,7 @@ class LocationsReadConnector(ReadOnlyModelConnector):
     def _execute_route_chain(self, input_data: dict) -> dict:
         from toto.locations.models import RouteChain
 
-        qs = RouteChain.objects.prefetch_related("routes")
+        qs = RouteChain.objects.all()
         if self.config.get("action", "list") == "get":
             chain = get_object_by_config(qs, self, input_data, default_lookup="id")
             return {"data": {"route_chain": serialize_route_chain(chain)}}
@@ -91,8 +96,6 @@ class LocationsReadConnector(ReadOnlyModelConnector):
 
         from toto.locations.access import readable_routes
 
-        # A workflow runs as nobody: the routes kept to clearances are not its
-        # to list or fetch (2026-09-29).
         qs = readable_routes(None, Route.objects.select_related("route_chain", "start_address", "end_address"))
         if self.config.get("action", "list") == "get":
             route = get_object_by_config(qs, self, input_data, default_lookup="id")
@@ -130,12 +133,20 @@ def serialize_address(address) -> dict:
     }
 
 
+def _open(obj):
+    """``obj`` when it is in no kept map domain (what nobody may read), else None."""
+    from toto.locations.access import readable_or_none
+
+    return readable_or_none(None, obj)
+
+
 def serialize_territory(territory) -> dict:
+    capital = _open(territory.capital)
     return {
         "id": territory.id,
         "uid": str(territory.uid),
         "name": territory.name,
-        "capital": serialize_address(territory.capital) if territory.capital else None,
+        "capital": serialize_address(capital) if capital else None,
         "geometry": geometry_to_json(territory.geometry),
     }
 
@@ -146,19 +157,26 @@ def serialize_route_chain(chain) -> dict:
         "uid": str(chain.uid),
         "name": chain.name,
         "description": chain.description,
-        "route_count": chain.routes.count(),
+        "route_count": _open_routes(chain.routes.all()).count(),
     }
 
 
+def _open_routes(queryset):
+    from toto.locations.access import readable_routes
+
+    return readable_routes(None, queryset)
+
+
 def serialize_route(route) -> dict:
+    start, end = _open(route.start_address), _open(route.end_address)
     return {
         "id": route.id,
         "uid": str(route.uid),
         "name": route.name,
         "sequence": route.sequence,
         "route_chain": minimal_named(route.route_chain) if route.route_chain else None,
-        "start_address": serialize_address(route.start_address) if route.start_address else None,
-        "end_address": serialize_address(route.end_address) if route.end_address else None,
+        "start_address": serialize_address(start) if start else None,
+        "end_address": serialize_address(end) if end else None,
         "geometry": geometry_to_json(route.geometry),
     }
 

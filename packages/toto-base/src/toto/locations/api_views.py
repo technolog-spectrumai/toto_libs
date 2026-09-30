@@ -5,7 +5,12 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
 from toto.api.cors import CorsApiView, MeshGatedApiView
-from toto.locations.models import Address, Zone, Territory, Route, RouteChain, MapLayer
+from toto.locations import access
+from toto.locations.models import Address, RouteChain, MapLayer
+
+# Every door here reads as its caller (map domains, 2026-09-30): an item kept
+# to clearances the caller does not hold is missing — from a list, a count, a
+# chain's drawing — and a key with no member behind it reads the open ones.
 
 
 def _geom(geometry):
@@ -39,25 +44,30 @@ def _address_to_dict(addr):
     }
 
 
-def _zone_to_dict(zone):
+def _zone_to_dict(zone, territory_names):
     return {
         "id": zone.id,
         "name": zone.name,
-        "territory_name": zone.territory.name if zone.territory else None,
+        "territory_name": territory_names.get(zone.territory_id),
     }
+
+
+def _territory_names(user):
+    return dict(access.readable_territories(user).values_list("pk", "name"))
 
 
 @method_decorator(csrf_exempt, name="dispatch")
 class ZoneListApiView(MeshGatedApiView):
     def get(self, request):
-        zones = Zone.objects.select_related("territory").order_by("name")[:200]
-        return JsonResponse({"zones": [_zone_to_dict(z) for z in zones]})
+        zones = access.readable_zones(request.user).order_by("name")[:200]
+        names = _territory_names(request.user)
+        return JsonResponse({"zones": [_zone_to_dict(z, names) for z in zones]})
 
 
 @method_decorator(csrf_exempt, name="dispatch")
 class AddressListCreateApiView(MeshGatedApiView):
     def get(self, request):
-        addresses = Address.objects.order_by("locality_name", "street")[:200]
+        addresses = access.readable_addresses(request.user).order_by("locality_name", "street")[:200]
         return JsonResponse({"addresses": [_address_to_dict(a) for a in addresses]})
 
     def post(self, request):
@@ -83,7 +93,7 @@ class AddressListCreateApiView(MeshGatedApiView):
 class AddressDetailApiView(CorsApiView):
     def get(self, request, pk):
         try:
-            address = Address.objects.get(pk=pk)
+            address = access.readable_addresses(request.user).get(pk=pk)
         except Address.DoesNotExist:
             return JsonResponse({"error": "Address not found."}, status=404)
         return JsonResponse(_address_to_dict(address))
@@ -92,27 +102,41 @@ class AddressDetailApiView(CorsApiView):
 @method_decorator(csrf_exempt, name="dispatch")
 class MapDataApiView(MeshGatedApiView):
     def get(self, request):
+        user = request.user
         locations = []
+        addresses = list(access.readable_addresses(user))
+        address_ids = {obj.pk for obj in addresses}
+        territories = list(access.readable_territories(user).select_related("capital"))
+        territory_names = {obj.pk: obj.name for obj in territories}
+        routes = list(access.readable_routes(user).select_related("route_chain"))
 
-        for obj in Territory.objects.select_related("capital").all():
+        for obj in territories:
+            capital = obj.capital if obj.capital_id in address_ids else None
             locations.append({
                 "type": "Territory",
                 "name": obj.name or f"Territory {obj.pk}",
-                "detail": f"Capital: {obj.capital}" if obj.capital else "Territory",
+                "detail": f"Capital: {capital}" if capital else "Territory",
                 "geometry": _geom(obj.geometry),
             })
 
-        for obj in Zone.objects.select_related("territory").all():
+        for obj in access.readable_zones(user):
+            inside = territory_names.get(obj.territory_id)
             locations.append({
                 "type": "Zone",
                 "name": obj.name or f"Zone {obj.pk}",
-                "detail": f"Inside {obj.territory.name}" if obj.territory else "Standalone zone",
+                "detail": f"Inside {inside}" if inside else "Standalone zone",
                 "geometry": _geom(obj.geometry),
             })
 
-        for chain in RouteChain.objects.prefetch_related("routes").all():
+        # A chain is drawn and counted from the routes the caller may read.
+        chained = {}
+        for r in sorted(routes, key=lambda r: (r.sequence, r.name, r.pk)):
+            if r.route_chain_id:
+                chained.setdefault(r.route_chain_id, []).append(r)
+
+        for chain in RouteChain.objects.all():
             coords = []
-            for r in chain.routes.order_by("sequence", "name", "pk"):
+            for r in chained.get(chain.pk, []):
                 g = _geom(r.geometry)
                 if not g:
                     continue
@@ -124,17 +148,11 @@ class MapDataApiView(MeshGatedApiView):
             locations.append({
                 "type": "Route Chain",
                 "name": chain.name or f"Route Chain {chain.pk}",
-                "detail": chain.description or f"{chain.routes.count()} routes",
+                "detail": chain.description or f"{len(chained.get(chain.pk, []))} routes",
                 "geometry": geometry,
             })
 
-        from .access import readable_routes
-
-        # A route kept to clearances is theirs alone (2026-09-29): the mesh's
-        # caller reads as itself, and a key with no member behind it sees
-        # only the open ones.
-        for obj in readable_routes(request.user).select_related(
-                "route_chain", "start_address", "end_address"):
+        for obj in routes:
             locations.append({
                 "type": "Route",
                 "name": obj.name or f"Route {obj.pk}",
@@ -142,7 +160,7 @@ class MapDataApiView(MeshGatedApiView):
                 "geometry": _geom(obj.geometry),
             })
 
-        for obj in Address.objects.all():
+        for obj in addresses:
             locations.append({
                 "type": "Address",
                 "name": str(obj),
@@ -158,10 +176,8 @@ class MapDataApiView(MeshGatedApiView):
 @method_decorator(csrf_exempt, name="dispatch")
 class MapLayersApiView(MeshGatedApiView):
     def get(self, request):
-        from .access import readable_layers
-
         layers = []
-        for layer in readable_layers(request.user, MapLayer.objects.filter(is_active=True)
+        for layer in access.readable_layers(request.user, MapLayer.objects.filter(is_active=True)
                                      ).prefetch_related("polygons").order_by("name"):
             layers.append({
                 "id": layer.pk,

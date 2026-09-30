@@ -81,8 +81,12 @@ def _parse_metadata(text, fmt):
     return json.loads(text)
 
 
-def _detail_fields(kind, obj):
-    """Human-readable (label, value) rows shown on the detail page per type."""
+def _detail_fields(kind, obj, user=None):
+    """Human-readable (label, value) rows shown on the detail page per type.
+    What the row points at (a capital, a territory, a route's ends) is named
+    only when ``user`` may read it (map domains, `access`)."""
+    from .access import readable_or_none, readable_routes
+
     if kind == "address":
         return [
             ("Country", obj.country_name),
@@ -95,18 +99,18 @@ def _detail_fields(kind, obj):
     if kind == "territory":
         return [
             ("Name", obj.name),
-            ("Capital", str(obj.capital) if obj.capital else None),
+            ("Capital", _label(readable_or_none(user, obj.capital))),
         ]
     if kind == "zone":
         return [
             ("Name", obj.name),
-            ("Territory", obj.territory.name if obj.territory else None),
+            ("Territory", _name(readable_or_none(user, obj.territory))),
         ]
     if kind == "routechain":
         return [
             ("Name", obj.name),
             ("Description", obj.description),
-            ("Routes", obj.routes.count()),
+            ("Routes", readable_routes(user, obj.routes.all()).count()),
         ]
     if kind == "maplayer":
         return [
@@ -120,10 +124,18 @@ def _detail_fields(kind, obj):
             ("Name", obj.name or f"Route {obj.pk}"),
             ("Route chain", obj.route_chain.name if obj.route_chain else None),
             ("Sequence", obj.sequence),
-            ("Start address", str(obj.start_address) if obj.start_address else None),
-            ("End address", str(obj.end_address) if obj.end_address else None),
+            ("Start address", _label(readable_or_none(user, obj.start_address))),
+            ("End address", _label(readable_or_none(user, obj.end_address))),
         ]
     return []
+
+
+def _label(obj):
+    return str(obj) if obj is not None else None
+
+
+def _name(obj):
+    return obj.name if obj is not None else None
 
 
 def _may_write(user, obj):
@@ -133,8 +145,8 @@ def _may_write(user, obj):
 
 
 def _readable_or_404(request, model, pk):
-    """The object — or the 404 a missing one gets when clearances hide it from
-    this reader (`access.may_read`; only routes and layers are ever hidden)."""
+    """The object — or the 404 a missing one gets when its map domains hide it
+    from this reader (`access.may_read`; a route chain is never hidden)."""
     from .access import may_read
 
     obj = get_object_or_404(model, pk=pk)
@@ -180,22 +192,26 @@ def address_payload(address):
     }
 
 
-def zone_payload(zone):
+def zone_payload(zone, user=None):
+    from .access import readable_or_none
+
+    territory = readable_or_none(user, zone.territory)
     return {
         "id": zone.pk,
         "name": zone.name,
         "territory": {
-            "id": zone.territory.pk,
-            "name": zone.territory.name,
-        } if zone.territory else None,
+            "id": territory.pk,
+            "name": territory.name,
+        } if territory else None,
         "geometry": geometry_json(zone.geometry),
     }
 
 
-def route_chain_geometry(route_chain):
+def _chain_geometry(routes):
+    """One MultiLineString of ``routes``, in the order given; None for none."""
     coordinates = []
 
-    for route in route_chain.routes.order_by("sequence", "name", "pk"):
+    for route in routes:
         geometry = geometry_json(route.geometry)
 
         if not geometry:
@@ -215,7 +231,21 @@ def route_chain_geometry(route_chain):
     }
 
 
-def route_payload(route):
+def route_chain_geometry(route_chain, user=None):
+    """The chain drawn from the routes ``user`` may read (map domains; None:
+    the open ones) — a hidden route is never drawn through its chain."""
+    from .access import readable_routes
+
+    return _chain_geometry(readable_routes(user, route_chain.routes.all())
+                           .order_by("sequence", "name", "pk"))
+
+
+def route_payload(route, user=None):
+    """A route as JSON; an end its reader may not read is left out."""
+    from .access import readable_or_none
+
+    start = readable_or_none(user, route.start_address)
+    end = readable_or_none(user, route.end_address)
     return {
         "id": route.pk,
         "name": route.name or f"Route {route.pk}",
@@ -226,20 +256,22 @@ def route_payload(route):
             "name": route.route_chain.name,
         } if route.route_chain else None,
         "start_address": {
-            "id": route.start_address.pk,
-            "label": str(route.start_address),
-            "geometry": geometry_json(route.start_address.geometry),
-        } if route.start_address else None,
+            "id": start.pk,
+            "label": str(start),
+            "geometry": geometry_json(start.geometry),
+        } if start else None,
         "end_address": {
-            "id": route.end_address.pk,
-            "label": str(route.end_address),
-            "geometry": geometry_json(route.end_address.geometry),
-        } if route.end_address else None,
+            "id": end.pk,
+            "label": str(end),
+            "geometry": geometry_json(end.geometry),
+        } if end else None,
     }
 
 
-def travel_payload(travel):
-    route = travel.route
+def travel_payload(travel, user=None):
+    from .access import readable_or_none
+
+    route = readable_or_none(user, travel.route)
 
     return {
         "id": travel.pk,
@@ -248,7 +280,7 @@ def travel_payload(travel):
         "reviewed_at": travel.reviewed_at.isoformat() if travel.reviewed_at else None,
         "starts_at": travel.starts_at.isoformat() if travel.starts_at else None,
         "ends_at": travel.ends_at.isoformat() if travel.ends_at else None,
-        "route": route_payload(route) if route else None,
+        "route": route_payload(route, user) if route else None,
     }
 
 
@@ -303,53 +335,67 @@ def current_person(request):
 
 @login_required
 def locations_all(request):
-    locations = []
+    from .access import (
+        readable_addresses, readable_layers, readable_routes, readable_territories, readable_zones,
+    )
 
-    for territory in Territory.objects.select_related("capital").all():
+    user = request.user
+    locations = []
+    # What this reader may read (map domains): a hidden item is missing from
+    # the map, and so is its name where another row would mention it.
+    addresses = list(readable_addresses(user))
+    address_ids = {address.pk for address in addresses}
+    territories = list(readable_territories(user).select_related("capital"))
+    territory_names = {territory.pk: territory.name for territory in territories}
+    routes = list(readable_routes(user).select_related("route_chain"))
+
+    for territory in territories:
         detail_url = location_detail_url("territory", territory.pk)
+        capital = territory.capital if territory.capital_id in address_ids else None
         locations.append({
             "type": "Territory",
             "name": territory.name or f"Territory {territory.pk}",
-            "detail": f"Capital: {territory.capital}" if territory.capital else "Territory",
+            "detail": f"Capital: {capital}" if capital else "Territory",
             "geometry": geometry_json(territory.geometry),
             "geometry_json": geometry_json(territory.geometry),
             "detail_url": detail_url,
             "metadata_url": f"{detail_url}#metadata",
         })
 
-    for zone in Zone.objects.select_related("territory").all():
+    for zone in readable_zones(user):
         detail_url = location_detail_url("zone", zone.pk)
+        inside = territory_names.get(zone.territory_id)
         locations.append({
             "type": "Zone",
             "name": zone.name or f"Zone {zone.pk}",
-            "detail": f"Inside {zone.territory.name}" if zone.territory else "Standalone zone",
+            "detail": f"Inside {inside}" if inside else "Standalone zone",
             "geometry": geometry_json(zone.geometry),
             "geometry_json": geometry_json(zone.geometry),
             "detail_url": detail_url,
             "metadata_url": f"{detail_url}#metadata",
         })
 
-    for chain in RouteChain.objects.prefetch_related("routes").all():
-        geometry = route_chain_geometry(chain)
+    # A chain is drawn and counted from the routes this reader may read.
+    chain_routes = {}
+    for route in sorted(routes, key=lambda r: (r.sequence, r.name, r.pk)):
+        if route.route_chain_id:
+            chain_routes.setdefault(route.route_chain_id, []).append(route)
+
+    for chain in RouteChain.objects.all():
+        geometry = _chain_geometry(chain_routes.get(chain.pk, []))
         detail_url = location_detail_url("routechain", chain.pk)
 
         locations.append({
             "type": "Route Chain",
             "name": chain.name or f"Route Chain {chain.pk}",
-            "detail": chain.description or f"{chain.routes.count()} routes",
+            "detail": chain.description or f"{len(chain_routes.get(chain.pk, []))} routes",
             "geometry": geometry,
             "geometry_json": geometry,
             "detail_url": detail_url,
             "metadata_url": f"{detail_url}#metadata",
         })
 
-    from .access import readable_layers, readable_routes
-
-    for route in readable_routes(request.user).select_related(
-        "route_chain",
-        "start_address",
-        "end_address",
-    ):
+    for route in routes:
         detail_url = location_detail_url("route", route.pk)
         locations.append({
             "type": "Route",
@@ -362,7 +408,7 @@ def locations_all(request):
             "metadata_url": f"{detail_url}#metadata",
         })
 
-    for address in Address.objects.all():
+    for address in addresses:
         detail_url = location_detail_url("address", address.pk)
         locations.append({
             "type": "Address",
@@ -434,16 +480,15 @@ def locations_all(request):
 
 @login_required
 def address_detail(request, pk):
-    get_object_or_404(Address, pk=pk)
+    _readable_or_404(request, Address, pk)
     return redirect("locations:location_detail", kind="address", pk=pk)
 
 
 @login_required
 def zone_detail(request, pk):
-    zone = get_object_or_404(
-        Zone.objects.select_related("territory"),
-        pk=pk,
-    )
+    from .access import readable_addresses, readable_routes
+
+    zone = _readable_or_404(request, Zone.objects.select_related("territory"), pk)
 
     # The campaign/mission/task sections (and the Address/Route lookups that
     # traverse the kanban Mission reverse relations) only exist when the host
@@ -482,14 +527,14 @@ def zone_detail(request, pk):
         )
 
         addresses = (
-            Address.objects
+            readable_addresses(request.user)
             .filter(missions__in=missions)
             .distinct()
             .order_by("country_name", "locality_name", "street", "building")
         )
 
         routes = (
-            Route.objects
+            readable_routes(request.user)
             .filter(missions__in=missions)
             .select_related("route_chain", "start_address", "end_address")
             .distinct()
@@ -502,7 +547,7 @@ def zone_detail(request, pk):
 
     context = {
         "zone": zone,
-        "zone_payload_json": json.dumps(zone_payload(zone)),
+        "zone_payload_json": json.dumps(zone_payload(zone, request.user)),
 
         "campaigns": campaigns,
         "missions": missions,
@@ -526,7 +571,7 @@ def route_detail(request, pk):
 
     context = {
         "route": route,
-        "route_payload_json": json.dumps(route_payload(route)),
+        "route_payload_json": json.dumps(route_payload(route, request.user)),
         "travel_create_url": LocationUrlPlugin.get_url("travel_create"),
     }
 
@@ -611,7 +656,11 @@ def address_coordinates(address):
     return address.geometry.x, address.geometry.y
 
 
-def selected_address_coordinates(address_id, label):
+def selected_address_coordinates(address_id, label, user=None):
+    """The (lng, lat) of a saved address ``user`` may read (map domains; None:
+    an open one); a hidden one is "not available", like a missing one."""
+    from .access import readable_addresses
+
     if not address_id:
         return None
 
@@ -619,7 +668,7 @@ def selected_address_coordinates(address_id, label):
         return None
 
     try:
-        address = Address.objects.get(pk=address_id, geometry__isnull=False)
+        address = readable_addresses(user).get(pk=address_id, geometry__isnull=False)
     except (Address.DoesNotExist, ValueError):
         raise ValueError(f"{label} address is not available.")
 
@@ -694,7 +743,7 @@ def _is_resolved(form, side):
     return bool(query) and query == form[f"{side}_resolved"]
 
 
-def _route_end(form, side, label):
+def _route_end(form, side, label, user=None):
     """(lng, lat) for one end: a typed place (resolved already), else the
     saved address, else the typed coordinates. The typed name wins over the
     address select, which always has a default."""
@@ -705,7 +754,7 @@ def _route_end(form, side, label):
             raise ValueError(_("'%(name)s' has not been looked up yet: press Search route.")
                              % {"name": form[f"{side}_query"]})
     else:
-        selected = selected_address_coordinates(form[f"{side}_address"], label)
+        selected = selected_address_coordinates(form[f"{side}_address"], label, user)
         if selected:
             lng, lat = selected
             form[f"{side}_lng"] = str(lng)
@@ -729,7 +778,7 @@ def _resolve_route_places(user, form):
     # the other end's lookup was charged.
     for side, label in ROUTE_ENDS:
         if not form[f"{side}_query"]:
-            _route_end(form, side, label)
+            _route_end(form, side, label, user)
 
     names = [(side, form[f"{side}_query"]) for side, _label in ROUTE_ENDS
              if form[f"{side}_query"] and not _is_resolved(form, side)]
@@ -760,8 +809,10 @@ def _route_end_name(form, side, address_labels):
 
 @login_required
 def route_search(request):
+    from .access import readable_addresses
+
     addresses = list(
-        Address.objects
+        readable_addresses(request.user)
         .filter(geometry__isnull=False)
         .order_by("country_name", "locality_name", "street", "building")
     )
@@ -790,8 +841,8 @@ def route_search(request):
             if form["mode"] not in {mode["value"] for mode in ROUTING_MODE_OPTIONS}:
                 raise ValueError("Mode must be car, bicycle, foot, or public transport.")
 
-            start_lng, start_lat = _route_end(form, "start", "Start")
-            end_lng, end_lat = _route_end(form, "end", "End")
+            start_lng, start_lat = _route_end(form, "start", "Start", request.user)
+            end_lng, end_lat = _route_end(form, "end", "End", request.user)
 
             route = fetch_traversable_route(
                 start_lng,
@@ -978,14 +1029,18 @@ def route_save(request):
         )
         return redirect("locations:route_search")
 
+    from .access import readable_addresses
+
     start_address = None
     end_address = None
+    # Only an address this member may read: a hidden one is a missing one.
+    pickable = readable_addresses(request.user)
 
-    if start_address_id and not str(start_address_id).startswith("temporary:"):
-        start_address = Address.objects.filter(pk=start_address_id).first()
+    if start_address_id and str(start_address_id).isdigit():
+        start_address = pickable.filter(pk=start_address_id).first()
 
-    if end_address_id and not str(end_address_id).startswith("temporary:"):
-        end_address = Address.objects.filter(pk=end_address_id).first()
+    if end_address_id and str(end_address_id).isdigit():
+        end_address = pickable.filter(pk=end_address_id).first()
 
     route = Route.objects.create(
         name=name,
@@ -1203,33 +1258,16 @@ def location_detail(request, kind, pk):
     obj = _readable_or_404(request, model, pk)
 
     if kind == "routechain":
-        geom_json = route_chain_geometry(obj)
+        geom_json = route_chain_geometry(obj, request.user)
     else:
         geom = getattr(obj, "geometry", None)
         geom_json = geometry_json(geom) if geom else None
 
-    from . import access as _access
-    from toto.socialhub import clearance_access
-
-    manages = kind in _access.CLEARANCED_KINDS and _access.may_manage_clearances(request.user, obj)
     context = {
-        # Who reads it (2026-09-29): a route's or a layer's clearances, chosen
-        # here by its creator/owner or a superuser; a reader sees only the
-        # clearances they are in themselves.
-        "clearances_kind": kind if kind in _access.CLEARANCED_KINDS else "",
-        "clearances": (clearance_access.visible_clearances_of(request.user, obj, rows="clearance_rows",
-                                                     manages=manages)
-                    if kind in _access.CLEARANCED_KINDS else []),
-        "clearances_restricted": bool(kind in _access.CLEARANCED_KINDS and obj.clearance_rows.exists()),
-        "can_manage_clearances": manages,
-        "clearance_choices": ([{"clearance": c, "on": c.pk in {x.pk for x in clearance_access.clearances_of(obj, rows="clearance_rows")}}
-                            for c in clearance_access.shareable_clearances(request.user, obj, rows="clearance_rows")]
-                           if manages else []),
-        "clearances_save_url": (reverse("locations:clearances_save", args=[kind, pk]) if manages else ""),
         "obj": obj,
         "object_label": str(obj),
         "object_type": model._meta.verbose_name.title(),
-        "fields": [(label, value) for label, value in _detail_fields(kind, obj)],
+        "fields": [(label, value) for label, value in _detail_fields(kind, obj, request.user)],
         "geometry_json": json.dumps(geom_json),
         "has_geometry": geom_json is not None,
         "back_url": reverse("locations:locations_all"),
@@ -1448,29 +1486,3 @@ def _search_centre(request, viewer):
             return (lat, lon), str(viewer.address)
 
     return None, ""
-
-
-@login_required
-@require_POST
-def clearances_save(request, kind, pk):
-    """A route's or a layer's clearances (2026-09-29): its creator/owner or a
-    superuser ticks the clearances that may see it; none = every member. A
-    functional community is refused; the change is on the audit chain."""
-    from toto.socialhub import clearance_access
-
-    from . import access as _access
-
-    model = DETAIL_MODELS.get(kind)
-    if model is None or kind not in _access.CLEARANCED_KINDS:
-        raise Http404(f"No clearances for kind '{kind}'.")
-    obj = _readable_or_404(request, model, pk)
-    if not _access.may_manage_clearances(request.user, obj):
-        raise PermissionDenied(_("Only its creator or a superuser decides who sees this."))
-    wanted = {int(v) for v in request.POST.getlist("clearance")
-              if v.isascii() and v.isdigit() and len(v) <= 18}
-    picked = clearance_access.shareable_clearances(request.user, obj, rows="clearance_rows").filter(pk__in=wanted)
-    before, after = clearance_access.set_clearances(
-        obj, picked, rows="clearance_rows", actor=request.user,
-        action=f"{kind}.clearances_changed", app_label="locations", kind=kind)
-    messages.success(request, _("Saved.") if before != after else _("Nothing changed."))
-    return redirect(request.POST.get("next") or reverse("locations:location_detail", args=[kind, pk]))
