@@ -16,6 +16,7 @@ from toto.events.models import EventCategory, ScheduledEvent
 from toto.locations.models import (
     HAS_GIS,
     Address,
+    MapDomain,
     MapLayer,
     MapLayerPolygon,
     Route,
@@ -690,7 +691,24 @@ class Command(IngressCommand):
                 {"region": name},
             )
 
+    #: The map domain every platform has (slug and name, the owner's spelling).
+    REGULATED_DOMAIN = "regulated_domain"
+
+    def regulated_domain(self):
+        """One map domain on every seeded platform, realistic or full, with no
+        clearances and no items — a superuser keeps it on the Domains tab.
+        Made once and never touched again, so their later edits survive a
+        re-run. Plain columns: it works on a GIS-off build too."""
+        domain, created = MapDomain.objects.get_or_create(
+            slug=self.REGULATED_DOMAIN,
+            defaults={"name": self.REGULATED_DOMAIN,
+                      "description": "Map items a superuser may keep to clearances."})
+        self.stdout.write(self.style.SUCCESS(
+            f"{'Created' if created else 'Kept'} the map domain '{domain.name}'."))
+
     def process(self):
+        self.regulated_domain()
+
         if not self.full:
             return
 
