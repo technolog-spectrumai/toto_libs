@@ -99,7 +99,8 @@ def office_refusal_sentence() -> str:
 
 
 def _office_content(content) -> bool:
-    """Bytes, or a seekable file object (left where it was found)."""
+    """Bytes, or a seekable file object — read from its start, whatever
+    a caller already read, and left where it was found."""
     import io
     import zipfile
 
@@ -111,6 +112,7 @@ def _office_content(content) -> bool:
     except (AttributeError, OSError, ValueError):
         return False
     try:
+        stream.seek(0)
         head = stream.read(8)
         if isinstance(head, str):
             return False
@@ -118,7 +120,7 @@ def _office_content(content) -> bool:
             return True
         if not head.startswith(b"PK"):
             return False
-        stream.seek(start)
+        stream.seek(0)
         try:
             with zipfile.ZipFile(stream) as zf:
                 names = zf.namelist()
