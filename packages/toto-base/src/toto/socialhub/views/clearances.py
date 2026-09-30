@@ -10,9 +10,11 @@ plan, discount or right, and members never see it listed (README,
 The page (2026-09-30) is a paginated list — a table on a wide screen, cards
 on a narrow one — with two doors and no others:
 
-* **New clearance**, a modal: its name, its refill speed per pool, and who
-  holds it, found by searching people (``clearance_people``, JSON). Made in
-  one transaction, so a refused speed or the cap leaves nothing half-made.
+* **New clearance**, a modal: its name, its refill speed per pool, who holds
+  it (found by searching people, ``clearance_people``, JSON) and what it
+  clears — the things it keeps, of every kind an app offers through a
+  ``ClearanceTargetPlugin`` (``plugins/clearance_plugins.py``; searched by
+  ``clearance_targets``, JSON). Made in one transaction, so a refused speed or the cap leaves nothing half-made.
   A refusal is Post/Redirect/Get: what was typed and why it was refused go
   to the session, and the list re-opens the modal with them — so every link
   on that page (pagination, the language switcher) stays on the list.
@@ -40,10 +42,12 @@ from django.db.models import Count, Prefetch, Q
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext as _
+from django.utils.translation import ngettext
 from django.views.decorators.http import require_POST, require_safe
 
 from toto.people.models import Person
 from toto.socialhub.models import MAX_CLEARANCES, REGEN_POOLS, Clearance
+from toto.socialhub.plugins import clearance_plugins
 from toto.ui import PageProcessor
 
 #: Clearances per page. The platform holds at most MAX_CLEARANCES (7), so
@@ -105,6 +109,24 @@ def _read_speeds(data) -> tuple[dict, str]:
     return speeds, ""
 
 
+def _read_targets(values) -> dict:
+    """``{plugin: [objects]}`` from ``target=<kind key>:<pk>`` fields: an
+    unknown kind, a malformed value or a pk that does not exist is ignored."""
+    wanted: dict = {}
+    for value in values:
+        key, _sep, pk = (value or "").rpartition(":")
+        plugin = clearance_plugins.kind(key) if key else None
+        if plugin is not None and pk.isascii() and pk.isdigit() and len(pk) <= 18:
+            wanted.setdefault(plugin, set()).add(int(pk))
+    return {plugin: objects for plugin, pks in wanted.items()
+            if (objects := plugin.resolve(pks))}
+
+
+def _target_rows(targets) -> list:
+    return [{"key": plugin.get_key(), "kind": str(plugin.title), "icon": plugin.icon, **plugin.row(obj)}
+            for plugin, objects in targets.items() for obj in objects]
+
+
 def _person_row(person) -> dict:
     return {"pk": person.pk, "name": person.display_name,
             "username": person.user.username if person.user_id else ""}
@@ -144,7 +166,10 @@ def _page(request, *, draft=None):
         "pools": REGEN_POOLS,
         "max_clearances": MAX_CLEARANCES,
         "room_left": max(0, MAX_CLEARANCES - total),
-        "draft": draft or {"open": False, "name": "", "speeds": {}, "people": [], "error": ""},
+        "draft": draft or {"open": False, "name": "", "speeds": {}, "people": [], "targets": [],
+                           "error": ""},
+        "target_kinds": [{"key": plugin.get_key(), "title": str(plugin.title), "icon": plugin.icon}
+                         for plugin in clearance_plugins.kinds()],
         "active_tab": "clearances",
     })
 
@@ -247,9 +272,27 @@ def clearance_graph(request):
 
 
 @login_required
+@require_safe
+def clearance_targets(request):
+    """Things of one kind a new clearance may keep, by a piece of their name —
+    JSON for the New clearance modal (``?kind=<key>&q=``). The kinds are the
+    apps' ``ClearanceTargetPlugin``s; an unknown kind is a 404."""
+    if not request.user.is_superuser:
+        return JsonResponse({"error": _("Clearances are managed by superusers.")}, status=403)
+    plugin = clearance_plugins.kind(request.GET.get("kind") or "")
+    if plugin is None:
+        return JsonResponse({"error": _("No such kind of thing.")}, status=404)
+    q = " ".join((request.GET.get("q") or "").split())[:80]
+    if not q:
+        return JsonResponse({"results": []})
+    return JsonResponse({"results": plugin.search(q, clearance_plugins.SEARCH_LIMIT)})
+
+
+@login_required
 @require_POST
 def clearance_add(request):
-    """Make a clearance with its speeds and its holders, all or nothing."""
+    """Make a clearance with its speeds, its holders and what it clears, all
+    or nothing."""
     if not request.user.is_superuser:
         return _refused(request)
     name = " ".join((request.POST.get("name") or "").split())[:120]
@@ -257,6 +300,7 @@ def clearance_add(request):
     people = list(Person.objects.filter(pk__in=_ids(request.POST.getlist("person")),
                                         user__isnull=False)
                   .select_related("user").order_by("display_name"))
+    targets = _read_targets(request.POST.getlist("target"))
     if not error and not name:
         error = _("A clearance needs a name.")
     elif not error and Clearance.objects.filter(name__iexact=name).exists():
@@ -271,21 +315,32 @@ def clearance_add(request):
                 clearance.save()
                 if people:
                     clearance.members.add(*people)
+                # Each app adds the clearance through its own door, with its
+                # own audit record; a refusal undoes the whole clearance.
+                for plugin, objects in targets.items():
+                    plugin.keep(objects, clearance, actor=request.user)
         except ValidationError as exc:
-            error = " ".join(m for errors in exc.message_dict.values() for m in errors)
+            error = " ".join(exc.messages)
     if error:
         request.session[DRAFT_KEY] = {
             "open": True, "name": name, "error": error,
             "speeds": {pool: (request.POST.get(f"regen_{pool}") or "").strip()[:20]
                        for pool in REGEN_POOLS},
             "people": [_person_row(person) for person in people],
+            "targets": _target_rows(targets),
         }
         return redirect("socialhub:clearances")
+    kept = sum(len(objects) for objects in targets.values())
     if people:
         messages.success(request, _("Clearance %(name)s made, held by %(n)d.")
                          % {"name": name, "n": len(people)})
     else:
         messages.success(request, _("Clearance %(name)s made.") % {"name": name})
+    if kept:
+        messages.info(request, ngettext(
+            "It keeps %(n)d group: what is in it is read only by its holders and superusers now.",
+            "It keeps %(n)d groups: what is in them is read only by its holders and superusers now.",
+            kept) % {"n": kept})
     return redirect("socialhub:clearances")
 
 
