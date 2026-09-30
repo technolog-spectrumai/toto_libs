@@ -21,6 +21,7 @@ User = get_user_model()
 EVIL = "https://evil.example.com/phish"
 
 
+@override_settings(ALLOWED_HOSTS=["zenobia.example.org"])
 class SafeNextTests(SimpleTestCase):
     def request(self, secure=False):
         return RequestFactory().get("/", secure=secure, HTTP_HOST="zenobia.example.org")
@@ -96,7 +97,10 @@ class PasswordDoorsStayHereTests(TestCase):
     def test_the_form_does_not_carry_a_refused_next(self):
         response = _door(_request(data={"next": EVIL}))
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, "evil.example.com")
+        # The header's language switcher still carries this page's own path,
+        # query and all; that is a place on this site, so only the form's
+        # hidden `next` is asked about.
+        self.assertNotContains(response, f'value="{EVIL}"')
 
     def test_the_form_still_carries_a_local_next(self):
         response = _door(_request(data={"next": "/wiki/"}))

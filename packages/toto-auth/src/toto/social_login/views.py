@@ -19,7 +19,8 @@ from django.contrib.auth import get_user_model, login
 from django.http import Http404, HttpResponseBadRequest
 from django.shortcuts import redirect
 from django.urls import reverse
-from django.utils.http import url_has_allowed_host_and_scheme
+
+from toto.core.safe_next import safe_next
 
 from .models import SocialIdentity
 from .providers import PROVIDERS, provider_config, public_base_url, social_signup_enabled
@@ -43,14 +44,6 @@ def _spec_and_config(provider):
     return spec, cfg
 
 
-def _safe_next(request, candidate):
-    if candidate and url_has_allowed_host_and_scheme(
-            candidate, allowed_hosts={request.get_host()},
-            require_https=request.is_secure()):
-        return candidate
-    return ""
-
-
 def _callback_uri(request, spec):
     path = reverse("sso:social_callback", args=[spec.key])
     base = public_base_url()
@@ -67,7 +60,7 @@ def social_login(request, provider):
 
     state = secrets.token_urlsafe(32)
     verifier = secrets.token_urlsafe(64) if spec.use_pkce else ""
-    next_url = _safe_next(request, request.GET.get("next", ""))
+    next_url = safe_next(request, request.GET.get("next"))
 
     params = {
         "response_type": "code",
@@ -148,7 +141,7 @@ def social_callback(request, provider):
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
     logger.info(f"User '{user.username}' logged in via {spec.key}.")
 
-    next_url = _safe_next(request, request.COOKIES.get(_NEXT_COOKIE, ""))
+    next_url = safe_next(request, request.COOKIES.get(_NEXT_COOKIE))
     response = redirect(next_url or reverse("core:dashboard"))
     _delete_cookies(response)
     return response
