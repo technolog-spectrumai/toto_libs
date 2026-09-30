@@ -175,6 +175,77 @@ def clearance_people(request):
     return JsonResponse({"people": [_person_row(person) for person in found]})
 
 
+#: Holders drawn on the graph at most (each is a node): beyond it the graph
+#: says how many were left out rather than drawing a hairball.
+GRAPH_HOLDERS_LIMIT = 300
+
+
+def _group_field(through, clearance_field):
+    """The FK on a keeping table that is not the clearance: the group (a
+    topic, a domain, a bucket)."""
+    for field in through._meta.get_fields():
+        if getattr(field, "many_to_one", False) and field is not clearance_field:
+            return field
+    return None
+
+
+@login_required
+@require_safe
+def clearance_graph(request):
+    """The clearances and what they keep, as a graph (JSON for the page's
+    Graph view): a node per clearance, a node per group it keeps — whatever
+    apps keep things to clearances, found by their PROTECT on the clearance
+    (a wiki topic, a map domain, a bucket), never by name — and, when asked
+    (``?holders=1``), a node per holder. Superusers only."""
+    if not request.user.is_superuser:
+        return JsonResponse({"error": _("Clearances are managed by superusers.")}, status=403)
+    nodes, edges, kinds = [], [], []
+    clearances = list(Clearance.objects.order_by("name")
+                      .annotate(holder_count=Count("members", distinct=True)))
+    for clearance in clearances:
+        nodes.append({"id": f"clearance:{clearance.pk}", "label": clearance.name,
+                      "kind": "clearance", "holders": clearance.holder_count})
+    seen = set()
+    for rel in _keeping_relations():
+        through = rel.related_model
+        group_field = _group_field(through, rel.field)
+        if group_field is None:
+            continue
+        group_model = group_field.related_model
+        kind = f"{group_model._meta.app_label}.{group_model._meta.model_name}"
+        title = str(group_model._meta.verbose_name).capitalize()
+        if kind not in {k["kind"] for k in kinds}:
+            kinds.append({"kind": kind, "title": title})
+        rows = list(through._default_manager.values_list(rel.field.attname, group_field.attname))
+        groups = {g.pk: g for g in group_model._default_manager.filter(
+            pk__in={gid for _cid, gid in rows})}
+        for clearance_id, group_id in rows:
+            group = groups.get(group_id)
+            if group is None:
+                continue
+            node_id = f"{kind}:{group_id}"
+            if node_id not in seen:
+                seen.add(node_id)
+                url = group.get_absolute_url() if hasattr(group, "get_absolute_url") else ""
+                nodes.append({"id": node_id, "label": str(group), "kind": kind, "url": url})
+            edges.append({"id": f"clearance:{clearance_id}->{node_id}",
+                          "source": f"clearance:{clearance_id}", "target": node_id, "kind": "keeps"})
+    left_out = 0
+    if request.GET.get("holders") == "1":
+        people = (Person.objects.filter(clearances__isnull=False).distinct()
+                  .order_by("display_name", "pk"))
+        total = people.count()
+        left_out = max(0, total - GRAPH_HOLDERS_LIMIT)
+        for person in people.prefetch_related("clearances")[:GRAPH_HOLDERS_LIMIT]:
+            node_id = f"person:{person.pk}"
+            nodes.append({"id": node_id, "label": person.display_name, "kind": "person"})
+            for clearance in person.clearances.all():
+                edges.append({"id": f"{node_id}->clearance:{clearance.pk}", "source": node_id,
+                              "target": f"clearance:{clearance.pk}", "kind": "holds"})
+    return JsonResponse({"nodes": nodes, "edges": edges, "kinds": kinds,
+                         "holders_left_out": left_out})
+
+
 @login_required
 @require_POST
 def clearance_add(request):

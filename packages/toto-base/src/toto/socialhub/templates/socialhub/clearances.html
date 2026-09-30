@@ -1,5 +1,5 @@
 {% extends "oya/base.html" %}
-{% load i18n app_tags %}
+{% load i18n app_tags static %}
 {% block title %}{% trans "Clearances" %} – {{ platform.site_name }}{% endblock %}
 {% block start_script %}
 <style>[x-cloak] { display: none !important; }</style>
@@ -9,8 +9,83 @@
    kept, the reason inside the modal. Names reach the page through x-text
    only, never as markup.{% endcomment %}
 {{ draft|json_script:"clearance-draft" }}
+{{ theme.theme.colors|json_script:"clearance-theme-colors" }}
+<script src="{% static 'vendor/cytoscape/cytoscape.min.js' %}" defer></script>
 <script>
 document.addEventListener('alpine:init', () => {
+  {# Two views of the same clearances (2026-09-30): the table, and a graph of #}
+  {# each clearance and the groups it keeps (topics, domains, buckets — #}
+  {# whatever apps keep things to clearances), switched like the vault's #}
+  {# tree/grid and remembered per browser. #}
+  Alpine.data('clearanceViews', (graphUrl) => ({
+    view: (() => { try { return localStorage.getItem('clearances_view') || 'table'; } catch (e) { return 'table'; } })(),
+    holders: false, loading: false, failed: false, kinds: [], leftOut: 0, cy: null,
+    PALETTE: ['#f59e0b', '#10b981', '#8b5cf6', '#ef4444', '#0ea5e9', '#ec4899', '#84cc16'],
+    init() {
+      if (this.view === 'graph') this.$nextTick(() => this.draw());
+      this.$watch('darkMode', () => { if (this.view === 'graph') this.draw(); });
+    },
+    setView(v) {
+      this.view = v;
+      try { localStorage.setItem('clearances_view', v); } catch (e) {}
+      if (v === 'graph') this.$nextTick(() => this.draw());
+    },
+    colorOf(kind, accent) {
+      if (kind === 'clearance') return accent;
+      if (kind === 'person') return '#9ca3af';
+      const i = this.kinds.findIndex(k => k.kind === kind);
+      return this.PALETTE[(i < 0 ? 0 : i) % this.PALETTE.length];
+    },
+    async draw() {
+      if (typeof cytoscape === 'undefined') { setTimeout(() => this.draw(), 100); return; }
+      this.loading = true; this.failed = false;
+      try {
+        const r = await fetch(graphUrl + (this.holders ? '?holders=1' : ''),
+                              {headers: {'Accept': 'application/json'}, credentials: 'same-origin'});
+        if (!r.ok) throw new Error(r.status);
+        const data = await r.json();
+        this.kinds = data.kinds || []; this.leftOut = data.holders_left_out || 0;
+        const colors = JSON.parse(document.getElementById('clearance-theme-colors').textContent || '{}');
+        const theme = this.darkMode ? 'dark' : 'light';
+        const accent = colors[`accent-${theme}`] || '#6366f1';
+        const text = colors[`text-main-${theme}`] || '#111827';
+        const bubble = colors[`bubble-bg-${theme}`] || '#ffffff';
+        const bg = colors[`primary-bg-${theme}`] || '#ffffff';
+        const elements = [
+          ...data.nodes.map(n => ({data: {...n, color: this.colorOf(n.kind, accent),
+                                          label: n.kind === 'clearance' && n.holders ? `${n.label} (${n.holders})` : n.label}})),
+          ...data.edges.map(e => ({data: e})),
+        ];
+        if (this.cy) { this.cy.destroy(); this.cy = null; }
+        const container = this.$refs.graph;
+        container.style.backgroundColor = bg;
+        this.cy = cytoscape({
+          container, elements, wheelSensitivity: 0.2, minZoom: 0.15, maxZoom: 4,
+          style: [
+            {selector: 'node', style: {'background-color': bubble, 'border-color': 'data(color)', 'border-width': 3,
+              'label': 'data(label)', 'color': text, 'font-size': 11, 'text-valign': 'center', 'text-halign': 'center',
+              'text-wrap': 'wrap', 'text-max-width': 110, 'width': 120, 'height': 40, 'shape': 'round-rectangle'}},
+            {selector: 'node[kind = "clearance"]', style: {'shape': 'hexagon', 'width': 130, 'height': 56,
+              'font-weight': 'bold', 'border-width': 4}},
+            {selector: 'node[kind = "person"]', style: {'shape': 'ellipse', 'width': 90, 'height': 30, 'font-size': 9}},
+            {selector: 'edge', style: {'width': 2, 'line-color': '#9ca3af', 'target-arrow-color': '#9ca3af',
+              'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'opacity': 0.8}},
+            {selector: 'edge[kind = "holds"]', style: {'line-style': 'dashed', 'width': 1}},
+            {selector: 'node:selected', style: {'background-color': accent, 'color': bg}},
+          ],
+          layout: {name: 'cose', animate: false, fit: true, padding: 30, nodeRepulsion: 450000,
+                   componentSpacing: 80, idealEdgeLength: 110},
+        });
+        this.cy.on('tap', 'node', evt => { const url = evt.target.data('url'); if (url) window.location.href = url; });
+      } catch (e) {
+        this.failed = true;
+      } finally {
+        this.loading = false;
+      }
+    },
+    fit() { if (this.cy) this.cy.fit(undefined, 30); },
+  }));
+
   Alpine.data('clearanceNew', (searchUrl) => {
     const draft = JSON.parse(document.getElementById('clearance-draft').textContent);
     return {
@@ -86,6 +161,42 @@ document.addEventListener('alpine:init', () => {
         {% endif %}
       </div>
 
+      <div x-data="clearanceViews('{% url 'socialhub:clearance_graph' %}')" class="space-y-4">
+      {# The view switch: Table | Graph (like the vault's Tree | Grid). #}
+      <div class="flex items-center gap-3">
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="flex overflow-hidden rounded-lg border" data-testid="clearances-view-switch">
+          <button type="button" @click="setView('table')" data-testid="clearances-view-table"
+                  :class="view === 'table' ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light') : 'opacity-50 hover:opacity-100'"
+                  class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition">
+            <i class="fa-solid fa-table-list" aria-hidden="true"></i> {% trans "Table" %}</button>
+          <button type="button" @click="setView('graph')" data-testid="clearances-view-graph"
+                  :class="view === 'graph' ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light') : 'opacity-50 hover:opacity-100'"
+                  class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition">
+            <i class="fa-solid fa-diagram-project" aria-hidden="true"></i> {% trans "Graph" %}</button>
+        </div>
+        <label x-show="view === 'graph'" x-cloak class="inline-flex items-center gap-1.5 text-xs">
+          <input type="checkbox" x-model="holders" @change="draw()" data-testid="clearances-graph-holders"> {% trans "Show holders" %}</label>
+        <button type="button" x-show="view === 'graph'" x-cloak @click="fit()" class="text-xs opacity-70 hover:opacity-100">
+          <i class="fa-solid fa-expand" aria-hidden="true"></i> {% trans "Fit" %}</button>
+      </div>
+
+      {# The graph: clearances and the groups they keep. #}
+      <section x-show="view === 'graph'" x-cloak class="space-y-2" data-testid="clearances-graph">
+        <div class="flex flex-wrap items-center gap-3 text-xs">
+          <span class="inline-flex items-center gap-1"><span class="inline-block h-3 w-3 rounded-sm border-2" :class="darkMode ? 'border-accent-dark' : 'border-accent-light'"></span>{% trans "Clearance (holders)" %}</span>
+          <template x-for="(k, i) in kinds" :key="k.kind">
+            <span class="inline-flex items-center gap-1"><span class="inline-block h-3 w-3 rounded-sm border-2" :style="'border-color:' + PALETTE[i % PALETTE.length]"></span><span x-text="k.title"></span></span>
+          </template>
+          <span x-show="holders" class="inline-flex items-center gap-1"><span class="inline-block h-3 w-3 rounded-full border-2 border-gray-400"></span>{% trans "Holder" %}</span>
+          <span x-show="leftOut" x-cloak class="opacity-70" x-text="'+' + leftOut + ' {% trans "holders not drawn" %}'"></span>
+        </div>
+        <p class="text-xs opacity-60">{% trans "A clearance keeps groups — wiki topics, map domains, buckets — and everything in them: an item in several kept groups is read only by someone holding a clearance of each. Click a group to open it." %}</p>
+        <div x-ref="graph" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="h-[65vh] min-h-[360px] w-full rounded-2xl border" :aria-busy="loading"></div>
+        <p x-show="failed" x-cloak class="text-sm text-red-600">{% trans "The graph could not be loaded." %}</p>
+      </section>
+
+      <div x-show="view === 'table'" class="space-y-6">
       {% if rows %}
       {# Wide screens: a table. #}
       <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -142,6 +253,8 @@ document.addEventListener('alpine:init', () => {
       {% else %}
       <p class="rounded border border-dashed p-4 text-sm opacity-70" data-testid="clearances-empty">{% trans "There are no clearances yet." %}</p>
       {% endif %}
+      </div>
+      </div>
 
       {% if room_left %}
       {# The New clearance modal. #}
