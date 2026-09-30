@@ -15,6 +15,8 @@ from django.http import JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
+from toto.core.signin_lockout import refusal_for
+
 from .cors import DATA_MESH_GROUP, MESH_DOMAINS, CorsApiView, in_data_mesh
 
 
@@ -81,19 +83,38 @@ class AppsApiView(CorsApiView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class LoginApiView(CorsApiView):
+    """`POST /api/login/` — the desktop's sign-in; answers the session key.
+
+    A password door like the form, so the sign-in lockout holds here too
+    (2026-09-30): while a sign-in is paused the answer is 429 with the
+    sentence, ``retry_after`` and a ``Retry-After`` header — one answer
+    whatever the name, and no password compared.
+    """
+
     def post(self, request):
         try:
             body = json.loads(request.body)
         except (json.JSONDecodeError, ValueError):
             return JsonResponse({"error": "Invalid JSON."}, status=400)
+        if not isinstance(body, dict):
+            return JsonResponse({"error": "Invalid JSON."}, status=400)
 
-        username = body.get("username", "").strip()
+        username = body.get("username", "")
         password = body.get("password", "")
+        if not isinstance(username, str) or not isinstance(password, str):
+            return JsonResponse({"error": "Username and password required."}, status=400)
+        username = username.strip()
         if not username or not password:
             return JsonResponse({"error": "Username and password required."}, status=400)
 
         user = authenticate(request, username=username, password=password)
         if user is None:
+            held = refusal_for(request)
+            if held is not None:
+                response = JsonResponse({"error": held.message, "retry_after": held.retry_after},
+                                        status=429)
+                response["Retry-After"] = str(held.retry_after)
+                return response
             return JsonResponse({"error": "Invalid credentials."}, status=401)
 
         login(request, user)

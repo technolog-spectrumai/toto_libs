@@ -17,6 +17,7 @@ from toto.core.auth_cooldown import (
     start_login_retry_cooldown,
 )
 from toto.core.forms import LoginForm
+from toto.core.signin_lockout import refusal_for
 from toto.ui import PageProcessor
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,16 @@ def password_login_view(request, *, template_name, page_title, extra_context=Non
             login(request, user)
             logger.info(f"User '{user.username}' logged in successfully.")
             return redirect(next_url or reverse("core:dashboard"))
+        held = refusal_for(request)
+        if held is not None:
+            # The sign-in lockout (2026-09-30): no password was compared. Say
+            # how long is left — the same sentence whatever the name — and let
+            # the page count it down instead of the 3-second cooldown.
+            logger.warning("Sign-in refused by the lockout (%s).", held.reason)
+            context["error"] = held.message
+            context["cooldown_remaining"] = held.retry_after
+            messages.error(request, context["error"])
+            return render(request, template_name, processor.decorate(context, request))
         logger.warning(f"Failed login attempt for username '{form.cleaned_data['username']}'.")
         context["error"] = "Invalid username or password."
         context["cooldown_remaining"] = login_retry_cooldown_seconds()
