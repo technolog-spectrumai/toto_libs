@@ -114,6 +114,37 @@ class LoginLogoutApiViewTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertTrue(res.json()["ok"])
 
+    def test_logout_with_a_bearer_token_ends_that_token(self):
+        # 2026-09-30: it used to flush the request's (absent) cookie session
+        # and leave the token signed in and on the Sessions list.
+        from django.test import Client
+
+        from toto.audit.models import AuditRecord
+        from toto.core.models import UserSession
+
+        token = self.client.post(
+            "/api/login/",
+            json.dumps({"username": "testuser", "password": "pass123"}),
+            content_type="application/json",
+        ).json()["token"]
+        browser = Client()
+        browser.force_login(self.user)
+        browser_key = browser.session.session_key
+        self.assertTrue(UserSession.objects.filter(session_key=token).exists())
+        desktop = Client()
+        bearer = {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+        self.assertEqual(desktop.get("/api/me/", **bearer).status_code, 200)
+
+        res = desktop.post("/api/logout/", **bearer)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(desktop.get("/api/me/", **bearer).status_code, 401)
+        self.assertFalse(UserSession.objects.filter(session_key=token).exists())
+        self.assertTrue(AuditRecord.objects.filter(action="AUTH.LOGOUT",
+                                                   actor_user=self.user).exists())
+        # The member's other sessions are not touched.
+        self.assertTrue(UserSession.objects.filter(session_key=browser_key).exists())
+        self.assertEqual(browser.get("/api/me/").status_code, 200)
+
 
 class MeApiViewTests(TestCase):
     def setUp(self):

@@ -11,14 +11,16 @@ They are mounted at ``/api/`` and, for that shipped client, also aliased under
 import json
 
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.models import AnonymousUser
+from django.contrib.auth.signals import user_logged_out
 from django.http import JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
 from toto.core.signin_lockout import refusal_for
-from toto.core.user_sessions import mark_token_signin
+from toto.core.user_sessions import end_token, mark_token_signin
 
-from .cors import DATA_MESH_GROUP, MESH_DOMAINS, CorsApiView, in_data_mesh
+from .cors import DATA_MESH_GROUP, MESH_DOMAINS, CorsApiView, bearer_key, in_data_mesh
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -127,7 +129,24 @@ class LoginApiView(CorsApiView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class LogoutApiView(CorsApiView):
+    """`POST /api/logout/` — sign out the session this request came in by.
+
+    A desktop comes in by its Bearer token, and that is the session to end
+    (2026-09-30): ``logout`` flushes the request's cookie session, which a
+    token request has none of, so the token used to stay alive and on the
+    member's Sessions list. It is ended now like any other — the store, its
+    row — after ``user_logged_out`` is sent, so the chain records the
+    sign-out as it does a browser's.
+    """
+
     def post(self, request):
+        key = bearer_key(request)
+        if key:
+            user = request.user
+            user_logged_out.send(sender=type(user), request=request, user=user)
+            end_token(user, key)
+            request.user = AnonymousUser()
+            return JsonResponse({"ok": True})
         logout(request)
         return JsonResponse({"ok": True})
 

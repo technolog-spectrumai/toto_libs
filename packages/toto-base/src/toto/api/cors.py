@@ -66,6 +66,17 @@ def _try_bearer_auth(request):
     request._toto_bearer_auth = True
 
 
+def bearer_key(request) -> str:
+    """The Bearer key this request was signed in by, or ``""`` (2026-09-30).
+
+    Only when the header is what signed it in: a request a cookie signed in
+    ignores the header, and so does this.
+    """
+    if not getattr(request, "_toto_bearer_auth", False):
+        return ""
+    return request.META.get("HTTP_AUTHORIZATION", "")[7:].strip()
+
+
 def bearer_auth(request) -> bool:
     """Resolve a Bearer token on ``request``; is it signed in afterwards?
 

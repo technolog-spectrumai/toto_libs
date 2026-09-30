@@ -3,6 +3,7 @@
     sessions_for(user)                                  -> [UserSession, ...]
     end_session(user, session_id, *, request=None)      -> UserSession | None
     end_other_sessions(user, keep=request.session.session_key)  -> int
+    end_token(user, key)                                -> bool
     session_keys_for(user)                              -> [key, ...]
 
 Django's session table has no user column, so every sign-in writes a
@@ -204,6 +205,20 @@ def end_session(user, session_id, *, request=None):
     UserSession.objects.filter(pk=row_pk).delete()
     row.pk = row_pk
     return row
+
+
+def end_token(user, key: str) -> bool:
+    """A token signs itself out: ``/api/logout/`` with a Bearer key (2026-09-30).
+
+    Ends THAT session and its row. ``logout`` would flush the request's
+    cookie session instead — none, for a desktop — and leave the token alive.
+    """
+    UserSession, _ = _models()
+    if not key or not _endable():
+        return False
+    ended = _end_key(key, getattr(user, "pk", None))
+    UserSession.objects.filter(session_key=key).delete()
+    return ended
 
 
 def end_other_sessions(user, *, keep: str | None = "") -> int:
