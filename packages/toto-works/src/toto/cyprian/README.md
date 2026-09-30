@@ -371,7 +371,7 @@ guards it with `apps.is_installed`.
 ## Not in this pass
 
 Footnotes, cross-references, comments and track-changes. Multi-column layout.
-Import from `.docx` or Markdown. Collaborative editing — TipTap's Y.js path
+Import from Markdown (never from `.docx`: no Microsoft Office file enters the platform, 2026-09-30). Collaborative editing — TipTap's Y.js path
 needs a websocket and a second vendored dependency. Column resizing and per-cell
 table styling. Going back to version 1: the conversion is one way, by decision. Publishing to a blog — there is no blog in this
 monorepo to publish into. Building a table in the canvas: the Source tab edits
