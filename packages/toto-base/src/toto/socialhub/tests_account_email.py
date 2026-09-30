@@ -43,8 +43,9 @@ class EmailTestCase(TestCase):
         self.person = Person.objects.create(user=self.user, display_name="Ada", email=OLD)
         self.client.force_login(self.user)
 
-    def ask(self, address=NEW):
-        return self.client.post(reverse("account:email"), {"new_email": address})
+    def ask(self, address=NEW, password="Correct-horse-9"):
+        return self.client.post(reverse("account:email"),
+                                {"new_email": address, "password": password})
 
     def link(self):
         """The link in the last mail, as a path with its query."""
@@ -268,7 +269,7 @@ class ReviewTests(EmailTestCase):
         for n in range(email_change.MAILS_PER_ADDRESS):
             member = User.objects.create_user(f"m{n}", f"m{n}@example.test", "x")
             self.client.force_login(member)
-            self.ask("victim@example.org")
+            self.ask("victim@example.org", password="x")
         self.assertEqual(len(mail.outbox), email_change.MAILS_PER_ADDRESS)
         self.client.force_login(self.user)
         self.ask("victim@example.org")
@@ -298,6 +299,30 @@ class ReviewTests(EmailTestCase):
         self.assertEqual(self.address(), "moved.back@example.test")
         self.assertFalse(PendingEmailChange.objects.exists())
         self.assertFalse(AuditRecord.objects.filter(action="AUTH.EMAIL_CHANGED").exists())
+
+
+class PasswordTests(EmailTestCase):
+    """Review 2026-10-01: a session alone could move the account's address
+    (and with it every password reset) away from its owner."""
+
+    def test_the_current_password_is_asked_for(self):
+        self.assertContains(self.client.get(reverse("account:home")), 'name="password"')
+        for wrong in ("", "not-my-password"):
+            with self.subTest(wrong=wrong):
+                self.assertEqual(self.ask(password=wrong).status_code, 400)
+        self.assertEqual(mail.outbox, [])
+        self.assertFalse(PendingEmailChange.objects.exists())
+
+    @override_settings(
+        AUTHENTICATION_BACKENDS=["toto.core.signin_lockout.SigninLockoutBackend",
+                                 "django.contrib.auth.backends.ModelBackend"],
+        LOGIN_DELAY_AFTER=0, LOGIN_LOCK_AFTER=3, LOGIN_ADDRESS_LOCK_AFTER=0)
+    def test_wrong_passwords_count_toward_the_lockout(self):
+        for _ in range(3):
+            self.ask(password="not-my-password")
+        response = self.ask()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(mail.outbox, [])
 
 
 class LabelTests(EmailTestCase):

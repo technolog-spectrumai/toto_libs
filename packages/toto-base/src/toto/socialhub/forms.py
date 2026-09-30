@@ -241,9 +241,18 @@ class TimeZoneForm(forms.Form):
 
 
 class AccountEmailForm(forms.Form):
-    """A new address for one's own account (2026-09-30); see ``email_change``."""
+    """A new address for one's own account (2026-09-30); see ``email_change``.
+
+    The current password too (review, 2026-10-01): the address is where a
+    password reset goes, so moving it is taking the account. A session alone
+    — left open, or stolen — must not be enough; the view counts a wrong one
+    against the sign-in lockout.
+    """
 
     new_email = forms.EmailField(label=_("New e-mail address"), max_length=254)
+    password = forms.CharField(
+        label=_("Your current password"), strip=False,
+        widget=forms.PasswordInput(attrs={"autocomplete": "current-password"}))
 
     def __init__(self, *args, user, **kwargs):
         self.user = user
@@ -259,6 +268,13 @@ class AccountEmailForm(forms.Form):
             raise forms.ValidationError(
                 _("That address belongs to another account or application."), code="taken")
         return address
+
+    def clean_password(self):
+        password = self.cleaned_data["password"]
+        if not self.user.check_password(password):
+            raise forms.ValidationError(_("Your current password was entered incorrectly."),
+                                        code="password_incorrect")
+        return password
 
 
 class KeyStoreForm(forms.Form):

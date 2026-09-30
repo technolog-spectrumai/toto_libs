@@ -403,6 +403,7 @@ def account_sessions_end_others(request):
     return redirect("account:home")
 
 
+@sensitive_post_parameters("password")
 @require_POST
 @login_required
 def account_email(request):
@@ -419,8 +420,14 @@ def account_email(request):
         messages.error(request, _("You have asked for a new address too often. "
                                   "Try again in an hour."))
         return redirect(f"{reverse('account:home')}#email")
+    held = _password_guess_refused(request, request.user)
+    if held is not None:
+        messages.error(request, held.message)
+        return redirect(f"{reverse('account:home')}#email")
     form = AccountEmailForm(request.POST, user=request.user)
     if not form.is_valid():
+        if form.has_error("password"):
+            _password_guess_failed(request, request.user)
         return _page(request, email_form=form, status=400)
     address = form.cleaned_data["new_email"]
     if email_change.throttled(request.user, address):

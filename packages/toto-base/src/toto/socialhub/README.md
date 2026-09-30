@@ -170,6 +170,11 @@ creates or deletes an account (console only; a first save creates the
   `AUTH.EMAIL_CHANGE_REQUESTED` and `AUTH.EMAIL_CHANGED` carry the addresses
   masked (`j***@example.org`). A federated account (no usable password) is
   told to change it at its provider, which rewrites it at each sign-in.
+  Since the review (2026-10-01): the form asks for the current password (a
+  wrong one counts toward the sign-in lockout); asking is limited to 5 times
+  an hour per member and 3 links a day per address (`toto.core.ratelimit`);
+  the link acts only while the account still has the address it had when
+  asked; and a confirmed change ends the member's other sessions.
 - **Sessions** (`/account/sessions/…`, 2026-09-30): where the member is signed
   in now — browsers and desktop/API tokens — from `toto.core.models.UserSession`,
   a row per sign-in written on `user_logged_in` (Django's session table has no
