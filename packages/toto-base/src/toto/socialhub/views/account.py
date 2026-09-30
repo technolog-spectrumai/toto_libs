@@ -30,12 +30,18 @@ Recent sign-ins lists the member's own ``AUTH.*`` records of the last 30
 days, read through ``toto.audit.queries.member_auth_records`` — the audit
 pages stay staff-only; this is the one narrow read of rows about the member,
 guesses at their name included.
+
+Key store (2026-10-01): the member creates their own personal key store —
+a gervazy strongbox with its first keys, under a passphrase they choose —
+through ``toto.gervazy.personal``, which refuses when it already exists and
+never overwrites. ``AUTH.KEY_STORE_CREATED`` names the box only.
 """
 
 from __future__ import annotations
 
 import logging
 
+from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
@@ -47,6 +53,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy
+from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_POST
 
 from toto.core.client_ip import client_ip
@@ -57,6 +64,7 @@ from toto.socialhub import audit, email_change
 from toto.socialhub.forms import (
     AccountEmailForm,
     AccountProfileForm,
+    KeyStoreForm,
     TimeZoneForm,
     avatar_max_bytes,
 )
@@ -106,6 +114,7 @@ SIGNIN_LABELS = {
     "AUTH.PASSWORD_RESET": gettext_lazy("Password reset through a link"),
     "AUTH.EMAIL_CHANGE_REQUESTED": gettext_lazy("New e-mail address asked for"),
     "AUTH.EMAIL_CHANGED": gettext_lazy("E-mail address changed"),
+    "AUTH.KEY_STORE_CREATED": gettext_lazy("Key store created"),
     "AUTH.SESSION_ENDED": gettext_lazy("Session ended"),
     "AUTH.SIGNED_OUT_EVERYWHERE": gettext_lazy("Signed out everywhere else"),
     "AUTH.ACCOUNT_CREATED": gettext_lazy("Account created"),
@@ -164,8 +173,23 @@ def _signins_page(request):
     return page
 
 
+def _key_store(request, form=None):
+    """The Key store section's context, or None where gervazy is not installed."""
+    if not apps.is_installed("toto.gervazy"):
+        return None
+    from toto.gervazy.personal import PASSPHRASE_MIN_LENGTH, is_keyed, personal_strongbox
+
+    box = personal_strongbox(request.user)
+    return {
+        "box": box,
+        "keyed": bool(box) and is_keyed(box),
+        "form": form or KeyStoreForm(),
+        "min_length": PASSPHRASE_MIN_LENGTH,
+    }
+
+
 def _page(request, *, profile_form=None, timezone_form=None, password_form=None,
-          email_form=None, status=200):
+          email_form=None, key_store_form=None, status=200):
     person = own_person(request.user)
     sessions = _sessions_page(request)
     signins = _signins_page(request)
@@ -201,6 +225,7 @@ def _page(request, *, profile_form=None, timezone_form=None, password_form=None,
             initial={"timezone": person.timezone}),
         "platform_time_zone": settings.TIME_ZONE,
         "avatar_max_mb": avatar_max_bytes() // (1024 * 1024),
+        "key_store": _key_store(request, key_store_form),
     }
     context = PageProcessor().decorate(context, request)
     return render(request, "socialhub/account.html", context, status=status)
@@ -410,3 +435,48 @@ def account_email_confirm(request):
     else:
         messages.error(request, EMAIL_REFUSALS[outcome])
     return redirect(f"{reverse('account:home')}#email")
+
+
+@sensitive_post_parameters("passphrase", "passphrase2")
+@require_POST
+@login_required
+def account_key_store(request):
+    """Create one's own key store (2026-10-01); see ``toto.gervazy.personal``.
+
+    Own account only: the box is made for ``request.user`` and nobody else,
+    whatever the form carries. One that exists — keyed or bare — is never
+    touched; a bare one is initialised on the keys page, which keeps its salt.
+    The passphrase goes to the key derivation and nowhere else: not the
+    session, not a message, not either audit trail.
+    """
+    if not apps.is_installed("toto.gervazy"):
+        raise Http404
+    from toto.gervazy.personal import (
+        KeyStoreExists,
+        KeyStoreRefused,
+        create_personal_strongbox,
+    )
+
+    form = KeyStoreForm(request.POST)
+    if not form.is_valid():
+        return _page(request, key_store_form=form, status=400)
+    try:
+        box = create_personal_strongbox(request.user, form.cleaned_data["passphrase"],
+                                        request=request)
+    except KeyStoreExists:
+        messages.error(request, _("You already have a key store; nothing was changed."))
+        return redirect(f"{reverse('account:home')}#keystore")
+    except KeyStoreRefused:
+        messages.error(request, _("Your account already has a store that your sealed "
+                                  "files depend on, so a new one cannot be made here. "
+                                  "Ask an administrator."))
+        return redirect(f"{reverse('account:home')}#keystore")
+    except Exception:  # noqa: BLE001 - never echo what the crypto layer said
+        log.exception("account: key store creation failed for user %s", request.user.pk)
+        messages.error(request, _("The key store could not be created. Nothing was saved; "
+                                  "try again later."))
+        return redirect(f"{reverse('account:home')}#keystore")
+    _on_chain("on_key_store_created", request.user, request, strongbox_id=box.pk)
+    messages.success(request, _("Your key store is ready. Keep the passphrase somewhere "
+                                "safe: it is stored nowhere and cannot be recovered."))
+    return redirect(f"{reverse('account:home')}#keystore")

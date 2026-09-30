@@ -143,6 +143,45 @@ sessions, sign-ins, e-mail) slot in as further sections.{% endcomment %}
       {% endif %}
     </section>
 
+    {% if key_store %}
+    <!-- Key store (2026-10-01) -->
+    <section id="keystore"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm sm:p-6">
+      <h2 class="mb-2 flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-vault"></i>{% translate "Key store" %}</h2>
+      {% url 'gervazy:my_keys' as keys_url %}
+      {% if key_store.box %}
+        {% if key_store.keyed %}
+        <p class="text-sm opacity-70">{% blocktranslate with created=key_store.box.created_at|date:"Y-m-d" %}Your key store is ready (created {{ created }}). Your signing keys and other stores are on the keys page.{% endblocktranslate %}</p>
+        {% else %}
+        <p class="text-sm opacity-70">{% translate "Your key store exists but has no keys yet. Initialise it on the keys page with its passphrase; it is not replaced here." %}</p>
+        {% endif %}
+        {% if keys_url %}
+        <a href="{{ keys_url }}"
+           :class="darkMode ? 'border-accent-1 bg-sunken-dark text-text-main-dark' : 'border-accent-2 bg-sunken-light text-text-main-light'"
+           class="mt-4 inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-key"></i>{% translate "My keys" %}</a>
+        {% endif %}
+      {% else %}
+      <p class="mb-4 text-sm opacity-70">{% blocktranslate count count=key_store.min_length %}Your key store keeps your signing keys and other secrets encrypted under a passphrase only you know — at least {{ count }} character, one you use nowhere else.{% plural %}Your key store keeps your signing keys and other secrets encrypted under a passphrase only you know — at least {{ count }} characters, one you use nowhere else.{% endblocktranslate %}</p>
+      <div :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+           class="mb-4 flex items-start gap-2 rounded-xl border p-3 text-sm">
+        <i class="fa-solid fa-triangle-exclamation mt-0.5"></i>
+        <span>{% translate "The passphrase is stored nowhere and there is no recovery code: if you forget it, what the store holds cannot be opened by anyone, administrators included." %}</span>
+      </div>
+      <form method="post" action="{% url 'account:key_store' %}" class="space-y-4">
+        {% csrf_token %}
+        {% include "oya/_form_fields.html" with form=key_store.form %}
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-vault"></i>{% translate "Create my key store" %}</button>
+      </form>
+      {% endif %}
+    </section>
+    {% endif %}
+
     <!-- Sessions -->
     <section id="sessions"
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"

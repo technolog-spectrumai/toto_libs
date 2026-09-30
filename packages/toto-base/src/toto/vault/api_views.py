@@ -861,11 +861,12 @@ class StrongboxApiView(CorsApiView):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
         from toto.gervazy.models import UserStrongbox
+        from toto.gervazy.personal import PERSONAL_STRONGBOX_NAME
 
         strongbox = request.user.user_strongboxes.first()
         if strongbox is None:
             strongbox = UserStrongbox.objects.create(
-                owner=request.user, name="strongbox")
+                owner=request.user, name=PERSONAL_STRONGBOX_NAME)
         import base64
 
         return JsonResponse({

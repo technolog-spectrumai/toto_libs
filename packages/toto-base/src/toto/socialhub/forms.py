@@ -259,3 +259,36 @@ class AccountEmailForm(forms.Form):
             raise forms.ValidationError(
                 _("That address belongs to another account or application."), code="taken")
         return address
+
+
+class KeyStoreForm(forms.Form):
+    """A passphrase for one's own key store, twice (2026-10-01).
+
+    ``PasswordInput`` never renders its value back, so a refused form does
+    not carry the passphrase into the page. See ``toto.gervazy.personal``.
+    """
+
+    passphrase = forms.CharField(
+        label=_("Key store passphrase"), strip=False,
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
+    passphrase2 = forms.CharField(
+        label=_("The same passphrase again"), strip=False,
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
+
+    def clean_passphrase(self):
+        from toto.gervazy.personal import PASSPHRASE_MIN_LENGTH
+
+        passphrase = self.cleaned_data["passphrase"]
+        if len(passphrase) < PASSPHRASE_MIN_LENGTH:
+            raise forms.ValidationError(
+                _("Use at least %(count)d characters.") % {"count": PASSPHRASE_MIN_LENGTH},
+                code="short")
+        return passphrase
+
+    def clean(self):
+        cleaned = super().clean()
+        if (cleaned.get("passphrase") and "passphrase2" in cleaned
+                and cleaned["passphrase"] != cleaned["passphrase2"]):
+            self.add_error("passphrase2", forms.ValidationError(
+                _("The two passphrases do not match."), code="mismatch"))
+        return cleaned

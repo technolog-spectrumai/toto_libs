@@ -18,6 +18,7 @@ membership flow, a management command.
 | `AUTH.SIGNED_OUT_EVERYWHERE` | a member ended every session but the one in use (My account, 2026-09-30); `sessions_ended` |
 | `AUTH.EMAIL_CHANGE_REQUESTED` | a member asked from My account to move their account to a new e-mail address and a confirmation link was mailed there (`toto.socialhub.email_change`, 2026-09-30); `new_email` masked (`j***@example.org`) |
 | `AUTH.EMAIL_CHANGED` | the member opened that link, signed in, and the address changed; `old_email` and `new_email`, both masked |
+| `AUTH.KEY_STORE_CREATED` | a member created their own key store from My account (`toto.gervazy.personal`, 2026-10-01); `strongbox_id` only — never the passphrase nor anything derived from it |
 | `AUTH.PASSWORD_RESET` | a password set through a reset link (`sso_core.password_reset`, 2026-09-30); `flow` is `email` (the mailed link) or `recovery` (a patron's one-time link) |
 | `AUTH.ACCOUNT_CREATED` | a `User` row is created, by whatever door |
 | `AUTH.ACCOUNT_ACTIVATED` / `_DEACTIVATED` | `is_active` changes |
@@ -211,6 +212,16 @@ def on_email_changed(user, *, old_email, new_email, request=None):
     """
     return _record("email_changed", user, actor_user=user, request=request,
                    metadata={"old_email": str(old_email), "new_email": str(new_email)})
+
+
+def on_key_store_created(user, *, strongbox_id, request=None):
+    """A member created their own key store from My account (2026-10-01).
+
+    The box's id and nothing else: the passphrase, the salt and every key
+    stay out of the chain.
+    """
+    return _record("key_store_created", user, actor_user=user, request=request,
+                   metadata={"strongbox_id": int(strongbox_id)})
 
 
 def on_password_reset(user, *, flow, request=None):
