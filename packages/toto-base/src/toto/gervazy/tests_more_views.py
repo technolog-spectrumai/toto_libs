@@ -96,6 +96,18 @@ class InitializeTests(_Fixture):
         self.assertTrue(any(m.startswith("Initialization failed") for m in self.messages(response)))
         self.assertEqual(box.data_keys.count(), 1)
 
+    def test_a_failure_says_a_sentence_not_the_exception(self):
+        # Review 2026-10-01: the message used to carry the exception's text.
+        from unittest import mock
+
+        box = self.bare_box()
+        with mock.patch("toto.gervazy.crypto.decode_derived_key",
+                        side_effect=RuntimeError("internal detail 0xdeadbeef")):
+            response = self.client.post(self.url(box), {"password": "secret"})
+        said = " ".join(self.messages(response))
+        self.assertIn("Initialization failed", said)
+        self.assertNotIn("0xdeadbeef", said)
+
     def test_a_retired_master_key_is_replaced_by_a_new_version(self):
         box = self.bare_box()
         self.client.post(self.url(box), {"password": "secret"})
@@ -159,6 +171,18 @@ class ProvisionTests(_Fixture):
         response = self.client.post(self.url, {"password": "guess"})
         self.assertTrue(any(m.startswith("Provisioning failed") for m in self.messages(response)))
         self.assertFalse(PersonSigningKey.objects.exists())
+
+    def test_a_failure_says_a_sentence_not_the_exception(self):
+        from unittest import mock
+
+        self.person()
+        self.ready_box()
+        with mock.patch("toto.gervazy.signing.SigningService.provision_signing_key",
+                        side_effect=RuntimeError("internal detail 0xdeadbeef")):
+            response = self.client.post(self.url, {"password": "secret"})
+        said = " ".join(self.messages(response))
+        self.assertIn("Provisioning failed", said)
+        self.assertNotIn("0xdeadbeef", said)
 
 
 class SigningTests(_Fixture):

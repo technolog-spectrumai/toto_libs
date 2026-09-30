@@ -1,10 +1,15 @@
+import logging
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
+
+log = logging.getLogger("toto.gervazy")
 
 
 @login_required
@@ -105,8 +110,14 @@ def initialize_strongbox_view(request, pk):
         messages.success(request, _("Strongbox \"%(name)s\" initialized successfully.")
                          % {"name": strongbox.name})
 
-    except Exception as exc:
-        messages.error(request, _("Initialization failed: %(error)s") % {"error": exc})
+    except Exception as exc:  # noqa: BLE001
+        # A sentence, never the exception's text (review, 2026-10-01): what
+        # the crypto layer says is not the member's to read. The class is
+        # enough to find it in the log.
+        log.warning("gervazy: strongbox %s not initialised (%s)", strongbox.pk,
+                    type(exc).__name__)
+        messages.error(request, _("Initialization failed: the password is wrong, or "
+                                  "the strongbox could not be opened."))
 
     return redirect("gervazy:my_keys")
 
@@ -163,7 +174,13 @@ def provision_signing_key_view(request):
         messages.success(request, _("New signing key provisioned using \"%(name)s\".")
                          % {"name": strongbox.name})
 
-    except Exception as exc:
-        messages.error(request, _("Provisioning failed: %(error)s") % {"error": exc})
+    except Http404:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        # As above: a sentence for the member, the class for the log.
+        log.warning("gervazy: signing key not provisioned for account %s (%s)",
+                    request.user.pk, type(exc).__name__)
+        messages.error(request, _("Provisioning failed: the password is wrong, or the "
+                                  "strongbox could not be opened."))
 
     return redirect("gervazy:my_keys")
