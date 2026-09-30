@@ -61,10 +61,22 @@ VAULT_DOWNLOADS = {
 #: Chatter that must never flood the chain: lock heartbeats fire every few
 #: seconds from an open editor, and status endpoints are polled.
 VAULT_IGNORED = {
-    "lock_acquire", "lock_heartbeat", "lock_release",
+    "lock_heartbeat", "lock_release",
     "encrypt_status", "zip_status", "transfer_status",
     "bucket_refresh_status",
 }
+
+#: Doors whose ordinary answers are chatter but whose security refusals are
+#: not (2026-09-30). A claim on the editing lock is refused 403 when the caller
+#: may read the file but not write it, and 404 when they may not see it — that
+#: is somebody reaching for a document that is not theirs, and it is recorded
+#: like a refused save. A granted claim and a 423 (a colleague is editing) stay
+#: off the chain: an editor claims once on every page load.
+VAULT_REFUSALS = {
+    "lock_acquire": "FILE_LOCK_REFUSED",
+}
+
+_REFUSED = {403, 404}
 
 _MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -92,7 +104,11 @@ class FileAuditMiddleware:
             return response
 
         action = None
-        if request.method in _MUTATING:
+        if name in VAULT_REFUSALS:
+            if response.status_code not in _REFUSED:
+                return response
+            action = VAULT_REFUSALS[name]
+        elif request.method in _MUTATING:
             action = VAULT_ACTIONS.get(name, "VAULT_ACTION")
         elif request.method == "GET" and name in VAULT_DOWNLOADS:
             action = VAULT_DOWNLOADS[name]
