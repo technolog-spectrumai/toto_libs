@@ -72,6 +72,18 @@ class RegisterApiView(CorsApiView):
         except ValidationError as exc:
             return JsonResponse({"error": " ".join(exc.messages)}, status=400)
 
+        # A paused sign-in pauses a signup too (2026-09-30): this door ends in
+        # authenticate(), which the lockout would refuse AFTER the account was
+        # made — a 401 for a signup that happened. Asked first, nothing is made.
+        from toto.core import signin_lockout
+
+        held = signin_lockout.refusal(request, username) if signin_lockout.enabled() else None
+        if held is not None:
+            response = JsonResponse({"error": held.message, "retry_after": held.retry_after},
+                                    status=429)
+            response["Retry-After"] = str(held.retry_after)
+            return response
+
         # Case-insensitive uniqueness check; the stored username keeps its case.
         # The DB constraint is case-sensitive, so guard the create with a
         # transaction and treat an IntegrityError (exact-case race) as 409.
