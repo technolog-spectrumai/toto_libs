@@ -31,3 +31,25 @@ class CoreConfig(AppConfig):
         connection_created.connect(_set_sqlite_wal, weak=False,
                                    dispatch_uid="core_sqlite_wal")
 
+        # The sign-in lockout (2026-09-30): counting failures and clearing a
+        # pair on success. Enforcement is its backend, in AUTHENTICATION_BACKENDS.
+        from toto.core import signin_lockout
+
+        signin_lockout.connect()
+        self._admin_says_why()
+
+    @staticmethod
+    def _admin_says_why():
+        """The admin login names a lockout refusal instead of calling it a
+        wrong password — unless the host set a login form of its own."""
+        from django.apps import apps
+
+        if not apps.is_installed("django.contrib.admin"):
+            return
+        from django.contrib import admin
+
+        from toto.core.admin_login import SigninLockoutAdminAuthenticationForm
+
+        if admin.site.login_form is None:
+            admin.site.login_form = SigninLockoutAdminAuthenticationForm
+
