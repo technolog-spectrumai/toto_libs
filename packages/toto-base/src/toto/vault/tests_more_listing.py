@@ -13,7 +13,7 @@ from django.urls import reverse
 from toto.core.models import Platform
 from toto.people.models import Person
 from toto.socialhub.models import Clearance
-from toto.vault.models import Bucket, FileGateway, VaultDirectory, VaultFile, VaultFileClearance
+from toto.vault.models import (Bucket, BucketClearance, FileGateway, VaultDirectory, VaultFile)
 
 User = get_user_model()
 
@@ -82,14 +82,22 @@ class WhoSeesWhatTests(_Fixture):
         self.file("mine.txt", owner=self.reader, bucket=self.other_bucket)
         self.assertEqual(self.titles(self.listing(self.reader)), ["mine.txt", "open.txt"])
 
-    def test_a_public_file_kept_to_a_clearance_is_listed_to_its_members_only(self):
+    def test_a_public_file_in_a_kept_bucket_is_listed_to_its_holders_only(self):
         clearance = Clearance.objects.create(name="internal", slug="internal")
-        f = self.file("kept.txt", public=True)
-        VaultFileClearance.objects.create(file=f, clearance=clearance)
+        self.file("kept.txt", public=True)
+        BucketClearance.objects.create(bucket=self.bucket, clearance=clearance)
         self.assertEqual(self.titles(self.listing(self.reader)), [])
-        self.assertEqual(self.titles(self.listing(self.owner)), ["kept.txt"])
+        self.assertEqual(self.titles(self.listing(self.owner)), [])      # its owner too
+        self.assertEqual(self.titles(self.listing(self.root)), ["kept.txt"])
         Person.objects.create(user=self.reader, display_name="R").clearances.add(clearance)
         self.assertEqual(self.titles(self.listing(self.reader)), ["kept.txt"])
+
+    def test_a_holder_is_listed_a_private_file_in_a_kept_bucket(self):
+        clearance = Clearance.objects.create(name="internal", slug="internal")
+        self.file("private.txt")
+        BucketClearance.objects.create(bucket=self.bucket, clearance=clearance)
+        Person.objects.create(user=self.reader, display_name="R").clearances.add(clearance)
+        self.assertEqual(self.titles(self.listing(self.reader)), ["private.txt"])
 
     def test_a_restricted_folder_and_everything_in_it_is_hidden_from_outsiders(self):
         locked = self.folder("locked", acl=[self.owner])

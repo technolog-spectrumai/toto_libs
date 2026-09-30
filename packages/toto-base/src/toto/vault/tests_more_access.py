@@ -1,4 +1,4 @@
-"""``may_read`` clause by clause with clearances in play, its queryset twin
+"""``may_read`` clause by clause with bucket clearances in play (2026-09-30), its queryset twin
 ``accessible_files`` (including ``include_public``), the tree built on it,
 the attach checks, and the content/mirror guards in ``access``.
 
@@ -21,7 +21,7 @@ from toto.socialhub.models import Clearance, Community
 from toto.vault import access, attach
 from toto.vault.access import may_read
 from toto.vault.filetree import accessible_files, build_file_tree
-from toto.vault.models import Bucket, VaultDirectory, VaultFile, VaultFileClearance
+from toto.vault.models import Bucket, BucketClearance, VaultDirectory, VaultFile
 from toto.vault.plugins import VaultAccessPlugin
 
 User = get_user_model()
@@ -51,16 +51,20 @@ class _Fixture(TestCase):
 
     def file(self, *, owner=None, public=False, kept_to=(), bucket="default", directory=None,
              title=None, file_type="text"):
+        """A file; ``kept_to`` keeps its BUCKET — a fresh one of the owner's
+        unless ``bucket`` names one (clearances sit on buckets, never files)."""
         type(self)._n += 1
         title = title or f"f{self._n}.txt"
+        if bucket == "default":
+            bucket = (Bucket.objects.create(name=f"Kept {self._n}", slug=f"kept-{self._n}",
+                                            owner=self.owner) if kept_to else self.bucket)
         vault_file = VaultFile(owner=owner or self.owner, title=title, key=f"k-{self._n}",
-                               file_type=file_type, is_public=public,
-                               bucket=self.bucket if bucket == "default" else bucket,
+                               file_type=file_type, is_public=public, bucket=bucket,
                                directory=directory)
         vault_file.file.save(title, ContentFile(b"bytes"), save=False)
         vault_file.save()
         for clearance in kept_to:
-            VaultFileClearance.objects.create(file=vault_file, clearance=clearance)
+            BucketClearance.objects.get_or_create(bucket=bucket, clearance=clearance)
         return vault_file
 
     def agree(self, user, vault_file, expected):
@@ -71,7 +75,7 @@ class _Fixture(TestCase):
 
 
 class MayReadWithClearancesTests(_Fixture):
-    def test_a_clearance_grants_a_private_file_to_its_members(self):
+    def test_a_bucket_clearance_grants_a_private_file_to_its_holders(self):
         self.agree(self.member, self.file(kept_to=[self.internal]), True)
 
     def test_one_clearance_of_several_is_enough(self):
@@ -85,7 +89,7 @@ class MayReadWithClearancesTests(_Fixture):
     def test_a_functional_community_member_is_not_a_clearance_member(self):
         self.agree(self.dev, self.file(public=True, kept_to=[self.internal]), False)
 
-    def test_the_bucket_owner_loses_a_file_kept_to_a_clearance_they_are_not_in(self):
+    def test_the_bucket_owner_loses_a_file_in_a_bucket_kept_to_a_clearance_they_lack(self):
         f = self.file(bucket=self.theirs, kept_to=[self.internal])
         self.agree(self.nobody, f, False)
 
@@ -93,10 +97,10 @@ class MayReadWithClearancesTests(_Fixture):
         f = self.file(bucket=self.theirs)
         self.agree(self.nobody, f, True)
 
-    def test_a_clearance_member_needs_no_place_on_the_folder_acl(self):
+    def test_a_holder_needs_no_place_on_the_folder_acl(self):
         directory = VaultDirectory.objects.create(name="d", bucket=self.bucket, owner=self.owner)
         directory.allowed_users.add(self.nobody)
-        f = self.file(directory=directory, kept_to=[self.internal])
+        f = self.file(directory=directory, bucket=self.bucket, kept_to=[self.internal])
         self.agree(self.member, f, True)
         self.agree(self.nobody, f, False)
 
@@ -106,8 +110,19 @@ class MayReadWithClearancesTests(_Fixture):
         self.member_person.clearances.remove(self.internal)
         self.agree(self.member, f, False)
 
-    def test_the_owner_reads_a_file_kept_to_a_clearance_they_are_not_in(self):
-        self.agree(self.owner, self.file(kept_to=[self.confidential]), True)
+    def test_the_owner_loses_a_file_in_a_bucket_kept_to_a_clearance_they_lack(self):
+        self.agree(self.owner, self.file(public=True, kept_to=[self.confidential]), False)
+
+    def test_an_owner_who_holds_a_clearance_of_the_bucket_reads_it(self):
+        f = self.file(owner=self.member, kept_to=[self.internal])
+        self.agree(self.member, f, True)
+
+    def test_unkeeping_the_bucket_gives_the_file_back_to_the_vaults_rule(self):
+        f = self.file(public=True, kept_to=[self.internal])
+        self.agree(self.nobody, f, False)
+        BucketClearance.objects.filter(bucket=f.bucket).delete()
+        self.agree(self.nobody, f, True)
+        self.agree(self.owner, f, True)
 
     def test_none_and_anonymous_get_the_public_arm_only(self):
         public, private = self.file(public=True), self.file()
@@ -212,19 +227,24 @@ class AttachWithClearancesTests(_Fixture):
         with self.assertRaises(Http404):
             attach.validate_reference(self.nobody, f.pk)
 
-    def test_the_owner_still_attaches_a_kept_file(self):
+    def test_the_owner_cannot_attach_their_file_in_a_bucket_kept_away_from_them(self):
         f = self.file(kept_to=[self.confidential])
-        self.assertEqual(attach.validate_reference(self.owner, str(f.pk)), f)
+        with self.assertRaises(Http404):
+            attach.validate_reference(self.owner, str(f.pk))
+
+    def test_a_holder_attaches_their_own_kept_file(self):
+        f = self.file(owner=self.senior, kept_to=[self.confidential])
+        self.assertEqual(attach.validate_reference(self.senior, str(f.pk)), f)
 
     def test_a_non_numeric_or_empty_pk_is_the_same_404(self):
         for pk in (None, "", 0, "abc", "1.5", object()):
             with self.assertRaises(Http404):
                 attach.validate_reference(self.owner, pk)
 
-    def test_keeping_a_file_to_a_clearance_hides_an_existing_attachment(self):
+    def test_keeping_the_bucket_to_a_clearance_hides_an_existing_attachment(self):
         f = self.file(public=True)
         self.assertTrue(attach.readable(self.nobody, f))
-        VaultFileClearance.objects.create(file=f, clearance=self.internal)
+        BucketClearance.objects.create(bucket=f.bucket, clearance=self.internal)
         self.assertFalse(attach.readable(self.nobody, f))
         self.assertTrue(attach.readable(self.member, f))
 

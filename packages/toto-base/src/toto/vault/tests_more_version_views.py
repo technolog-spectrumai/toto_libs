@@ -22,8 +22,8 @@ from django.utils import timezone
 from toto.people.models import Person
 from toto.socialhub.models import Clearance
 from toto.vault import locks, versions
-from toto.vault.models import (Bucket, FileLock, FileVersion, VaultDirectory, VaultFile,
-                               VaultFileClearance)
+from toto.vault.models import (Bucket, BucketClearance, FileLock, FileVersion, VaultDirectory,
+                               VaultFile)
 from toto.vault.plugins import VaultAccessPlugin
 from toto.vault.version_views import _file_for
 
@@ -106,21 +106,33 @@ class FileForTests(_Fixture):
         with patch.dict(VaultAccessPlugin.registry, {"text": Lender()}):
             self.assertEqual(_file_for(self.request(self.other), f.pk), f)
 
-    def test_clearances_close_it_even_to_staff_and_lending_apps(self):
+    def test_a_kept_bucket_closes_it_even_to_its_owner_staff_and_lending_apps(self):
         clearance = Clearance.objects.create(name="internal", slug="internal")
         f = self.file(public=True)
-        VaultFileClearance.objects.create(file=f, clearance=clearance)
+        BucketClearance.objects.create(bucket=f.bucket, clearance=clearance)
 
         class Lender:
             def may_edit(self, user, vault_file):
                 return True
 
         with patch.dict(VaultAccessPlugin.registry, {"text": Lender()}):
-            for user in (self.staff, self.other):
+            for user in (self.staff, self.other, self.owner):
                 with self.assertRaises(Http404):
                     _file_for(self.request(user), f.pk)
         Person.objects.create(user=self.other, display_name="O").clearances.add(clearance)
         self.assertEqual(_file_for(self.request(self.other), f.pk), f)
+
+
+    def test_the_history_and_the_lock_are_missing_to_an_owner_holding_nothing(self):
+        clearance = Clearance.objects.create(name="internal", slug="internal")
+        f = self.file()
+        BucketClearance.objects.create(bucket=f.bucket, clearance=clearance)
+        self.client.force_login(self.owner)
+        self.assertEqual(self.client.get(reverse("vault:version_list", args=[f.pk])).status_code, 404)
+        self.assertEqual(self.client.post(reverse("vault:lock_acquire", args=[f.pk])).status_code, 404)
+        self.assertFalse(FileLock.objects.filter(file=f).exists())
+        Person.objects.create(user=self.owner, display_name="Ow").clearances.add(clearance)
+        self.assertEqual(self.client.get(reverse("vault:version_list", args=[f.pk])).status_code, 200)
 
 
 class LockEndpointTests(_Fixture):
