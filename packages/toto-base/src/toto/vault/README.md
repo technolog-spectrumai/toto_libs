@@ -285,6 +285,38 @@ still count or take it; versions still find it; the key is free),
 `tests_trash_doors` (each door trashes and records FILE_TRASHED; the remote
 bucket's immediate delete; the signal; the figures; attachments).
 
+### The Trash tab (`trash_views.py`, `vault:trash`)
+
+Who sees what (`trash.trashed_for`): a member their OWN trashed files in
+buckets whose clearances let them read — pessimistic, no owner bypass, so an
+owner who lost a bucket's clearance loses its trash too; a superuser on the
+Superuser plan every trashed file (a superuser without the plan is a member
+here). Every door looks the file up in that same queryset, so a file one may
+not see answers 404. Columns: name (and owner, for the superuser), bucket and
+the folder it came from, size, trashed at, trashed by, days left
+(`trash.days_left`, counting down from `VAULT_TRASH_DAYS`, which the page
+states). A table on md+, cards below, the shared pagination.
+
+* **Restore** (`trash.restore_file`, `FILE_RESTORED`) — to the folder it came
+  from; to the bucket's root when that folder is gone (deleting a folder
+  SET_NULLs `trashed_from`, so such a file cannot be told from one trashed at
+  the root — both land there, and the message says where); when a live file
+  in that folder has its name, or one in the bucket its key, it comes back as
+  `name (restored).ext` (then `(restored 2)`, …) with a key to match, and the
+  message says so. A bucket being deleted takes nothing back.
+* **Delete for good** (`trash.purge_trashed`, `FILE_PURGED`) — through
+  `purge.purge_file`: the row, its bytes and the version bodies only it cited.
+  A modal whose checkbox must be ticked; the form carries `confirm=yes`, and
+  the server refuses without it. A file an app still pins (`ProtectedError`)
+  stays, and the page says so.
+* **Empty my trash** — Delete for good for one's OWN trashed files, confirmed
+  the same way; a superuser on the plan empties their own too, never
+  everybody's.
+
+A file in a bucket connected from another Zenobia never reaches the trash
+(its delete is immediate, above); the page says so. The audit records carry
+ids only, never a name. Tests: `tests_trash_page`.
+
 ## Buckets: types, custody and deletion (2026-09-30)
 
 Storage → Management (Superuser plan) creates, edits, tests and deletes buckets.
@@ -468,7 +500,7 @@ library pytest suite does not collect them): `tests`, `tests_access`,
 `tests_api`, `tests_purge`, `tests_hardening`, `tests_peering`,
 `tests_peer_api`, `tests_mirror`, `tests_transfer`, `tests_remote_ui`,
 `tests_transfers_ui`, `tests_outbound`, `tests_bucket_transition`,
-`tests_remote_page`, `tests_clearances`, `tests_storage_adapters`, `tests_clearance_tab`, `tests_management`, `tests_share_connect`, `tests_trash`, `tests_trash_doors` — wired in zenobia's gate, core four in placidia's.
+`tests_remote_page`, `tests_clearances`, `tests_storage_adapters`, `tests_clearance_tab`, `tests_management`, `tests_share_connect`, `tests_trash`, `tests_trash_doors`, `tests_trash_page` — wired in zenobia's gate, core four in placidia's.
 The two-host harness is a loopback: `peer_client._http` patched into
 Django's test client against the real peer views (one DB, clearing's
 pattern).
@@ -486,6 +518,7 @@ pattern).
 | Clearances | `vault:clearances_tab` | every bucket, the clearances keeping it, their holders; Superuser plan only |
 | Management | `vault:manage` | every bucket; New bucket, Edit, Test, Delete, Share, Connect a bucket from another Zenobia; Superuser plan only |
 | Archive | `vault:archive` | the same tree again, carrying the zip actions |
+| Trash | `vault:trash` | one's trashed files (a superuser on the plan: everyone's); Restore, Delete for good, Empty my trash |
 
 Archive is a second tree rather than a shared partial for the reason
 `antivirus/_scan_tree.html` gives: its rows carry an ACTION and a selection, and
