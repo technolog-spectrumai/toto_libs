@@ -16,6 +16,8 @@ membership flow, a management command.
 | `AUTH.PASSWORD_CHANGED` | a member changed their own password while signed in (My account, 2026-09-30); `sessions_ended` — how many other sign-ins went with the old one |
 | `AUTH.SESSION_ENDED` | a member ended one of their own sessions from My account (`toto.core.user_sessions`, 2026-09-30); its `kind` (`browser` or `token`) and `session_id`, the row's id — never the key |
 | `AUTH.SIGNED_OUT_EVERYWHERE` | a member ended every session but the one in use (My account, 2026-09-30); `sessions_ended` |
+| `AUTH.EMAIL_CHANGE_REQUESTED` | a member asked from My account to move their account to a new e-mail address and a confirmation link was mailed there (`toto.socialhub.email_change`, 2026-09-30); `new_email` masked (`j***@example.org`) |
+| `AUTH.EMAIL_CHANGED` | the member opened that link, signed in, and the address changed; `old_email` and `new_email`, both masked |
 | `AUTH.PASSWORD_RESET` | a password set through a reset link (`sso_core.password_reset`, 2026-09-30); `flow` is `email` (the mailed link) or `recovery` (a patron's one-time link) |
 | `AUTH.ACCOUNT_CREATED` | a `User` row is created, by whatever door |
 | `AUTH.ACCOUNT_ACTIVATED` / `_DEACTIVATED` | `is_active` changes |
@@ -188,6 +190,27 @@ def on_signed_out_everywhere(user, *, sessions_ended=0, request=None):
     """A member ended every session but the one in use (2026-09-30)."""
     return _record("signed_out_everywhere", user, actor_user=user, request=request,
                    metadata={"sessions_ended": int(sessions_ended)})
+
+
+def on_email_change_requested(user, *, new_email, request=None):
+    """A member asked to move their account to a new address (2026-09-30).
+
+    ``new_email`` arrives masked (``toto.socialhub.email_change.mask_email``):
+    the chain says an address was asked for and roughly which, never the
+    whole of it, and never the link's token.
+    """
+    return _record("email_change_requested", user, actor_user=user, request=request,
+                   metadata={"new_email": str(new_email)})
+
+
+def on_email_changed(user, *, old_email, new_email, request=None):
+    """The member confirmed a new address through the mailed link (2026-09-30).
+
+    Both addresses masked, as above. The link travels as a query parameter,
+    which ``request_source`` does not keep (it records the path only).
+    """
+    return _record("email_changed", user, actor_user=user, request=request,
+                   metadata={"old_email": str(old_email), "new_email": str(new_email)})
 
 
 def on_password_reset(user, *, flow, request=None):
