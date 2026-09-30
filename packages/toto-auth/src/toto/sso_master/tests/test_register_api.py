@@ -107,3 +107,42 @@ class RegisterApiViewTests(TestCase):
         res = self.client.post(self.URL, "not json", content_type="application/json")
         self.assertEqual(res.status_code, 400)
         self.assertEqual(res.json()["error"], "Invalid JSON.")
+
+
+@override_settings(
+    SSO_OPEN_REGISTRATION=True, AUTH_PASSWORD_VALIDATORS=_VALIDATORS,
+    AUTHENTICATION_BACKENDS=["toto.core.signin_lockout.SigninLockoutBackend",
+                             "django.contrib.auth.backends.ModelBackend"],
+    LOGIN_ADDRESS_LOCK_AFTER=50, LOGIN_LOCK_MINUTES=15,
+    PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class RegisterWhilePausedTests(TestCase):
+    """The door ends in authenticate(): on an address the sign-in lockout has
+    paused (2026-09-30) it must refuse before it makes the account, not
+    after."""
+
+    URL = "/sso/api/register/"
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def _register(self, username, address):
+        return self.client.post(self.URL, json.dumps({"username": username,
+                                                      "password": "longenough"}),
+                                content_type="application/json", REMOTE_ADDR=address)
+
+    def test_a_paused_address_makes_no_account_and_is_told_how_long(self):
+        from django.contrib.auth import authenticate
+        from django.test import RequestFactory
+
+        for n in range(50):
+            authenticate(RequestFactory().post("/", REMOTE_ADDR="203.0.113.7"),
+                         username=f"guess{n}", password="wrong")
+        res = self._register("newbie", "203.0.113.7")
+        self.assertEqual(res.status_code, 429)
+        self.assertEqual(res["Retry-After"], "900")
+        self.assertIn("Signing in is paused for 15 minutes.", res.json()["error"])
+        self.assertFalse(User.objects.filter(username="newbie").exists())
+        self.assertEqual(self._register("newbie", "198.51.100.20").status_code, 201)
