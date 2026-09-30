@@ -191,6 +191,67 @@ over its owner's work. The doors are split now, and neither half is a new rule:
 
 Tests: `tests_version_doors`, `tests_more_version_views`.
 
+## The trash (2026-10-01)
+
+Deleting a vault file moves it to the trash. The file keeps its bytes, its
+versions, its bucket (so the bucket's clearances still keep it) and its key;
+it leaves its folder (`directory` cleared, the folder kept in `trashed_from`
+for the restore) and is stamped `trashed_at` / `trashed_by`. It is kept
+`VAULT_TRASH_DAYS` days (30; `models.trash_days()`). Wiki pages have no trash.
+
+**How a trashed file disappears: the default manager hides it.**
+`VaultFile.objects` is `LiveFileManager` (`trashed_at IS NULL`), and so are the
+reverse relations built from it (`bucket.files`, `directory.files`).
+`VaultFile.all_objects` sees every row and is the base manager
+(`Meta.base_manager_name`), so forward foreign keys (`FileVersion.file`, a
+lock, an app's pointer), `refresh_from_db`, saves and the deletion collector
+still reach a trashed row. The alternative — a filter at every door — was
+refused: the vault has well over a hundred `VaultFile` queries across the
+library and the host, and a door that forgot the filter would LEAK the file;
+with the manager, a door that forgets `all_objects` HIDES it instead, which
+fails closed. The listing, the JSON API, the picker, the peer API (manifest,
+listing, detail, download), the editors, the download door, the services
+door, the zip builder and every other app reading `VaultFile.objects` hide it
+without a line of their own.
+
+What asks for `all_objects` by name, because the trash must not be a free
+hiding place — its bytes are still held:
+
+* the storage levy and the plaintext levy (`taxes.py`, `storage.gb_day`,
+  `security.plain_gb_day`) and mana's preview of the latter;
+* the bucket figures against `storage_quota_mb` (the listing's per-bucket
+  usage, the metrics page's per-member rows, `storage_adapters.file_totals`);
+  the upload quota (`VaultQuotaPolicy`) counts usage EVENTS, which a trash
+  never removes;
+* the bucket purge (`bucket_lifecycle.purge_bucket`) — a trashed file is still
+  in its bucket, and `bucket` is PROTECT;
+* the admin (with a "trashed" filter).
+
+**Joins skip the manager.** A lookup through another model
+(`WikiAsset.objects.filter(vault_file__…)`, `Bucket…annotate(Count("files"))`)
+does not apply `VaultFile.objects`; a join that shows a file must say
+`…trashed_at__isnull=True` itself (the wiki's image render does). Counts
+through a join include the trash, which is what a usage figure wants.
+
+**Keys.** The (bucket, key) rule binds live files only
+(`vault_one_live_file_per_key`, a conditional unique constraint replacing
+`unique_together`): a new upload may take a trashed file's name, and the
+restore finds a free key if its own was taken meanwhile.
+
+**Remote buckets have no trash.** A file in a mounted bucket from another
+Zenobia (`remote_toto`), and any mirror row, names the PEER's file; this
+server cannot hold its bytes for a restore. `VaultFile.can_be_trashed` is
+False there, and the doors keep their immediate delete, whose dialog says
+it is permanent. A peer's own DELETE on an exported bucket
+(`peer_file_detail`) also stays a purge on this host.
+
+The doors that move to the trash: the listing's Delete (`DeleteFileView`,
+answers `trashed: true|false`), the API's `DELETE /vault/api/files/<key>/`,
+the ACE editor's delete, primula's delete.
+
+Tests: `tests_trash` (hidden on each door; levy, figures and bucket purge
+still count or take it; versions still find it; the key is free).
+
 ## Buckets: types, custody and deletion (2026-09-30)
 
 Storage → Management (Superuser plan) creates, edits, tests and deletes buckets.
@@ -374,7 +435,7 @@ library pytest suite does not collect them): `tests`, `tests_access`,
 `tests_api`, `tests_purge`, `tests_hardening`, `tests_peering`,
 `tests_peer_api`, `tests_mirror`, `tests_transfer`, `tests_remote_ui`,
 `tests_transfers_ui`, `tests_outbound`, `tests_bucket_transition`,
-`tests_remote_page`, `tests_clearances`, `tests_storage_adapters`, `tests_clearance_tab`, `tests_management`, `tests_share_connect` — wired in zenobia's gate, core four in placidia's.
+`tests_remote_page`, `tests_clearances`, `tests_storage_adapters`, `tests_clearance_tab`, `tests_management`, `tests_share_connect`, `tests_trash` — wired in zenobia's gate, core four in placidia's.
 The two-host harness is a loopback: `peer_client._http` patched into
 Django's test client against the real peer views (one DB, clearing's
 pattern).
