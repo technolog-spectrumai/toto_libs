@@ -151,11 +151,18 @@ def _send_inline(form: PasswordResetForm, request) -> None:
 
 
 def _reset_on_chain(user, request, flow):
-    """``AUTH.PASSWORD_RESET`` for a password set through a link (2026-09-30).
+    """``AUTH.PASSWORD_RESET`` for a password set through a link (2026-09-30),
+    and the "your password was changed" notice to the account's address
+    (review, 2026-10-01): a reset is the change a member most needs to hear
+    about when it was not theirs. ``send_notice`` never raises.
 
     Soft edge like ``_email_send_mode``: ``toto.audit`` is optional here, and
     ``on_password_reset`` already swallows a record it cannot write.
     """
+    from toto.core.client_ip import client_ip
+    from toto.core.notices import send_notice
+
+    send_notice(user, "password_changed", {"address": client_ip(request)})
     if not django_apps.is_installed("toto.audit"):
         return None
     from toto.audit.identity import on_password_reset

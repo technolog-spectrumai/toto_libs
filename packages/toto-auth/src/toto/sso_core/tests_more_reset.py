@@ -111,6 +111,18 @@ class EmailFlowTests(TestCase):
         self.assertNotIn(token, json.dumps([record.request_source, record.metadata]))
         self.assertNotIn("a-much-better-pass-42", json.dumps(record.metadata))
 
+    def test_a_reset_mails_the_password_changed_notice(self):
+        # Review 2026-10-01: a reset told the member nothing.
+        token = default_token_generator.make_token(self.user)
+        self.client.post(self._confirm_url(self.user, token),
+                         {"new_password1": "a-much-better-pass-42",
+                          "new_password2": "a-much-better-pass-42"})
+        notices = [m for m in mail.outbox
+                   if m.extra_headers.get("X-Toto-Notice") == "password_changed"]
+        self.assertEqual(len(notices), 1)
+        self.assertEqual(notices[0].to, ["ada@x.test"])
+        self.assertNotIn(token, notices[0].body)
+
     def test_a_refused_reset_is_not_on_the_trail(self):
         from django.apps import apps
 
