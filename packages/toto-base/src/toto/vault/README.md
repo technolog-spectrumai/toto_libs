@@ -111,6 +111,34 @@ pks. Panel: `/vault/transfers/`.
 | `BUILD_WORKFLOWS` off | refresh + transfer dispatch refuse by name |
 | `BUILD_ANTIVIRUS` off | scans degrade to clean-but-unscanned (façade) |
 
+## File types: accepted and refused (2026-09-30)
+
+A file's type is `VaultFile.detect_type(mime, filename)`: the extension
+first (`_EXT_MAP`), then the browser's MIME type, and `text` when neither
+names anything. The types a file can be: PDF, image, HTML, text, Markdown,
+JSON, NeoJSON, YAML, XML, LaTeX, bibliography, CSV, SVG, audio, video,
+Python, a Primula sheet, a deck (`.pxml`) and a zip archive. Only svg, html,
+xml, json, pdf and pxml are read by the screener (`scanning.SCANNABLE_TYPES`);
+every other type is stored unscreened and recorded as unscreened.
+
+Refused:
+
+* **Microsoft Office files, always, on every host** (the owner, 2026-09-30:
+  ".docx, .xlsx or .pptx ---> REJECT. NO Microsoft here."). The OOXML formats
+  — .docx .xlsx .pptx and .docm .xlsm .pptm .dotx .xltx .potx — and the old
+  binary ones — .doc .xls .ppt — are not uploaded, imported, previewed or
+  converted, by any door, and no door advertises them. The refusal says why
+  and what to save the file as instead (PDF, HTML, Markdown, CSV or
+  OpenDocument). Before this rule an OOXML upload met the XML screener's
+  generic refusal only by accident (its MIME type contains "xml").
+* **OpenDocument is not Microsoft** — .odt .ods .odp are unaffected and keep
+  today's behaviour.
+* Whatever a host lists in `VAULT_REFUSED_FILE_TYPES` (e.g. `{"latex"}`),
+  refused at every door that assigns a type; rows that predate the ban keep
+  working.
+* Whatever the screener refuses (a hostile SVG, HTML, XML, JSON, PDF or deck):
+  the write stops and the author gets a sentence, never a repaired file.
+
 ## Clearances — a bucket kept to some people (2026-09-30)
 
 Clearances go on groups, never on items: in the vault the group is the
