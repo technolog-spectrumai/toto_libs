@@ -201,9 +201,35 @@ creates or deletes an account (console only; a first save creates the
   person's address or browser. Paged on its own `?signins_page=` — the
   Sessions list has `?page=`; `oya/partials/_server_pagination.html` takes a
   `page_param` for that — and each list's link carries the other's page.
+- **Key store** (`/account/key-store/`, 2026-10-01; `toto.gervazy.personal`):
+  the member creates their own personal key store — a gervazy strongbox
+  named `strongbox` (the name the desktop app's `GET /vault/api/strongbox/`
+  already gives it) with its master key and first data key, made by
+  `GervazyCryptoSession.initialize_strongbox` like every other box — under a
+  passphrase typed twice, at least 6 characters (the storage PIN's rule).
+  Before this the web could only initialise a box the admin, the seed or the
+  desktop had made. It never overwrites: a box of that name, keyed or bare,
+  refuses (a bare one is initialised on the keys page, `/gervazy/my-keys/`,
+  which keeps its salt), and so does a second request racing the first (the
+  owner+name unique constraint). It also refuses — rolled back — when the new
+  box would become the member's `user_strongboxes.first()` while another box
+  already is: that box's salt is what their sealed vault files open with
+  (`vault/storage_pin.py`). There is no recovery code, so nothing is shown
+  once: the passphrase is the only way in, goes to the key derivation and
+  nowhere else (`sensitive_post_parameters`, never the session, a message or
+  a log), and cannot be recovered. `AUTH.KEY_STORE_CREATED` carries the
+  box's id only; gervazy's `CryptoAuditLog` gets a
+  `create_personal_strongbox` row naming the box. The section shows the
+  form, "exists but has no keys yet", or "ready", with a link to My keys.
 
 Every profile or time-zone change is a `SOCIALHUB.PROFILE_CHANGED` record
-naming the fields (`fields`), never their values.
+naming the fields (`fields`), never their values; the password, e-mail,
+session and key store changes are `AUTH.*` records (`toto.audit.identity`),
+which is why Recent sign-ins shows them too.
+
+Every string the page, its forms and its messages show is marked for
+translation (`{% translate %}`, `{% blocktranslate %}`, `gettext`); the
+Polish catalogue is filled in separately.
 
 ## On the audit chain
 
