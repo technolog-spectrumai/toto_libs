@@ -12,6 +12,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from toto.core.auth_views import password_login_view, password_logout_view
+from toto.core.client_ip import client_ip
 from .models import SSOAccessToken, SSOAuthorizationCode, SSORelyingParty
 from .services import (
     build_id_token,
@@ -267,16 +268,13 @@ def enroll(request):
 
 
 def _client_ip(request):
-    """Best-effort source IP for the audit row.
+    """The source address for the invite and its log line, or None.
 
-    Behind nginx the peer is always the proxy, so the forwarded header is the only
-    thing with the real address in it. Recorded for after-the-fact review only —
-    nothing authorises on it, so a spoofed header misleads a reader rather than
-    granting anything.
+    ``toto.core.client_ip``'s answer (2026-09-30): nginx's X-Real-IP from a
+    trusted proxy, else the peer. It used to be X-Forwarded-For's first entry,
+    which nginx appends to, so a pairing could be recorded as from anywhere.
     """
-    forwarded = (request.META.get("HTTP_X_FORWARDED_FOR") or "").split(",")
-    candidate = (forwarded[0] if forwarded else "").strip()
-    return candidate or request.META.get("REMOTE_ADDR") or None
+    return client_ip(request) or None
 
 
 def _note_secret_proven(client, outcome):

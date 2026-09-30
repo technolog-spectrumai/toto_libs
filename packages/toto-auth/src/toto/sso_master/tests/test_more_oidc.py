@@ -569,15 +569,20 @@ class EnrollTransportTests(TestCase):
         self.assertIn(response.status_code, (400, 401))
         self.assertNotIn(ticket, response.content.decode())
 
-    def test_the_forwarded_address_is_the_one_recorded(self):
+    @override_settings(TRUSTED_PROXIES=["10.0.0.0/8"])
+    def test_the_proxy_s_address_is_the_one_recorded(self):
+        """X-Forwarded-For's first entry is the client's own word; nginx's
+        X-Real-IP is believed from a trusted proxy only (2026-09-30)."""
         from ..views import _client_ip
 
-        request = mock.Mock(META={"HTTP_X_FORWARDED_FOR": " 203.0.113.9 , 10.0.0.1",
+        request = mock.Mock(META={"HTTP_X_FORWARDED_FOR": "198.51.100.66, 203.0.113.9",
+                                  "HTTP_X_REAL_IP": "203.0.113.9",
                                   "REMOTE_ADDR": "10.0.0.2"})
         self.assertEqual(_client_ip(request), "203.0.113.9")
-        request.META = {"REMOTE_ADDR": "10.0.0.2"}
-        self.assertEqual(_client_ip(request), "10.0.0.2")
-        request.META = {}
+        request.META = {"HTTP_X_FORWARDED_FOR": "198.51.100.66",
+                        "HTTP_X_REAL_IP": "203.0.113.9", "REMOTE_ADDR": "192.0.2.4"}
+        self.assertEqual(_client_ip(request), "192.0.2.4")
+        request.META = {"HTTP_X_FORWARDED_FOR": "198.51.100.66"}
         self.assertIsNone(_client_ip(request))
 
 
