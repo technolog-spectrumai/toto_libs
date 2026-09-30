@@ -156,11 +156,11 @@ class FileUploadApiView(CorsApiView):
         content_type = file.content_type or ""
         file_type = VaultFile.detect_type(content_type, file.name)
 
-        from toto.vault.models import refused_file_types
-        if file_type in refused_file_types():
-            return JsonResponse(
-                {"error": f"This host does not accept {file_type} files."},
-                status=400)
+        from toto.vault.models import upload_refusal
+        refusal = upload_refusal(file.name, file_type=file_type, content=file,
+                                 mime=content_type)
+        if refusal:
+            return JsonResponse({"error": refusal}, status=400)
 
         bucket_slug = request.POST.get("bucket_slug", "").strip()
         if bucket_slug:
@@ -798,6 +798,10 @@ class FileCreateApiView(CorsApiView):
             return JsonResponse({"error": "Filename is required."}, status=400)
         if content is not None and not isinstance(content, str):
             return JsonResponse({"error": "content must be a string."}, status=400)
+        from toto.vault.models import upload_refusal
+        refusal = upload_refusal(title, file_type=file_type)
+        if refusal:
+            return JsonResponse({"error": refusal}, status=400)
 
         # Two different questions, and conflating them is what kept the desktop
         # client from pushing anything the server could not already mint empty.

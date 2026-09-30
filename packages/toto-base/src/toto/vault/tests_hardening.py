@@ -254,4 +254,4 @@ class RefusedFileTypesTests(TestCase):
             reverse("vault:gateway_upload", args=[directory.pk]),
             {"file": SimpleUploadedFile("paper.tex", b"\\documentclass")})
         self.assertFalse(VaultFile.objects.filter(file_type="latex").exists())
-        self.assertIn(b"refused", resp.content)
+        self.assertIn(b"does not accept latex files", resp.content)

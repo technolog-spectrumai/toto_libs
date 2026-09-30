@@ -74,6 +74,89 @@ def refused_file_types() -> frozenset:
     return frozenset(getattr(settings, "VAULT_REFUSED_FILE_TYPES", ()) or ())
 
 
+# No Microsoft Office file enters the platform (the owner, 2026-09-30: ".docx,
+# .xlsx or .pptx ---> REJECT. NO Microsoft here."). Not a host flag: every
+# host, every door. OpenDocument (.odt .ods .odp) is not Microsoft and is not
+# here. Before this an OOXML upload was refused only by accident — its MIME
+# type contains "xml", so detect_type said 'xml' and the XML screener choked
+# on the zip — with a sentence that said nothing about why.
+OFFICE_EXTENSIONS = frozenset({
+    ".docx", ".xlsx", ".pptx",
+    ".docm", ".xlsm", ".pptm", ".dotx", ".xltx", ".potx",
+    ".doc", ".xls", ".ppt",
+})
+_OFFICE_MIME_MARKS = ("msword", "officedocument", "ms-excel", "ms-powerpoint",
+                      "openxmlformats", "ms-word")
+#: The old binary formats are OLE2 compound files.
+_OLE2_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+#: An OOXML package is a zip with [Content_Types].xml and one of these parts.
+_OOXML_PARTS = ("word/", "xl/", "ppt/")
+
+
+def office_refusal_sentence() -> str:
+    return gettext("Microsoft Office files are not accepted here. Save it as PDF, "
+                   "HTML, Markdown or CSV (or OpenDocument) and upload that.")
+
+
+def _office_content(content) -> bool:
+    """Bytes, or a seekable file object (left where it was found)."""
+    import io
+    import zipfile
+
+    if content is None:
+        return False
+    stream = io.BytesIO(content) if isinstance(content, (bytes, bytearray)) else content
+    try:
+        start = stream.tell()
+    except (AttributeError, OSError, ValueError):
+        return False
+    try:
+        head = stream.read(8)
+        if isinstance(head, str):
+            return False
+        if head.startswith(_OLE2_MAGIC):
+            return True
+        if not head.startswith(b"PK"):
+            return False
+        stream.seek(start)
+        try:
+            with zipfile.ZipFile(stream) as zf:
+                names = zf.namelist()
+        except (zipfile.BadZipFile, OSError, ValueError, EOFError):
+            return False
+        return ("[Content_Types].xml" in names
+                and any(n.startswith(_OOXML_PARTS) for n in names))
+    finally:
+        try:
+            stream.seek(start)
+        except (OSError, ValueError):
+            pass
+
+
+def is_office_file(filename: str = "", content=None, mime: str = "") -> bool:
+    """By name, by declared type, or by what the bytes are — so a .docx
+    renamed to .zip is still a .docx, and an .odt (a zip without
+    [Content_Types].xml) is not one."""
+    if os.path.splitext(filename or "")[1].lower() in OFFICE_EXTENSIONS:
+        return True
+    mime = (mime or "").lower()
+    if mime and any(mark in mime for mark in _OFFICE_MIME_MARKS):
+        return True
+    return _office_content(content)
+
+
+def upload_refusal(filename: str = "", *, file_type: str = "", content=None,
+                   mime: str = "") -> str:
+    """The one rule a door asks before a file enters the vault: '' when it
+    may, otherwise the sentence to show. Office files first (never, anywhere),
+    then the host's ``VAULT_REFUSED_FILE_TYPES``."""
+    if is_office_file(filename, content, mime):
+        return office_refusal_sentence()
+    if file_type and file_type in refused_file_types():
+        return gettext("This host does not accept %(type)s files.") % {"type": file_type}
+    return ""
+
+
 class StorageProvider(models.Model):
     """
     A named S3-compatible provider preset (AWS, OVH, MinIO, …).

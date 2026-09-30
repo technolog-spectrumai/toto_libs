@@ -702,11 +702,11 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 auto_file_type = VaultFile.detect_type(mime or "", uploaded_file.name)
                 file_type = manual_type if manual_type in valid_types else auto_file_type
 
-                from toto.vault.models import refused_file_types
-                if file_type in refused_file_types():
-                    errors.append(
-                        f"{uploaded_file.name}: refused (this host does "
-                        f"not accept {file_type} files).")
+                from toto.vault.models import upload_refusal
+                refusal = upload_refusal(uploaded_file.name, file_type=file_type,
+                                         content=uploaded_file, mime=mime or "")
+                if refusal:
+                    errors.append(f"{uploaded_file.name}: {refusal}")
                     continue
 
                 # Screen before the row is made. `is_scannable` first so a 200 MB
@@ -1708,12 +1708,12 @@ class RenameFileView(LoginRequiredMixin, View):
             return JsonResponse({"ok": False, "error": "Missing required fields."}, status=400)
         if file_type and file_type not in self._VALID_TYPES:
             return JsonResponse({"ok": False, "error": "Invalid file type."}, status=400)
-        from toto.vault.models import refused_file_types
-        if file_type and file_type in refused_file_types():
-            return JsonResponse(
-                {"ok": False,
-                 "error": f"This host does not accept {file_type} files."},
-                status=400)
+        from toto.vault.models import upload_refusal
+        # A name is a door too: renaming a note to .docx would list an Office
+        # file the upload doors refused (2026-09-30).
+        refusal = upload_refusal(new_title, file_type=file_type)
+        if refusal:
+            return JsonResponse({"ok": False, "error": refusal}, status=400)
         vault_file = get_object_or_404(access.gate_by_bucket(
             request.user, VaultFile.objects.filter(owner=request.user)), pk=file_pk)
         if access.is_mirror_row(vault_file):
@@ -2125,6 +2125,10 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
 
         if not title:
             return JsonResponse({"error": "Filename is required."}, status=400)
+        from toto.vault.models import upload_refusal
+        refusal = upload_refusal(title)
+        if refusal:
+            return JsonResponse({"error": refusal}, status=400)
         # Derived, not a second hardcoded list: `_ALLOWED` and CREATABLE_TYPES
         # used to be two of them that had to agree, and a plugin-declared type
         # would have been offered by the menu and refused by this check.
