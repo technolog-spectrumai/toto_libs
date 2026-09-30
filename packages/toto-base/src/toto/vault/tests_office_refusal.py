@@ -135,6 +135,13 @@ class DoorTests(TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn(SENTENCE, resp.json()["error"])
 
+    def test_a_csv_windows_declares_as_excel_is_taken(self):
+        # Review, 2026-10-01: the declared type alone refused it.
+        resp = self.client.post(reverse("vault:api_file_upload"), {
+            "file": SimpleUploadedFile("data.csv", b"a,b\n1,2\n",
+                                       content_type="application/vnd.ms-excel")})
+        self.assertEqual(resp.status_code, 201, resp.content)
+
     def test_api_upload_takes_a_plain_zip_and_an_odt(self):
         self.assertEqual(self._api("bundle.zip", PLAIN_ZIP).status_code, 201)
         self.assertEqual(self._api("letter.odt", ODT).status_code, 201)

@@ -141,10 +141,14 @@ def is_office_file(filename: str = "", content=None, mime: str = "") -> bool:
     [Content_Types].xml) is not one."""
     if os.path.splitext(filename or "")[1].lower() in OFFICE_EXTENSIONS:
         return True
+    if content is not None:
+        # The bytes decide when there are bytes. A declared type is the
+        # sender's guess, and Windows declares application/vnd.ms-excel for
+        # every .csv where Excel is installed: CSV is what the refusal tells
+        # people to send instead (2026-10-01).
+        return _office_content(content)
     mime = (mime or "").lower()
-    if mime and any(mark in mime for mark in _OFFICE_MIME_MARKS):
-        return True
-    return _office_content(content)
+    return bool(mime) and any(mark in mime for mark in _OFFICE_MIME_MARKS)
 
 
 def upload_refusal(filename: str = "", *, file_type: str = "", content=None,
