@@ -3,16 +3,19 @@
   Server-side Django paginator.
   Expects: page_obj, is_paginated
   Optional: extra_query — extra query string params e.g. "&bucket=foo"
+  Optional: page_param — the page's query parameter, "page" if not given; a
+  second paginated list on the same page needs its own (2026-09-30).
 {% endcomment %}
+{% with param=page_param|default:"page" %}
 {% if is_paginated %}
 <nav class="flex flex-wrap justify-center items-center gap-2">
   {% if page_obj.has_previous %}
-    <a href="?page=1{{ extra_query }}"
+    <a href="?{{ param }}=1{{ extra_query }}"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
        class="inline-flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-semibold shadow-sm transition">
       <i class="fa-solid fa-angles-left"></i>
     </a>
-    <a href="?page={{ page_obj.previous_page_number }}{{ extra_query }}"
+    <a href="?{{ param }}={{ page_obj.previous_page_number }}{{ extra_query }}"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
        class="inline-flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-semibold shadow-sm transition">
       <i class="fa-solid fa-chevron-left"></i>
@@ -26,12 +29,12 @@
   </span>
 
   {% if page_obj.has_next %}
-    <a href="?page={{ page_obj.next_page_number }}{{ extra_query }}"
+    <a href="?{{ param }}={{ page_obj.next_page_number }}{{ extra_query }}"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
        class="inline-flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-semibold shadow-sm transition">
       <i class="fa-solid fa-chevron-right"></i>
     </a>
-    <a href="?page={{ page_obj.paginator.num_pages }}{{ extra_query }}"
+    <a href="?{{ param }}={{ page_obj.paginator.num_pages }}{{ extra_query }}"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
        class="inline-flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-semibold shadow-sm transition">
       <i class="fa-solid fa-angles-right"></i>
@@ -39,3 +42,4 @@
   {% endif %}
 </nav>
 {% endif %}
+{% endwith %}
