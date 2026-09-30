@@ -1,0 +1,205 @@
+{% load i18n %}{% comment %}"Share with another Zenobia" (share_views.py): one modal for every
+   bucket, opened by its row's Share button (vault-share-open, with the
+   bucket's "Shared with" link). Steps:
+
+     list    what sharing does; the "Shared with" list (label, rights, until
+             when, made when and by whom, last use) with Rotate key and
+             Revoke (confirmed); New share
+     form    who it is for (federated hosts suggested), this Zenobia's
+             address, the rights — all OFF, a warning under Delete — and how
+             long (7 days by default)
+     rotate  a new key for one share, and its end date
+     result  the door's one answer that carries the code
+             (vault/manage/_share_code.html): the code, Copy, its QR code
+             drawn here, the other administrator's steps — shown once
+
+   Alpine component bucketShare (vault/manage/_share_scripts.html). Every
+   name reaches the page as x-text or autoescaped template text.{% endcomment %}
+{% trans "No end date" as l_no_end %}{% trans "Never used" as l_never_used %}
+<div x-data="bucketShare()" data-csrf="{{ csrf_token }}" data-testid="bucket-share-root"
+     @vault-share-open.window="openFor($event.detail)" @keydown.escape.window="open && close()">
+<div x-show="open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     role="dialog" aria-modal="true" aria-labelledby="bucket-share-title">
+  <div class="absolute inset-0 bg-black/60" @click="close()"></div>
+  <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+       class="relative max-h-[90vh] w-full max-w-2xl space-y-4 overflow-y-auto rounded-xl border p-5 text-sm shadow-xl"
+       data-testid="bucket-share">
+    <div class="flex items-start justify-between gap-2">
+      <h2 id="bucket-share-title" x-ref="shareTitle" tabindex="-1" class="min-w-0 text-lg font-bold outline-none">
+        <i class="fa-solid fa-share-nodes mr-1" aria-hidden="true"></i>{% trans "Share with another Zenobia" %}
+        <span class="block break-words text-sm font-normal" x-text="bucket ? bucket.name : ''"></span></h2>
+      <button type="button" @click="close()" class="opacity-70 hover:opacity-100" aria-label="{% trans 'Close' %}">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+    </div>
+
+    <p x-show="error" x-cloak x-text="error" role="alert" data-testid="bucket-share-error"
+       class="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-red-600 dark:text-red-400"></p>
+    <p x-show="message" x-cloak x-text="message" role="status"
+       class="rounded border border-emerald-500/50 bg-emerald-500/10 px-3 py-2 text-emerald-700 dark:text-emerald-300"></p>
+    <p x-show="loading" x-cloak class="text-xs opacity-60"><i class="fa-solid fa-circle-notch fa-spin mr-1" aria-hidden="true"></i>{% trans "Loading…" %}</p>
+
+    {# ── the list ── #}
+    <section x-show="step === 'list'" class="space-y-4" data-testid="bucket-share-list">
+      <p class="opacity-80">{% trans "Sharing lets another Zenobia use this bucket over the network — only what you tick: see its files, download them, add files, delete them. You hand that Zenobia's administrator a pairing code, as text or as a QR code; it is shown once. A share covers the whole bucket: folder access lists do not cross to the other Zenobia." %}</p>
+      <p x-show="refusal" x-cloak x-text="refusal" role="note" data-testid="bucket-share-refusal"
+         class="rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-200"></p>
+
+      <div class="space-y-2">
+        <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Shared with" %}</h3>
+        <p x-show="!loading && !shares.length" class="text-xs opacity-60" data-testid="bucket-share-none">{% trans "Not shared with any other Zenobia." %}</p>
+        <ul class="space-y-2" data-testid="bucket-share-shares">
+          <template x-for="s in shares" :key="s.id">
+            <li class="space-y-2 rounded-lg border border-current/15 p-3" :class="s.status === 'active' ? '' : 'opacity-70'">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="min-w-0 break-words font-semibold" x-text="s.label"></span>
+                <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
+                      :class="s.status === 'active' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : (s.status === 'revoked' ? 'bg-red-500/15 text-red-700 dark:text-red-300' : 'bg-amber-500/15 text-amber-800 dark:text-amber-200')"
+                      x-text="s.status_label"></span>
+              </div>
+              <div class="flex flex-wrap gap-1">
+                <template x-for="r in s.rights_labels"><span class="rounded border border-current/25 px-1.5 py-0.5 text-xs" x-text="r"></span></template>
+              </div>
+              <dl class="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1 text-xs">
+                <dt class="opacity-60">{% trans "Until" %}</dt><dd x-text="s.expires || '{{ l_no_end|escapejs }}'"></dd>
+                <dt class="opacity-60">{% trans "Made" %}</dt><dd x-text="s.created + (s.created_by ? ' · ' + s.created_by : '')"></dd>
+                <dt class="opacity-60">{% trans "Last used" %}</dt><dd x-text="s.last_used ? s.last_used + ' · ' + s.uses + '×' : '{{ l_never_used|escapejs }}'"></dd>
+                <dt class="opacity-60" x-show="s.rotated">{% trans "Key rotated" %}</dt><dd x-show="s.rotated" x-text="s.rotated"></dd>
+              </dl>
+              <div class="flex flex-wrap items-center gap-1.5" x-show="s.status !== 'revoked'">
+                <button type="button" @click="startRotate(s)" :disabled="!!refusal"
+                        class="inline-flex items-center gap-1 rounded border border-current/25 px-2.5 py-1 text-xs font-semibold transition hover:opacity-80 disabled:opacity-40">
+                  <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>{% trans "Rotate key" %}</button>
+                <button type="button" x-show="confirmRevoke !== s.id" @click="confirmRevoke = s.id"
+                        class="inline-flex items-center gap-1 rounded border border-red-500/50 px-2.5 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-500/10 dark:text-red-400">
+                  <i class="fa-solid fa-ban" aria-hidden="true"></i>{% trans "Revoke" %}</button>
+                <span x-show="confirmRevoke === s.id" x-cloak class="flex flex-wrap items-center gap-1.5">
+                  <span class="text-xs">{% trans "The other Zenobia loses access at once, for good." %}</span>
+                  <button type="button" @click="revoke(s)" :disabled="busy"
+                          class="rounded bg-red-600 px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-40">{% trans "Revoke for good" %}</button>
+                  <button type="button" @click="confirmRevoke = null" class="rounded border border-current/25 px-2.5 py-1 text-xs">{% trans "Cancel" %}</button>
+                </span>
+              </div>
+            </li>
+          </template>
+        </ul>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-1">
+        <button type="button" @click="close()" class="rounded border border-current/25 px-3 py-2">{% trans "Close" %}</button>
+        <button type="button" @click="startNew()" :disabled="!!refusal || loading || !shareUrl" data-testid="bucket-share-new"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-1.5 rounded px-4 py-2 font-semibold disabled:opacity-40">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i>{% trans "New share" %}</button>
+      </div>
+    </section>
+
+    {# ── a new share ── #}
+    <form x-show="step === 'form'" x-cloak @submit.prevent="submit($el)" class="space-y-4" autocomplete="off"
+          data-testid="bucket-share-form">
+      <label class="block space-y-1">
+        <span class="text-xs font-semibold opacity-70">{% trans "Who it is for" %}</span>
+        <input type="text" name="label" x-ref="shareLabel" x-model="form.label" required maxlength="{{ sc.label_max }}"
+               list="bucket-share-hosts" data-testid="bucket-share-label"
+               :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+               class="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-current/20">
+        <datalist id="bucket-share-hosts">{% for h in sc.hosts %}<option value="{{ h.label }}"></option>{% endfor %}</datalist>
+        <span class="block text-xs opacity-60">{% trans "The other Zenobia, as this list will name it — e.g. its site name. Zenobias this one is federated with are suggested." %}</span>
+        <template x-for="e in (errors.label || [])"><span class="block text-xs text-red-600 dark:text-red-400" role="alert" x-text="e"></span></template>
+      </label>
+
+      <fieldset class="space-y-2">
+        <legend class="text-xs font-semibold opacity-70">{% trans "What the other Zenobia may do with this bucket" %}</legend>
+        <p class="text-xs opacity-60">{% trans "Nothing is ticked until you tick it." %}</p>
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid="bucket-share-rights">
+          <label class="flex items-start gap-2 rounded border border-current/15 p-2">
+            <input type="checkbox" name="may_list" value="1" x-model="form.may_list" class="mt-0.5" data-testid="bucket-share-may_list">
+            <span><span class="font-semibold">{% trans "List" %}</span><span class="block text-xs opacity-70">{% trans "See which files the bucket holds, and their details." %}</span>
+              <span class="block text-xs opacity-70">{% trans "Needed to connect the bucket there: ticked with any other right." %}</span></span>
+          </label>
+          <label class="flex items-start gap-2 rounded border border-current/15 p-2">
+            <input type="checkbox" name="may_download" value="1" x-model="form.may_download" @change="needList($event)" class="mt-0.5" data-testid="bucket-share-may_download">
+            <span><span class="font-semibold">{% trans "Download" %}</span><span class="block text-xs opacity-70">{% trans "Fetch the files' contents." %}</span></span>
+          </label>
+          <label class="flex items-start gap-2 rounded border border-current/15 p-2">
+            <input type="checkbox" name="may_upload" value="1" x-model="form.may_upload" @change="needList($event)" class="mt-0.5" data-testid="bucket-share-may_upload">
+            <span><span class="font-semibold">{% trans "Upload" %}</span><span class="block text-xs opacity-70">{% trans "Add files to this bucket." %}</span></span>
+          </label>
+          <label class="flex items-start gap-2 rounded border border-red-500/30 p-2">
+            <input type="checkbox" name="may_delete" value="1" x-model="form.may_delete" @change="needList($event)" class="mt-0.5" data-testid="bucket-share-may_delete">
+            <span><span class="font-semibold">{% trans "Delete" %}</span><span class="block text-xs opacity-70">{% trans "Delete files from this bucket — for good, on this server." %}</span></span>
+          </label>
+        </div>
+        <p x-show="form.may_delete" x-cloak role="alert" data-testid="bucket-share-delete-warning"
+           class="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-700 dark:text-red-300">
+          <i class="fa-solid fa-triangle-exclamation mr-1" aria-hidden="true"></i>{% trans "With Delete ticked, the other Zenobia can destroy files in this bucket for good — nothing brings them back. Tick it only for a Zenobia you trust with that." %}</p>
+        <template x-for="e in (errors.rights || [])"><p class="text-xs text-red-600 dark:text-red-400" role="alert" x-text="e"></p></template>
+      </fieldset>
+
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <label class="block space-y-1">
+          <span class="text-xs font-semibold opacity-70">{% trans "How long" %}</span>
+          <select name="expires" x-model="form.expires" data-testid="bucket-share-expires"
+                  :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                  class="w-full rounded border px-3 py-2">
+            {% for c in sc.expiry_choices %}<option value="{{ c.value }}"{% if c.value == sc.default_expiry %} selected{% endif %}>{{ c.label }}</option>{% endfor %}
+          </select>
+          <span class="block text-xs opacity-60">{% trans "When it ends, the other Zenobia can no longer use the bucket. Rotate key gives a new code with a new end date." %}</span>
+          <template x-for="e in (errors.expires || [])"><span class="block text-xs text-red-600 dark:text-red-400" role="alert" x-text="e"></span></template>
+        </label>
+        <label class="block space-y-1">
+          <span class="text-xs font-semibold opacity-70">{% trans "This Zenobia's address" %}</span>
+          <input type="text" name="address" x-model="form.address" maxlength="200" spellcheck="false" data-testid="bucket-share-address"
+                 :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                 class="w-full rounded border px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-current/20">
+          <span class="block text-xs opacity-60">{% trans "As the other Zenobia reaches this one. The code names it; its administrator can change it there." %}</span>
+          <template x-for="e in (errors.address || [])"><span class="block text-xs text-red-600 dark:text-red-400" role="alert" x-text="e"></span></template>
+        </label>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-1">
+        <button type="button" @click="back()" class="rounded border border-current/25 px-3 py-2">{% trans "Back" %}</button>
+        <button type="submit" :disabled="busy" data-testid="bucket-share-submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-1.5 rounded px-4 py-2 font-semibold disabled:opacity-40">
+          <i class="fa-solid fa-key" aria-hidden="true"></i>{% trans "Make the pairing code" %}</button>
+      </div>
+    </form>
+
+    {# ── a new key for one share ── #}
+    <form x-show="step === 'rotate'" x-cloak @submit.prevent="rotate($el)" class="space-y-4" autocomplete="off"
+          data-testid="bucket-share-rotate">
+      <h3 class="font-semibold"><i class="fa-solid fa-arrows-rotate mr-1" aria-hidden="true"></i>{% trans "Rotate key" %} — <span x-text="rotating ? rotating.label : ''"></span></h3>
+      <p class="rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-200">{% trans "A new key and a new pairing code replace the old ones. The old key stops working at once: the other Zenobia's connection to this bucket fails until its administrator enters the new code there (Connect a bucket from another Zenobia offers to replace the stored key)." %}</p>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <label class="block space-y-1">
+          <span class="text-xs font-semibold opacity-70">{% trans "How long" %}</span>
+          <select name="expires" x-ref="rotateExpires" x-model="rotateForm.expires"
+                  :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                  class="w-full rounded border px-3 py-2">
+            <option value="keep" :disabled="!rotating || rotating.status !== 'active'">{% trans "Keep its end date" %}</option>
+            {% for c in sc.expiry_choices %}<option value="{{ c.value }}">{{ c.label }}</option>{% endfor %}
+          </select>
+          <template x-for="e in (errors.expires || [])"><span class="block text-xs text-red-600 dark:text-red-400" role="alert" x-text="e"></span></template>
+        </label>
+        <label class="block space-y-1">
+          <span class="text-xs font-semibold opacity-70">{% trans "This Zenobia's address" %}</span>
+          <input type="text" name="address" x-model="rotateForm.address" maxlength="200" spellcheck="false"
+                 :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                 class="w-full rounded border px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-current/20">
+          <template x-for="e in (errors.address || [])"><span class="block text-xs text-red-600 dark:text-red-400" role="alert" x-text="e"></span></template>
+        </label>
+      </div>
+      <div class="flex justify-end gap-2 pt-1">
+        <button type="button" @click="back()" class="rounded border border-current/25 px-3 py-2">{% trans "Back" %}</button>
+        <button type="submit" :disabled="busy"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-1.5 rounded px-4 py-2 font-semibold disabled:opacity-40">
+          <i class="fa-solid fa-key" aria-hidden="true"></i>{% trans "Make a new code" %}</button>
+      </div>
+    </form>
+
+    {# ── the code, once: filled by the door's answer, emptied on close ── #}
+    <div x-show="step === 'result'" x-cloak x-ref="result" @click="onResult($event)" data-testid="bucket-share-result"></div>
+  </div>
+</div>
+</div>

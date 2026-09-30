@@ -1,0 +1,463 @@
+{% load static %}{% comment %}The share and connect modals' Alpine components (share_views.py).
+   Settings come from the bucket-share-config json_script
+   (share_views.page_config — nothing secret).
+
+   bucketShare — a bucket's "Shared with" list, a new share, Rotate key,
+   Revoke. The pairing code arrives ONCE, as the HTML fragment the door
+   answers (vault/manage/_share_code.html); its QR code is drawn here, in the
+   browser, from exactly that string with the vendored qrcodejs (the one the
+   welcome page's _local_qr.html uses) — never a QR service. Closing the
+   modal removes the fragment from the page.
+
+   bucketConnect — the connect stepper. The code lives in this component's
+   memory only and is posted to each JSON door; no door ever answers with it.
+   It is pasted, scanned with the camera (only after "Scan QR"; stopped as
+   soon as a code is read, on Stop, when the modal closes or the page is
+   left) or read from a chosen image — decoded here, never uploaded:
+   BarcodeDetector where the browser has one, else the vendored jsQR, loaded
+   on first need.{% endcomment %}
+{% if sc.share_enabled %}<script src="{% static 'vendor/qrcodejs/qrcode.min.js' %}"></script>{% endif %}
+<script>
+document.addEventListener('alpine:init', () => {
+  const read = (id, fallback) => {
+    const el = document.getElementById(id);
+    try { return el ? JSON.parse(el.textContent) : fallback; } catch (e) { return fallback; }
+  };
+  const cfg = read('bucket-share-config', {}) || {};
+  const T = cfg.texts || {};
+  const urls = cfg.urls || {};
+  const JSQR_URL = "{% static 'vendor/jsqr/jsQR.js' %}";
+  const picker = (owner) => ({owner: owner || null, q: '', results: [], searching: false,
+                              searched: false, timer: null, seq: 0});
+
+  // ── QR reading, in the browser only ───────────────────────────────────────
+  let jsqrLoading = null;
+  const loadJsQR = () => {
+    if (typeof window.jsQR === 'function') return Promise.resolve(true);
+    if (!jsqrLoading) {
+      jsqrLoading = new Promise((resolve) => {
+        const s = document.createElement('script');
+        s.src = JSQR_URL;
+        s.onload = () => resolve(typeof window.jsQR === 'function');
+        s.onerror = () => { jsqrLoading = null; resolve(false); };
+        document.head.appendChild(s);
+      });
+    }
+    return jsqrLoading;
+  };
+  const makeDetector = async () => {
+    if (!('BarcodeDetector' in window)) return null;
+    try {
+      const formats = await window.BarcodeDetector.getSupportedFormats();
+      if (formats && formats.indexOf('qr_code') < 0) return null;
+      return new window.BarcodeDetector({formats: ['qr_code']});
+    } catch (e) { return null; }
+  };
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', {willReadFrequently: true});
+  // One look at a video frame, an ImageBitmap or an <img>: the code, or ''.
+  const readQr = async (source, width, height, detector, maxSide) => {
+    if (detector) {
+      try {
+        const found = await detector.detect(source);
+        if (found && found.length && found[0].rawValue) return String(found[0].rawValue);
+      } catch (e) { /* fall through to jsQR */ }
+    }
+    if (typeof window.jsQR !== 'function' || !width || !height || !ctx) return '';
+    const scale = Math.min(1, (maxSide || 1024) / Math.max(width, height));
+    const w = Math.max(1, Math.round(width * scale)), h = Math.max(1, Math.round(height * scale));
+    canvas.width = w; canvas.height = h;
+    ctx.drawImage(source, 0, 0, w, h);
+    const hit = window.jsQR(ctx.getImageData(0, 0, w, h).data, w, h, {inversionAttempts: 'attemptBoth'});
+    return hit && hit.data ? String(hit.data) : '';
+  };
+
+  // ── Sharing a bucket ──────────────────────────────────────────────────────
+  Alpine.data('bucketShare', () => {
+    const blank = () => ({label: '', address: cfg.address || '', may_list: false, may_download: false,
+                          may_upload: false, may_delete: false, expires: cfg.default_expiry || '7'});
+    return {
+      open: false, loading: false, busy: false, step: 'list', bucket: null, shares: [], refusal: '',
+      listUrl: '', shareUrl: '', error: '', errors: {}, message: '', confirmRevoke: null,
+      rotating: null, form: blank(), rotateForm: {expires: 'keep', address: cfg.address || ''}, csrf: '',
+      init() { this.csrf = this.$el.dataset.csrf || ''; },
+      async openFor(detail) {
+        if (!detail || !detail.url) return;
+        this.wipe();
+        Object.assign(this, {open: true, step: 'list', bucket: null, shares: [], refusal: '', error: '',
+                             errors: {}, message: '', confirmRevoke: null, rotating: null,
+                             listUrl: detail.url, shareUrl: ''});
+        // Into the dialog, like every other modal of the page: its title, so
+        // a screen reader names the dialog and Tab starts inside it.
+        this.$nextTick(() => this.$refs.shareTitle && this.$refs.shareTitle.focus());
+        await this.load();
+      },
+      async load() {
+        this.loading = true;
+        try {
+          const r = await fetch(this.listUrl, {headers: {'Accept': 'application/json'}, credentials: 'same-origin'});
+          const d = await r.json();
+          if (!r.ok || !d.ok) { this.error = d.error || T.failed; return; }
+          this.take(d);
+        } catch (e) {
+          this.error = T.failed;
+        } finally {
+          this.loading = false;
+        }
+      },
+      take(d) {
+        this.bucket = d.bucket || this.bucket;
+        this.shares = d.shares || [];
+        this.refusal = d.refusal || '';
+        this.shareUrl = d.share_url || this.shareUrl;
+      },
+      startNew() {
+        this.form = blank(); this.errors = {}; this.error = ''; this.message = '';
+        this.step = 'form';
+        this.$nextTick(() => this.$refs.shareLabel && this.$refs.shareLabel.focus());
+      },
+      startRotate(share) {
+        this.rotating = share; this.errors = {}; this.error = ''; this.message = '';
+        this.rotateForm = {expires: share.status === 'active' ? 'keep' : (cfg.default_expiry || '7'),
+                           address: cfg.address || ''};
+        this.step = 'rotate';
+        this.$nextTick(() => this.$refs.rotateExpires && this.$refs.rotateExpires.focus());
+      },
+      // List is what connecting reads (the share's manifest): ticked with any other right.
+      needList(event) { if (event && event.target && event.target.checked) this.form.may_list = true; },
+      back() { this.step = 'list'; this.errors = {}; this.error = ''; },
+      submit(form) { return this.mint(this.shareUrl, form); },
+      rotate(form) { return this.rotating ? this.mint(this.rotating.rotate_url, form) : null; },
+      // A share made or rotated: the answer is the fragment carrying the code,
+      // shown once; a refusal is JSON, the form's sentences.
+      async mint(url, form) {
+        if (this.busy || !url) return;
+        this.busy = true; this.error = ''; this.errors = {};
+        try {
+          const r = await fetch(url, {method: 'POST', body: new FormData(form), credentials: 'same-origin',
+                                      headers: {'X-CSRFToken': this.csrf, 'Accept': 'text/html, application/json'}});
+          const type = r.headers.get('Content-Type') || '';
+          if (r.ok && type.indexOf('text/html') === 0) {
+            const html = await r.text();
+            this.step = 'result';
+            this.$refs.result.innerHTML = html;
+            this.$nextTick(() => {
+              this.drawQr();
+              // The only moment the code is shown: focus lands on it, never on
+              // the form button that has just been hidden.
+              const copy = this.$refs.result.querySelector('[data-copy-code]');
+              if (copy) copy.focus();
+            });
+            this.load();
+            return;
+          }
+          const d = await r.json().catch(() => ({}));
+          this.error = d.error || T.failed;
+          this.errors = d.errors || {};
+        } catch (e) {
+          this.error = T.failed;
+        } finally {
+          this.busy = false;
+        }
+      },
+      async revoke(share) {
+        if (this.busy) return;
+        this.busy = true; this.error = ''; this.message = '';
+        try {
+          const r = await fetch(share.revoke_url, {method: 'POST', credentials: 'same-origin',
+                                                   headers: {'X-CSRFToken': this.csrf, 'Accept': 'application/json'}});
+          const d = await r.json();
+          if (!r.ok || !d.ok) { this.error = d.error || T.failed; return; }
+          this.take(d);
+          this.message = d.message || '';
+        } catch (e) {
+          this.error = T.failed;
+        } finally {
+          this.busy = false; this.confirmRevoke = null;
+        }
+      },
+      // The QR code of exactly the code string, drawn locally.
+      drawQr() {
+        const box = this.$refs.result;
+        if (!box) return;
+        const field = box.querySelector('[data-pairing-code]');
+        const holder = box.querySelector('[data-pairing-qr]');
+        const missing = box.querySelector('[data-qr-missing]');
+        const link = box.querySelector('[data-qr-download]');
+        if (!field || !holder) return;
+        let drawn = false;
+        if (window.QRCode) {
+          for (const level of [QRCode.CorrectLevel.M, QRCode.CorrectLevel.L]) {
+            try {
+              holder.innerHTML = '';
+              new QRCode(holder, {text: field.value.trim(), width: 288, height: 288,
+                                  colorDark: '#000000', colorLight: '#ffffff', correctLevel: level});
+              drawn = true;
+              break;
+            } catch (e) { drawn = false; }
+          }
+        }
+        if (!drawn) {
+          holder.innerHTML = '';
+          holder.hidden = true;
+          if (missing) missing.hidden = false;
+          return;
+        }
+        const drawnCanvas = holder.querySelector('canvas');
+        if (drawnCanvas && link) {
+          try { link.href = drawnCanvas.toDataURL('image/png'); link.hidden = false; } catch (e) { /* no image */ }
+        }
+      },
+      onResult(event) {
+        const copy = event.target.closest('[data-copy-code]');
+        if (copy) { this.copy(copy); return; }
+        if (event.target.closest('[data-close-result]')) this.close();
+      },
+      async copy(button) {
+        const field = this.$refs.result && this.$refs.result.querySelector('[data-pairing-code]');
+        if (!field) return;
+        let done = false;
+        try {
+          if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(field.value); done = true; }
+        } catch (e) { done = false; }
+        if (!done) {
+          field.focus(); field.select();
+          try { done = document.execCommand('copy'); } catch (e) { done = false; }
+        }
+        const label = button.querySelector('[data-copy-text]');
+        if (done && label) {
+          const before = label.textContent;
+          label.textContent = button.dataset.copiedLabel || before;
+          setTimeout(() => { label.textContent = before; }, 2000);
+        }
+      },
+      // The code leaves the page with the modal.
+      wipe() { if (this.$refs.result) this.$refs.result.innerHTML = ''; },
+      close() {
+        this.wipe();
+        this.open = false; this.step = 'list'; this.confirmRevoke = null; this.busy = false;
+      },
+    };
+  });
+
+  // ── Connecting a bucket another Zenobia shares ────────────────────────────
+  Alpine.data('bucketConnect', () => {
+    // Not reactive on purpose: a MediaStream behind Alpine's proxy refuses its own methods.
+    let stream = null, timer = null, detector = null, started = 0;
+    // Every startScan takes a number; stopScan (Stop, close, a step, leaving
+    // the page) moves it on, so a start still waiting for the camera — or for
+    // the browser's permission prompt — knows it was superseded.
+    let scanSeq = 0;
+    const fresh = () => ({step: 1, code: '', baseUrl: '', preview: null, error: '', errors: {}, busy: false,
+                          test: null, name: '', ai: false, renew: null, scanMsg: '', scanning: false,
+                          starting: false, filledHost: '', filledName: '', picker: picker(cfg.me)});
+    return Object.assign(fresh(), {
+      open: false, csrf: '', blocked: cfg.connect_blocked || '',
+      init() {
+        this.csrf = this.$el.dataset.csrf || '';
+        window.addEventListener('pagehide', () => this.stopScan());
+        document.addEventListener('visibilitychange', () => { if (document.hidden) this.stopScan(); });
+      },
+      show() {
+        this.stopScan();
+        Object.assign(this, fresh());
+        this.open = true;
+        this.$nextTick(() => this.$refs.connectCode && this.$refs.connectCode.focus());
+      },
+      close() {
+        this.stopScan();
+        Object.assign(this, fresh());   // the code is forgotten with the modal
+        this.open = false;
+      },
+      go(step) { this.stopScan(); this.error = ''; this.step = step; },
+      async post(url, fields, form) {
+        const body = form ? new FormData(form) : new FormData();
+        Object.keys(fields || {}).forEach((k) => body.set(k, fields[k]));
+        try {
+          const r = await fetch(url, {method: 'POST', body, credentials: 'same-origin',
+                                      headers: {'X-CSRFToken': this.csrf, 'Accept': 'application/json'}});
+          return await r.json();
+        } catch (e) {
+          return {ok: false, error: T.failed, errors: {}};
+        }
+      },
+      refused(d) {
+        this.error = d.error || T.failed;
+        this.errors = d.errors || {};
+        const to = {code: 1, address: 2, test: 3, name: 4}[d.step];
+        if (to) this.step = to;
+        if (d.step === 'test') this.test = {ok: false, detail: (this.errors.test || [this.error])[0]};
+      },
+      // 1 → 2: what the code grants, nothing saved.
+      async toPreview() {
+        this.stopScan();
+        if (!this.code.trim()) { this.error = T.paste_first; return; }
+        if (this.busy) return;
+        this.busy = true; this.error = ''; this.errors = {}; this.renew = null;
+        const d = await this.post(urls.preview, {pairing_code: this.code.trim()});
+        this.busy = false;
+        if (!d.ok) {
+          this.refused(d);
+          // Only a key that can be replaced gets the panel (and its button).
+          this.renew = d.connected && d.connected.renewable ? d.connected : null;
+          return;
+        }
+        this.preview = d.preview;
+        // What an earlier code filled in is replaced by this code's own; what
+        // the administrator typed is kept.
+        const host = d.preview.host || '', name = d.name || '';
+        if (!this.baseUrl.trim() || this.baseUrl.trim() === this.filledHost) this.baseUrl = host;
+        if (!this.name.trim() || this.name.trim() === this.filledName) this.name = name;
+        this.filledHost = host; this.filledName = name;
+        this.test = null;
+        this.step = 2;
+      },
+      // 2 → 3: the connection test.
+      toTest() {
+        if (!this.baseUrl.trim()) { this.error = T.address_first; return; }
+        this.test = null; this.error = ''; this.step = 3;
+        this.runTest();
+      },
+      async runTest() {
+        if (this.busy) return;
+        this.busy = true; this.error = ''; this.errors = {}; this.test = null;
+        const d = await this.post(urls.test, {pairing_code: this.code.trim(), base_url: this.baseUrl.trim()});
+        this.busy = false;
+        if (d.errors && Object.keys(d.errors).length) { this.refused(d); return; }
+        this.test = {ok: !!d.ok, detail: d.detail || d.error || ''};
+        if (d.ok && d.base_url) {
+          if (this.baseUrl.trim() === this.filledHost) this.filledHost = d.base_url;
+          this.baseUrl = d.base_url;
+        }
+      },
+      // 3 → 4: only after the test answered.
+      toName() {
+        if (!(this.test && this.test.ok)) return;
+        this.error = ''; this.step = 4;
+        this.$nextTick(() => this.$refs.connectName && this.$refs.connectName.focus());
+      },
+      async connect(form) {
+        if (this.busy) return;
+        this.busy = true; this.error = ''; this.errors = {};
+        const d = await this.post(urls.connect, {pairing_code: this.code.trim(), base_url: this.baseUrl.trim()}, form);
+        if (d.ok) { this.code = ''; window.location.assign(d.redirect || window.location.pathname); return; }
+        this.busy = false;
+        this.refused(d);
+      },
+      // An already-connected code whose key was rotated there.
+      async renewKey() {
+        if (this.busy) return;
+        this.busy = true; this.error = '';
+        const d = await this.post(urls.renew, {pairing_code: this.code.trim()});
+        this.busy = false;
+        if (d.ok && d.redirect) { this.code = ''; window.location.assign(d.redirect); return; }
+        if (d.ok) { this.renew = null; this.error = ''; this.scanMsg = d.message || ''; return; }
+        this.refused(d);
+      },
+      accept(value) {
+        this.code = String(value || '').trim();
+        this.scanMsg = T.code_read;
+        this.toPreview();
+      },
+      // The camera: only after a click, and never longer than needed.
+      async startScan() {
+        this.error = ''; this.scanMsg = '';
+        // Set before the first await: a second click while the camera (or the
+        // permission prompt) is on its way must not open a second one.
+        if (this.scanning || this.starting) return;
+        const media = navigator.mediaDevices;
+        if (!window.isSecureContext || !media || !media.getUserMedia) { this.scanMsg = T.camera_unavailable; return; }
+        this.starting = true;
+        const mine = ++scanSeq;
+        const current = () => mine === scanSeq && this.open && this.step === 1;
+        let got;
+        try {
+          detector = await makeDetector();
+          if (!detector && !(await loadJsQR())) { if (current()) this.scanMsg = T.no_decoder; return; }
+          if (!current()) return;
+          try {
+            got = await media.getUserMedia({video: {facingMode: {ideal: 'environment'}}, audio: false});
+          } catch (e) {
+            const name = e && e.name;
+            if (current()) {
+              this.scanMsg = (name === 'NotAllowedError' || name === 'SecurityError') ? T.camera_refused
+                : (name === 'NotFoundError' || name === 'OverconstrainedError') ? T.no_camera : T.camera_failed;
+            }
+            return;
+          }
+        } finally {
+          if (mine === scanSeq) this.starting = false;
+        }
+        // Stopped, closed or superseded while the browser asked — or a camera
+        // is somehow already on: this one is stopped at once, never kept.
+        if (!current() || stream) { got.getTracks().forEach((t) => t.stop()); return; }
+        stream = got;
+        this.scanning = true;
+        this.scanMsg = T.scanning;
+        started = Date.now();
+        await this.$nextTick();
+        const video = this.$refs.video;
+        if (!video) { this.stopScan(); return; }
+        video.muted = true;
+        video.setAttribute('playsinline', '');
+        video.srcObject = stream;
+        try { await video.play(); } catch (e) { /* frames still arrive */ }
+        this.look();
+      },
+      async look() {
+        if (!this.scanning) return;
+        const video = this.$refs.video;
+        if (video && video.readyState >= 2 && video.videoWidth) {
+          const value = await readQr(video, video.videoWidth, video.videoHeight, detector, 800);
+          if (!this.scanning) return;
+          if (value) { this.stopScan(); this.accept(value); return; }
+          if (Date.now() - started > 8000) this.scanMsg = T.no_qr_yet;
+        }
+        timer = setTimeout(() => this.look(), 200);
+      },
+      stopScan() {
+        scanSeq++;                      // a start still waiting is superseded
+        this.starting = false;
+        this.scanning = false;
+        clearTimeout(timer); timer = null;
+        if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+        const video = this.$refs && this.$refs.video;
+        if (video) { try { video.pause(); } catch (e) { /* already */ } video.srcObject = null; }
+      },
+      // A chosen image of the QR code: decoded here, never uploaded.
+      async fromImage(event) {
+        const input = event.target;
+        const file = input.files && input.files[0];
+        input.value = '';
+        this.error = ''; this.scanMsg = '';
+        if (!file) return;
+        this.stopScan();
+        if (file.type && file.type.indexOf('image/') !== 0) { this.scanMsg = T.not_image; return; }
+        let source = null, w = 0, h = 0, url = '';
+        try {
+          if (window.createImageBitmap) { source = await createImageBitmap(file); w = source.width; h = source.height; }
+        } catch (e) { source = null; }
+        if (!source) {
+          url = URL.createObjectURL(file);
+          source = await new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(null);
+            img.src = url;
+          });
+          if (source) { w = source.naturalWidth; h = source.naturalHeight; }
+        }
+        if (!source) { if (url) URL.revokeObjectURL(url); this.scanMsg = T.not_image; return; }
+        const found = await makeDetector();
+        let value = found ? await readQr(source, w, h, found, 1600) : '';
+        if (!value && await loadJsQR()) value = await readQr(source, w, h, null, 1600);
+        else if (!value && !found) this.scanMsg = T.no_decoder;
+        if (url) URL.revokeObjectURL(url);
+        if (source.close) source.close();
+        if (!value) { if (!this.scanMsg) this.scanMsg = T.no_qr_in_image; return; }
+        this.accept(value);
+      },
+    });
+  });
+});
+</script>
