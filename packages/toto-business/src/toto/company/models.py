@@ -47,7 +47,12 @@ class Company(DomainEntity):
     statistical_no = models.CharField(max_length=32, blank=True)
     seat = models.TextField(blank=True)
     share_capital = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
-    capital_currency = models.CharField(max_length=8, default="PLN", blank=True)
+    #: The unit the share capital is quoted in. FLOR, the platform's unit of
+    #: account, since 2026-09-30 — it defaulted to a living currency before,
+    #: and nothing on the platform is priced in one (economy.md, "No real
+    #: currency, anywhere"). A default only: no schema change, so 0001 was
+    #: edited in place rather than followed by a migration.
+    capital_currency = models.CharField(max_length=8, default="FLOR", blank=True)
 
     logo = models.ImageField(
         upload_to="company_logos/",

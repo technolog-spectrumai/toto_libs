@@ -33,7 +33,7 @@ class Migration(migrations.Migration):
                 ('statistical_no', models.CharField(blank=True, max_length=32)),
                 ('seat', models.TextField(blank=True)),
                 ('share_capital', models.DecimalField(blank=True, decimal_places=2, max_digits=18, null=True)),
-                ('capital_currency', models.CharField(blank=True, default='PLN', max_length=8)),
+                ('capital_currency', models.CharField(blank=True, default='FLOR', max_length=8)),
                 ('logo', models.ImageField(blank=True, help_text='Optional logo for this company.', null=True, upload_to='company_logos/')),
                 ('statute_text', models.TextField(blank=True)),
                 ('community_ref', models.CharField(blank=True, help_text='Optional Social Hub community slug or external community reference.', max_length=255)),

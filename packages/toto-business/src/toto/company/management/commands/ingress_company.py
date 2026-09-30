@@ -33,6 +33,13 @@ from toto.ingress import IngressCommand
 #: The house demo company, and deliberately the same string socialhub uses.
 COMPANY_NAME = "Farfarele Brokker Inc."
 
+#: The unit the seed quoted the share capital in until 2026-09-30, when the
+#: Florin took over (economy.md, "No real currency, anywhere"). A database
+#: seeded before then still says so, and `get_or_create` never revisits its
+#: defaults — so the seed rewrites this one value in place, the way
+#: ingress_assets rewrites its legacy reserve tag.
+LEGACY_CAPITAL_CURRENCY = "PLN"
+
 #: username, display name, job title, department. The first four match
 #: socialhub's COMPANY_STAFF so the two seeds describe one organisation.
 STAFF = [
@@ -91,6 +98,7 @@ class Command(IngressCommand):
         verb = "created" if created else "already present"
         self.stdout.write(f"company: {COMPANY_NAME} — {verb}")
 
+        self._bring_up_to_date(company)
         self._link_to_community(company)
         people = self._people()
         departments = self._departments(company)
@@ -117,9 +125,27 @@ class Command(IngressCommand):
             "statistical_no": "146070970",
             "seat": "ul. Przykładowa 12\n00-001 Warszawa\nPolska",
             "share_capital": Decimal("100000.00"),
-            "capital_currency": "PLN",
+            # In florins, like every quoted price here: no living currency
+            # is seeded anywhere (economy.md, "No real currency, anywhere").
+            "capital_currency": "FLOR",
             "note": "Demo company seeded by ingress_company --full.",
         }
+
+    def _bring_up_to_date(self, company) -> None:
+        """Correct what an older seed wrote, on the company it already made.
+
+        `ingress_all` is re-run on every deploy and is expected to leave the
+        demo data current, but `get_or_create` writes its defaults once and
+        never looks again. Only the seed's OWN old value is touched: a unit
+        somebody set by hand on the demo company is theirs, not a leftover.
+        """
+        if company.capital_currency != LEGACY_CAPITAL_CURRENCY:
+            return
+        company.capital_currency = self._company_defaults()["capital_currency"]
+        company.save(update_fields=["capital_currency"])
+        self.stdout.write(
+            f"  share capital now quoted in {company.capital_currency} "
+            f"(was {LEGACY_CAPITAL_CURRENCY}, seeded before 2026-09-30)")
 
     def _link_to_community(self, company) -> None:
         """Point at socialhub's community of the same name, when there is one.
