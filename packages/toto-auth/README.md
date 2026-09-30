@@ -20,7 +20,7 @@ host used to hardcode.
 |---|---|---|---|
 | `TOTO_AUTH_MODE` | `local` / `provider` / `consumer` | `provider` | unknown value raises `AuthConfigError` |
 | `SSO_OPEN_REGISTRATION` | `0`/`1` | `False` | the `open_registration=`/`default_open_registration=` kwargs force or re-default it |
-| `LOGIN_RETRY_COOLDOWN_SECONDS` | int | `3` | login throttle (`toto.core.auth_cooldown`) |
+| `LOGIN_RETRY_COOLDOWN_SECONDS` | int | `3` | the form's session cooldown (`toto.core.auth_cooldown`); the lockout that holds every password door is `toto.core.signin_lockout`, set by its own `LOGIN_*` settings |
 | `CAPTCHA_RETRY_COOLDOWN_SECONDS` | int | `3` | captcha throttle |
 | `TOTO_LOGIN_REDIRECT` | url name | `core:dashboard` | post-login destination |
 | `TOTO_SOCIAL_SIGNUP` | `0`/`1` | `False` | may an unmatched social sign-in provision a new account |
@@ -39,6 +39,11 @@ SSO_OPEN_REGISTRATION = _A.open_registration
 LOGIN_RETRY_COOLDOWN_SECONDS = _A.login_retry_cooldown_seconds
 CAPTCHA_RETRY_COOLDOWN_SECONDS = _A.captcha_retry_cooldown_seconds
 ```
+
+`authentication_backends()` is the same in every mode (2026-09-30): toto.core's
+sign-in lockout (`SIGNIN_LOCKOUT_BACKEND`), then ModelBackend. The lockout
+authenticates nobody; it has to come before every backend that compares a
+password, so a host that adds backends of its own keeps it first.
 
 and in urls.py: `urlpatterns += auth_urlpatterns(_A)`; in INSTALLED_APPS:
 `*auth_apps(_A)` (equal to `registry.AUTH_APPS` in provider mode). Every mode
