@@ -1,0 +1,145 @@
+{% extends "vault/base.html" %}
+{% load i18n %}
+{% comment %}The vault's Trash tab (2026-10-01; trash_views.py).
+
+   A member's own trashed files in buckets they may read; a superuser on the
+   Superuser plan everyone's (`sees_all`, which adds the owner). A table on
+   md+, a card per file below, paged (`rows`, `page_obj`). Restore posts at
+   once; Delete for good and Empty my trash open a modal whose checkbox must
+   be ticked — the form then carries confirm=yes, which the server checks
+   again. Every form sends `page` back, so the redirect lands where it left.
+{% endcomment %}
+
+{% block vault_title %}{% trans "Trash" %}{% endblock %}
+
+{% block vault_content %}
+<article class="space-y-6" data-testid="vault-trash"
+         x-data="{ modal: '', target: { url: '', name: '' }, sure: false,
+                   open(kind, el) { this.modal = kind; this.sure = false;
+                     this.target = el ? { url: el.dataset.url, name: el.dataset.name } : { url: '', name: '' } },
+                   close() { this.modal = '' } }"
+         @keydown.escape.window="close()">
+  <header class="space-y-1">
+    <h2 class="flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-trash-can opacity-70" aria-hidden="true"></i>{% trans "Trash" %}</h2>
+    <p class="max-w-prose text-sm opacity-70" data-testid="trash-days">{% blocktranslate count days=trash_days %}Deleted files wait here for {{ days }} day, then they are deleted for good. Until then they still count against your storage.{% plural %}Deleted files wait here for {{ days }} days, then they are deleted for good. Until then they still count against your storage.{% endblocktranslate %}</p>
+    <p class="max-w-prose text-xs opacity-60">{% trans "A file in a bucket connected from another Zenobia is deleted at once — this server cannot keep its bytes — so it never comes here." %}</p>
+    {% if sees_all %}<p class="max-w-prose text-xs opacity-60" data-testid="trash-sees-all">{% trans "As a superuser on the Superuser plan you see every member's trash." %}</p>{% endif %}
+  </header>
+
+  {% if own_count %}
+  <div class="flex justify-end">
+    <button type="button" @click="open('empty')" data-testid="trash-empty-open"
+            class="inline-flex items-center gap-1.5 rounded border border-red-500/60 px-3 py-2 text-sm font-semibold text-red-600 dark:text-red-400">
+      <i class="fa-solid fa-dumpster" aria-hidden="true"></i>{% trans "Empty my trash" %}</button>
+  </div>
+  {% endif %}
+
+  {% if rows %}
+  {# Wide screens: a table. #}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="hidden overflow-x-auto rounded-2xl border shadow-sm md:block">
+    <table class="min-w-full text-left text-sm" data-testid="trash-table">
+      <thead :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-xs uppercase tracking-wide opacity-70">
+        <tr>
+          <th scope="col" class="px-4 py-3">{% trans "Name" %}</th>
+          <th scope="col" class="px-4 py-3">{% trans "Bucket and folder" %}</th>
+          <th scope="col" class="px-4 py-3 text-right">{% trans "Size" %}</th>
+          <th scope="col" class="px-4 py-3">{% trans "Trashed" %}</th>
+          <th scope="col" class="px-4 py-3">{% trans "By" %}</th>
+          <th scope="col" class="px-4 py-3 text-right">{% trans "Days left" %}</th>
+          <th scope="col" class="px-4 py-3"><span class="sr-only">{% trans "Actions" %}</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b align-top last:border-b-0" data-testid="trash-row-{{ r.file.pk }}">
+          <th scope="row" class="px-4 py-3 font-semibold break-words">{{ r.file.title }}
+            {% if sees_all %}<span class="block text-xs font-normal opacity-60">{% blocktranslate with owner=r.file.owner.get_username %}owner {{ owner }}{% endblocktranslate %}</span>{% endif %}</th>
+          <td class="px-4 py-3">{% include "vault/partials/_trash_where.html" %}</td>
+          <td class="whitespace-nowrap px-4 py-3 text-right">{{ r.file.file_size_bytes|filesizeformat }}</td>
+          <td class="whitespace-nowrap px-4 py-3"><time datetime="{{ r.file.trashed_at|date:'c' }}">{{ r.file.trashed_at|date:"Y-m-d H:i" }}</time></td>
+          <td class="px-4 py-3">{{ r.file.trashed_by.get_username|default:"—" }}</td>
+          <td class="whitespace-nowrap px-4 py-3 text-right">{{ r.days_left }}</td>
+          <td class="whitespace-nowrap px-4 py-3">{% include "vault/partials/_trash_actions.html" %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# Narrow screens: a card per file. #}
+  <div class="space-y-3 md:hidden" data-testid="trash-cards">
+    {% for r in rows %}
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="space-y-2 rounded-2xl border p-4 text-sm shadow-sm" data-testid="trash-card-{{ r.file.pk }}">
+      <h3 class="break-words font-semibold">{{ r.file.title }}
+        {% if sees_all %}<span class="block text-xs font-normal opacity-60">{% blocktranslate with owner=r.file.owner.get_username %}owner {{ owner }}{% endblocktranslate %}</span>{% endif %}</h3>
+      <div>{% include "vault/partials/_trash_where.html" %}</div>
+      <dl class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+        <dt class="opacity-60">{% trans "Size" %}</dt><dd>{{ r.file.file_size_bytes|filesizeformat }}</dd>
+        <dt class="opacity-60">{% trans "Trashed" %}</dt><dd>{{ r.file.trashed_at|date:"Y-m-d H:i" }}</dd>
+        <dt class="opacity-60">{% trans "By" %}</dt><dd>{{ r.file.trashed_by.get_username|default:"—" }}</dd>
+        <dt class="opacity-60">{% trans "Days left" %}</dt><dd>{{ r.days_left }}</dd>
+      </dl>
+      <div>{% include "vault/partials/_trash_actions.html" %}</div>
+    </article>
+    {% endfor %}
+  </div>
+
+  {% include "oya/partials/_server_pagination.html" %}
+  {% else %}
+  <p class="rounded border border-dashed p-4 text-sm opacity-70" data-testid="trash-none">{% trans "The trash is empty." %}</p>
+  {% endif %}
+
+  {# Delete for good: one modal for every row, filled by open('purge', button). #}
+  <div x-show="modal === 'purge'" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+       role="dialog" aria-modal="true" aria-labelledby="trash-purge-title">
+    <div class="absolute inset-0 bg-black/60" @click="close()"></div>
+    <form method="post" :action="target.url" data-testid="trash-purge-form"
+          :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+          class="relative w-full max-w-md space-y-4 rounded-xl border p-5 text-sm shadow-xl">
+      {% csrf_token %}
+      <input type="hidden" name="page" value="{{ page_obj.number|default:1 }}">
+      <input type="hidden" name="confirm" :value="sure ? 'yes' : ''">
+      <h2 id="trash-purge-title" class="text-lg font-bold text-red-600 dark:text-red-400">
+        <i class="fa-solid fa-fire mr-1" aria-hidden="true"></i>{% trans "Delete for good" %}
+        <span class="block break-words text-sm font-normal" x-text="target.name"></span></h2>
+      <p class="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 font-semibold text-red-700 dark:text-red-300">
+        {% trans "The file, its bytes and its saved versions are deleted. It cannot be undone." %}</p>
+      <label class="flex items-start gap-2">
+        <input type="checkbox" x-model="sure" data-testid="trash-purge-sure" class="mt-0.5">
+        <span>{% trans "I understand; delete it for good." %}</span></label>
+      <div class="flex justify-end gap-2">
+        <button type="button" @click="close()" class="rounded border border-current/25 px-3 py-2">{% trans "Cancel" %}</button>
+        <button type="submit" :disabled="!sure" data-testid="trash-purge-submit"
+                class="rounded bg-red-600 px-4 py-2 font-semibold text-white disabled:opacity-40">{% trans "Delete for good" %}</button>
+      </div>
+    </form>
+  </div>
+
+  {# Empty my trash. #}
+  <div x-show="modal === 'empty'" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+       role="dialog" aria-modal="true" aria-labelledby="trash-empty-title">
+    <div class="absolute inset-0 bg-black/60" @click="close()"></div>
+    <form method="post" action="{% url 'vault:trash_empty' %}" data-testid="trash-empty-form"
+          :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+          class="relative w-full max-w-md space-y-4 rounded-xl border p-5 text-sm shadow-xl">
+      {% csrf_token %}
+      <input type="hidden" name="confirm" :value="sure ? 'yes' : ''">
+      <h2 id="trash-empty-title" class="text-lg font-bold text-red-600 dark:text-red-400">
+        <i class="fa-solid fa-dumpster mr-1" aria-hidden="true"></i>{% trans "Empty my trash" %}</h2>
+      <p class="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 font-semibold text-red-700 dark:text-red-300">
+        {% blocktranslate count n=own_count %}{{ n }} file of yours, its bytes and saved versions are deleted. It cannot be undone.{% plural %}{{ n }} files of yours, their bytes and saved versions are deleted. It cannot be undone.{% endblocktranslate %}</p>
+      <label class="flex items-start gap-2">
+        <input type="checkbox" x-model="sure" data-testid="trash-empty-sure" class="mt-0.5">
+        <span>{% trans "I understand; empty my trash." %}</span></label>
+      <div class="flex justify-end gap-2">
+        <button type="button" @click="close()" class="rounded border border-current/25 px-3 py-2">{% trans "Cancel" %}</button>
+        <button type="submit" :disabled="!sure" data-testid="trash-empty-submit"
+                class="rounded bg-red-600 px-4 py-2 font-semibold text-white disabled:opacity-40">{% trans "Empty my trash" %}</button>
+      </div>
+    </form>
+  </div>
+</article>
+{% endblock %}

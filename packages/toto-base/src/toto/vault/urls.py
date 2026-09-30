@@ -5,6 +5,7 @@ from . import clearances
 from . import clearance_tab
 from . import manage_views
 from . import share_views
+from . import trash_views
 from django.views.generic import RedirectView
 from .api_views import (
     StrongboxApiView,
@@ -94,6 +95,12 @@ urlpatterns = [
          name="manage_connect_preview"),
     path("manage/connect/test/", share_views.manage_connect_test, name="manage_connect_test"),
     path("manage/connect/renew/", share_views.manage_connect_renew, name="manage_connect_renew"),
+    # The Trash tab (trash_views.py, 2026-10-01): one's own trashed files (a
+    # superuser on the plan: everyone's); Restore, Delete for good, Empty.
+    path("trash/", trash_views.trash_tab, name="trash"),
+    path("trash/empty/", trash_views.trash_empty, name="trash_empty"),
+    path("trash/<int:pk>/restore/", trash_views.trash_restore, name="trash_restore"),
+    path("trash/<int:pk>/purge/", trash_views.trash_purge, name="trash_purge"),
     # The Archive tab: the same tree as Files, carrying the zip actions.
     path("archive/", remote_views.ArchiveView.as_view(), name="archive"),
     path("metrics/<slug:bucket_slug>/", BucketMetricsView.as_view(), name="bucket_metrics"),

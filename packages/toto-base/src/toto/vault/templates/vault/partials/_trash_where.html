@@ -1,0 +1,4 @@
+{% load i18n %}{% comment %}Where a trashed file came from: its bucket and the folder
+   it was in (trash.html, a row `r`). No folder = the bucket's root.{% endcomment %}
+<span class="block break-words"><i class="fa-solid fa-bucket mr-1 opacity-60" aria-hidden="true"></i>{{ r.bucket.name|default:_("No bucket") }}</span>
+<span class="block break-words text-xs opacity-70"><i class="fa-solid fa-folder mr-1 opacity-60" aria-hidden="true"></i>{% if r.folder %}{{ r.folder }}{% else %}{% trans "the root" %}{% endif %}</span>

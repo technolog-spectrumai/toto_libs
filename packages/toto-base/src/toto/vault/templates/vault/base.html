@@ -7,7 +7,8 @@
    Management (Superuser plan) is where buckets are made, edited, tested and
    deleted — those that live elsewhere included; Clearances (Superuser plan)
    shows which clearances keep each bucket and who holds them; Archive is the same tree
-   again, carrying the zip actions the Files tree deliberately does not.
+   again, carrying the zip actions the Files tree deliberately does not; Trash
+   holds deleted files until they are restored or purged.
 
    Same tab idiom as antivirus/base.html and polls/base.html: the view sets
    `active_tab`, the bar renders itself. Before this, every vault page was a
@@ -102,6 +103,19 @@
                   {% if active_tab == 'archive' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
            {% if active_tab == 'archive' %}aria-current="page"{% endif %}>
           <i class="fa-solid fa-file-zipper"></i>{% trans "Archive" %}</a>
+      {% endif %}
+      {% comment %}Trash: one's own deleted files (a superuser on the plan sees
+         everyone's), Restore and Delete for good — trash_views.py.{% endcomment %}
+      {% if request.user.is_authenticated %}
+        {% url 'vault:trash' as trash_url %}
+        {% if trash_url %}
+          <a href="{{ trash_url }}" data-testid="vault-trash-tab"
+             :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+             class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                    {% if active_tab == 'trash' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+             {% if active_tab == 'trash' %}aria-current="page"{% endif %}>
+            <i class="fa-solid fa-trash-can"></i>{% trans "Trash" %}</a>
+        {% endif %}
       {% endif %}
     </nav>
 
