@@ -44,6 +44,10 @@ enforces it structurally.
 
 ### Pairing flow (superuser admin, v1)
 
+The admin path below still works; the guided path is Storage → Management
+("Another Zenobia: share and connect" below), which does all three steps
+from the two Management pages and shows the code as a QR code too.
+
 1. Exporting host: add a **Bucket grant** → the save message shows a base64
    **pairing code** ONCE (`{"v":1, grant_uid, magic_token, api_key, bucket,
    rights}`). Rotate = the "Rotate api key" action, new code shown once.
@@ -54,10 +58,10 @@ enforces it structurally.
    peer. `storage_config` stays EMPTY — the peer FK is the whole transport
    identity, so listings can never leak a URL or a token.
 
-The **Remote** tab (`/vault/remote/`) is that door, shipped: operator-gated
-(`is_staff or is_superuser`), listing every S3 and mounted bucket with health
-read from stamped columns only. Configuration still happens in the admin; the
-credential model that lets it move out of there is the next stage.
+The Remote tab that listed S3 and mounted buckets (and had full-page create
+forms for them) folded into **Storage → Management** (2026-09-30, see "The
+Management tab" below): every bucket, remote ones with their health read from
+stamped columns only, and a connection Test per row.
 
 ## Peer API (server half — `peer_views.py`)
 
@@ -97,9 +101,13 @@ pks. Panel: `/vault/transfers/`.
 
 | flag | effect |
 |---|---|
-| `VAULT_EXTERNAL_BUCKETS=False` | local-only host: driver factory refuses non-local buckets, admin hides the storage fieldset, peering admins vanish, the Remote tab 404s |
+| `VAULT_EXTERNAL_BUCKETS=False` | local-only host: driver factory refuses non-local buckets, admin hides the storage fieldset, peering admins vanish, Management's New bucket offers this server only |
 | `VAULT_OUTBOUND_ALLOWED_HOSTS` | hosts the outbound guard permits regardless of address or scheme — the internal-MinIO case |
 | `VAULT_OUTBOUND_ALLOW_PRIVATE` | dev/CI hatch: allow plain http |
+| `VAULT_FIELD_KEY_PERSISTENT=True` | the host loads `FIELD_ENCRYPTION_KEY` from somewhere other than the environment: sealing is allowed |
+| `VAULT_PURGE_INLINE=True` | Delete's purge runs in-process instead of on a worker (tests, dev) |
+| `VAULT_PURGE_STALL_MINUTES` (30) | a bucket still being deleted, with no reason stamped, this long after Delete was last confirmed reads "Deletion may have stopped" and offers Delete again |
+| `VAULT_AWS_REGIONS`, `VAULT_OVH_REGIONS` | replace / extend the region lists Create offers |
 | `BUILD_WORKFLOWS` off | refresh + transfer dispatch refuse by name |
 | `BUILD_ANTIVIRUS` off | scans degrade to clean-but-unscanned (façade) |
 
@@ -134,6 +142,194 @@ clearances, read-only. Every change is on the audit chain
 clearance that still keeps a bucket cannot be deleted (PROTECT). There is no
 per-file door any more. Tests: `tests_clearances`, `tests_more_clearances`.
 
+Seeing them all: the vault's **Clearances** tab (`clearances/`,
+`clearance_tab.py`), for a superuser on the Superuser plan only
+(`plan_gate.superuser_plan_door`; the tab shows by `vault_flags.superuser_plan`).
+Every bucket — personal ones and those being deleted included — with the
+clearances keeping it and, per clearance, its holders by display name (the
+first 20, then "and N more"); a bucket kept by none reads as open. A table on
+md+, a card per bucket below, 25 buckets a page, and three counters (all /
+kept / open) that are also the filter (`?show=`). Read-only: each bucket's
+name leads to its page, where its clearances are set. A page costs the same
+queries however many buckets, clearances and holders it shows. Tests:
+`tests_clearance_tab`.
+
+## Buckets: types, custody and deletion (2026-09-30)
+
+Storage → Management (Superuser plan) creates, edits, tests and deletes buckets.
+This section is the foundation it stands on; the tab's views ask these modules
+and never branch on a provider.
+
+### The bucket model
+
+| field | what |
+|---|---|
+| `name`, `slug` | the name is editable; the slug is fixed at Create (links, peer grants and the audit chain name it) |
+| `owner` | **SET_NULL** (was CASCADE): deleting an account no longer deletes its buckets — a bucket holds other people's files, gateways and clearance keeping. Edit gives it a new owner |
+| `created_by`, `created_at` | who made it in Management and when — never edited, blank on older rows |
+| `storage_backend`, `provider`, `storage_config`, `peer` | fixed at Create: Edit (`bucket_lifecycle.update_bucket`) changes `name`, `owner`, `storage_quota_mb`, `ai_protected` only |
+| `last_probe_at`, `last_probe_error` | the last connection test, stamped by an operator's click (never a page render); a mount's health stays on its `BucketPeer` |
+| `deletion_requested_at`, `deletion_error` | the bucket is being deleted (and why the purge stopped, if it did) |
+
+`VaultFile.bucket` is **PROTECT** (was SET_NULL): a bucket with files cannot be
+deleted except by the purge, and no file ever ends with `bucket=None` — which
+used to drop it out of its bucket's clearance keeping and leave its bytes behind.
+Migration `0028_bucket_management`.
+
+### Kinds: the adapter interface
+
+`storage_adapters.StorageAdapter` (a `BasePlugin` with its own registry,
+autodiscovered from `plugins.storage_adapters` in `VaultConfig.ready`). The
+vault's own, in `plugins/storage_adapters.py`:
+
+| key | backend | Create asks for |
+|---|---|---|
+| `local` | local | nothing — this server's disk |
+| `aws_s3` | s3 (preset `aws`) | bucket at the provider, region, optional prefix (blank = `vault/`), access key id + secret |
+| `ovh_s3` | s3 (preset `ovh`) | the same; the region (a fixed list) picks the endpoint `https://s3.<region>.io.cloud.ovh.net` |
+| `zenobia_remote` | remote_toto | the pairing code minted on the other Zenobia, and its address (or the one the code names) |
+| `s3` | s3 | never created: describes, tests and deletes older S3 rows with a typed endpoint |
+
+Each adapter answers `fields()` (the modal's inputs; `secret: True` marks the
+ones never put back in a page, a draft, a log or JSON), `validate(data) ->
+(config, secret)` (a `ValidationError` keyed by field, in sentences),
+`probe_candidate(config, secret)` (the test before saving — an S3 bucket must
+pass it, and `create` runs it again), `create(name, owner, actor, config, secret,
+storage_quota_mb=, ai_protected=)` (one transaction: the bucket with `created_by`,
+its sealed secret or pairing, `VAULT.BUCKET.CREATED`), `probe(bucket)` (bounded,
+stamped), `describe(bucket)` (`target`, `status`, `health` and their labels,
+the credential's hint — stamps only, no network, no secret) and
+`destroy_plan(bucket)` (what Delete removes and what it keeps).
+`StorageAdapter.creatable_adapters()` is what Create offers (remote kinds only
+where `VAULT_EXTERNAL_BUCKETS` allows); `StorageAdapter.for_bucket(bucket)` is
+the kind of an existing one. `zenobia_remote.decode_preview(code)` shows what a
+code grants — host, remote bucket, rights, expiry, "already connected here" —
+without saving anything; `validate` refuses a malformed, expired or
+already-connected code. Pairing codes carry `expires_at` and, when the minting
+door knows it, `host` (optional keys inside v1: older hosts ignore them, older
+codes lack them and are shown as "not stated").
+
+### Secret custody
+
+| secret | where it lives | a DB dump alone | a DB dump + the deploy config |
+|---|---|---|---|
+| S3 access key id + secret (Management) | `BucketSecret.ciphertext`, Fernet under `FIELD_ENCRYPTION_KEY`; `hint` = last 4 of the key id | ciphertext only | **the keys** |
+| a mount's api key | `BucketPeer.api_key_encrypted`, the same key | ciphertext only | **the key** |
+| a mount's magic token, grant id | `BucketPeer` columns, plain (a URL segment by design — useless without the api key) | readable | readable |
+| a grant we issued | `BucketGrant.api_key_hash` (PBKDF2) | a hash | a hash |
+| S3 keys sealed under a storage PIN (`credentials.py`) | `RemoteCredential` | ciphertext | ciphertext — the PIN is in nobody's config |
+
+The owner chose the field key for Management's S3 keys so a background job (the
+purge) can use them with nobody at the keyboard; the storage-PIN custody stays
+available and stronger. `get_bucket_storage` opens a bucket's `BucketSecret` per
+call and hands the dict to the driver it builds — it dies with the driver, and
+an explicit `credential=` (a PIN just opened) wins. A secret that no longer
+opens (the key changed) raises `SealedCredentialUnreadable` with a sentence —
+never a silent fall-back to the environment's keys. Buckets without a secret
+keep the environment chain exactly as before.
+
+Sealing refuses (`BucketSecret.seal`, and Create for `aws_s3`, `ovh_s3`,
+`zenobia_remote`) when `models.field_key_configured()` is false: the key is
+empty, or it is the per-process random fallback (the setting differs from the
+environment's `FIELD_ENCRYPTION_KEY`) — a secret sealed under that is gone at
+the next restart. A host that loads the key from a secrets file says so with
+`VAULT_FIELD_KEY_PERSISTENT = True`.
+
+Never shown after Create: secrets are not rendered, not kept in a draft, not
+logged, not in JSON, not in audit metadata (`bucket_lifecycle.snapshot` is the
+only shape a bucket is recorded in) and not in the admin (`BucketSecret` is not
+registered; the bucket's page shows the hint). A peer transport error quotes
+the URL it called, which carries the magic token: `PeerClient` redacts the
+token, the grant id and the key from every stamp and message.
+
+### Pairing-code trust
+
+A pairing code is a live credential: whoever pastes it can do what the grant
+allows (rights are ticked on the exporting side, all off by default; it expires,
+7 days by default). The mounting side trusts nothing in it but the grant's
+identity: the other host's address is SSRF-guarded (`outbound.assert_outbound_allowed`)
+whether typed or taken from the code, the rights shown are advisory (the
+exporting host enforces them), and the first probe's failure is stamped on the
+pairing rather than undoing it.
+
+### The SSRF guard
+
+Every address this host calls is checked at the door as a sentence and again at
+the call: an OVH endpoint (from the region list, never typed) and a peer's base
+URL. AWS has no endpoint (default routing). See *Outbound safety* below for the
+policy and its known residual (DNS rebinding).
+
+### Delete
+
+`bucket_lifecycle.request_deletion(bucket, actor, confirm_name=...)` — the typed
+name must match. It marks the bucket (`deletion_requested_at`), records
+`VAULT.BUCKET.DELETE_REQUESTED`, and after the commit hands `purge_bucket` to a
+worker (`tasks.purge_bucket_task`; ids only, never a credential). No worker →
+`deletion_error` says so and nothing is deleted; `VAULT_PURGE_INLINE = True`
+runs it in-process (tests, a dev server). From the mark on, nothing new lands
+in the bucket (`persist_upload` refuses with a sentence, `VaultFile.save` raises
+`BucketClosed` for a file new to it, pickers leave it out), Edit refuses, and
+lists show it as being deleted.
+
+What the purge destroys:
+
+* **this server / S3:** every file through `purge.purge_file(strict=True)` — the
+  row, its bytes or its S3 object, and the bodies of its saved versions that no
+  other file's version cites (`VersionBlob`, which has no link back to a file),
+  through ONE driver built for the bucket (its sealed key opened once for the
+  job). Strict: bytes that will not go (a key without `s3:DeleteObject`, a
+  deactivated key, an unwritable disk) raise inside the file's transaction, so
+  its row stays and the purge stops with the reason — a bucket is never recorded
+  as deleted while its objects are still at the provider;
+* then the bucket and what cascades from it: folders, upload gateways, clearance
+  rows, grants to other hosts (they lose access), refresh runs, the sealed
+  secret, a host app's rows that hang off it (echoes, workspaces);
+* **another Zenobia:** its listing rows are deleted **as rows** — never
+  `purge_file`, which would send a DELETE to the other host — then the bucket,
+  then its `BucketPeer` when no other bucket uses it.
+
+What it never touches: the files on another Zenobia; the S3 bucket itself and
+any object this vault did not store in it; the other host's grant (revoke it
+there). A file another app still holds (a PROTECT foreign key) stops the purge
+before the bucket goes: the bucket stays marked, its clearance keeping stays,
+`deletion_error` names the files, `VAULT.BUCKET.DELETE_FAILED` is recorded, and
+confirming Delete again resumes. The finish is `VAULT.BUCKET.DELETED` (files
+deleted, pairing removed), credited to whoever confirmed.
+
+A purge never dies silently. One worker run purges for at most
+`bucket_lifecycle.PURGE_BUDGET_SECONDS` (600) and queues the next run, so none
+comes near the task's soft limit (1500 s) or the host's hard one; the soft limit
+is re-raised, never counted as "one failed file"; a run stops after
+`PURGE_MAX_FAILURES` (20) refused files; and whatever escapes the job — the time
+limit, an error, the worker being stopped — is stamped on `deletion_error` and
+recorded as `VAULT.BUCKET.DELETE_FAILED` (`bucket_lifecycle.stop_purge`). What no
+code can see (a worker killed, a restart mid-purge, a lost queue message) is
+what `VAULT_PURGE_STALL_MINUTES` is for: past it, the bucket reads "Deletion may
+have stopped" and offers Delete again, which resumes (the purge is idempotent,
+and `deletion_requested_at` is the last confirmation).
+
+### Ownerless buckets
+
+An account's deletion (or `erase_user`) leaves its buckets without an owner.
+Such a bucket grants nothing through "the bucket's owner" (every check compares
+a real user's pk; the anonymous arm never reaches it) and nothing crashes on it:
+
+* `models.personal_bucket(user)` never hands out a `personal-<username>` bucket
+  that lost its owner or changed hands (or is being deleted) — it takes the next
+  free `personal-<username>-<n>`; the vault API, the new-file picker and aralia
+  use it;
+* writes that need an owner refuse with a sentence: a mirror refresh (stubs are
+  owned by the bucket's owner), a peer upload into an exported bucket (409), an
+  empty file created in it, an echo to or from it (yamabiko's
+  `endpoint_refusal`);
+* doors that create folders in a shared bucket (the forum's rooms, the wiki's
+  images, the connectors' archive) fall back to a superuser, and a whitelist is
+  never left empty (empty means everybody);
+* the pages show "—" for the owner; a superuser on the Superuser plan gives it
+  one in Management (`VAULT.BUCKET.UPDATED`).
+
+Tests: `tests_storage_adapters`.
+
 ## Tests
 
 Vault Django test modules run only where a gate stanza names them (the
@@ -141,13 +337,13 @@ library pytest suite does not collect them): `tests`, `tests_access`,
 `tests_api`, `tests_purge`, `tests_hardening`, `tests_peering`,
 `tests_peer_api`, `tests_mirror`, `tests_transfer`, `tests_remote_ui`,
 `tests_transfers_ui`, `tests_outbound`, `tests_bucket_transition`,
-`tests_remote_page`, `tests_clearances` — wired in zenobia's gate, core four in placidia's.
+`tests_remote_page`, `tests_clearances`, `tests_storage_adapters`, `tests_clearance_tab`, `tests_management`, `tests_share_connect` — wired in zenobia's gate, core four in placidia's.
 The two-host harness is a loopback: `peer_client._http` patched into
 Django's test client against the real peer views (one DB, clearing's
 pattern).
 
 
-## The four tabs
+## The tabs
 
 `templates/vault/base.html` is the shell every vault page extends; the view sets
 `active_tab` and the bar renders itself (the `antivirus/base.html` idiom).
@@ -156,7 +352,8 @@ pattern).
 |---|---|---|
 | Files | `vault:public_list` | the tree you work in — **no zip action** |
 | Metrics | `vault:metrics` | aggregate and per-bucket figures |
-| Remote | `vault:remote_buckets` | S3 and mounted buckets, health from stamps; operator-only |
+| Clearances | `vault:clearances_tab` | every bucket, the clearances keeping it, their holders; Superuser plan only |
+| Management | `vault:manage` | every bucket; New bucket, Edit, Test, Delete, Share, Connect a bucket from another Zenobia; Superuser plan only |
 | Archive | `vault:archive` | the same tree again, carrying the zip actions |
 
 Archive is a second tree rather than a shared partial for the reason
@@ -164,6 +361,134 @@ Archive is a second tree rather than a shared partial for the reason
 the reading tree must not grow either. It is built from exactly the queryset
 `CreateZipView` accepts — same bucket, not encrypted, local content only — so no
 row can show a button that cannot work.
+
+## The Management tab (`manage_views.py`, 2026-09-30)
+
+`/vault/manage/` — a superuser ON THE SUPERUSER PLAN only
+(`plan_gate.superuser_plan_door` on every door: 403 before anything is looked
+up, JSON for the JSON doors; the tab shows through the `superuser_plan`
+filter of `vault_flags`, so it never shows to someone its doors refuse; on a
+host without `toto.subscriptions` being a superuser is enough).
+
+The list is every bucket — personal, ownerless and being-deleted ones
+included — a table on md+ and a card per bucket below, paginated (20). Each
+row: name and slug, the kind (the platform's cloud badge
+`vault/partials/_bucket_badge.html` for a remote one, a Local pill otherwise,
+and the adapter's title), the target and credential hint
+(`adapter.describe`), owner, creator, created, the status (health from stamps,
+being deleted and why a purge stopped, files and bytes) and the doors. No
+render probes, opens a sealed key or calls out.
+
+| door | url name | what |
+|---|---|---|
+| New bucket | `vault:manage_create` (POST) | kind from `StorageAdapter.creatable_adapters()` minus `GUIDED_KINDS` (another Zenobia has its own flow); name, owner (people search), quota, AI shield, then `adapter.fields()`; `adapter.create` (an S3 kind must pass its probe; its keys are sealed) |
+| owner search | `vault:manage_people` (GET, JSON) | any ACTIVE account by name, username or e-mail; answers pk, name, username — never the e-mail |
+| Edit | `vault:manage_edit` (POST) | name, owner, quota, AI shield only; any other posted field refuses the whole post (`bucket_lifecycle.update_bucket`, `VAULT.BUCKET.UPDATED` before/after) |
+| Test | `vault:manage_test` (POST, JSON) | `adapter.probe`, stamped (a mount's on its pairing) |
+| Delete | `vault:manage_delete` (POST) | the name typed exactly, checked again server-side; `bucket_lifecycle.request_deletion` hands the purge to a worker |
+
+A refusal is Post/Redirect/Get: the session's `vault.manage_draft` re-opens
+the modal with what was typed and each sentence beside its field — never a
+secret field, never the access key id (`NEVER_CARRIED`), and error sentences
+are scrubbed of what was typed into them.
+
+The two-sided flow with another Zenobia plugs in through three partials:
+`vault/manage/_connect_button.html` (header), `vault/manage/_row_share.html`
+(per bucket) and `vault/manage/_extra_modals.html` (its modals) — see the next
+section.
+
+Tests: `tests_management` (doors × visitors, the list in table and cards,
+Create / Edit / Delete / Test), `tests_remote_page` (the tab bar, remote rows),
+`tests_share_connect` (the two-sided flow).
+
+## Another Zenobia: share and connect (`share_views.py`, 2026-09-30)
+
+Two Zenobias link one bucket with a **pairing code**: base64 over JSON
+(`peering.pairing_code_for` — the grant's id, its magic token, a fresh api key,
+the bucket's slug, the rights, and since 2026-09-30 the end date and the
+sharing Zenobia's address). It is made on the Zenobia that HOLDS the files and
+entered on the one that wants to USE them. Both sides live in Storage →
+Management, Superuser plan only (every door: `plan_gate.superuser_plan_door`,
+JSON 403 before any lookup), and neither exists where
+`VAULT_EXTERNAL_BUCKETS = False`.
+
+**Sharing side** — a bucket's **Share** (a local or S3 bucket; never one
+connected from a third Zenobia — `BucketGrant.clean`'s no-daisy-chain rule —
+nor one being deleted):
+
+1. The modal explains what sharing does and lists the bucket's shares
+   ("Shared with": label, rights, until when, made when and by whom, last
+   use, status — never the grant's id, token, key or key hint;
+   `vault:manage_shares`, JSON).
+2. **New share** (`vault:manage_share`, POST): who it is for (hosts from
+   `peering.federated_host_choices()` suggested), the rights as four
+   checkboxes — ALL OFF until ticked, at least one required, and List with
+   any of them (connecting reads the share's manifest, which the peer answers
+   only with List; the form ticks it for you, the server refuses a share
+   without it, and the connecting side refuses such a code with that reason),
+   a warning under Delete — how long (7 days by default; 1 / 30 / 90 days, a
+   year, or no end date), and this Zenobia's address as the other one
+   reaches it (the request's own by default).
+3. The answer is the ONE response that ever carries the code: an HTML
+   fragment (`vault/manage/_share_code.html`, `Cache-Control: no-store`) with
+   the code, Copy, the QR code, numbered steps for the other administrator and
+   "will not be shown again". The grant stores only a hash of the key; the
+   code is not in a column, the session, a message, JSON, a log or the audit
+   chain, and closing the modal removes it from the page.
+4. **Rotate key** (`vault:manage_share_rotate`): a new key (and optionally a
+   new end date — "keep" by default while the share runs); the old key stops at
+   once; the new code and QR are shown the same way, once. **Revoke**
+   (`vault:manage_share_revoke`, confirmed): `is_active = False` at once; the
+   row stays for the record and is never revived.
+
+**Connecting side** — **Connect a bucket from another Zenobia**, a stepper
+whose doors are all JSON and take the code in the POST body from the
+browser's memory (the code field has no `name`; no door ever answers with the
+code or any part of it; error sentences are scrubbed; `sensitive_post_parameters`
+keeps it out of error reports; nothing goes to the session draft):
+
+1. What the other administrator does first; the code **pasted**, **scanned**
+   with the camera, or read from a chosen **image** of its QR code.
+2. `vault:manage_connect_preview`: what it grants — the other Zenobia, its
+   bucket, the rights, the end date — before anything is saved. A malformed,
+   expired or already-connected code is refused with what to do. The address
+   this server calls: the code's, a federated host, or typed.
+3. `vault:manage_connect_test`: the connection test (the peer manifest over
+   the SSRF guard, `outbound.assert_outbound_allowed`), its answer shown;
+   nothing saved.
+4. A local name and an owner (people search) → `vault:manage_connect`: the
+   test runs again and must pass, then `ZenobiaRemoteAdapter.create` makes the
+   `BucketPeer` (key sealed under FIELD_ENCRYPTION_KEY — a permanent one is
+   required) and the bucket in one transaction.
+
+A code already connected here whose key was **rotated** on the other side is
+offered **Replace the stored key** (`vault:manage_connect_renew`): the new key
+is tried against the stored address first, and only then replaces the sealed
+one — the pairing, its buckets and their files stay.
+
+Audit: `VAULT.BUCKET.SHARED`, `SHARE_ROTATED`, `SHARE_REVOKED`,
+`PEER_KEY_REPLACED` (label, rights, end date — never a key, token or code); a
+connected bucket is `VAULT.BUCKET.CREATED`.
+
+### The QR path
+
+The QR code is drawn **in the browser**, from exactly the code string, by the
+vendored qrcodejs (`vendor/qrcodejs/qrcode.min.js` — the welcome page's
+`oya/partials/_local_qr.html` uses it too); it can be saved as a PNG for the
+image path. It is never sent to a QR service. Reading it is also local:
+`BarcodeDetector` where the browser has one, else the vendored jsQR
+(`vendor/jsqr/jsQR.js`, Apache-2.0, fetched by the host's `download_vendor.py`
+like every vendor asset and loaded only when that fallback is needed). The
+camera is asked for only after **Scan QR**, and stopped as soon as a code is
+read, on Stop, when the modal closes or the page is hidden; a chosen image is
+decoded in the page and never uploaded. A refused camera, a missing one, an
+insecure page and an image without a code each say so.
+
+**Security note: whoever holds the QR code holds the grant.** A photo of the
+screen, a screenshot or the saved PNG is the same live credential as the text
+— it lets its holder use the bucket with the ticked rights until the share
+ends or is revoked. Hand either over privately; revoke (or rotate) a share
+whose code or picture went somewhere it should not have.
 
 ## Outbound safety
 
@@ -173,6 +498,12 @@ row can show a button that cannot work.
 that make `urlsplit` and `requests` disagree about the host, refuses any address
 that resolves private/loopback/link-local/reserved, and refuses plain http —
 with `VAULT_OUTBOUND_ALLOWED_HOSTS` as the explicit escape hatch.
+
+**Redirects are never followed.** The guard checks the address it is given,
+once; `PeerClient._request` passes `allow_redirects=False` and refuses any 3xx
+as a broken peer (stamped, never its `Location` or body), so neither the typed
+address nor the other Zenobia can bounce a request — with its api key header —
+to an internal service.
 
 An **unresolvable** host is allowed through on purpose: a name that does not
 resolve cannot be connected to either, and refusing on DNS failure would redden
