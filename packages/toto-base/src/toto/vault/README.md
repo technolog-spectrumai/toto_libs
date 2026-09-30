@@ -127,13 +127,6 @@ clearances they are in. Every change is on the audit chain
 (`VAULT.FILE.CLEARANCES_CHANGED`: before, after, `open`). A clearance that still
 keeps a file cannot be deleted (PROTECT). Tests: `tests_clearances`.
 
-A file can also be kept when a clearance is made (2026-09-30): this app offers
-the `vault.file` kind to the socialhub's **New clearance** modal through
-`plugins/clearance_plugins.py` (`VaultFileKind`, which adds through the same
-door and audit). Mirrored files are not offered, nor the file types another
-kind claims (`vault_file_types`: sheets are `primula.sheet`, decks
-`memo.deck`).
-
 ## Tests
 
 Vault Django test modules run only where a gate stanza names them (the

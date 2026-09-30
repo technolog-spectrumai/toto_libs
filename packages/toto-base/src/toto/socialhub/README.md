@@ -84,22 +84,6 @@ nothing; a refusal comes back to the list with the modal open, what was typed
 kept and the reason inside it (Post/Redirect/Get, through the session). At most
 seven clearances.
 
-The modal also chooses **what the clearance clears** (2026-09-30): pick a
-kind, search (`communities/clearances/targets/?kind=&q=`, JSON, superusers
-only, 404 for an unknown kind), and the things chosen are kept to the new
-clearance in the same transaction as its holders — a refusal from any of them
-refuses the whole clearance. The kinds come from a plugin point,
-`ClearanceTargetPlugin` (`plugins/clearance_plugins.py`, its own registry),
-which every app declares in its own `plugins/clearance_plugins.py` and
-`autodiscover_plugins` finds. The interface is data only — `search(q, limit)`
-→ `{pk, label, detail}`, `resolve(pks)`, `keep(objects, clearance, actor=)` —
-and `keep` only ADDS the clearance, through the app's own door, so the app's
-own audit record is written: `wiki.page` (the wiki's `set_clearances`),
-`vault.file` (files no other kind claims, mirrors excluded), `primula.sheet`,
-`memo.deck`, `locations.route`, `locations.map_layer` and `places.place`.
-Keeping something closes it to everyone but the clearance's holders, its
-owner and superusers (`clearance_access`).
-
 Holders and speeds change afterwards in the Django admin, on the clearance's
 own page (its **Members** field, written through `clearance.members.set`, the
 relation's own door), or from the console (`community_members join ada
