@@ -1,0 +1,32 @@
+{% load i18n %}{% comment %}Narrow screens (below md): a card per bucket, the table's columns
+   as labelled lines. Expects `rows`.{% endcomment %}
+{% trans "no owner" as l_no_owner %}
+<div class="space-y-4 md:hidden" data-testid="buckets-cards">
+  {% for row in rows %}
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="space-y-3 rounded-2xl border p-4 text-sm shadow-sm{% if row.bucket.is_being_deleted %} opacity-70{% endif %}"
+           data-testid="bucket-card-{{ row.bucket.pk }}">
+    <div class="flex items-start justify-between gap-2">
+      <div class="min-w-0">
+        <h2 class="break-words font-bold">{{ row.bucket.name }}</h2>
+        <p class="break-all font-mono text-xs opacity-50">{{ row.bucket.slug }}{% if row.bucket.created_at %} · {{ row.bucket.created_at|date:"Y-m-d" }}{% endif %}</p>
+      </div>
+      {% include "vault/manage/_type_badge.html" %}
+    </div>
+    <dl class="grid grid-cols-[auto,1fr] gap-x-3 gap-y-2 text-xs">
+      <dt class="uppercase tracking-wide opacity-60">{% trans "Target" %}</dt>
+      <dd class="min-w-0 break-words">{{ row.info.target|default:"—" }}{% if row.info.credential %}<span class="block opacity-60">{{ row.info.credential }}</span>{% endif %}</dd>
+      <dt class="uppercase tracking-wide opacity-60">{% trans "Owner" %}</dt>
+      <dd class="min-w-0">{% include "vault/manage/_person.html" with person=row.owner none_label=l_no_owner %}</dd>
+      <dt class="uppercase tracking-wide opacity-60">{% trans "Created by" %}</dt>
+      <dd class="min-w-0">{% include "vault/manage/_person.html" with person=row.creator none_label="" %}</dd>
+      {% if row.bucket.ai_protected or row.bucket.storage_quota_mb %}
+      <dt class="uppercase tracking-wide opacity-60">{% trans "Limits" %}</dt>
+      <dd class="min-w-0">{% if row.bucket.ai_protected %}<span class="mr-2"><i class="fa-solid fa-shield-halved mr-0.5" aria-hidden="true"></i>{% trans "AI shield" %}</span>{% endif %}{% if row.bucket.storage_quota_mb %}{% blocktrans with mb=row.bucket.storage_quota_mb %}{{ mb }} MB quota{% endblocktrans %}{% endif %}</dd>
+      {% endif %}
+    </dl>
+    {% include "vault/manage/_status.html" %}
+    {% include "vault/manage/_row_actions.html" %}
+  </article>
+  {% endfor %}
+</div>

@@ -17,3 +17,14 @@ register = template.Library()
 @register.simple_tag
 def remote_buckets_enabled() -> bool:
     return external_buckets_allowed()
+
+
+@register.filter
+def superuser_plan(user) -> bool:
+    """``{% if request.user|superuser_plan %}``: a superuser on the Superuser
+    plan — the question every door of Storage's superuser tabs asks
+    (``toto.vault.plan_gate``), so a tab never shows to someone its doors
+    would refuse."""
+    from toto.vault.plan_gate import superuser_plan_holder
+
+    return superuser_plan_holder(user)

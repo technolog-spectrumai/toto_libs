@@ -1,0 +1,3 @@
+{% load i18n %}{% comment %}An account on a row (owner or creator): its name and username, or
+   a dash — an ownerless bucket says so, it is not an error. Expects `person`
+   (manage_views.person_row or None) and `none_label`.{% endcomment %}{% if person %}<span class="block break-words">{{ person.name }}</span>{% if person.name != person.username %}<span class="block font-mono text-xs opacity-50">{{ person.username }}</span>{% endif %}{% else %}<span class="opacity-50">—</span>{% if none_label %} <span class="text-xs opacity-60">{{ none_label }}</span>{% endif %}{% endif %}

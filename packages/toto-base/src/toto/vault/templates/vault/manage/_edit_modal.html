@@ -1,0 +1,61 @@
+{% load i18n %}{% comment %}The Edit modal: name, owner, storage quota, AI shield — nothing that
+   moves data. Where the files live, the provider, the region, the prefix, the
+   pairing and the slug are fixed when the bucket is made, and the server
+   refuses a post naming any of them (bucket_lifecycle.update_bucket). One
+   modal for every row: openEdit(pk) fills it from bucket-manage-rows; a
+   refused post re-opens it from `draft` (open == "edit").{% endcomment %}
+<div x-show="modal === 'edit' && edit.row" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     role="dialog" aria-modal="true" aria-labelledby="bucket-edit-title">
+  <div class="absolute inset-0 bg-black/60" @click="close()"></div>
+  <form method="post" :action="edit.row ? edit.row.edit_url : ''" data-testid="bucket-edit" autocomplete="off"
+        @submit="guard($event)"
+        :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+        class="relative max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-xl border p-5 text-sm shadow-xl">
+    {% csrf_token %}
+    <input type="hidden" name="page" value="{{ page_obj.number|default:1 }}">
+    <div class="flex items-center justify-between gap-2">
+      <h2 id="bucket-edit-title" class="min-w-0 text-lg font-bold"><i class="fa-solid fa-pen mr-1" aria-hidden="true"></i>{% trans "Edit bucket" %}
+        <span class="block break-words text-sm font-normal opacity-70" x-text="edit.row ? edit.row.name : ''"></span></h2>
+      <button type="button" @click="close()" class="opacity-70 hover:opacity-100" aria-label="{% trans 'Close' %}">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+    </div>
+    <p x-show="edit.error" x-cloak x-text="edit.error" role="alert" data-testid="bucket-edit-error"
+       class="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-red-600 dark:text-red-400"></p>
+
+    <label class="block space-y-1">
+      <span class="text-xs font-semibold opacity-70">{% trans "Name" %}</span>
+      <input type="text" name="name" x-ref="editName" x-model="edit.name" required maxlength="{{ name_max }}"
+             :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-current/20">
+      <template x-for="e in (edit.errors.name || [])"><span class="block text-xs text-red-600 dark:text-red-400" role="alert" x-text="e"></span></template>
+    </label>
+
+    {% include "vault/manage/_owner_picker.html" with h="edit" input_id="bucket-edit-owner" errors=None %}
+    <template x-for="e in (edit.errors.owner || [])"><p class="text-xs text-red-600 dark:text-red-400" role="alert" x-text="e"></p></template>
+
+    <label class="block space-y-1">
+      <span class="text-xs font-semibold opacity-70">{% trans "Storage quota (MB)" %} <span class="font-normal">— {% trans "blank: unlimited" %}</span></span>
+      <input type="text" inputmode="numeric" name="storage_quota_mb" x-model="edit.quota" maxlength="10"
+             :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="w-full rounded border px-3 py-2 font-mono outline-none focus:ring-2 focus:ring-current/20">
+      <template x-for="e in (edit.errors.storage_quota_mb || [])"><span class="block text-xs text-red-600 dark:text-red-400" role="alert" x-text="e"></span></template>
+    </label>
+
+    <label class="flex items-start gap-2">
+      <input type="hidden" name="ai_protected" value="0">
+      <input type="checkbox" name="ai_protected" value="1" x-model="edit.ai" class="mt-0.5">
+      <span><span class="font-semibold">{% trans "AI shield" %}</span>
+        <span class="block text-xs opacity-70">{% trans "The assistant never reads files in this bucket." %}</span></span>
+    </label>
+
+    <p class="text-xs opacity-60">{% trans "Where the files live — the kind, the provider, the region, the prefix, the connection — is fixed when a bucket is made. To move files elsewhere, make a new bucket and copy them." %}</p>
+
+    <div class="flex justify-end gap-2 pt-1">
+      <button type="button" @click="close()" class="rounded border border-current/25 px-3 py-2">{% trans "Cancel" %}</button>
+      <button type="submit" :disabled="submitting" data-testid="bucket-edit-submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-1.5 rounded px-4 py-2 font-semibold disabled:opacity-40">
+        <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>{% trans "Save" %}</button>
+    </div>
+  </form>
+</div>

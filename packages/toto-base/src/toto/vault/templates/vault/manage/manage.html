@@ -1,0 +1,57 @@
+{% extends "vault/base.html" %}
+{% load i18n %}
+{% comment %}Storage → Management (manage_views.py): every bucket, and the doors
+   that make, edit, test and delete them. Superuser plan only — the view
+   refuses anybody else, and the tab in vault/base.html shows to the same
+   people.
+
+   The list is a table on a wide screen (md+) and a card per bucket below it,
+   paginated. The modals are Alpine; a refused submission comes back as
+   `draft` (Post/Redirect/Get) with the modal open, what was typed and why —
+   never a secret. Names reach the page through x-text or autoescaped
+   template text only, never as markup.
+
+   Places for the share / connect flow with another Zenobia, each a partial
+   of its own so it extends this page without editing it:
+     vault/manage/_connect_button.html  the header's "Connect a bucket from
+                                        another Zenobia" (beside New bucket)
+     vault/manage/_row_share.html       a bucket's "Share" action (row and card)
+     vault/manage/_extra_modals.html    its modals (inside the page's x-data)
+{% endcomment %}
+
+{% block vault_title %}{% trans "Management" %}{% endblock %}
+{% block vault_subtitle %}
+  <p class="mt-1 max-w-prose text-sm opacity-70">
+    {% trans "Every bucket on this server, personal ones included: what kind it is, where its files live, who owns it and how it is doing. Buckets are made, edited, tested and deleted here." %}</p>
+{% endblock %}
+
+{% block vault_head %}
+{{ draft|json_script:"bucket-manage-draft" }}
+{{ script_rows|json_script:"bucket-manage-rows" }}
+{{ kinds_meta|json_script:"bucket-manage-kinds" }}
+{% include "vault/manage/_scripts.html" %}
+{% endblock %}
+
+{% block vault_content %}
+<div x-data="bucketManage('{% url 'vault:manage_people' %}')" @keydown.escape.window="close()"
+     data-csrf="{{ csrf_token }}" data-test-failed="{% trans 'The test could not run.' %}"
+     class="space-y-6" data-testid="bucket-manage">
+
+  {% include "vault/manage/_summary.html" %}
+
+  {% if rows %}
+    {% include "vault/manage/_table.html" %}
+    {% include "vault/manage/_cards.html" %}
+    {% include "oya/partials/_server_pagination.html" %}
+  {% else %}
+    <p :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border px-4 py-10 text-center text-sm opacity-70" data-testid="buckets-empty">
+      {% trans "There are no buckets yet." %}</p>
+  {% endif %}
+
+  {% include "vault/manage/_create_modal.html" %}
+  {% include "vault/manage/_edit_modal.html" %}
+  {% include "vault/manage/_delete_modal.html" %}
+  {% include "vault/manage/_extra_modals.html" %}
+</div>
+{% endblock %}

@@ -2,6 +2,9 @@ from django.urls import path
 
 from . import views
 from . import clearances
+from . import clearance_tab
+from . import manage_views
+from . import share_views
 from django.views.generic import RedirectView
 from .api_views import (
     StrongboxApiView,
@@ -64,16 +67,33 @@ urlpatterns = [
     path("gateways/dir/<int:dir_pk>/", FileGatewayPageView.as_view(), name="gateway_page"),
     path("gateways/dir/<int:dir_pk>/upload/", FileGatewayUploadView.as_view(), name="gateway_upload"),
     path("metrics/", VaultMetricsView.as_view(), name="metrics"),
-    # The Remote tab. Deliberately NOT under /vault/metrics/<slug>/ —
-    # tests_remote_ui asserts that substring is absent for a stranger, so a
-    # page nested there would break it by substring alone.
-    path("remote/", remote_views.RemoteBucketsView.as_view(), name="remote_buckets"),
-    path("remote/new/s3/", remote_views.RemoteS3CreateView.as_view(),
-         name="remote_s3_new"),
-    path("remote/new/mount/", remote_views.RemoteMountCreateView.as_view(),
-         name="remote_mount_new"),
-    path("remote/buckets/<slug:slug>/test/",
-         remote_views.RemoteBucketTestView.as_view(), name="remote_bucket_test"),
+    # The Clearances tab: every bucket, the clearances keeping it, their
+    # holders. Superuser plan only (clearance_tab.py).
+    path("clearances/", clearance_tab.clearances_tab, name="clearances_tab"),
+    # The Management tab: every bucket; Create, Edit, Test, Delete. Superuser
+    # plan only (manage_views.py). It replaced the Remote tab (2026-09-30).
+    # Deliberately NOT under /vault/metrics/<slug>/ — tests_remote_ui asserts
+    # that substring is absent for a stranger.
+    path("manage/", manage_views.manage, name="manage"),
+    path("manage/people/", manage_views.manage_people, name="manage_people"),
+    path("manage/create/", manage_views.manage_create, name="manage_create"),
+    path("manage/buckets/<int:pk>/edit/", manage_views.manage_edit, name="manage_edit"),
+    path("manage/buckets/<int:pk>/delete/", manage_views.manage_delete, name="manage_delete"),
+    path("manage/buckets/<int:pk>/test/", manage_views.manage_test, name="manage_test"),
+    # Another Zenobia, both sides (share_views.py): a bucket's "Shared with"
+    # list, a share made / rotated (the pairing code and its QR, once) /
+    # revoked; and the stepper that connects a bucket another Zenobia shares.
+    path("manage/buckets/<int:pk>/shares/", share_views.manage_shares, name="manage_shares"),
+    path("manage/buckets/<int:pk>/share/", share_views.manage_share, name="manage_share"),
+    path("manage/shares/<int:grant_pk>/rotate/", share_views.manage_share_rotate,
+         name="manage_share_rotate"),
+    path("manage/shares/<int:grant_pk>/revoke/", share_views.manage_share_revoke,
+         name="manage_share_revoke"),
+    path("manage/connect/", share_views.manage_connect, name="manage_connect"),
+    path("manage/connect/preview/", share_views.manage_connect_preview,
+         name="manage_connect_preview"),
+    path("manage/connect/test/", share_views.manage_connect_test, name="manage_connect_test"),
+    path("manage/connect/renew/", share_views.manage_connect_renew, name="manage_connect_renew"),
     # The Archive tab: the same tree as Files, carrying the zip actions.
     path("archive/", remote_views.ArchiveView.as_view(), name="archive"),
     path("metrics/<slug:bucket_slug>/", BucketMetricsView.as_view(), name="bucket_metrics"),

@@ -1,0 +1,11 @@
+{% load i18n %}{% comment %}What kind of bucket a row is: the platform's own cloud badge
+   (vault/partials/_bucket_badge.html — "Remote · <label>") for one whose
+   bytes live elsewhere, a Local pill otherwise, and the kind's name under it.
+   Expects `row`.{% endcomment %}
+<div class="flex flex-col items-start gap-1">
+  {% if row.bucket.is_remote %}{% include "vault/partials/_bucket_badge.html" with bucket=row.bucket %}{% else %}<span
+    class="shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide opacity-60"
+    :class="darkMode ? 'border-accent-1' : 'border-accent-2'" data-testid="bucket-local-badge">
+    <i class="fa-solid fa-server mr-1" aria-hidden="true"></i>{% trans "Local" %}</span>{% endif %}
+  <span class="inline-flex items-center gap-1 text-xs opacity-70"><i class="{{ row.icon }}" aria-hidden="true"></i>{{ row.kind_title }}</span>
+</div>

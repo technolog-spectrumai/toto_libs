@@ -1,0 +1,17 @@
+{% load vault_share %}{% comment %}Modals other flows add to the Management page. Rendered inside the
+   page's x-data="bucketManage(...)", after the Create, Edit and Delete
+   modals.
+
+   Another Zenobia, both sides (share_views.py): the share modal (a bucket's
+   "Shared with" list, a new share, Rotate key, Revoke — the pairing code and
+   its QR code shown once) and the connect stepper. Each is an Alpine
+   component of its own (vault/manage/_share_scripts.html), opened by a
+   window event from its button (vault-share-open, vault-connect-open) and
+   closed by Escape. `sc` is share_views.page_config — nothing secret.{% endcomment %}
+{% share_connect_config as sc %}
+{{ sc|json_script:"bucket-share-config" }}
+{% if sc.share_enabled or sc.connect_enabled %}
+{% include "vault/manage/_share_scripts.html" %}
+{% endif %}
+{% if sc.share_enabled %}{% include "vault/manage/_share_modal.html" %}{% endif %}
+{% if sc.connect_enabled %}{% include "vault/manage/_connect_modal.html" %}{% endif %}

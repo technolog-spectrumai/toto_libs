@@ -1,12 +1,13 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
 {% load vault_flags %}
-{% comment %}The File Vault: four tabs over one store.
+{% comment %}The File Vault: tabs over one store.
 
-   Files is the tree you work in; Metrics is the aggregate picture; Remote is
-   where buckets that live elsewhere are configured and watched; Archive is the
-   same tree again, carrying the zip actions the Files tree deliberately does
-   not.
+   Files is the tree you work in; Metrics is the aggregate picture;
+   Management (Superuser plan) is where buckets are made, edited, tested and
+   deleted — those that live elsewhere included; Clearances (Superuser plan)
+   shows which clearances keep each bucket and who holds them; Archive is the same tree
+   again, carrying the zip actions the Files tree deliberately does not.
 
    Same tab idiom as antivirus/base.html and polls/base.html: the view sets
    `active_tab`, the bar renders itself. Before this, every vault page was a
@@ -55,22 +56,35 @@
            {% if active_tab == 'metrics' %}aria-current="page"{% endif %}>
           <i class="fa-solid fa-chart-simple"></i>{% trans "Metrics" %}</a>
       {% endif %}
-      {% comment %}Remote is operator-only, so the tab is too — and it obeys
-         VAULT_EXTERNAL_BUCKETS, because on a host that forbids remote
-         buckets every remote action answers 403 "disabled". A tab that
-         always answered 403 would be worse than no tab.{% endcomment %}
-      {% remote_buckets_enabled as remote_buckets_ok %}
-      {% if remote_buckets_ok %}{% if request.user.is_staff or request.user.is_superuser %}
-        {% url 'vault:remote_buckets' as remote_url %}
-        {% if remote_url %}
-          <a href="{{ remote_url }}"
+      {% comment %}Management: every bucket, and Create / Edit / Test / Delete —
+         a Superuser-plan page (manage_views.py), so the tab shows only to
+         whom its doors open (vault_flags.superuser_plan). It replaced the
+         Remote tab (2026-09-30): a remote bucket's health is a column there.{% endcomment %}
+      {% if request.user|superuser_plan %}
+        {% url 'vault:manage' as manage_url %}
+        {% if manage_url %}
+          <a href="{{ manage_url }}" data-testid="vault-manage-tab"
              :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
              class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                    {% if active_tab == 'remote' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
-             {% if active_tab == 'remote' %}aria-current="page"{% endif %}>
-            <i class="fa-solid fa-cloud"></i>{% trans "Remote" %}</a>
+                    {% if active_tab == 'manage' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+             {% if active_tab == 'manage' %}aria-current="page"{% endif %}>
+            <i class="fa-solid fa-sliders"></i>{% trans "Management" %}</a>
         {% endif %}
-      {% endif %}{% endif %}
+      {% endif %}
+      {% comment %}Clearances: every bucket, the clearances keeping it and who
+         holds them — a Superuser-plan page (clearance_tab.py), so the tab
+         shows only to whom its door opens (vault_flags.superuser_plan).{% endcomment %}
+      {% if request.user|superuser_plan %}
+        {% url 'vault:clearances_tab' as clearances_tab_url %}
+        {% if clearances_tab_url %}
+          <a href="{{ clearances_tab_url }}" data-testid="vault-clearances-tab"
+             :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+             class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                    {% if active_tab == 'clearances' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+             {% if active_tab == 'clearances' %}aria-current="page"{% endif %}>
+            <i class="fa-solid fa-shield-halved"></i>{% trans "Clearances" %}</a>
+        {% endif %}
+      {% endif %}
       {% comment %}Echoes: a host that keeps buckets in step (zenobia's yamabiko)
       mounts this name; everywhere else the tab is absent.{% endcomment %}
       {% url 'yamabiko:list' as echoes_url %}

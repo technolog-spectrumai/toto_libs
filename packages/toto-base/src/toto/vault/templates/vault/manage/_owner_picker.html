@@ -1,0 +1,44 @@
+{% load i18n %}{% comment %}The owner: any active account, found by a piece of its name,
+   username or e-mail (vault:manage_people, JSON, Superuser plan only). Posts
+   `owner` = the account's pk. Expects `h` — the Alpine object holding the
+   picker ("create" or "edit") — and `input_id`; `errors` are the owner's
+   sentences from a refused post, if any.{% endcomment %}
+<div class="space-y-2">
+  <label for="{{ input_id }}" class="text-xs font-semibold opacity-70">{% trans "Owner" %}</label>
+  <input type="hidden" name="owner" :value="{{ h }}.owner ? {{ h }}.owner.pk : ''">
+  <div class="flex flex-wrap items-center gap-2" data-testid="{{ input_id }}-chosen">
+    <template x-if="{{ h }}.owner">
+      <span class="inline-flex items-center gap-1 rounded-full border border-current/30 px-2 py-0.5">
+        <i class="fa-solid fa-user opacity-60" aria-hidden="true"></i>
+        <span x-text="{{ h }}.owner.name"></span>
+        <span class="font-mono text-xs opacity-60" x-text="{{ h }}.owner.username"></span>
+      </span>
+    </template>
+    <span x-show="!{{ h }}.owner" class="text-xs opacity-60">{% trans "Nobody chosen yet." %}</span>
+  </div>
+  <div class="relative">
+    <input id="{{ input_id }}" type="search" x-model="{{ h }}.q" @input="search({{ h }})"
+           @keydown.enter.prevent="!{{ h }}.searching && {{ h }}.results.length && pick({{ h }}, {{ h }}.results[0])"
+           autocomplete="off" placeholder="{% trans 'Search people by name, username or e-mail' %}"
+           role="combobox" aria-autocomplete="list" aria-controls="{{ input_id }}-results"
+           :aria-expanded="{{ h }}.results.length > 0"
+           :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+           class="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-current/20">
+    <i x-show="{{ h }}.searching" x-cloak class="fa-solid fa-circle-notch fa-spin absolute right-3 top-3 opacity-60" aria-hidden="true"></i>
+    <ul id="{{ input_id }}-results" role="listbox" x-show="{{ h }}.results.length" x-cloak
+        :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+        class="mt-1 max-h-56 w-full overflow-y-auto rounded border shadow-sm">
+      <template x-for="person in {{ h }}.results" :key="person.pk">
+        <li role="option">
+          <button type="button" @click="pick({{ h }}, person)"
+                  class="flex w-full items-baseline justify-between gap-2 px-3 py-2 text-left hover:bg-current/10">
+            <span x-text="person.name"></span><span class="font-mono text-xs opacity-60" x-text="person.username"></span>
+          </button>
+        </li>
+      </template>
+    </ul>
+    <p x-show="{{ h }}.searched && !{{ h }}.searching && !{{ h }}.results.length && {{ h }}.q.trim()" x-cloak
+       class="mt-1 text-xs opacity-60">{% trans "Nobody found." %}</p>
+  </div>
+  {% for e in errors %}<p class="text-xs text-red-600 dark:text-red-400" role="alert">{{ e }}</p>{% endfor %}
+</div>

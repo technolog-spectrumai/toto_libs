@@ -1,0 +1,14 @@
+{% load i18n vault_flags %}{% comment %}A bucket's "Share with another Zenobia" (share_views.py): opens the
+   share modal (vault/manage/_share_modal.html) for this bucket — its "Shared
+   with" list, a new share, Rotate key and Revoke. Not offered for a bucket
+   connected from another Zenobia (it is shared from the Zenobia that holds
+   its files; the door refuses it too) nor where external buckets are off.
+   Included once per bucket in the table's actions and in each card, beside
+   Test, Edit and Delete; expects `row`.{% endcomment %}
+{% remote_buckets_enabled as remote_ok %}
+{% if remote_ok and not row.zenobia_remote %}
+<button type="button" data-testid="bucket-share-{{ row.bucket.pk }}"
+        @click="$dispatch('vault-share-open', {pk: {{ row.bucket.pk }}, url: '{% url 'vault:manage_shares' row.bucket.pk %}'})"
+        class="inline-flex items-center gap-1 rounded border border-current/25 px-2.5 py-1 text-xs font-semibold transition hover:opacity-80">
+  <i class="fa-solid fa-share-nodes" aria-hidden="true"></i>{% trans "Share" %}</button>
+{% endif %}

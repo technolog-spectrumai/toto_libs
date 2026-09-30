@@ -1,0 +1,34 @@
+{% load i18n %}{% comment %}A row's state: being deleted (and why a purge stopped), the last
+   connection test as stamped — "never tested" is a true answer, never a
+   guess — and what the bucket holds. Read from columns only: no page render
+   ever probes. Expects `row`.{% endcomment %}
+<div class="space-y-1 text-xs" data-testid="bucket-status-{{ row.bucket.pk }}">
+  {% if row.info.status != "active" %}
+    <span class="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-red-500/50 bg-red-500/10 px-2 py-0.5 font-semibold text-red-600 dark:text-red-400"
+          data-testid="bucket-deleting-{{ row.bucket.pk }}">
+      <i class="fa-solid {% if row.info.status == 'delete_failed' or row.info.status == 'delete_stalled' %}fa-triangle-exclamation{% else %}fa-hourglass-half{% endif %}" aria-hidden="true"></i>{{ row.info.status_label }}</span>
+    {% if row.bucket.deletion_error %}<p class="max-w-xs break-words text-red-600 dark:text-red-400">{{ row.bucket.deletion_error }}</p>{% endif %}
+    {% if row.info.status == "delete_stalled" %}<p class="max-w-xs break-words text-red-600 dark:text-red-400" data-testid="bucket-stalled-{{ row.bucket.pk }}">{% blocktrans with when=row.bucket.deletion_requested_at|date:"Y-m-d H:i" %}Delete was confirmed at {{ when }} and the bucket is still here. If its file count no longer goes down, the job has stopped: confirm Delete again to resume it.{% endblocktrans %}</p>{% endif %}
+  {% endif %}
+  <div class="flex flex-wrap items-center gap-1">
+    {% if row.info.health == "ok" %}
+      <span class="inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5"
+            :class="darkMode ? 'border-success-dark text-success-dark' : 'border-success-light text-success-light'">
+        <i class="fa-solid fa-circle-check" aria-hidden="true"></i>{{ row.info.health_label }}</span>
+    {% elif row.info.health == "error" %}
+      <span class="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-red-500/50 px-2 py-0.5 text-red-600 dark:text-red-400"
+            title="{{ row.info.detail }}">
+        <i class="fa-solid fa-plug-circle-xmark" aria-hidden="true"></i>{{ row.info.health_label }}</span>
+    {% else %}
+      <span class="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-current/25 px-2 py-0.5 opacity-70">
+        <i class="fa-regular fa-circle-question" aria-hidden="true"></i>{{ row.info.health_label }}</span>
+    {% endif %}
+    {% if row.bucket.last_probe_at %}<span class="opacity-50">{{ row.bucket.last_probe_at|date:"Y-m-d H:i" }}</span>{% endif %}
+  </div>
+  {% if row.info.health == "error" and row.info.detail %}<p class="max-w-xs truncate opacity-70" title="{{ row.info.detail }}">{{ row.info.detail }}</p>{% endif %}
+  <p class="tabular-nums opacity-70">{% blocktrans count n=row.files %}{{ n }} file{% plural %}{{ n }} files{% endblocktrans %} · {{ row.bytes|filesizeformat }}</p>
+  <template x-if="tests[{{ row.bucket.pk }}]">
+    <p class="max-w-xs break-words" :class="tests[{{ row.bucket.pk }}].ok ? '' : 'text-red-600 dark:text-red-400'"
+       x-text="(tests[{{ row.bucket.pk }}].ok ? '✓ ' : '✗ ') + tests[{{ row.bucket.pk }}].detail"></p>
+  </template>
+</div>

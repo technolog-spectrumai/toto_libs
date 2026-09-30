@@ -1,0 +1,20 @@
+{% load i18n %}{% comment %}The page's head: four counters over every bucket, and the doors
+   that make one. Expects `totals`, `kinds`.{% endcomment %}
+<div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+  <section class="grid flex-1 grid-cols-2 gap-3 sm:grid-cols-4" data-testid="buckets-totals">
+    {% trans "Buckets" as l_buckets %}{% trans "Remote" as l_remote %}{% trans "Without an owner" as l_ownerless %}{% trans "Being deleted" as l_deleting %}
+    {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-layer-group" label=l_buckets value=totals.buckets color="accent" %}
+    {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-cloud" label=l_remote value=totals.remote color="neutral" %}
+    {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-user-slash" label=l_ownerless value=totals.ownerless color="warn" %}
+    {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-trash-can" label=l_deleting value=totals.deleting color="warn" %}
+  </section>
+  <div class="flex flex-wrap gap-2 lg:justify-end">
+    {% include "vault/manage/_connect_button.html" %}
+    {% if kinds %}
+    <button type="button" @click="openCreate()" data-testid="bucket-new-open"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+      <i class="fa-solid fa-plus" aria-hidden="true"></i>{% trans "New bucket" %}</button>
+    {% endif %}
+  </div>
+</div>

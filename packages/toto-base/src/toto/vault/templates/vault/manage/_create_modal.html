@@ -1,0 +1,124 @@
+{% load i18n %}{% comment %}The New bucket modal: a kind from the adapter registry (`kinds`,
+   manage_views._kinds — this server, AWS S3, OVH S3), the name, owner, quota
+   and AI shield every bucket has, then the chosen kind's own fields. Only the
+   chosen kind's fieldset is enabled, so only its fields are posted. A secret
+   field is never filled back in; a refused post returns with `draft`
+   (open == "create") and each sentence beside its field. An S3 kind is saved
+   only after its connection test passed (the server runs it).{% endcomment %}
+{% with creating=draft.open|default:"" %}
+<div x-show="modal === 'create'" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     role="dialog" aria-modal="true" aria-labelledby="bucket-new-title">
+  <div class="absolute inset-0 bg-black/60" @click="close()"></div>
+  <form method="post" action="{% url 'vault:manage_create' %}" data-testid="bucket-new" autocomplete="off"
+        @submit="guard($event)"
+        :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+        class="relative max-h-[90vh] w-full max-w-2xl space-y-4 overflow-y-auto rounded-xl border p-5 text-sm shadow-xl">
+    {% csrf_token %}
+    <input type="hidden" name="page" value="{{ page_obj.number|default:1 }}">
+    <div class="flex items-center justify-between">
+      <h2 id="bucket-new-title" class="text-lg font-bold"><i class="fa-solid fa-plus mr-1" aria-hidden="true"></i>{% trans "New bucket" %}</h2>
+      <button type="button" @click="close()" class="opacity-70 hover:opacity-100" aria-label="{% trans 'Close' %}">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+    </div>
+    <p x-show="create.error" x-cloak x-text="create.error" role="alert" data-testid="bucket-new-error"
+       class="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-red-600 dark:text-red-400">{% if creating == "create" %}{{ draft.error }}{% endif %}</p>
+
+    <fieldset class="space-y-2">
+      <legend class="text-xs font-semibold opacity-70">{% trans "Kind of storage" %}</legend>
+      <div class="grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid="bucket-new-kinds">
+        {% for kind in kinds %}
+        <label :class="create.kind === '{{ kind.key }}' ? (darkMode ? 'border-accent-dark ring-2 ring-current/20' : 'border-accent-light ring-2 ring-current/20') : 'border-current/25'"
+               class="flex cursor-pointer flex-col gap-1 rounded-lg border p-3 transition hover:opacity-90"
+               data-testid="bucket-kind-{{ kind.key }}">
+          <span class="flex items-center gap-2 font-semibold">
+            <input type="radio" name="kind" value="{{ kind.key }}" x-model="create.kind" class="sr-only">
+            <i class="{{ kind.icon }}" aria-hidden="true"></i>{{ kind.title }}
+            {% if kind.is_remote %}<i class="fa-solid fa-cloud ml-auto text-xs opacity-50" title="{% trans 'The bytes live outside this host' %}" aria-hidden="true"></i>{% endif %}
+          </span>
+          <span class="text-xs opacity-70">{{ kind.summary }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% for e in create_errors.kind %}<p class="text-xs text-red-600 dark:text-red-400" role="alert">{{ e }}</p>{% endfor %}
+    </fieldset>
+
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <label class="block space-y-1">
+        <span class="text-xs font-semibold opacity-70">{% trans "Name" %}</span>
+        <input type="text" name="name" x-ref="createName" required maxlength="{{ name_max }}"
+               value="{% if creating == 'create' %}{{ draft.name }}{% endif %}" data-testid="bucket-new-name"
+               :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+               class="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-current/20">
+        {% for e in create_errors.name %}<span class="block text-xs text-red-600 dark:text-red-400" role="alert">{{ e }}</span>{% endfor %}
+      </label>
+      <label class="block space-y-1">
+        <span class="text-xs font-semibold opacity-70">{% trans "Storage quota (MB)" %} <span class="font-normal">— {% trans "blank: unlimited" %}</span></span>
+        <input type="text" inputmode="numeric" name="storage_quota_mb" maxlength="10"
+               value="{% if creating == 'create' %}{{ draft.storage_quota_mb }}{% endif %}"
+               :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+               class="w-full rounded border px-3 py-2 font-mono outline-none focus:ring-2 focus:ring-current/20">
+        {% for e in create_errors.storage_quota_mb %}<span class="block text-xs text-red-600 dark:text-red-400" role="alert">{{ e }}</span>{% endfor %}
+      </label>
+    </div>
+
+    {% include "vault/manage/_owner_picker.html" with h="create" input_id="bucket-new-owner" errors=create_errors.owner %}
+
+    <label class="flex items-start gap-2">
+      <input type="hidden" name="ai_protected" value="0">
+      <input type="checkbox" name="ai_protected" value="1" class="mt-0.5"{% if creating == "create" and draft.ai_protected %} checked{% endif %}>
+      <span><span class="font-semibold">{% trans "AI shield" %}</span>
+        <span class="block text-xs opacity-70">{% trans "The assistant never reads files in this bucket." %}</span></span>
+    </label>
+
+    {% for kind in kinds %}
+    <fieldset x-show="create.kind === '{{ kind.key }}'" :disabled="create.kind !== '{{ kind.key }}'"
+              class="space-y-3 rounded-lg border border-current/15 p-3"
+              data-testid="bucket-fields-{{ kind.key }}">
+      <legend class="px-1 text-xs font-semibold opacity-70"><i class="{{ kind.icon }} mr-1" aria-hidden="true"></i>{{ kind.title }}</legend>
+      {% if kind.blocked %}<p class="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-xs text-red-600 dark:text-red-400" role="alert">{{ kind.blocked }}</p>{% endif %}
+      {% for f in kind.fields %}
+      <div class="space-y-1">
+        <label for="bucket-new-{{ kind.key }}-{{ f.name }}" class="text-xs font-semibold opacity-70">{{ f.label }}{% if not f.required %} <span class="font-normal">— {% trans "optional" %}</span>{% endif %}</label>
+        {% if f.kind == "select" %}
+          <select id="bucket-new-{{ kind.key }}-{{ f.name }}" name="{{ f.name }}"{% if f.required %} required{% endif %}
+                  :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                  class="w-full rounded border px-3 py-2">
+            {% for code, label in f.choices %}<option value="{{ code }}"{% if code == f.value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        {% elif f.kind == "textarea" %}
+          <textarea id="bucket-new-{{ kind.key }}-{{ f.name }}" name="{{ f.name }}" rows="3"{% if f.required %} required{% endif %}{% if f.max_length %} maxlength="{{ f.max_length }}"{% endif %}
+                    placeholder="{{ f.placeholder }}" spellcheck="false"
+                    :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                    class="w-full rounded border px-3 py-2 font-mono text-xs">{% if not f.secret %}{{ f.value }}{% endif %}</textarea>
+        {% else %}
+          <input id="bucket-new-{{ kind.key }}-{{ f.name }}" name="{{ f.name }}"
+                 type="{% if f.secret or f.kind == 'password' %}password{% else %}text{% endif %}"
+                 {% if f.secret or f.kind == 'password' %}autocomplete="new-password"{% else %}value="{{ f.value }}" autocomplete="off"{% endif %}
+                 {% if f.required %}required{% endif %}{% if f.max_length %} maxlength="{{ f.max_length }}"{% endif %}
+                 placeholder="{{ f.placeholder }}" spellcheck="false"
+                 :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                 class="w-full rounded border px-3 py-2 font-mono">
+        {% endif %}
+        {% if f.help %}<p class="text-xs opacity-60">{{ f.help }}</p>{% endif %}
+        {% for e in f.errors %}<p class="text-xs text-red-600 dark:text-red-400" role="alert">{{ e }}</p>{% endfor %}
+      </div>
+      {% empty %}
+      <p class="text-xs opacity-70">{% trans "Nothing more to fill in: the files stay on this server." %}</p>
+      {% endfor %}
+    </fieldset>
+    {% endfor %}
+
+    <p class="text-xs opacity-60">{% trans "You are recorded as the bucket's creator. A bucket stored elsewhere is saved only after its connection test passes; its keys are stored encrypted and never shown again." %}</p>
+
+    <div class="flex justify-end gap-2 pt-1">
+      <button type="button" @click="close()" class="rounded border border-current/25 px-3 py-2">{% trans "Cancel" %}</button>
+      <button type="submit" :disabled="submitting || !create.kind || !!blocked(create.kind)" data-testid="bucket-new-submit"
+              :aria-busy="submitting ? 'true' : 'false'"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-1.5 rounded px-4 py-2 font-semibold disabled:opacity-40">
+        <i class="fa-solid fa-plus" aria-hidden="true" x-show="!submitting"></i><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true" x-show="submitting" x-cloak></i>
+        <span x-show="!submitting">{% trans "Make bucket" %}</span><span x-show="submitting && remote(create.kind)" x-cloak>{% trans "Testing the connection…" %}</span><span x-show="submitting && !remote(create.kind)" x-cloak>{% trans "Making…" %}</span></button>
+    </div>
+  </form>
+</div>
+{% endwith %}

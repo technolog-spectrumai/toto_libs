@@ -1,8 +1,17 @@
-"""The Remote tab, the Archive tab, and the gate in front of them."""
+"""The tab bar, the Archive tab, and remote buckets as Storage → Management
+shows them.
 
+The Remote tab folded into Management (2026-09-30): its listing, its two
+create pages and its connection test are gone, and a remote bucket's health,
+target and Test button are a row of the Management list — a superuser on the
+Superuser plan's page (``tests_management`` holds its doors).
+"""
+
+import io
 import tempfile
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -22,6 +31,8 @@ class RemoteTabTestCase(TestCase):
         cls.member = User.objects.create_user("rt-member", password="x")
         cls.operator = User.objects.create_user("rt-op", password="x", is_staff=True)
         cls.root = User.objects.create_superuser("rt-root", "r@e.org", "x")
+        call_command("bootstrap_plans", stdout=io.StringIO())    # root → the Superuser plan
+        cls.root = User.objects.get(pk=cls.root.pk)
 
         cls.local = Bucket.objects.create(name="Local", slug="rt-local",
                                           owner=cls.member)
@@ -39,50 +50,25 @@ class RemoteTabTestCase(TestCase):
             storage_backend=StorageBackend.REMOTE_TOTO, peer=cls.peer)
 
 
-class RemoteListingGateTests(RemoteTabTestCase):
-    def test_anonymous_is_redirected(self):
-        response = self.client.get(reverse("vault:remote_buckets"))
-        self.assertEqual(response.status_code, 302)
+class RemoteRowsInManagementTests(RemoteTabTestCase):
+    """What the Remote tab listed, Management lists — with every other bucket."""
 
-    def test_a_plain_member_is_refused(self):
-        self.client.force_login(self.member)
-        self.assertEqual(
-            self.client.get(reverse("vault:remote_buckets")).status_code, 403)
-
-    def test_staff_may_read_it(self):
-        self.client.force_login(self.operator)
-        self.assertEqual(
-            self.client.get(reverse("vault:remote_buckets")).status_code, 200)
-
-    def test_a_superuser_who_is_not_staff_is_admitted(self):
-        """is_superuser does not imply is_staff in Django."""
-        self.root.is_staff = False
-        self.root.save(update_fields=["is_staff"])
-        self.client.force_login(self.root)
-        self.assertEqual(
-            self.client.get(reverse("vault:remote_buckets")).status_code, 200)
-
-    @override_settings(VAULT_EXTERNAL_BUCKETS=False)
-    def test_a_local_only_host_hides_the_page_entirely(self):
-        self.client.force_login(self.operator)
-        self.assertEqual(
-            self.client.get(reverse("vault:remote_buckets")).status_code, 404)
-
-
-class RemoteListingContentTests(RemoteTabTestCase):
     def setUp(self):
-        self.client.force_login(self.operator)
+        self.client.force_login(self.root)
 
-    def test_it_lists_remote_buckets_and_omits_local_ones(self):
-        body = self.client.get(reverse("vault:remote_buckets")).content.decode()
-        self.assertIn("Cloud", body)
-        self.assertIn("Mounted", body)
-        self.assertNotIn("rt-local", body)
+    def body(self):
+        return self.client.get(reverse("vault:manage")).content.decode()
 
-    def test_a_never_contacted_peer_reads_as_never_checked(self):
-        body = self.client.get(reverse("vault:remote_buckets")).content.decode()
-        self.assertIn("never checked", body)
-        self.assertIn("never mirrored", body)
+    def test_it_lists_remote_buckets_and_local_ones_too(self):
+        body = self.body()
+        for bucket in (self.local, self.cloud, self.mount):
+            with self.subTest(bucket=bucket.slug):
+                self.assertIn(f'data-testid="bucket-row-{bucket.pk}"', body)
+
+    def test_a_never_contacted_bucket_reads_as_never_tested(self):
+        body = self.body()
+        row = body[body.index(f'data-testid="bucket-row-{self.mount.pk}"'):]
+        self.assertIn("Never tested", row[:row.index("</tr>")])
 
     def test_it_renders_without_contacting_anyone(self):
         """No page render may probe a peer — the rule the surface rests on."""
@@ -94,38 +80,56 @@ class RemoteListingContentTests(RemoteTabTestCase):
         original = peer_client._http
         peer_client._http = explode
         try:
-            self.assertEqual(
-                self.client.get(reverse("vault:remote_buckets")).status_code, 200)
+            self.assertEqual(self.client.get(reverse("vault:manage")).status_code, 200)
         finally:
             peer_client._http = original
 
     def test_the_s3_row_shows_config_but_never_a_credential(self):
-        body = self.client.get(reverse("vault:remote_buckets")).content.decode()
-        self.assertIn("https://s3.example.org", body)
-        self.assertIn("vault/", body)
-        self.assertNotIn("secret", body.lower().replace("secret access key", ""))
+        body = self.body()
+        row = body[body.index(f'data-testid="bucket-row-{self.cloud.pk}"'):]
+        row = row[:row.index("</tr>")]
+        self.assertIn("https://s3.example.org", row)
+        self.assertIn("b/vault/", row)
+        self.assertIn("Server environment", row)      # no sealed key: the boto3 chain
+        self.assertNotIn("secret", row.lower())
+
+    def test_staff_without_the_plan_no_longer_see_remote_storage(self):
+        """The Remote tab was staff-or-superuser; Management is the Superuser
+        plan's, and staff are members there."""
+        self.client.force_login(self.operator)
+        self.assertEqual(self.client.get(reverse("vault:manage")).status_code, 403)
 
 
 class TabBarTests(RemoteTabTestCase):
-    def test_the_tab_bar_offers_four_tabs_to_an_operator(self):
+    def test_the_tab_bar_offers_its_tabs_to_an_operator_and_no_remote_tab(self):
         self.client.force_login(self.operator)
         body = self.client.get(reverse("vault:archive")).content.decode()
-        for label in ("Files", "Metrics", "Remote", "Archive"):
+        for label in ("Files", "Metrics", "Archive"):
             self.assertIn(f">{label}</a>", body)
+        self.assertNotIn(">Remote</a>", body)
+        self.assertNotIn(">Management</a>", body)
 
-    def test_a_member_never_sees_the_remote_tab(self):
+    def test_a_superuser_on_the_plan_gets_management(self):
+        self.client.force_login(self.root)
+        body = self.client.get(reverse("vault:archive")).content.decode()
+        for label in ("Files", "Metrics", "Management", "Archive"):
+            self.assertIn(f">{label}</a>", body)
+        self.assertNotIn(">Remote</a>", body)
+
+    def test_a_member_never_sees_the_management_tab(self):
         """A tab that could only ever answer 403 is worse than no tab."""
         self.client.force_login(self.member)
         body = self.client.get(reverse("vault:archive")).content.decode()
         self.assertIn(">Files</a>", body)
         self.assertIn(">Archive</a>", body)
-        self.assertNotIn(reverse("vault:remote_buckets"), body)
+        self.assertNotIn(reverse("vault:manage"), body)
 
     def test_the_chip_does_not_carry_the_phrase_a_metrics_test_forbids(self):
         """tests_remote_ui pins 'Remote bucket' as absent from a local page."""
-        self.client.force_login(self.operator)
-        body = self.client.get(reverse("vault:archive")).content.decode()
-        self.assertNotIn("Remote bucket", body)
+        for user in (self.operator, self.root):
+            self.client.force_login(user)
+            body = self.client.get(reverse("vault:archive")).content.decode()
+            self.assertNotIn("Remote bucket", body)
 
 
 class ArchiveTabTests(RemoteTabTestCase):
@@ -267,7 +271,6 @@ class CachedViewsNeedNoPinTests(RemoteTabTestCase):
         outbound.assert_outbound_allowed = explode
         try:
             for name, args in (
-                ("vault:remote_buckets", ()),
                 ("vault:metrics", ()),
                 ("vault:public_list", ()),
                 ("vault:transfer_panel", ()),
@@ -276,6 +279,11 @@ class CachedViewsNeedNoPinTests(RemoteTabTestCase):
                 with self.subTest(route=name):
                     response = self.client.get(reverse(name, args=args))
                     self.assertEqual(response.status_code, 200)
+
+            # Management lists every bucket, remote ones with their health —
+            # from stamps. It is the Superuser plan's page.
+            self.client.force_login(self.root)
+            self.assertEqual(self.client.get(reverse("vault:manage")).status_code, 200)
 
             # bucket_metrics is owner-or-superuser, and answers 404 to anyone
             # else on purpose — a 403 on a guessable slug is an enumeration
@@ -301,165 +309,55 @@ class SealedModeTests(RemoteTabTestCase):
     def test_the_listing_says_which_buckets_are_sealed(self):
         self.cloud.credential_mode = "sealed"
         self.cloud.save(update_fields=["credential_mode"])
-        self.client.force_login(self.operator)
-        response = self.client.get(reverse("vault:remote_buckets"))
+        self.client.force_login(self.root)
+        response = self.client.get(reverse("vault:manage"))
         self.assertEqual(response.status_code, 200)
 
 
-class RemoteS3CreateTests(RemoteTabTestCase):
-    """The staff door for S3 storage: typed fields, whitelisted config."""
-
-    def _post(self, **overrides):
-        data = {"name": "New Cloud", "bucket_name": "the-remote-name",
-                "region_name": "eu-west", "prefix": "vault/",
-                "endpoint_url": "https://s3.example.org"}
-        data.update(overrides)
-        return self.client.post(reverse("vault:remote_s3_new"), data)
-
-    def test_members_are_refused_and_staff_admitted(self):
-        self.client.force_login(self.member)
-        self.assertEqual(
-            self.client.get(reverse("vault:remote_s3_new")).status_code, 403)
-        self.client.force_login(self.operator)
-        self.assertEqual(
-            self.client.get(reverse("vault:remote_s3_new")).status_code, 200)
-
-    def test_a_valid_post_creates_a_bucket_with_only_the_whitelist(self):
-        self.client.force_login(self.operator)
-        response = self._post()
-        self.assertEqual(response.status_code, 302)
-        bucket = Bucket.objects.get(name="New Cloud")
-        self.assertEqual(bucket.storage_backend, StorageBackend.S3)
-        self.assertEqual(bucket.credential_mode, "ambient")
-        self.assertEqual(set(bucket.storage_config), {
-            "bucket_name", "endpoint_url", "region_name", "prefix"})
-
-    def test_a_private_endpoint_is_refused_with_a_sentence(self):
-        """The same guard the driver applies, surfaced at save time — not as a
-        delayed failure on first use."""
-        self.client.force_login(self.operator)
-        response = self._post(endpoint_url="https://169.254.169.254/")
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "public address")
-        self.assertFalse(Bucket.objects.filter(name="New Cloud").exists())
-
-    def test_a_duplicate_name_is_refused(self):
-        self.client.force_login(self.operator)
-        response = self._post(name="Cloud")          # exists in the fixture
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "already exists")
-
-
-FAKE_HOSTS = [("https://peer.example.org", "Placidia (https://peer.example.org)")]
-
-
-class RemoteMountCreateTests(RemoteTabTestCase):
-    """The staff door for mounting — federated platforms ONLY."""
-
-    def _code(self):
-        from toto.vault.peering import BucketGrant, pairing_code_for
-
-        grant = BucketGrant.objects.create(
-            label="For us", bucket=self.local, may_list=True, may_download=True)
-        raw_key = grant.issue_api_key()
-        grant.save()
-        return pairing_code_for(grant, raw_key)
-
-    def _post(self, code, **overrides):
-        from unittest.mock import patch
-
-        data = {"name": "Mounted Peer", "paired_host": "https://peer.example.org",
-                "pairing_code": code}
-        data.update(overrides)
-        with patch("toto.vault.forms.federated_host_choices",
-                   return_value=FAKE_HOSTS):
-            return self.client.post(reverse("vault:remote_mount_new"), data)
-
-    def test_members_are_refused(self):
-        self.client.force_login(self.member)
-        self.assertEqual(
-            self.client.get(reverse("vault:remote_mount_new")).status_code, 403)
-
-    def test_without_federation_the_page_says_so_instead_of_a_form(self):
-        from unittest.mock import patch
-
-        self.client.force_login(self.operator)
-        with patch("toto.vault.forms.federated_host_choices", return_value=[]):
-            body = self.client.get(
-                reverse("vault:remote_mount_new")).content.decode()
-        self.assertIn("not federated", body)
-        self.assertNotIn("Pairing code</label>", body)
-
-    def test_there_is_no_free_text_url_door(self):
-        """Only federated: a POSTed base_url is not a field and changes nothing."""
-        from toto.vault.forms import FederatedMountForm
-
-        self.assertNotIn("base_url", FederatedMountForm.base_fields)
-
-        self.client.force_login(self.operator)
-        response = self._post(self._code(), base_url="https://evil.example.net")
-        self.assertEqual(response.status_code, 302)
-        peer = BucketPeer.objects.get(label="Mounted Peer")
-        self.assertEqual(peer.base_url, "https://peer.example.org")
-
-    def test_a_host_outside_the_federation_list_is_refused(self):
-        self.client.force_login(self.operator)
-        response = self._post(self._code(),
-                              paired_host="https://stranger.example.net")
-        self.assertEqual(response.status_code, 200)   # form error, nothing made
-        self.assertFalse(BucketPeer.objects.filter(label="Mounted Peer").exists())
-
-    def test_a_mangled_code_is_refused_with_the_operators_sentence(self):
-        self.client.force_login(self.operator)
-        response = self._post("not-a-code")
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "does not decode as a pairing code")
-        self.assertFalse(BucketPeer.objects.filter(label="Mounted Peer").exists())
-
-    def test_a_valid_code_creates_the_peer_and_the_bucket_together(self):
-        self.client.force_login(self.operator)
-        response = self._post(self._code())
-        self.assertEqual(response.status_code, 302)
-
-        peer = BucketPeer.objects.get(label="Mounted Peer")
-        bucket = Bucket.objects.get(name="Mounted Peer")
-        self.assertEqual(bucket.storage_backend, StorageBackend.REMOTE_TOTO)
-        self.assertEqual(bucket.peer_id, peer.pk)
-        self.assertTrue(peer.api_key_hint)
-        # The probe ran and failed (no network in tests) — stamped, not fatal.
-        peer.refresh_from_db()
-        self.assertTrue(peer.probe_error)
-
-
-class RemoteBucketTestEndpointTests(RemoteTabTestCase):
-    """The online connection test: bounded, stamped, staff-only."""
+class ManagementTestButtonTests(RemoteTabTestCase):
+    """The online connection test, moved from the Remote tab to Management:
+    bounded, stamped, the Superuser plan's."""
 
     def _url(self, bucket):
-        return reverse("vault:remote_bucket_test", args=[bucket.slug])
+        return reverse("vault:manage_test", args=[bucket.pk])
 
-    def test_a_member_gets_404_not_403(self):
-        """Slug-addressed: a refusal must not confirm the bucket exists."""
-        self.client.force_login(self.member)
-        self.assertEqual(self.client.post(self._url(self.mount)).status_code, 404)
+    def test_a_member_and_staff_are_refused_before_any_lookup(self):
+        for user in (self.member, self.operator):
+            self.client.force_login(user)
+            with self.subTest(user=user.username):
+                self.assertEqual(self.client.post(self._url(self.mount)).status_code, 403)
+                self.assertEqual(self.client.post(
+                    reverse("vault:manage_test", args=[999999])).status_code, 403)
 
-    def test_a_local_bucket_is_not_a_testable_target(self):
-        self.client.force_login(self.operator)
-        self.assertEqual(self.client.post(self._url(self.local)).status_code, 404)
+    def test_a_local_bucket_is_testable_now(self):
+        self.client.force_login(self.root)
+        payload = self.client.post(self._url(self.local)).json()
+        self.assertTrue(payload["ok"], payload)
 
     def test_get_is_refused(self):
-        self.client.force_login(self.operator)
+        self.client.force_login(self.root)
         self.assertEqual(self.client.get(self._url(self.mount)).status_code, 405)
 
     def test_a_dead_peer_answers_a_sentence_and_is_stamped(self):
-        self.client.force_login(self.operator)
-        response = self.client.post(self._url(self.mount))
+        import toto.vault.peer_client as peer_client
+
+        class Down:
+            def request(self, *args, **kwargs):
+                raise ConnectionError("unreachable")
+
+        self.client.force_login(self.root)
+        original = peer_client._http
+        peer_client._http = lambda: Down()
+        try:
+            response = self.client.post(self._url(self.mount))
+        finally:
+            peer_client._http = original
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertFalse(payload["ok"])
         self.assertTrue(payload["detail"])
         self.assertEqual(response["Cache-Control"], "no-store")
         self.peer.refresh_from_db()
-        self.assertTrue(self.peer.probe_error)
         self.assertTrue(self.peer.last_error)
 
     def test_an_unreachable_s3_endpoint_answers_a_sentence(self):
@@ -470,18 +368,19 @@ class RemoteBucketTestEndpointTests(RemoteTabTestCase):
             storage_backend=StorageBackend.S3,
             storage_config={"bucket_name": "b",
                             "endpoint_url": "https://s3.invalid"})
-        self.client.force_login(self.operator)
+        self.client.force_login(self.root)
         response = self.client.post(self._url(bucket))
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertFalse(payload["ok"])
         self.assertTrue(payload["detail"])
+        bucket.refresh_from_db()
+        self.assertTrue(bucket.last_probe_error)
 
     def test_the_listing_offers_the_test_button(self):
-        self.client.force_login(self.operator)
-        body = self.client.get(reverse("vault:remote_buckets")).content.decode()
-        self.assertIn("runTest(", body)
-        self.assertIn(f"'{self.mount.slug}'", body)
+        self.client.force_login(self.root)
+        body = self.client.get(reverse("vault:manage")).content.decode()
+        self.assertIn(f"runTest({self.mount.pk}, '{self._url(self.mount)}')", body)
 
 
 class VaultPageSkinTests(RemoteTabTestCase):
@@ -498,13 +397,19 @@ class VaultPageSkinTests(RemoteTabTestCase):
     """
 
     PAGES = (
-        ("vault:remote_buckets", ()),
         ("vault:archive", ()),
-        ("vault:remote_s3_new", ()),
-        ("vault:remote_mount_new", ()),
         ("vault:public_list", ()),
         ("vault:metrics", ()),
     )
+
+    def test_the_management_page_gets_the_platform_context(self):
+        self.client.force_login(self.root)
+        response = self.client.get(reverse("vault:manage"))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context.get("platform"))
+        body = response.content.decode()
+        for marker in ("Zen", "tailwind.config", "darkMode"):
+            self.assertIn(marker, body)
 
     def setUp(self):
         self.client.force_login(self.operator)

@@ -1,0 +1,47 @@
+{% load i18n %}{% comment %}Wide screens (md+): a table, one row per bucket. Expects `rows`.{% endcomment %}
+{% trans "no owner" as l_no_owner %}
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="hidden overflow-x-auto rounded-2xl border shadow-sm md:block">
+  <table class="min-w-full text-left text-sm" data-testid="buckets-table">
+    <thead :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-xs uppercase tracking-wide opacity-70">
+      <tr>
+        <th scope="col" class="px-4 py-3">{% trans "Bucket" %}</th>
+        <th scope="col" class="px-4 py-3">{% trans "Storage" %}</th>
+        <th scope="col" class="px-4 py-3">{% trans "Target" %}</th>
+        <th scope="col" class="px-4 py-3">{% trans "Owner" %}</th>
+        <th scope="col" class="px-4 py-3">{% trans "Created by" %}</th>
+        <th scope="col" class="px-4 py-3">{% trans "Created" %}</th>
+        <th scope="col" class="px-4 py-3">{% trans "Status" %}</th>
+        <th scope="col" class="px-4 py-3 text-right"><span class="sr-only">{% trans "Actions" %}</span></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in rows %}
+      <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+          class="border-b align-top last:border-b-0{% if row.bucket.is_being_deleted %} opacity-70{% endif %}"
+          data-testid="bucket-row-{{ row.bucket.pk }}">
+        <td class="px-4 py-3">
+          <div class="break-words font-semibold">{{ row.bucket.name }}</div>
+          <div class="font-mono text-xs opacity-50">{{ row.bucket.slug }}</div>
+          {% if row.bucket.ai_protected or row.bucket.storage_quota_mb %}
+          <div class="mt-1 flex flex-wrap gap-1 text-[10px] uppercase tracking-wide opacity-60">
+            {% if row.bucket.ai_protected %}<span title="{% trans 'The assistant never reads files in this bucket.' %}"><i class="fa-solid fa-shield-halved mr-0.5" aria-hidden="true"></i>{% trans "AI shield" %}</span>{% endif %}
+            {% if row.bucket.storage_quota_mb %}<span>{% blocktrans with mb=row.bucket.storage_quota_mb %}{{ mb }} MB quota{% endblocktrans %}</span>{% endif %}
+          </div>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3">{% include "vault/manage/_type_badge.html" %}</td>
+        <td class="px-4 py-3 text-xs">
+          <div class="max-w-[16rem] break-words">{{ row.info.target|default:"—" }}</div>
+          {% if row.info.credential %}<div class="mt-0.5 opacity-60">{{ row.info.credential }}</div>{% endif %}
+        </td>
+        <td class="px-4 py-3">{% include "vault/manage/_person.html" with person=row.owner none_label=l_no_owner %}</td>
+        <td class="px-4 py-3">{% include "vault/manage/_person.html" with person=row.creator none_label="" %}</td>
+        <td class="whitespace-nowrap px-4 py-3 text-xs opacity-70">{% if row.bucket.created_at %}{{ row.bucket.created_at|date:"Y-m-d" }}{% else %}—{% endif %}</td>
+        <td class="px-4 py-3">{% include "vault/manage/_status.html" %}</td>
+        <td class="px-4 py-3 text-right">{% include "vault/manage/_row_actions.html" %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>

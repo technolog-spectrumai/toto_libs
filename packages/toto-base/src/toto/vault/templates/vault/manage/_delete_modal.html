@@ -1,0 +1,64 @@
+{% load i18n %}{% comment %}The Delete modal: what goes and what stays (the kind's
+   destroy_plan), a plain warning, and the bucket's name typed exactly. The
+   button waits for the name; the server checks it again, and the plan, and
+   hands the purge to a worker (bucket_lifecycle.request_deletion). A bucket
+   connected from another Zenobia only disconnects: nothing is deleted there.
+   One modal for every row: openDelete(pk) fills it from bucket-manage-rows; a
+   refused post re-opens it from `draft` (open == "delete").{% endcomment %}
+<div x-show="modal === 'delete' && del.row" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     role="dialog" aria-modal="true" aria-labelledby="bucket-delete-title">
+  <div class="absolute inset-0 bg-black/60" @click="close()"></div>
+  <form method="post" :action="del.row ? del.row.delete_url : ''" data-testid="bucket-delete" autocomplete="off"
+        @submit="guard($event)"
+        :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+        class="relative max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-xl border p-5 text-sm shadow-xl">
+    {% csrf_token %}
+    <input type="hidden" name="page" value="{{ page_obj.number|default:1 }}">
+    <div class="flex items-center justify-between gap-2">
+      <h2 id="bucket-delete-title" class="min-w-0 text-lg font-bold text-red-600 dark:text-red-400">
+        <i class="fa-solid fa-trash mr-1" aria-hidden="true"></i>{% trans "Delete bucket" %}
+        <span class="block break-words text-sm font-normal" x-text="del.row ? del.row.name : ''"></span></h2>
+      <button type="button" @click="close()" class="opacity-70 hover:opacity-100" aria-label="{% trans 'Close' %}">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+    </div>
+    <p x-show="del.error" x-cloak x-text="del.error" role="alert" data-testid="bucket-delete-error"
+       class="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-red-600 dark:text-red-400"></p>
+
+    <div class="space-y-1 rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-red-700 dark:text-red-300" role="note">
+      <p x-show="del.row && !del.row.zenobia_remote" class="font-semibold" data-testid="bucket-delete-warning">
+        {% trans "Deleting this bucket may permanently destroy all the data in it: every file, on this server or at the provider. It cannot be undone." %}</p>
+      <p x-show="del.row && del.row.zenobia_remote" x-cloak class="font-semibold" data-testid="bucket-delete-warning-remote">
+        {% trans "This bucket is connected from another Zenobia. Deleting it only disconnects it here: nothing is deleted on the other Zenobia." %}</p>
+    </div>
+
+    <div class="space-y-1">
+      <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "What goes" %}</h3>
+      <ul class="list-disc space-y-0.5 pl-5">
+        <template x-for="line in (del.row ? del.row.removes : [])"><li x-text="line"></li></template>
+      </ul>
+    </div>
+    <div class="space-y-1" x-show="del.row && del.row.keeps.length">
+      <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "What stays" %}</h3>
+      <ul class="list-disc space-y-0.5 pl-5">
+        <template x-for="line in (del.row ? del.row.keeps : [])"><li x-text="line"></li></template>
+      </ul>
+    </div>
+    <p class="text-xs opacity-70">{% trans "The files are removed in the background; until they are all gone the bucket stays in the list, marked as being deleted, and takes nothing new." %}</p>
+
+    <label class="block space-y-1">
+      <span class="text-xs font-semibold opacity-70">{% trans "Type the bucket's name to confirm" %}
+        <span class="font-mono font-normal" x-text="del.row ? del.row.name : ''"></span></span>
+      <input type="text" name="confirm_name" x-ref="deleteName" x-model="del.typed" required autocomplete="off" spellcheck="false"
+             data-testid="bucket-delete-confirm"
+             :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="w-full rounded border px-3 py-2 font-mono outline-none focus:ring-2 focus:ring-red-500/30">
+    </label>
+
+    <div class="flex justify-end gap-2 pt-1">
+      <button type="button" @click="close()" class="rounded border border-current/25 px-3 py-2">{% trans "Cancel" %}</button>
+      <button type="submit" :disabled="submitting || !del.row || del.typed.trim() !== del.row.name" data-testid="bucket-delete-submit"
+              class="inline-flex items-center gap-1.5 rounded bg-red-600 px-4 py-2 font-semibold text-white disabled:opacity-40">
+        <i class="fa-solid fa-trash" aria-hidden="true"></i><span x-show="!del.row || !del.row.zenobia_remote">{% trans "Delete for good" %}</span><span x-show="del.row && del.row.zenobia_remote" x-cloak>{% trans "Disconnect and delete here" %}</span></button>
+    </div>
+  </form>
+</div>

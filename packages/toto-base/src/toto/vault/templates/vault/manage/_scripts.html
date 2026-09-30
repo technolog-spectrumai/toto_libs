@@ -1,0 +1,124 @@
+{% comment %}The Management page's Alpine state: which modal is open, what it
+   holds, the owner searches and the Test buttons. Reads its data from the
+   json_script blocks manage.html prints (bucket-manage-draft, -rows, -kinds).
+   Values are shown with x-text / x-model only.{% endcomment %}
+<script>
+document.addEventListener('alpine:init', () => {
+  const read = (id, fallback) => {
+    const el = document.getElementById(id);
+    try { return el ? JSON.parse(el.textContent) : fallback; } catch (e) { return fallback; }
+  };
+  const picker = (owner) => ({owner: owner || null, q: '', results: [], searching: false,
+                              searched: false, timer: null, seq: 0});
+
+  Alpine.data('bucketManage', (peopleUrl) => {
+    const draft = read('bucket-manage-draft', {});
+    const rows = read('bucket-manage-rows', []);
+    const kinds = read('bucket-manage-kinds', []);
+    const find = (pk) => rows.find(r => r.pk === pk) || null;
+    const editing = draft.open === 'edit' ? find(draft.pk) : null;
+    const deleting = draft.open === 'delete' ? find(draft.pk) : null;
+    const creating = draft.open === 'create';
+    return {
+      modal: creating ? 'create' : (editing ? 'edit' : (deleting ? 'delete' : '')),
+      create: Object.assign(picker(creating ? draft.owner : draft.me),
+                            {kind: draft.kind || '', error: creating ? (draft.error || '') : ''}),
+      edit: Object.assign(picker(editing ? draft.owner : null), editing ? {
+        row: editing, name: draft.name || '', quota: draft.storage_quota_mb || '',
+        ai: !!draft.ai_protected, error: draft.error || '', errors: draft.errors || {},
+      } : {row: null, name: '', quota: '', ai: false, error: '', errors: {}}),
+      del: {row: deleting, typed: '', error: deleting ? (draft.error || '') : ''},
+      tests: {}, testing: {}, csrf: '', failText: '',
+      // A form of this page is on its way: Create can take seconds (an S3
+      // kind's connection test runs first), and a second post would come
+      // back saying the name is taken — about the bucket the first one made.
+      submitting: false,
+      init() {
+        this.csrf = this.$el.dataset.csrf || '';
+        this.failText = this.$el.dataset.testFailed || '';
+        // Back to this page from the history cache: nothing is on its way.
+        window.addEventListener('pageshow', (event) => { if (event.persisted) this.submitting = false; });
+      },
+      guard(event) {
+        if (this.submitting) { event.preventDefault(); return; }
+        this.submitting = true;
+      },
+      blocked(key) {
+        const kind = kinds.find(k => k.key === key);
+        return kind ? kind.blocked : '';
+      },
+      remote(key) {
+        const kind = kinds.find(k => k.key === key);
+        return !!(kind && kind.remote);
+      },
+      openCreate() {
+        this.modal = 'create';
+        this.$nextTick(() => this.$refs.createName && this.$refs.createName.focus());
+      },
+      openEdit(pk) {
+        const row = find(pk);
+        if (!row) return;
+        Object.assign(this.edit, picker(row.owner), {
+          row, name: row.name, quota: row.storage_quota_mb, ai: row.ai_protected, error: '', errors: {},
+        });
+        this.modal = 'edit';
+        this.$nextTick(() => this.$refs.editName && this.$refs.editName.focus());
+      },
+      openDelete(pk) {
+        const row = find(pk);
+        if (!row) return;
+        Object.assign(this.del, {row, typed: '', error: ''});
+        this.modal = 'delete';
+        this.$nextTick(() => this.$refs.deleteName && this.$refs.deleteName.focus());
+      },
+      close() {
+        this.modal = '';
+        this.create.error = '';
+      },
+      // The owner picker: any active account, by a piece of its name.
+      search(h) {
+        clearTimeout(h.timer);
+        const mine = ++h.seq;
+        h.results = []; h.searched = false; h.searching = false;   // never offer answers to an older query
+        const q = h.q.trim();
+        if (!q) return;
+        h.timer = setTimeout(async () => {
+          h.searching = true;
+          try {
+            const r = await fetch(peopleUrl + '?q=' + encodeURIComponent(q),
+                                  {headers: {'Accept': 'application/json'}, credentials: 'same-origin'});
+            const data = r.ok ? await r.json() : {people: []};
+            if (mine !== h.seq) return;             // a later keystroke already answered
+            h.results = data.people || [];
+            h.searched = true;
+          } catch (e) {
+            if (mine === h.seq) { h.results = []; h.searched = true; }
+          } finally {
+            if (mine === h.seq) h.searching = false;
+          }
+        }, 200);
+      },
+      pick(h, person) {
+        clearTimeout(h.timer); h.seq++;
+        h.owner = person; h.q = ''; h.results = []; h.searched = false; h.searching = false;
+      },
+      // The connection test: one bounded call on a click, stamped server-side.
+      async runTest(pk, url) {
+        if (this.testing[pk]) return;
+        this.testing[pk] = true;
+        delete this.tests[pk];
+        try {
+          const r = await fetch(url, {method: 'POST', credentials: 'same-origin',
+                                      headers: {'X-CSRFToken': this.csrf, 'Accept': 'application/json'}});
+          const d = await r.json();
+          this.tests[pk] = {ok: !!d.ok, detail: d.detail || d.error || ''};
+        } catch (e) {
+          this.tests[pk] = {ok: false, detail: this.failText};
+        } finally {
+          this.testing[pk] = false;
+        }
+      },
+    };
+  });
+});
+</script>
