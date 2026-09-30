@@ -107,10 +107,16 @@ def _read_svg_body(request, limit: int) -> bytes:
 
 
 def _get_owned_file(request, file_pk) -> VaultFile:
-    """An ``svg`` vault file the user owns (required to mutate it)."""
+    """An ``svg`` vault file the user owns (required to mutate it).
+
+    Its bucket's clearances come first (2026-09-30): the owner filter alone
+    let an owner who lacks their bucket's clearance save and delete there,
+    against "no owner bypass". `access.gate_by_bucket` is what the open door's
+    `may_read` asks, so a drawing hidden from its reader is missing here too.
+    """
     return get_object_or_404(
-        VaultFile.objects.select_related("bucket", "directory", "owner")
-        .filter(access.local_content_q()),
+        access.gate_by_bucket(request.user, VaultFile.objects.select_related(
+            "bucket", "directory", "owner").filter(access.local_content_q())),
         pk=file_pk,
         owner=request.user,
         file_type="svg",
