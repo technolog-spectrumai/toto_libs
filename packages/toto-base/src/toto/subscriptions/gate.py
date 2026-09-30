@@ -61,6 +61,9 @@ ALWAYS_FREE = frozenset({
     "assets", "quota", "tariffs", "socialhub", "people", "gervazy",
     # Your own pools: a member with no plan must still see why they cannot act.
     "mana",
+    # My account (2026-09-30): your own profile, password and sessions are
+    # never something a plan sells.
+    "account",
 })
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})

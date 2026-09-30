@@ -50,6 +50,17 @@
     <div class="hidden sm:flex items-center gap-3">
 
       {% if user.is_authenticated %}
+      <!-- My account (2026-09-30). The "as" form of the url tag renders
+           nothing when a host does not mount the page, rather than failing
+           every page on it. -->
+      {% url 'account:home' as account_url %}
+      {% if account_url %}
+      <a href="{{ account_url }}" id="header-my-account"
+         class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+        <i class="fas fa-user-gear text-base"></i>
+        <span>{% trans "My account" %}</span>
+      </a>
+      {% endif %}
       <!-- Logout Button -->
       <a href="{% url 'sso:logout' %}"
          class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
@@ -115,6 +126,14 @@
       {% render_header_plugins variant="mobile" %}
 
       {% if user.is_authenticated %}
+      {% url 'account:home' as account_url %}
+      {% if account_url %}
+      <a href="{{ account_url }}"
+         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+        <i class="fas fa-user-gear text-base"></i>
+        <span>{% trans "My account" %}</span>
+      </a>
+      {% endif %}
       <!-- Logout Button (Mobile) -->
       <a href="{% url 'sso:logout' %}"
          class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">

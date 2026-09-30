@@ -1,5 +1,9 @@
+from functools import lru_cache
+from zoneinfo import available_timezones
+
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
@@ -18,6 +22,24 @@ class LocationSharing(models.TextChoices):
     OFF = "off", _("Not shown to anyone")
     APPROXIMATE = "approximate", _("Approximate area only")
     EXACT = "exact", _("Exact address")
+
+
+@lru_cache(maxsize=1)
+def time_zone_names() -> frozenset:
+    """Every IANA zone this Python knows. Read once: the tz database does not
+    change under a running process, and walking it costs a directory scan."""
+    return frozenset(available_timezones())
+
+
+def validate_time_zone(value):
+    """An IANA name ("Europe/Warsaw"), or blank for the platform's default.
+
+    Checked against zoneinfo rather than a list of our own, so the choices are
+    exactly the zones the middleware can activate (2026-09-30).
+    """
+    if value and value not in time_zone_names():
+        raise ValidationError(_("%(zone)s is not a known time zone."),
+                              params={"zone": value}, code="invalid_time_zone")
 
 
 class Person(DomainEntity):
@@ -126,6 +148,18 @@ class Person(DomainEntity):
             "OIDC subject of the identity provider this person was provisioned "
             "from, on a consumer host. Empty on the provider itself."
         ),
+    )
+    #: The member's own time zone (2026-09-30), activated on every request by
+    #: `toto.core.middleware.ProfileTimezoneMiddleware`, so every page shows
+    #: times where the member lives. Blank means the platform's TIME_ZONE.
+    #: Declared last: the class body reads the module `timezone` above, and a
+    #: field of that name must not shadow it for the fields before.
+    timezone = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        validators=[validate_time_zone],
+        help_text="IANA time zone name, e.g. Europe/Warsaw. Blank: the platform default.",
     )
 
     class Meta:

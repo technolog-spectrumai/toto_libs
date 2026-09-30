@@ -14,6 +14,7 @@ membership flow, the wiki's Clearances page, the ingress, a shell:
 | `SOCIALHUB.APPLICATION_SUBMITTED` | somebody applies to join a community |
 | `SOCIALHUB.APPLICATION_<STATUS>` | the application moves: verified, endorsed, invited, rejected |
 | `SOCIALHUB.REFERENCE_REQUESTED` / `_GIVEN` / `_DECLINED` | a reference asked of a member, and their answer (given = the applicant admitted) |
+| `SOCIALHUB.PROFILE_CHANGED` | a member edits their own profile or time zone on My account — the field NAMES in `fields`, never the values (2026-09-30) |
 
 Communities and clearances are orthogonal on purpose (README) and are
 recorded apart, so the chain shows which axis a change touched. The actor is whoever is at the keyboard (the audit context); nothing is
@@ -74,6 +75,22 @@ def _clearance(clearance, action, **metadata):
 def _person(person) -> dict:
     return {"person": person.slug, "display_name": person.display_name,
             "user": person.user_id}
+
+
+def profile_changed(person, fields) -> None:
+    """A member changed their own profile on My account (2026-09-30).
+
+    Called by the view, not a signal: a Person is saved from a dozen places
+    (the map pin, the language, the sync) and only this door is "the member
+    edited their profile". The field names and nothing else — a bio or a
+    phone number is the member's to show, not the chain's to keep.
+    """
+    fields = sorted(fields)
+    if not fields:
+        return None
+    return _record("profile_changed", object_type="people.person", object_id=person.pk,
+                   description=person.display_name, changes={},
+                   metadata={"person": person.slug, "fields": fields})
 
 
 # ---------------------------------------------------------------------------

@@ -42,6 +42,45 @@ class ProfileLanguageMiddleware:
         return self.get_response(request)
 
 
+class ProfileTimezoneMiddleware:
+    """For a signed-in member with a time zone on their Person, show every time
+    in that zone for this request (2026-09-30); anyone else, and a member who
+    left it blank, gets the platform's TIME_ZONE.
+
+    Placed like ProfileLanguageMiddleware, after authentication, and it always
+    deactivates afterwards: the activation is thread-local and a worker thread
+    serves the next member too.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        import zoneinfo
+
+        from django.utils import timezone
+
+        zone = None
+        user = getattr(request, "user", None)
+        if user is not None and user.is_authenticated:
+            try:
+                name = user.community_profile.timezone
+                if name:
+                    zone = zoneinfo.ZoneInfo(name)
+            except Exception:
+                # No profile, or a name this Python no longer knows: the
+                # default zone, never a 500 on every page.
+                zone = None
+        if zone is None:
+            timezone.deactivate()
+            return self.get_response(request)
+        timezone.activate(zone)
+        try:
+            return self.get_response(request)
+        finally:
+            timezone.deactivate()
+
+
 class PlatformMiddleware:
     """Redirect to the maintenance page while Platform.active is False.
 
