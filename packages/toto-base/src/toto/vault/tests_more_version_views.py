@@ -3,17 +3,19 @@
 tests_versions and tests_locks pin the services; nothing pinned the doors
 the three editors actually call — who ``_file_for`` lets through, what each
 endpoint answers when somebody else holds the lock, and the remote-bytes
-refusal.
+refusal. Who may read the history and who may write it is
+``tests_version_doors`` (2026-09-30).
 """
 
+import io
 import json
 import tempfile
 from datetime import timedelta
-from unittest import skip
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
+from django.core.management import call_command
 from django.http import Http404
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
@@ -38,6 +40,10 @@ class _Fixture(TestCase):
         cls.other = User.objects.create_user("other", password="pw")
         cls.staff = User.objects.create_user("staff", password="pw", is_staff=True)
         cls.root = User.objects.create_superuser("root", "r@e.com", "pw")
+        # root → the Superuser plan: the second WRITER these tests need is a
+        # superuser on it (2026-09-30). Staff is a reader like anyone else.
+        call_command("bootstrap_plans", stdout=io.StringIO())
+        cls.root = User.objects.get(pk=cls.root.pk)
         cls.bucket = Bucket.objects.create(name="Owned", slug="owned", owner=cls.owner)
 
     _n = 0
@@ -74,10 +80,14 @@ class FileForTests(_Fixture):
         with self.assertRaises(Http404):
             _file_for(self.request(self.owner), 424242)
 
-    def test_the_owner_superuser_and_staff_reach_a_private_file(self):
+    def test_the_owner_and_a_superuser_reach_a_private_file_and_staff_do_not(self):
+        # Staff used to reach every file here (2026-09-30): the download door
+        # never let them, so the history said more than the file did.
         f = self.file()
-        for user in (self.owner, self.root, self.staff):
+        for user in (self.owner, self.root):
             self.assertEqual(_file_for(self.request(user), f.pk), f)
+        with self.assertRaises(Http404):
+            _file_for(self.request(self.staff), f.pk)
 
     def test_a_stranger_does_not_reach_a_private_bucket_root_file(self):
         with self.assertRaises(Http404):
@@ -162,7 +172,7 @@ class LockEndpointTests(_Fixture):
     def test_a_second_writer_gets_423_and_the_holders_name(self):
         f = self.file(public=True)
         locks.acquire(f, self.owner)
-        self.client.force_login(self.staff)
+        self.client.force_login(self.root)
         response = self.client.post(self.u("lock_acquire", f))
         self.assertEqual(response.status_code, 423)
         payload = response.json()
@@ -175,7 +185,7 @@ class LockEndpointTests(_Fixture):
         locks.acquire(f, self.owner)
         self.client.force_login(self.owner)
         self.assertTrue(self.client.post(self.u("lock_heartbeat", f)).json()["held"])
-        self.client.force_login(self.staff)
+        self.client.force_login(self.root)
         payload = self.client.post(self.u("lock_heartbeat", f)).json()
         self.assertFalse(payload["held"])
         self.assertTrue(payload["locked"])
@@ -183,7 +193,7 @@ class LockEndpointTests(_Fixture):
     def test_release_answers_200_even_when_nothing_was_held_and_frees_only_mine(self):
         f = self.file(public=True)
         locks.acquire(f, self.owner)
-        self.client.force_login(self.staff)
+        self.client.force_login(self.root)
         self.assertEqual(self.client.post(self.u("lock_release", f)).json(), {"released": True})
         self.assertIsNotNone(locks.holder_of(f))
         self.client.force_login(self.owner)
@@ -312,13 +322,13 @@ class VersionEndpointTests(_Fixture):
 
 
 class FileForReachesTooFarTests(_Fixture):
-    """Suspected production bugs in ``_file_for`` — see the skip reasons.
-    Both tests assert the behaviour the vault's own read and write rules
-    promise; both fail against the code as it stands."""
+    """The two holes ``_file_for`` had until 2026-09-30, when these were
+    skipped as known bugs: ``directory.user_can_access()`` is True for a folder
+    with an EMPTY ACL, so any signed-in account reached another person's
+    private file there; and a PUBLIC file was returned to every reader, while
+    the write doors checked only the lock. Reading follows ``may_read`` now and
+    writing ``may_write`` (``tests_version_doors`` has the rest)."""
 
-    @skip("BUG version_views._file_for:53 - directory.user_can_access() is True for a folder "
-          "with an EMPTY ACL, so any logged-in account reaches another person's private file "
-          "in such a folder (may_read says no) and can list, lock, save and restore it")
     def test_a_stranger_cannot_restore_a_private_file_in_a_folder_without_an_acl(self):
         directory = VaultDirectory.objects.create(name="inbox", bucket=self.bucket,
                                                   owner=self.owner)
@@ -330,14 +340,12 @@ class FileForReachesTooFarTests(_Fixture):
         self.assertEqual(self.client.post(self.u("version_restore", f, v1.pk)).status_code, 404)
         self.assertEqual(self.body(f), b"second")
 
-    @skip("BUG version_views._file_for:55 - a PUBLIC file is returned to every logged-in "
-          "account, and version_restore/version_save/lock_acquire only check the lock, so a "
-          "reader of someone's public file can overwrite its bytes with an old version")
     def test_a_reader_of_a_public_file_cannot_rewrite_it(self):
         f = self.file(b"first", public=True)
         v1 = versions.save_version(f, author=self.owner)
         self.write(f, b"second")
         self.client.force_login(self.other)
         response = self.client.post(self.u("version_restore", f, v1.pk))
-        self.assertIn(response.status_code, (403, 404))
+        # They may read it, so it is not hidden from them: 403, not 404.
+        self.assertEqual(response.status_code, 403)
         self.assertEqual(self.body(f), b"second")
