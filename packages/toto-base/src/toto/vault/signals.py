@@ -38,8 +38,27 @@ def delete_file_on_disk(sender, instance, **kwargs):
     """
     if getattr(instance, "origin", "") == "mirror":
         return
+    if getattr(instance, "trashed_at", None) is not None:
+        # A trashed row's bytes are what the restore gives back (2026-10-01),
+        # so a delete of that row never unlinks them while its transaction
+        # can still roll back: only once it commits. ``purge_file`` — Delete
+        # for good, the nightly purge, a bucket purge — deletes them itself
+        # through the bucket driver; this after-commit unlink is for the
+        # cascades that bypass it (an erased account), so they leave no orphan.
+        if instance.file:
+            from django.db import transaction
+
+            path = instance.file.path
+            transaction.on_commit(lambda: _unlink(path))
+        return
     if instance.file and os.path.isfile(instance.file.path):
-        try:
-            os.remove(instance.file.path)
-        except Exception as e:
-            print(f"Error deleting file {instance.file.path}: {e}")
+        _unlink(instance.file.path)
+
+
+def _unlink(path: str) -> None:
+    if not os.path.isfile(path):
+        return
+    try:
+        os.remove(path)
+    except Exception as e:
+        print(f"Error deleting file {path}: {e}")
