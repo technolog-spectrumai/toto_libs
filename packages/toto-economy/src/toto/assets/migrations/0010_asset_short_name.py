@@ -15,7 +15,10 @@ import string
 import django.core.validators
 from django.db import migrations, models
 
-CHOSEN = {"ASR": "ASAR", "TPLN": "FLOR", "FLOR": "FLOR", "BLUE": "SECU", "RED": "COMP",
+# TPLN keeps its own code: the Florin (FLOR) is a new asset the seed engraves
+# beside it, and handing an old TPLN row the code FLOR would make that engrave
+# collide on the unique code.
+CHOSEN = {"ASR": "ASAR", "TPLN": "TPLN", "FLOR": "FLOR", "BLUE": "SECU", "RED": "COMP",
           "GREEN": "STOR", "MANA": "MANA", "BANANA": "BNNA", "MAKARONI": "MACA"}
 
 
