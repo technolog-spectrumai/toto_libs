@@ -99,7 +99,13 @@ Holders and speeds change afterwards in the Django admin, on the clearance's
 own page (its **Members** field, written through `clearance.members.set`, the
 relation's own door), or from the console (`community_members join ada
 --clearance internal`). What a clearance KEEPS is set on each group's own
-page (topics, buckets, map domains), never here. Never the membership
+page (topics, buckets, map domains) — and, when the clearance is made, in the
+New clearance modal's **What it keeps** section: pick a kind (wiki topics,
+buckets, map domains), search, add. The kinds are plugins
+(`plugins/clearance_plugins.py`, `ClearanceTargetPlugin`, autodiscovered from
+each app's `plugins/clearance_plugins.py`), so the socialhub imports none of
+those apps; each adds the clearance through its app's own door, which writes
+the app's own audit record, inside the same transaction as the clearance. Never the membership
 application: it names communities, and a community grants no reading.
 
 ## On the audit chain
