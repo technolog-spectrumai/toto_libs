@@ -301,10 +301,9 @@ class FileDetailApiView(CorsApiView):
 
         # To the trash like the web door (2026-10-01); a remote bucket's
         # file goes at once — this host cannot hold it for a restore.
-        if vf.can_be_trashed:
-            vf.trash(request.user)
-        else:
-            vf.delete()
+        from .trash import remove_file
+
+        remove_file(vf, by=request.user, request=request, door="api_file_detail")
         return JsonResponse({}, status=204)
 
 
@@ -379,7 +378,14 @@ class VaultMetricsApiView(CorsApiView):
         total_files = qs.count()
         public_files = qs.filter(is_public=True).count()
         encrypted_files = qs.filter(is_encrypted=True).count()
-        total_size = qs.aggregate(s=Sum("file_size_bytes"))["s"] or 0
+        # Sizes are STORED bytes (2026-10-01): the trash still holds its files
+        # and they still count against quota and levy, so the totals include
+        # them — the same rule as the per-bucket figure below — and say how
+        # much of it is trash. Counts are the live files one can open.
+        stored = _readable(user, VaultFile.all_objects.filter(owner=user))
+        total_size = stored.aggregate(s=Sum("file_size_bytes"))["s"] or 0
+        trash_size = (stored.filter(trashed_at__isnull=False)
+                      .aggregate(s=Sum("file_size_bytes"))["s"] or 0)
         week_ago = timezone.now() - timedelta(days=7)
         recent_count = qs.filter(uploaded_at__gte=week_ago).count()
 
@@ -405,11 +411,14 @@ class VaultMetricsApiView(CorsApiView):
         ]
 
         bucket_stats = []
+        live = Q(files__trashed_at__isnull=True)
         for b in Bucket.objects.filter(owner=user).annotate(
-            file_count=Count("files", distinct=True),
-            public_count=Count("files", filter=Q(files__is_public=True), distinct=True),
-            encrypted_count=Count("files", filter=Q(files__is_encrypted=True), distinct=True),
+            file_count=Count("files", filter=live, distinct=True),
+            public_count=Count("files", filter=live & Q(files__is_public=True), distinct=True),
+            encrypted_count=Count("files", filter=live & Q(files__is_encrypted=True),
+                                  distinct=True),
             total_size=Sum("files__file_size_bytes"),
+            trash_size=Sum("files__file_size_bytes", filter=~live),
         ).order_by("name"):
             bucket_stats.append({
                 "slug": b.slug,
@@ -418,6 +427,7 @@ class VaultMetricsApiView(CorsApiView):
                 "public_count": b.public_count,
                 "encrypted_count": b.encrypted_count,
                 "total_size": b.total_size or 0,
+                "trash_size": b.trash_size or 0,
             })
 
         return JsonResponse({
@@ -425,6 +435,7 @@ class VaultMetricsApiView(CorsApiView):
             "public_files": public_files,
             "encrypted_files": encrypted_files,
             "total_size_bytes": total_size,
+            "trash_size_bytes": trash_size,
             "recent_count": recent_count,
             "files_by_type": files_by_type,
             "daily_series": daily_series,
@@ -470,7 +481,10 @@ class BucketTreeApiView(CorsApiView):
 
         # Buckets the user owns, plus any bucket holding one of their files.
         owned = Bucket.objects.filter(owner=request.user)
-        from_files = Bucket.objects.filter(files__owner=request.user)
+        # Live files only (2026-10-01): a bucket whose only file of theirs is
+        # in the trash is not one they have files in.
+        from_files = Bucket.objects.filter(files__owner=request.user,
+                                           files__trashed_at__isnull=True)
         buckets = owned.union(from_files).order_by("name")
 
         dirs = (

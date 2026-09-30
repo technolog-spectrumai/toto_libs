@@ -841,12 +841,17 @@ class VaultMetricsView(LoginRequiredMixin, TemplateView):
             for i in range(30)
         ]
 
+        # Counts are live files (2026-10-01): a reverse join does not go
+        # through the manager that hides the trash, so it says so here.
+        live = Q(files__trashed_at__isnull=True)
         context["bucket_stats"] = list(
             Bucket.objects.annotate(
-                file_count=Count("files", distinct=True),
+                file_count=Count("files", filter=live, distinct=True),
                 dir_count=Count("directories", distinct=True),
-                public_count=Count("files", filter=Q(files__is_public=True), distinct=True),
-                encrypted_count=Count("files", filter=Q(files__is_encrypted=True), distinct=True),
+                public_count=Count("files", filter=live & Q(files__is_public=True),
+                                   distinct=True),
+                encrypted_count=Count("files", filter=live & Q(files__is_encrypted=True),
+                                      distinct=True),
             ).select_related("owner").order_by("name")
         )
         context["gateway_bucket_pks"] = set(
@@ -1729,16 +1734,14 @@ class DeleteFileView(LoginRequiredMixin, View):
             # Deleting the stub would neither delete the remote file nor
             # stick — the next refresh resurrects it.
             return access.mirror_lock_response(vault_file)
-        if vault_file.can_be_trashed:
-            # To the trash (2026-10-01): bytes and versions kept for the
-            # restore, and still counted against quota and levy.
-            vault_file.trash(request.user)
-            return JsonResponse({"ok": True, "trashed": True})
-        # A mounted remote bucket names the peer's file: nothing here can
-        # hold it for a restore, so it goes at once, as it always did.
-        vault_file.file.delete(save=False)
-        vault_file.delete()
-        return JsonResponse({"ok": True, "trashed": False})
+        # To the trash (2026-10-01): bytes and versions kept for the
+        # restore, and still counted against quota and levy. A mounted
+        # remote bucket names the peer's file, so there it goes at once.
+        from toto.vault.trash import remove_file
+
+        trashed = remove_file(vault_file, by=request.user, request=request,
+                              door="delete_file")
+        return JsonResponse({"ok": True, "trashed": trashed})
 
 
 class BucketCopyAjaxView(LoginRequiredMixin, View):

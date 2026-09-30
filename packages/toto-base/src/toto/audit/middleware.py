@@ -102,6 +102,11 @@ class FileAuditMiddleware:
         name = match.url_name
         if name in VAULT_IGNORED:
             return response
+        # A door that removed a file through ``toto.vault.trash`` has
+        # recorded it there already — FILE_TRASHED or FILE_DELETED, which the
+        # url alone cannot tell apart (2026-10-01). One act, one record.
+        if getattr(request, "_vault_file_audited", False):
+            return response
 
         action = None
         if name in VAULT_REFUSALS:

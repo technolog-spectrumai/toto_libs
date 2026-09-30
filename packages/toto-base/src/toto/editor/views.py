@@ -250,11 +250,9 @@ def delete_file(request, file_pk):
     vault_file = _own_file(request.user, file_pk)
     # To the trash (2026-10-01), like the vault's own delete; a remote
     # bucket's file goes at once — this host cannot hold it for a restore.
-    if vault_file.can_be_trashed:
-        vault_file.trash(request.user)
-    else:
-        vault_file.file.delete(save=False)
-        vault_file.delete()
+    from toto.vault.trash import remove_file
+
+    remove_file(vault_file, by=request.user, request=request, door="editor_delete")
     return JsonResponse({"status": "ok", "redirect": "/vault/"})
 
 

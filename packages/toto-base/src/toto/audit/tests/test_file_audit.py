@@ -59,7 +59,10 @@ class FileAuditTests(TestCase):
         vault_file = VaultFile.objects.get()
         self.client.post(reverse("vault:delete_file"),
                          {"file_pk": vault_file.pk})
-        self.assertIn("FILE_DELETED", actions())
+        # A delete moves the file to the trash (2026-10-01), recorded as
+        # such — and once, not also as the url's FILE_DELETED.
+        self.assertIn("FILE_TRASHED", actions())
+        self.assertNotIn("FILE_DELETED", actions())
 
     def test_a_rename_is_recorded_with_the_object(self):
         from toto.vault.models import VaultFile
