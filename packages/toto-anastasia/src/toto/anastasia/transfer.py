@@ -199,7 +199,7 @@ def to_bucket(*, lease, name: str, bucket, actor, title: str = "",
                                    price_for)
     from toto.vault import scanning
     from toto.vault.models import (VaultFile, VaultQuotaPolicy, VaultUsageEvent,
-                                   refused_file_types)
+                                   upload_refusal)
 
     backend = runtime.get_backend()
     reader = getattr(backend, "capsule_file_read", None)
@@ -238,11 +238,10 @@ def to_bucket(*, lease, name: str, bucket, actor, title: str = "",
     final_title = clean_title(title, fallback=leaf)
     file_type = VaultFile.detect_type("", leaf)
 
-    # -- 2. a type this host refuses -----------------------------------------
-    if file_type in refused_file_types():
-        raise TransferRefused(
-            f"This host does not accept {file_type} files.",
-            code="refused_type")
+    # -- 2. a type this host refuses, and Microsoft Office on every host -----
+    refusal = upload_refusal(leaf, file_type=file_type, content=data)
+    if refusal:
+        raise TransferRefused(refusal, code="refused_type")
 
     # -- 3. the scan, on bytes a RUNNER wrote ---------------------------------
     verdict = None
