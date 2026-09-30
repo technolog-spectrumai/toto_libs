@@ -76,12 +76,12 @@ class VoteViewTestCase(CompanyFactoryMixin, TestCase):
                                  args=[self.company.slug, self.meeting.uid]))
         self.proposition.refresh_from_db()
 
-    def cast(self, user, choice, confirm="yes"):
+    def cast(self, user, choice, confirm="yes", **meta):
         self.client.force_login(user)
         return self.client.post(
             reverse("company:vote_cast", args=[self.company.slug, self.meeting.uid,
                                                self.proposition.uid]),
-            {"choice": choice, "confirm": confirm}, follow=True,
+            {"choice": choice, "confirm": confirm}, follow=True, **meta,
         )
 
 
@@ -167,6 +167,15 @@ class CastingTests(VoteViewTestCase):
         self.assertIsNotNone(ballot.confirmed_at)
         self.assertEqual(ballot.auth_evidence["method"], "session+confirmation")
         self.assertEqual(ballot.auth_evidence["user"], "ada")
+
+    @override_settings(TRUSTED_PROXIES=["172.16.0.0/12"])
+    def test_the_evidence_names_the_voter_s_address_not_the_proxy_s(self):
+        """nginx's X-Real-IP from a trusted proxy; a forged X-Forwarded-For
+        is not read (2026-09-30)."""
+        self.open_voting()
+        self.cast(self.user, "for", REMOTE_ADDR="172.18.0.5", HTTP_X_REAL_IP="203.0.113.7",
+                  HTTP_X_FORWARDED_FOR="198.51.100.66, 203.0.113.7")
+        self.assertEqual(Ballot.objects.get().auth_evidence["ip"], "203.0.113.7")
 
     def test_casting_again_supersedes_and_only_the_last_counts(self):
         self.open_voting()

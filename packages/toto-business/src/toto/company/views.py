@@ -45,6 +45,7 @@ from toto.company.models import (
     Party,
     ShareHolding,
 )
+from toto.core.client_ip import client_ip
 from toto.ui import PageProcessor
 
 
@@ -887,7 +888,8 @@ def vote_cast(request, slug, uid, proposition_uid):
             auth_evidence={
                 "method": "session+confirmation",
                 "user": request.user.get_username(),
-                "ip": request.META.get("REMOTE_ADDR", ""),
+                # The voter's address, not nginx's (2026-09-30).
+                "ip": client_ip(request),
                 "user_agent": request.META.get("HTTP_USER_AGENT", "")[:200],
             },
         )
