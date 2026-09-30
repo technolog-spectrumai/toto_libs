@@ -22,8 +22,10 @@ replacing it.
 
 An IPv4 address carried as IPv6 (``::ffff:203.0.113.7``) is answered as the
 IPv4 one, so one visitor is never two. The sign-in lockout
-(``toto.core.signin_lockout``) keys on this; the audit chain's request source
-is to follow.
+(``toto.core.signin_lockout``) keys on this, and every address the platform
+writes down comes from it: the audit chain's request source, a federation
+pairing's source (sso_master), a vault peer grant's last address, a ballot's
+evidence (company), a transcript event's hashed address.
 """
 
 from __future__ import annotations
