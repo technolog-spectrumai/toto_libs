@@ -50,6 +50,7 @@ class Command(IngressCommand):
     def process(self):
 
         self.ensure_default_community()
+        self.ensure_privacy_notice()
 
         if not self.full:
             return
@@ -174,6 +175,16 @@ class Command(IngressCommand):
     # ---------------------------------------------------------
     # Baseline community (all ingress modes)
     # ---------------------------------------------------------
+
+    def ensure_privacy_notice(self):
+        """Version 1 of the privacy notice, in realistic and full alike
+        (2026-10-01): the application links to it, so a platform without one
+        would ask people to accept nothing. A marked PLACEHOLDER in Polish and
+        English (``toto.socialhub.privacy``); never replaces a version."""
+        from toto.socialhub.privacy import seed_placeholder
+
+        if seed_placeholder() is not None:
+            self.stdout.write(self.style.SUCCESS("✔ Privacy notice v1 (placeholder) published."))
 
     def ensure_default_community(self):
         """

@@ -555,3 +555,47 @@ class PendingEmailChange(models.Model):
 
     def __str__(self):
         return f"e-mail change for account {self.user_id}"
+
+
+class PrivacyNotice(models.Model):
+    """One version of the platform's privacy notice (2026-10-01, RODO).
+
+    Here and not in ``toto.core``: the notice is what an applicant accepts on
+    the socialhub's membership application (stage 35.2 records the version
+    accepted, next to the application), and the socialhub is where a person
+    first gives the platform their data. Core is the platform's scaffolding
+    and asks nobody for anything.
+
+    Versions are never edited: publishing writes a NEW row with the next
+    number (``toto.socialhub.privacy.publish``), so the version somebody
+    accepted stays readable, word for word, at its own address. Plain text in
+    both languages, drawn escaped (``urlize`` then ``linebreaks``, the wiki's
+    own chain) — never HTML from the database.
+    """
+
+    version = models.PositiveIntegerField(unique=True)
+    text_pl = models.TextField()
+    text_en = models.TextField()
+    published_at = models.DateTimeField(default=timezone.now)
+    # SET_NULL: erasing the account that published a version must not take
+    # the version with it — applicants accepted that text.
+    published_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                                     related_name="+")
+
+    class Meta:
+        ordering = ["-version"]
+        verbose_name = "privacy notice"
+
+    def __str__(self):
+        return f"privacy notice v{self.version}"
+
+    @classmethod
+    def current(cls):
+        return cls.objects.order_by("-version").first()
+
+    def text_for(self, language: str | None) -> str:
+        """The text in ``language`` (Polish for any ``pl…``, else English),
+        the other one when that is empty."""
+        polish = (language or "").lower().startswith("pl")
+        first, second = (self.text_pl, self.text_en) if polish else (self.text_en, self.text_pl)
+        return first or second

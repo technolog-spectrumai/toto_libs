@@ -15,6 +15,7 @@ membership flow, the wiki's Clearances page, the ingress, a shell:
 | `SOCIALHUB.APPLICATION_<STATUS>` | the application moves: verified, endorsed, invited, rejected |
 | `SOCIALHUB.REFERENCE_REQUESTED` / `_GIVEN` / `_DECLINED` | a reference asked of a member, and their answer (given = the applicant admitted) |
 | `SOCIALHUB.PROFILE_CHANGED` | a member edits their own profile or time zone on My account — the field NAMES in `fields`, never the values (2026-09-30) |
+| `PRIVACY.NOTICE_PUBLISHED` | a new version of the privacy notice is published — its number, the one it replaces and each text's length, never the text (2026-10-01) |
 
 Communities and clearances are orthogonal on purpose (README) and are
 recorded apart, so the chain shows which axis a change touched. The actor is whoever is at the keyboard (the audit context); nothing is
@@ -43,7 +44,7 @@ def installed() -> bool:
     return apps.is_installed("toto.audit")
 
 
-def _record(action, *, object_type, object_id, description, **kwargs):
+def _record(action, *, object_type, object_id, description, family="socialhub", **kwargs):
     if not installed():
         return None
     from django.db import transaction
@@ -52,11 +53,11 @@ def _record(action, *, object_type, object_id, description, **kwargs):
 
     try:
         with transaction.atomic():      # a failed insert must not poison the caller's
-            return record(f"socialhub.{action}", app_label=APP_LABEL,
+            return record(f"{family}.{action}", app_label=APP_LABEL,
                           object_type=object_type, object_id=str(object_id),
                           description=str(description)[:500], **kwargs)
     except Exception:  # noqa: BLE001 - the chain never breaks a membership change
-        log.exception("audit: could not record socialhub.%s", action)
+        log.exception("audit: could not record %s.%s", family, action)
         return None
 
 
@@ -91,6 +92,18 @@ def profile_changed(person, fields) -> None:
     return _record("profile_changed", object_type="people.person", object_id=person.pk,
                    description=person.display_name, changes={},
                    metadata={"person": person.slug, "fields": fields})
+
+
+def notice_published(notice, *, previous=None) -> None:
+    """A new version of the privacy notice (2026-10-01). Its own family,
+    ``PRIVACY.*``, so the data-protection trail reads apart from the
+    membership one. The lengths show a change happened; the text itself is
+    public on the notice's own page and has no place on the chain."""
+    return _record("notice_published", family="privacy", object_type="socialhub.privacynotice",
+                   object_id=notice.pk, description=f"v{notice.version}",
+                   metadata={"version": notice.version, "previous": previous,
+                             "length_pl": len(notice.text_pl),
+                             "length_en": len(notice.text_en)})
 
 
 # ---------------------------------------------------------------------------
