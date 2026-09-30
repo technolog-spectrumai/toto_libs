@@ -110,7 +110,7 @@ benefit is that a Python workspace still works on a build with no workflows.
 |---|---|
 | `create_workspace(owner, name, bucket, directory, new_directory_name, kind)` | Adopts `directory`, or creates `new_directory_name` inside it (or at the bucket root). Refuses a bucket you do not own, a folder from another bucket, neither-folder-nor-name, and a folder that is already some other workspace's root. Seeds `main.py` only into an empty folder |
 | `close_workspace(workspace, user)` | Forgets the workspace. The folder and every file stay in the vault |
-| `destroy_workspace(workspace, user)` | Deletes the whole folder: files first, then the directory. Returns the counts |
+| `destroy_workspace(workspace, user)` | Deletes the whole folder: files first (to the vault's trash), then the directory. Returns the counts |
 | `create_file(workspace, user, filename, directory)` | Extension decides the vault file type |
 | `create_directory(workspace, user, name, parent)` | |
 | `rename_file(...)` | Moves the file type with the extension — otherwise a rename lies about which editor opens it |
@@ -142,10 +142,12 @@ and "delete my code" are different sentences:
 
 - **Close** drops the `Workspace` row and nothing else. The folder and every file
   remain in the vault, and the folder can be adopted by a new workspace later.
-- **Destroy** deletes the root folder, every subfolder, and every file in them.
-  It is typed-confirmation only: you retype the workspace's name.
+- **Destroy** deletes the root folder and every subfolder, and moves every file
+  in them to the vault's trash (2026-10-01), where its owner can restore it
+  until the trash's purge. It is typed-confirmation only: you retype the
+  workspace's name. A single file's delete goes to the trash too.
 
-`destroy_workspace` deletes **files before directories**, and that order is not
+`destroy_workspace` removes **files before directories**, and that order is not
 cosmetic. `VaultFile.directory` is `SET_NULL`, so deleting the directory first
 would not delete the files — it would spill them, unparented, into the bucket
 root, which is exactly the mess the button exists to avoid.

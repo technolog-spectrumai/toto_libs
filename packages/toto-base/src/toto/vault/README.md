@@ -245,12 +245,45 @@ False there, and the doors keep their immediate delete, whose dialog says
 it is permanent. A peer's own DELETE on an exported bucket
 (`peer_file_detail`) also stays a purge on this host.
 
-The doors that move to the trash: the listing's Delete (`DeleteFileView`,
-answers `trashed: true|false`), the API's `DELETE /vault/api/files/<key>/`,
-the ACE editor's delete, primula's delete.
+**One door: `trash.remove_file(vault_file, by=, request=, door=)`.** Every
+delete a member reaches goes through it: the listing's Delete
+(`DeleteFileView`, answers `trashed: true|false`), the API's
+`DELETE /vault/api/files/<key>/`, the ACE editor's delete, primula's sheets,
+memo's decks, sketch's drawings, mandragora's notebooks, an ambrosia
+workspace's file delete AND its Destroy (the folders go for good, the files to
+the trash), and a git pull that deletes a tracked file (`toto.repo.sync`). It
+trashes where `can_be_trashed`, deletes at once where not, and records the act
+on the audit chain itself — `FILE_TRASHED` for a trash, distinct from a real
+`FILE_DELETED` — then marks the request so `FileAuditMiddleware` does not add
+the url's `FILE_DELETED` too. A refused delete (404) is still the middleware's
+failed `FILE_DELETED`.
+
+Doors that keep their behaviour, on purpose: a copy or transfer with the
+"replace" policy (an overwrite the copier chose, not a delete), a mirror
+refresh's prune (rows only), the bucket purge and the peer API's delete
+(purges), `erase_user` (console), the admin (superusers), a wiki page's
+image un-attach and kanban's attachment remove (the link only, never the
+file), forum attachments (not vault files).
+
+**The delete signal and a trashed row.** `signals.delete_file_on_disk` never
+unlinks a trashed row's bytes while the delete can still roll back: it
+unlinks them after the commit. `purge_file` removes them through the driver
+anyway; the after-commit unlink is for cascades that bypass it (an erased
+account), so they leave no orphan.
+
+**Leaks closed through joins and forward keys** (they skip the manager):
+`attach.readable` refuses a trashed file (the wiki's export list and every
+attachment list), the wiki's image lists and backup, the git import (a trashed
+file has left the repo), the metrics API and page (counts are live files;
+sizes are stored bytes, trash included, with `trash_size_bytes` /
+`trash_size` saying how much), the "buckets I have files in" tree, and
+yamabiko (an owner-trashed copy is a missing copy: copied again, the trashed
+row left alone).
 
 Tests: `tests_trash` (hidden on each door; levy, figures and bucket purge
-still count or take it; versions still find it; the key is free).
+still count or take it; versions still find it; the key is free),
+`tests_trash_doors` (each door trashes and records FILE_TRASHED; the remote
+bucket's immediate delete; the signal; the figures; attachments).
 
 ## Buckets: types, custody and deletion (2026-09-30)
 
@@ -435,7 +468,7 @@ library pytest suite does not collect them): `tests`, `tests_access`,
 `tests_api`, `tests_purge`, `tests_hardening`, `tests_peering`,
 `tests_peer_api`, `tests_mirror`, `tests_transfer`, `tests_remote_ui`,
 `tests_transfers_ui`, `tests_outbound`, `tests_bucket_transition`,
-`tests_remote_page`, `tests_clearances`, `tests_storage_adapters`, `tests_clearance_tab`, `tests_management`, `tests_share_connect`, `tests_trash` — wired in zenobia's gate, core four in placidia's.
+`tests_remote_page`, `tests_clearances`, `tests_storage_adapters`, `tests_clearance_tab`, `tests_management`, `tests_share_connect`, `tests_trash`, `tests_trash_doors` — wired in zenobia's gate, core four in placidia's.
 The two-host harness is a loopback: `peer_client._http` patched into
 Django's test client against the real peer views (one DB, clearing's
 pattern).
