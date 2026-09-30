@@ -102,16 +102,16 @@ def user_for_session_key(session_key, *, door, request=None):
         if user is None:
             return _refuse(session, user_id, None, door=door, request=request)
         if not hasattr(user, "get_session_auth_hash"):
-            return user
+            return _seen(user, session_key, request)
         stored = session.get(HASH_SESSION_KEY)
         current = user.get_session_auth_hash()
         if stored and constant_time_compare(stored, current):
-            return user
+            return _seen(user, session_key, request)
         fallbacks = getattr(user, "get_session_auth_fallback_hash", lambda: ())()
         if stored and any(constant_time_compare(stored, old) for old in fallbacks):
             session[HASH_SESSION_KEY] = current
             session.save()
-            return user
+            return _seen(user, session_key, request)
         return _refuse(session, user_id, "session_hash", door=door, request=request,
                        user=user)
     except Exception as exc:  # noqa: BLE001 - never flush a session on a passing fault
@@ -120,6 +120,18 @@ def user_for_session_key(session_key, *, door, request=None):
         log.warning("api token: the sign-in could not be checked (%s)",
                     type(exc).__name__)
         return None
+
+
+def _seen(user, session_key, request):
+    """A token that signed in: its "last seen" on My account, then the user.
+
+    ``touch`` writes at most every few minutes and never raises.
+    """
+    from toto.core.models import UserSession
+    from toto.core.user_sessions import touch
+
+    touch(user, session_key, request, kind=UserSession.KIND_TOKEN)
+    return user
 
 
 def _refuse(session, user_id, reason, *, door, request, user=None):

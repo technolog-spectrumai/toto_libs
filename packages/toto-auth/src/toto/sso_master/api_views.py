@@ -100,5 +100,10 @@ class RegisterApiView(CorsApiView):
         if user is None:
             return JsonResponse({"error": "Invalid credentials."}, status=401)
 
+        # Handed out as a token: My account lists it as a desktop or API
+        # sign-in (2026-09-30).
+        from toto.core.user_sessions import mark_token_signin
+
+        mark_token_signin(request)
         login(request, user)
         return JsonResponse({"ok": True, "token": request.session.session_key}, status=201)

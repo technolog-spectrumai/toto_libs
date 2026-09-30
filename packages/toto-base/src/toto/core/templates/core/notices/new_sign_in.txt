@@ -1,0 +1,10 @@
+{% load i18n %}{% autoescape off %}{% blocktranslate with name=user.get_username %}Hello {{ name }},{% endblocktranslate %}
+
+{% blocktranslate with when=when|date:"Y-m-d H:i T" %}Your account was signed in to on {{ when }} from a device or an address it has not been used from lately.{% endblocktranslate %}{% if kind == "token" %}
+{% translate "It was a desktop app or an API client." %}{% endif %}{% if address %}
+{% blocktranslate %}Address: {{ address }}{% endblocktranslate %}{% endif %}{% if user_agent %}
+{% blocktranslate %}Browser or app: {{ user_agent }}{% endblocktranslate %}{% endif %}
+
+{% translate "If this was you, there is nothing to do." %}
+{% translate "If it was not, open My account, end that session and change your password, then tell an administrator." %}
+{% endautoescape %}

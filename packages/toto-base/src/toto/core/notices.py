@@ -1,7 +1,7 @@
 """Security notices mailed to a member about their own account (2026-09-30).
 
-"Your password was changed", and later "your e-mail was changed" and "a new
-sign-in": short mails that tell the owner of an account something happened to
+"Your password was changed", "a new sign-in" (``toto.core.user_sessions``),
+and later "your e-mail was changed": short mails that tell the owner of an account something happened to
 it, so that a change they did not make is noticed. Every one leaves through
 ``send_notice`` and nothing else:
 
@@ -42,6 +42,7 @@ log = logging.getLogger("toto.core.notices")
 #: The notices there are. A kind is its two templates' stem.
 KINDS = frozenset({
     "password_changed",
+    "new_sign_in",
 })
 
 #: Carried to SMTP untouched; lets a mail log tell notices from other mail.

@@ -36,6 +36,11 @@ class CoreConfig(AppConfig):
         from toto.core import signin_lockout
 
         signin_lockout.connect()
+        # A row per sign-in, so a member's sessions can be listed and ended
+        # (My account, 2026-09-30).
+        from toto.core import user_sessions
+
+        user_sessions.connect()
         self._admin_says_why()
 
     @staticmethod

@@ -81,6 +81,29 @@ class ProfileTimezoneMiddleware:
             timezone.deactivate()
 
 
+class UserSessionMiddleware:
+    """Keep a signed-in session's "last seen" and address current on My
+    account's list (2026-09-30).
+
+    ``toto.core.user_sessions.touch`` writes at most every few minutes per
+    session, so almost every request costs one cache ``add`` and nothing
+    else. After authentication; a Bearer token is touched at its own door
+    (``toto.api.tokens``), since its key is not this request's session.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, "user", None)
+        session = getattr(request, "session", None)
+        if user is not None and user.is_authenticated and session is not None:
+            from toto.core.user_sessions import touch
+
+            touch(user, session.session_key, request)
+        return self.get_response(request)
+
+
 class PlatformMiddleware:
     """Redirect to the maintenance page while Platform.active is False.
 

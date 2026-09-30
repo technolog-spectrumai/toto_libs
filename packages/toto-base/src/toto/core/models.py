@@ -1,4 +1,7 @@
+from django.conf import settings
 from django.db import models
+from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from colorfield.fields import ColorField
 from django.contrib.auth import get_user_model
 from django_jsonform.models.fields import JSONField
@@ -231,3 +234,70 @@ class Platform(models.Model):
     )
     def __str__(self):
         return f"{self.site_name} Platform"
+
+
+class UserSession(models.Model):
+    """One sign-in of a member: the row Django's session table does not have
+    (2026-09-30).
+
+    ``django_session`` has no user column, so "your sessions" and "sign out
+    everywhere else" had nothing to list but a scan of every session on the
+    host. A row is written when a session signs in (``user_logged_in``, a
+    desktop token included — a token IS a session key), refreshed at most
+    every few minutes while it is used, and deleted when it signs out or is
+    ended from My account. See ``toto.core.user_sessions``.
+
+    ``session_key`` is the key itself, not a hash of it: ending a session
+    means deleting it from the session store, and only the key finds it
+    there. It is no new exposure — the same key is the primary key of
+    ``django_session`` in the same database and the same backups — but it
+    is a credential all the same: it is never rendered, logged or put on the
+    audit chain; the page names a session by this row's id.
+
+    A row can outlive its session (expired, cleared, re-keyed): whatever
+    lists them asks the session store first and drops the dead ones.
+    """
+
+    KIND_BROWSER = "browser"
+    KIND_TOKEN = "token"
+    KIND_CHOICES = [
+        (KIND_BROWSER, _("Browser")),
+        (KIND_TOKEN, _("Desktop or API token")),
+    ]
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="signed_in_sessions")
+    session_key = models.CharField(max_length=40, unique=True)
+    kind = models.CharField(max_length=16, choices=KIND_CHOICES, default=KIND_BROWSER)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=300, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-last_seen_at"]
+        indexes = [models.Index(fields=["user", "-last_seen_at"],
+                                name="core_usersession_user_seen")]
+
+    def __str__(self):
+        return f"{self.user_id} {self.kind} {self.created_at:%Y-%m-%d %H:%M}"
+
+
+class KnownSignIn(models.Model):
+    """A (user agent, address) pair a member signed in from, for the "new
+    sign-in" notice (2026-09-30).
+
+    Only a hash of the pair: this table answers "seen before?" for 90 days
+    and nothing else, so it keeps no history of where a member has been.
+    Its own table because a ``UserSession`` is deleted at sign-out, and a
+    member who signs out every evening is not "new" every morning.
+    """
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="known_sign_ins")
+    fingerprint = models.CharField(max_length=64)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["user", "fingerprint"],
+                                               name="core_knownsignin_unique_pair")]

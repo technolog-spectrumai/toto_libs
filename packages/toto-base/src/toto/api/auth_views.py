@@ -16,6 +16,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
 from toto.core.signin_lockout import refusal_for
+from toto.core.user_sessions import mark_token_signin
 
 from .cors import DATA_MESH_GROUP, MESH_DOMAINS, CorsApiView, in_data_mesh
 
@@ -117,6 +118,9 @@ class LoginApiView(CorsApiView):
                 return response
             return JsonResponse({"error": "Invalid credentials."}, status=401)
 
+        # The session this makes is handed out as a token: My account lists
+        # it as a desktop or API sign-in, not a browser (2026-09-30).
+        mark_token_signin(request)
         login(request, user)
         return JsonResponse({"ok": True, "token": request.session.session_key})
 

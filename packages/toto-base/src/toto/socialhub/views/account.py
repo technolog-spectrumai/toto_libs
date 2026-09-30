@@ -34,7 +34,7 @@ from django.views.decorators.http import require_POST
 
 from toto.core.client_ip import client_ip
 from toto.core.notices import send_notice
-from toto.core.user_sessions import end_other_sessions
+from toto.core.user_sessions import end_other_sessions, rekey
 from toto.people.models import Person
 from toto.socialhub import audit
 from toto.socialhub.forms import AccountProfileForm, TimeZoneForm, avatar_max_bytes
@@ -152,7 +152,10 @@ def account_password(request):
     if not form.is_valid():
         return _page(request, password_form=form, status=400)
     form.save()
+    old_key = request.session.session_key
     update_session_auth_hash(request, user)
+    # A new key for this session; its row on the Sessions list follows it.
+    rekey(user, old_key, request.session.session_key)
     ended = end_other_sessions(user, keep=request.session.session_key)
     _password_changed_on_chain(user, request, ended)
     send_notice(user, "password_changed",
