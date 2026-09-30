@@ -12,6 +12,7 @@ from django.db import models as _models
 
 from .models import CypherQuery
 from toto.celery_utils import celery_available
+from toto.core.safe_next import safe_next
 from toto.ui import PageProcessor
 
 
@@ -732,7 +733,9 @@ def graph_export_preview(request, app_label, model_name, object_uuid):
     from .connection import Neo4jClient
     from .graph_export import GraphExporter
 
-    back = request.META.get("HTTP_REFERER") or "/"
+    # Only a page on this site (2026-09-30): the Referer, or a posted `back`,
+    # is written by whoever sent the member here.
+    back = safe_next(request, request.META.get("HTTP_REFERER"), "/")
     try:
         model, label, uuid_field = _resolve_export_target(app_label, model_name)
     except _ExportError as exc:
@@ -774,7 +777,7 @@ def graph_export_apply(request, app_label, model_name, object_uuid):
     from .connection import Neo4jClient
     from .graph_export import GraphExporter
 
-    back = request.POST.get("back") or request.META.get("HTTP_REFERER") or "/"
+    back = safe_next(request, request.POST.get("back") or request.META.get("HTTP_REFERER"), "/")
     try:
         model, label, uuid_field = _resolve_export_target(app_label, model_name)
     except _ExportError as exc:

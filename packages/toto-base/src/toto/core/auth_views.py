@@ -17,6 +17,7 @@ from toto.core.auth_cooldown import (
     start_login_retry_cooldown,
 )
 from toto.core.forms import LoginForm
+from toto.core.safe_next import safe_next
 from toto.core.signin_lockout import refusal_for
 from toto.ui import PageProcessor
 
@@ -33,7 +34,10 @@ def _password_reset_url():
 
 def password_login_view(request, *, template_name, page_title, extra_context=None):
     processor = PageProcessor()
-    next_url = request.GET.get("next") or request.POST.get("next") or ""
+    # Only a place on this site (2026-09-30): an off-site `next` made this
+    # genuine page the first step of a phishing round trip. The page's hidden
+    # field carries the checked value too, so a refused one is dropped.
+    next_url = safe_next(request, request.GET.get("next") or request.POST.get("next"))
     form = LoginForm(request.POST or None)
     password_reset_url = _password_reset_url()
     context = {
@@ -114,5 +118,5 @@ def password_logout_view(request):
     if request.user.is_authenticated:
         logger.info(f"User '{request.user.username}' logged out.")
     logout(request)
-    next_url = request.GET.get("next") or ""
+    next_url = safe_next(request, request.GET.get("next"))
     return redirect(next_url or reverse("core:dashboard"))

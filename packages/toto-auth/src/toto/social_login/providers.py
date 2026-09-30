@@ -16,6 +16,7 @@ from urllib.parse import urlencode
 from django.conf import settings
 from django.urls import reverse
 
+from toto.core.safe_next import safe_next
 from toto.features import flag
 
 
@@ -127,7 +128,9 @@ def public_base_url():
 
 def login_page_providers(request):
     """Button data for the login page: [{key, label, icon, login_url}]."""
-    next_url = request.GET.get("next", "")
+    # The buttons carry only a `next` on this site (2026-09-30); the social
+    # callback checks it again, but the page need not repeat a refused one.
+    next_url = safe_next(request, request.GET.get("next"))
     entries = []
     for spec in enabled_providers():
         url = reverse("sso:social_login", args=[spec.key])

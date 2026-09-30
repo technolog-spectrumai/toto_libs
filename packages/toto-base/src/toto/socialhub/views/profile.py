@@ -11,6 +11,7 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 from django.views.generic import ListView, DetailView
 
+from toto.core.safe_next import safe_next
 from toto.people.models import Person
 from toto.socialhub.models import Community
 from toto.socialhub.plugins.profile_plugins import ProfilePlugin
@@ -136,7 +137,9 @@ def set_preferred_language(request):
         else:
             messages.error(request, _("Invalid language selected."))
 
-    referer = request.META.get("HTTP_REFERER")
+    # The Referer is whatever page sent the form, which need not be ours
+    # (2026-09-30): followed only when it is a place on this site.
+    referer = safe_next(request, request.META.get("HTTP_REFERER"))
     if referer:
         return redirect(referer)
     try:
@@ -166,7 +169,8 @@ def set_location_sharing(request):
     choice = (request.POST.get("location_sharing") or "").strip()
     if choice not in LocationSharing.values:
         messages.error(request, _("That is not a sharing setting."))
-        return redirect(request.META.get("HTTP_REFERER", reverse("socialhub:profile_list")))
+        return redirect(safe_next(request, request.META.get("HTTP_REFERER"),
+                                    reverse("socialhub:profile_list")))
 
     profile = getattr(request.user, "community_profile", None)
     if profile is None:
@@ -191,7 +195,8 @@ def set_location_sharing(request):
     else:
         messages.success(request, _(
             "You now appear on the People map at your exact address."))
-    return redirect(request.META.get("HTTP_REFERER", reverse("socialhub:profile_list")))
+    return redirect(safe_next(request, request.META.get("HTTP_REFERER"),
+                                    reverse("socialhub:profile_list")))
 
 @login_required
 def set_my_address(request):
@@ -221,12 +226,12 @@ def set_my_address(request):
         longitude = float(request.POST.get("longitude", ""))
     except (TypeError, ValueError):
         messages.error(request, _("Place the pin on the map first."))
-        return redirect(request.META.get("HTTP_REFERER",
-                                         reverse("socialhub:profile_list")))
+        return redirect(safe_next(request, request.META.get("HTTP_REFERER"),
+                                           reverse("socialhub:profile_list")))
     if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
         messages.error(request, _("Place the pin on the map first."))
-        return redirect(request.META.get("HTTP_REFERER",
-                                         reverse("socialhub:profile_list")))
+        return redirect(safe_next(request, request.META.get("HTTP_REFERER"),
+                                           reverse("socialhub:profile_list")))
 
     profile = getattr(request.user, "community_profile", None)
     if profile is None:
@@ -274,9 +279,8 @@ def set_my_address(request):
             "Your pin is saved. No street address is known at that point."))
     else:
         messages.success(request, _("Your address is saved."))
-    return redirect(request.META.get("HTTP_REFERER",
-                                     reverse("socialhub:profile_details",
-                                             args=[profile.slug])))
+    return redirect(safe_next(request, request.META.get("HTTP_REFERER"),
+                              reverse("socialhub:profile_details", args=[profile.slug])))
 
 
 @require_POST

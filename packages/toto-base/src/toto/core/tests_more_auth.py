@@ -6,7 +6,6 @@ cooldown refuses (the right password too, while it runs), and the other two
 cooldowns that share its machinery."""
 
 import time
-import unittest
 from types import SimpleNamespace
 from unittest import mock
 
@@ -107,10 +106,9 @@ class LoginDoorTests(TestCase):
             _door(request)
         self.assertNotIn(KEY, request.session)
 
-    @unittest.skip("SUSPECTED BUG toto/core/auth_views.py:35,75,106 - `next` is followed "
-                   "unchecked: /sso/login/?next=https://evil.example.com/ signs the member "
-                   "in and 302s them off-site (open redirect); /sso/logout/?next= too.")
     def test_next_never_leaves_this_site(self):
+        # Skipped as a suspected bug until 2026-09-30: `next` was followed
+        # unchecked, an open redirect on both doors (toto.core.safe_next).
         request = _request("post", {"username": "ada", "password": "Correct-horse-9",
                                     "next": "https://evil.example.com/phish"})
         self.assertFalse(_door(request)["Location"].startswith("https://evil."))

@@ -16,6 +16,7 @@ from django.urls import reverse
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
+from toto.core.safe_next import safe_next
 from toto.ui import PageProcessor
 from toto.people.models import Person
 from toto.events.models import ScheduledEvent
@@ -1343,10 +1344,11 @@ def note_save(request, kind, pk):
     obj.save(update_fields=[field])
     messages.success(request, _("Note saved."))
 
-    return redirect(
-        request.POST.get("next")
-        or reverse("locations:location_detail", args=[kind, pk])
-    )
+    # A posted `next` only when it stays on this site (2026-09-30).
+    return redirect(safe_next(
+        request, request.POST.get("next"),
+        reverse("locations:location_detail", args=[kind, pk]),
+    ))
 
 
 @login_required

@@ -17,6 +17,7 @@ from django.shortcuts import render
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
+from toto.core.safe_next import safe_next
 from toto.ui import PageProcessor
 
 from . import graph_service as gs
@@ -236,7 +237,7 @@ def node_batch_delete(request):
         uids = request.POST.getlist("uids")
         count = gs.delete_nodes(uids)
         messages.success(request, _("%(n)d node(s) deleted.") % {"n": count})
-    return redirect(request.POST.get("next") or "bento:node_list")
+    return redirect(safe_next(request, request.POST.get("next"), reverse("bento:node_list")))
 
 
 # --------------------------------------------------------------------------
@@ -352,7 +353,7 @@ def edge_delete(request, edge_id):
     if request.method == "POST":
         gs.delete_edge(edge_id)
         messages.success(request, _("Edge deleted."))
-        return redirect(request.POST.get("next") or "bento:edge_list")
+        return redirect(safe_next(request, request.POST.get("next"), reverse("bento:edge_list")))
     return bento_render(request, "bento/edge_confirm_delete.html", {"edge": edge})
 
 
@@ -362,7 +363,7 @@ def edge_batch_delete(request):
         ids = request.POST.getlist("ids")
         count = gs.delete_edges(ids)
         messages.success(request, _("%(n)d edge(s) deleted.") % {"n": count})
-    return redirect(request.POST.get("next") or "bento:edge_list")
+    return redirect(safe_next(request, request.POST.get("next"), reverse("bento:edge_list")))
 
 
 # --------------------------------------------------------------------------

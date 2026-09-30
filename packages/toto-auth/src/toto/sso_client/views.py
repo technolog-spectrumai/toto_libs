@@ -14,6 +14,8 @@ from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
+from toto.core.safe_next import safe_next
+
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
@@ -100,8 +102,8 @@ def _endpoint(cfg, key, portal, fallback_path):
 
 def oidc_logout(request):
     logout(request)
-    next_url = request.GET.get("next", "") or reverse("core:welcome")
-    return redirect(next_url)
+    # Only a place on this site (2026-09-30), like the password doors.
+    return redirect(safe_next(request, request.GET.get("next"), reverse("core:welcome")))
 
 
 def _federation_configured(cfg) -> bool:
@@ -135,7 +137,7 @@ def oidc_login(request):
     every mode.
     """
     cfg = _cfg()
-    next_url = request.GET.get("next", "")
+    next_url = safe_next(request, request.GET.get("next"))
 
     if not _federation_configured(cfg):
         # No OIDC config in DB — fall back to the local username/password login.
@@ -181,7 +183,10 @@ def federated_login(request, *, linking=False):
         return redirect(reverse("core:login"))
 
     state = secrets.token_urlsafe(32)
-    next_url = request.GET.get("next", "")
+    # Checked on the way in and again on the way back (2026-09-30): the
+    # cookie outlives this request, and the callback follows it after signing
+    # the member in.
+    next_url = safe_next(request, request.GET.get("next"))
 
     params = {
         "response_type": "code",
@@ -270,7 +275,7 @@ def _complete_link(request, claims):
             % {"provider": provider.label},
         )
 
-    next_url = request.COOKIES.get("oidc_next", "") or reverse("core:dashboard")
+    next_url = safe_next(request, request.COOKIES.get("oidc_next"), reverse("core:dashboard"))
     response = redirect(next_url)
     response.delete_cookie("oidc_state")
     response.delete_cookie("oidc_next")
@@ -372,7 +377,7 @@ def oidc_callback(request):
 
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
 
-    next_url = request.COOKIES.get("oidc_next", "") or reverse("core:dashboard")
+    next_url = safe_next(request, request.COOKIES.get("oidc_next"), reverse("core:dashboard"))
     response = redirect(next_url)
     response.delete_cookie("oidc_state")
     response.delete_cookie("oidc_next")

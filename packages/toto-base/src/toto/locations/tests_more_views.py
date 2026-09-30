@@ -332,6 +332,17 @@ class NoteTests(PageTestCase):
         route.refresh_from_db()
         self.assertEqual(route.notes, "mind the bridge")
 
+    def test_an_off_site_next_returns_to_the_routes_own_page(self):
+        # An open redirect until 2026-09-30 (toto.core.safe_next).
+        from django.contrib.gis.geos import LineString, MultiLineString
+
+        route = Route.objects.create(name="R", created_by=self.ada,
+                                     geometry=MultiLineString(LineString((0, 0), (1, 1))))
+        response = self.client.post(reverse("locations:note_save", args=["route", route.pk]),
+                                    {"note": "x", "next": "https://evil.example.com/"})
+        self.assertEqual(response["Location"],
+                         reverse("locations:location_detail", args=["route", route.pk]))
+
     def test_a_kind_without_a_note_is_404(self):
         territory = Territory.objects.create(name="T", geometry="POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))")
         self.client.force_login(self.staff)
