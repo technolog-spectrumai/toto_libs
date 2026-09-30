@@ -1,7 +1,7 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
 
-{% block title %}My Keys — Gervazy{% endblock %}
+{% block title %}{% translate "My Keys" %} — Gervazy{% endblock %}
 
 {% block start_script %}
 <style>[x-cloak]{display:none!important}</style>
@@ -56,7 +56,7 @@
       <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
         <i class="fa-solid fa-key"></i>
-        {{ signing_keys|length }} key{% if signing_keys|length != 1 %}s{% endif %}
+        {% blocktranslate count counter=signing_keys|length %}{{ counter }} key{% plural %}{{ counter }} keys{% endblocktranslate %}
       </div>
     </div>
 
@@ -87,12 +87,12 @@
               </span>
               <span>
                 <i class="fa-regular fa-calendar mr-1"></i>
-                Created {{ sk.created_at|date:"Y-m-d H:i" }}
+                {% blocktranslate with when=sk.created_at|date:"Y-m-d H:i" %}Created {{ when }}{% endblocktranslate %}
               </span>
               {% if sk.retired_at %}
                 <span>
                   <i class="fa-regular fa-calendar-xmark mr-1"></i>
-                  Retired {{ sk.retired_at|date:"Y-m-d H:i" }}
+                  {% blocktranslate with when=sk.retired_at|date:"Y-m-d H:i" %}Retired {{ when }}{% endblocktranslate %}
                 </span>
               {% endif %}
             </div>
@@ -108,7 +108,7 @@
                 class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition">
           <i class="fa-solid fa-rotate-right"></i>{% trans "Rotate signing key" %}</button>
         <div x-show="open" x-cloak class="mt-3">
-          {% include "gervazy/_provision_signing_key_form.html" with label="Rotate" %}
+          {% translate "Rotate" as rotate_label %}{% include "gervazy/_provision_signing_key_form.html" with label=rotate_label %}
         </div>
       </div>
       {% endif %}
@@ -117,7 +117,7 @@
       <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
            class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-60 mb-4">{% trans "No signing keys yet. Provision one below." %}</div>
       {% if strongboxes %}
-        {% include "gervazy/_provision_signing_key_form.html" with label="Provision signing key" %}
+        {% translate "Provision signing key" as provision_label %}{% include "gervazy/_provision_signing_key_form.html" with label=provision_label %}
       {% else %}
         <p class="text-sm opacity-60">{% trans "Set up a strongbox first." %}</p>
       {% endif %}
@@ -137,7 +137,7 @@
       <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
         <i class="fa-solid fa-vault"></i>
-        {{ strongboxes|length }} strongbox{% if strongboxes|length != 1 %}es{% endif %}
+        {% blocktranslate count counter=strongboxes|length %}{{ counter }} strongbox{% plural %}{{ counter }} strongboxes{% endblocktranslate %}
       </div>
     </div>
 
@@ -154,15 +154,15 @@
                 <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs opacity-60">
                   <span>
                     <i class="fa-solid fa-database mr-1"></i>
-                    {{ sb.data_keys.count }} data key{% if sb.data_keys.count != 1 %}s{% endif %}
+                    {% blocktranslate count counter=sb.data_keys.count %}{{ counter }} data key{% plural %}{{ counter }} data keys{% endblocktranslate %}
                   </span>
                   <span>
                     <i class="fa-solid fa-shield mr-1"></i>
-                    {{ sb.master_keys.count }} master key{% if sb.master_keys.count != 1 %}s{% endif %}
+                    {% blocktranslate count counter=sb.master_keys.count %}{{ counter }} master key{% plural %}{{ counter }} master keys{% endblocktranslate %}
                   </span>
                   <span>
                     <i class="fa-regular fa-calendar mr-1"></i>
-                    Created {{ sb.created_at|date:"Y-m-d" }}
+                    {% blocktranslate with when=sb.created_at|date:"Y-m-d" %}Created {{ when }}{% endblocktranslate %}
                   </span>
                 </div>
               </div>
@@ -202,7 +202,7 @@
       </div>
     {% else %}
       <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-           class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-60">{% trans "No strongboxes found. Ask an administrator to set one up for you." %}</div>
+           class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-60">{% url 'account:home' as account_url %}{% if account_url %}{% translate "No key store yet." %} <a href="{{ account_url }}#keystore" class="underline">{% translate "Create yours on My account." %}</a>{% else %}{% translate "No strongboxes found. Ask an administrator to set one up for you." %}{% endif %}</div>
     {% endif %}
   </section>
 

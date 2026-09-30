@@ -142,6 +142,10 @@ class CreateTests(KeyStoreTestCase):
         with self.assertRaises(ValueError):
             create_personal_strongbox(self.user, "five5")
 
+    def test_the_keys_page_sends_a_member_without_one_here(self):
+        response = self.client.get(reverse("gervazy:my_keys"))
+        self.assertContains(response, reverse("account:home") + "#keystore")
+
     def test_only_a_signed_in_post_creates(self):
         self.assertEqual(self.client.get(reverse("account:key_store")).status_code, 405)
         self.client.logout()

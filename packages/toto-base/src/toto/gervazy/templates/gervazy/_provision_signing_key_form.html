@@ -29,7 +29,7 @@
             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
             class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm hover:opacity-90">
       <i class="fa-solid fa-key"></i>
-      {{ label|default:"Provision" }}
+      {% if label %}{{ label }}{% else %}{% translate "Provision" %}{% endif %}
     </button>
   </div>
 </form>

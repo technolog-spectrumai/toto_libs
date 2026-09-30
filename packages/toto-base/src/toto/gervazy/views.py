@@ -102,10 +102,11 @@ def initialize_strongbox_view(request, pk):
             state="active",
         )
 
-        messages.success(request, f"Strongbox \"{strongbox.name}\" initialized successfully.")
+        messages.success(request, _("Strongbox \"%(name)s\" initialized successfully.")
+                         % {"name": strongbox.name})
 
     except Exception as exc:
-        messages.error(request, f"Initialization failed: {exc}")
+        messages.error(request, _("Initialization failed: %(error)s") % {"error": exc})
 
     return redirect("gervazy:my_keys")
 
@@ -151,16 +152,18 @@ def provision_signing_key_view(request):
             .first()
         )
         if not wrapped_key:
-            messages.error(request, f"Strongbox \"{strongbox.name}\" has no active data key. Initialize it first.")
+            messages.error(request, _("Strongbox \"%(name)s\" has no active data key. "
+                                     "Initialize it first.") % {"name": strongbox.name})
             return redirect("gervazy:my_keys")
 
         session = GervazyCryptoSession(strongbox, password)
         SigningService.provision_signing_key(session, wrapped_key, person)
         session.close()
 
-        messages.success(request, f"New signing key provisioned using \"{strongbox.name}\".")
+        messages.success(request, _("New signing key provisioned using \"%(name)s\".")
+                         % {"name": strongbox.name})
 
     except Exception as exc:
-        messages.error(request, f"Provisioning failed: {exc}")
+        messages.error(request, _("Provisioning failed: %(error)s") % {"error": exc})
 
     return redirect("gervazy:my_keys")
