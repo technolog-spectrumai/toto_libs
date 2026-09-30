@@ -25,6 +25,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 
 from toto.core import assistant
 from toto.ui import PageProcessor
@@ -273,10 +274,13 @@ def tpy_save(request, file_pk):
         return JsonResponse({"error": str(exc)}, status=500)
 
 
-@csrf_exempt
+# Signed in, POST and CSRF (2026-10-01): it was csrf_exempt with no login
+# check, so a visitor's post died in the owner lookup (a 500) and another
+# site could make a signed-in member's browser trash a notebook. The page's
+# fetch already sends X-CSRFToken.
+@login_required
+@require_POST
 def tpy_delete(request, file_pk):
-    if request.method != "POST":
-        return JsonResponse({"error": "POST required"}, status=400)
     vault_file = _get_owned_file(request, file_pk)
     # Best-effort: shut down any running kernel for this notebook first.
     try:

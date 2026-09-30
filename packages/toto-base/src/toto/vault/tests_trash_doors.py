@@ -258,6 +258,36 @@ class OtherAppDoorTests(_Fixture):
         self.assertEqual(response.status_code, 200)
         self.assert_trashed(notebook)
 
+    def test_the_notebook_door_wants_a_member_a_post_and_csrf(self):
+        # It was csrf_exempt with no login check: a visitor's post died in
+        # the owner lookup, a 500 (2026-10-01).
+        from unittest import mock
+
+        from django.apps import apps
+        from django.contrib.auth.models import AnonymousUser
+        from django.middleware.csrf import CsrfViewMiddleware
+
+        if not apps.is_installed("toto.mandragora"):
+            self.skipTest("toto.mandragora is not installed on this host")
+        from toto.mandragora import tpy_format, tpy_views
+
+        body = tpy_format.dumps(tpy_format.new_notebook("N")).encode()
+        notebook = self.file("nb", body, file_type="xml", ext="xml")
+        visitor = RequestFactory().post("/x/")
+        visitor.user = AnonymousUser()
+        with mock.patch.object(tpy_views, "client"):
+            response = tpy_views.tpy_delete(visitor, notebook.pk)
+        self.assertEqual(response.status_code, 302)                  # to the login page
+        getter = RequestFactory().get("/x/")
+        getter.user = self.owner
+        self.assertEqual(tpy_views.tpy_delete(getter, notebook.pk).status_code, 405)
+        forged = RequestFactory().post("/x/")
+        forged.user = self.owner
+        refused = CsrfViewMiddleware(lambda r: None).process_view(
+            forged, tpy_views.tpy_delete, (notebook.pk,), {})
+        self.assertEqual(getattr(refused, "status_code", None), 403)
+        self.assertIsNone(VaultFile.all_objects.get(pk=notebook.pk).trashed_at)
+
     def test_a_drawing(self):
         from django.apps import apps
 
