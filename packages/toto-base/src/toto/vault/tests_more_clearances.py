@@ -184,3 +184,73 @@ class RowTests(_Fixture):
         self.assertEqual(str(BucketClearance.objects.get()), "Owned — internal")
         self.assertEqual(list(self.internal.bucket_rows.values_list("bucket__slug", flat=True)),
                          ["owned"])
+
+
+# ---------------------------------------------------------------------------
+# The New clearance modal's kind for buckets (2026-09-30): socialhub's
+# ClearanceTargetPlugin, provided here, adding through this app's own door.
+# ---------------------------------------------------------------------------
+
+
+class BucketClearanceKindTests(TestCase):
+    KEY = "vault.bucket"
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+
+        from toto.core.models import Platform
+        from toto.socialhub.models import Clearance
+
+        Platform.objects.get_or_create(active=True, defaults={
+            "site_name": "Test", "author": "t", "publication_year": 2026})
+        cls.root = get_user_model().objects.create_superuser("kindroot", "k@example.com", "pw")
+        cls.internal = Clearance.objects.create(name="internal", slug="internal")
+        cls.payroll = Clearance.objects.create(name="payroll", slug="payroll")
+        from toto.vault.models import Bucket
+
+        cls.first = Bucket.objects.create(name="payroll files", slug="payroll-files", owner=cls.root)
+        Bucket.objects.create(name="Payroll archive", slug="payroll-archive", owner=cls.root)
+        Bucket.objects.create(name="Photos", slug="photos", owner=cls.root)
+
+    def plugin(self):
+        from toto.socialhub.plugins import clearance_plugins
+
+        return clearance_plugins.kind(self.KEY)
+
+    def test_the_kind_is_registered_with_a_title_and_an_icon(self):
+        plugin = self.plugin()
+        self.assertIsNotNone(plugin)
+        self.assertEqual(str(plugin.title), "Buckets")
+        self.assertEqual(plugin.icon, "bucket")
+
+    def test_search_finds_by_name_case_blind_ordered_and_capped(self):
+        rows = self.plugin().search("PAYROLL", 20)
+        self.assertEqual([r["label"] for r in rows], ["Payroll archive", "payroll files"])
+        self.assertEqual(set(rows[0]), {"pk", "label", "detail"})
+        self.assertEqual(len(self.plugin().search("PAYROLL", 1)), 1)
+        self.assertEqual(self.plugin().search("nothing-like-it", 20), [])
+
+    def test_resolve_ignores_what_does_not_exist(self):
+        self.assertEqual(self.plugin().resolve({self.first.pk, 10 ** 9}), [self.first])
+
+    def test_keep_adds_the_clearance_and_keeps_the_others(self):
+        from toto.audit.models import AuditRecord
+
+        from toto.vault.clearances import set_clearances
+
+        set_clearances(self.first, [self.internal], actor=self.root)
+        self.assertEqual(self.plugin().keep([self.first], self.payroll, actor=self.root), 1)
+        self.assertEqual(set(self.first.clearance_rows.values_list("clearance__name", flat=True)),
+                         {"internal", "payroll"})
+        record = AuditRecord.objects.filter(action="VAULT.BUCKET.CLEARANCES_CHANGED").order_by("-sequence").first()
+        self.assertEqual(record.actor_user, self.root)
+
+    def test_keeping_twice_changes_nothing(self):
+        from toto.audit.models import AuditRecord
+
+        self.plugin().keep([self.first], self.payroll, actor=self.root)
+        before = AuditRecord.objects.filter(action="VAULT.BUCKET.CLEARANCES_CHANGED").count()
+        self.plugin().keep([self.first], self.payroll, actor=self.root)
+        self.assertEqual(self.first.clearance_rows.count(), 1)
+        self.assertEqual(AuditRecord.objects.filter(action="VAULT.BUCKET.CLEARANCES_CHANGED").count(), before)
