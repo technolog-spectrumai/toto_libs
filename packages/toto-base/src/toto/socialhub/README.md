@@ -18,7 +18,7 @@ clearance is named after what it **opens**, never after who holds it.
 | | Community | Clearance |
 |---|---|---|
 | Examples | `devs`, `testers` | `internal`, `confidential`, `onboarding` |
-| Carries | plan offers, discounts, privileges, news, a page, a forum | who may **read** — wiki pages, files (sheets, decks), places, routes and map layers, through `clearance_access` — and how fast its holders' **mana refills** (`regen_security`/`regen_compute`/`regen_storage`, per hour; blank = the pool's own) |
+| Carries | plan offers, discounts, privileges, news, a page, a forum | who may **read** — through the GROUPS it keeps (wiki topics, vault buckets, map domains; never single items), by `clearance_access` — and how fast its holders' **mana refills** (`regen_security`/`regen_compute`/`regen_storage`, per hour; blank = the pool's own) |
 | Membership | `Person.communities` | `Person.clearances` |
 | Joined | by application, accepted by a referee | given by a superuser: the Clearances tab, the admin, the console |
 | Shown to members | yes — directory, profiles, map, API | never; it has no page |
@@ -50,24 +50,31 @@ only, and `clearance_access` and `toto.mana.services.clearance_speeds` read
 `Person.clearances` only. Joining a community — the one self-service door on
 the platform — can therefore never grant access to anything.
 
-The reading half belongs to each app that keeps things to clearances — the
-wiki's pages (zenobia's `toto.wiki`), the vault's files (sheets, decks, and
-every other type), locations' routes and map layers, zenobia's places — and
-is enforced where the things are. They share one rule, `clearance_access.py`
-(2026-09-29): an object kept to no clearance follows the app's own rule; one
-kept to clearances is read by their holders, its owner and superusers, and
-by nobody else — a clearance both keeps and grants — and a hidden object
-answers as a missing one. Each app keeps its own "who reads this" control
-inside itself; the clearances themselves (holders, speeds) are managed on
-the Clearances tab here.
+**Clearances go on groups, never on items** (2026-09-30). Each app keeps
+GROUPS to clearances and the rule reaches the items through them: the wiki's
+**topics** (a page is read through its topics — zenobia's `toto.wiki`), the
+vault's **buckets** (a file through its bucket — sheets and decks included),
+and locations' **map domains** (routes, map layers, places, addresses, zones
+and territories through the domains they are in). One rule,
+`clearance_access.group_gate` / `group_hidden`: an item in no kept group
+follows its app's own rule; an item in kept groups is read by superusers and
+by whoever holds, for EVERY kept group it is in, one of that group's
+clearances — **pessimistic** — and by nobody else: not its owner or creator,
+not the public flag, not an ACL. A clearance both keeps and grants, and a
+hidden item answers as a missing one. Each group model carries a
+`(group, clearance)` table with a PROTECT on the clearance, so the Clearances
+list counts the groups each keeps and refuses deleting one still in use.
+Where a group's clearances are set is the group's own page, superusers only:
+the wiki's Topics page and `/wiki/clearances/` grid, a bucket's page in the
+vault, the Locations → Domains tab.
 
 ### Where clearances are hidden
 
 A clearance has no page and appears in no directory, profile, chip, map
 filter, API answer or connector: only the Clearances tab, the admin and the
 console list them, and all three are superusers' alone. A member learns the
-names of the clearances they hold on the Mana page's Regeneration tab and on
-an object's "who reads this" control, and never of the others.
+names of the clearances they hold on the Mana page's Regeneration tab, and
+never of the others.
 
 ### Who gives clearances
 
@@ -77,7 +84,11 @@ list (2026-09-30) is read-only: a table on a wide screen, a card per
 clearance on a narrow one, five a page (the shared server pagination), each
 with its holders, its mana refill speeds, how many things it keeps, and a
 **Delete** that is refused while an app still keeps something to it (their
-through tables PROTECT the clearance). **New clearance** opens a modal: the
+through tables PROTECT the clearance). A **Table | Graph** switch (the
+vault's tree/grid idiom, remembered per browser) shows the same clearances as
+a Cytoscape graph: each clearance, the groups it keeps (found by their PROTECT
+on the clearance, never named), and optionally its holders
+(`communities/clearances/graph/`, JSON, superusers only). **New clearance** opens a modal: the
 name, a speed per pool, and holders found by searching people
 (`communities/clearances/people/?q=`, JSON, superusers only), made all or
 nothing; a refusal comes back to the list with the modal open, what was typed
@@ -87,8 +98,8 @@ seven clearances.
 Holders and speeds change afterwards in the Django admin, on the clearance's
 own page (its **Members** field, written through `clearance.members.set`, the
 relation's own door), or from the console (`community_members join ada
---clearance internal`). What a clearance READS is each app's own business and
-stays in that app (the wiki's page × clearance grid). Never the membership
+--clearance internal`). What a clearance KEEPS is set on each group's own
+page (topics, buckets, map domains), never here. Never the membership
 application: it names communities, and a community grants no reading.
 
 ## On the audit chain
