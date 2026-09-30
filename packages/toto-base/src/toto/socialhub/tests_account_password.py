@@ -214,3 +214,59 @@ class SessionSweepTests(PasswordTestCase):
     @override_settings(SESSION_ENGINE="django.contrib.sessions.backends.signed_cookies")
     def test_an_engine_that_cannot_be_listed_ends_nothing(self):
         self.assertEqual(end_other_sessions(self.user, keep=""), 0)
+
+
+LOCKOUT = dict(
+    AUTHENTICATION_BACKENDS=["toto.core.signin_lockout.SigninLockoutBackend",
+                             "django.contrib.auth.backends.ModelBackend"],
+    LOGIN_DELAY_AFTER=0, LOGIN_LOCK_AFTER=3, LOGIN_LOCK_MINUTES=15,
+    LOGIN_ADDRESS_LOCK_AFTER=0, LOGIN_FAILURE_WINDOW_MINUTES=15)
+
+
+@override_settings(**LOCKOUT)
+class GuessTests(PasswordTestCase):
+    """Review 2026-10-01: wrong current passwords on this form were not
+    counted by the sign-in lockout, so a borrowed session could guess the
+    password without end."""
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        super().setUp()
+
+    def test_wrong_current_passwords_pause_the_form_and_the_sign_in(self):
+        from django.contrib.auth import authenticate
+        from django.test import RequestFactory
+
+        for _ in range(3):
+            self.assertEqual(self.change(old="not-my-password").status_code, 400)
+        # Paused now: even the right password changes nothing here...
+        response = self.change()
+        self.assertRedirects(response, reverse("account:home") + "#password",
+                             fetch_redirect_response=False)
+        self.assertTrue(self.still_old())
+        # ...and the same name from the same address is paused at sign-in too.
+        request = RequestFactory().post("/sso/login/", REMOTE_ADDR="127.0.0.1")
+        self.assertIsNone(authenticate(request, username="ada", password=OLD))
+
+    def test_a_weak_new_password_is_not_a_guess(self):
+        for _ in range(4):
+            self.change(new="short")
+        self.change()
+        self.assertFalse(self.still_old())
+
+    def test_the_passwords_are_hidden_from_error_reports(self):
+        from django.test import RequestFactory
+
+        from toto.socialhub.views.account import account_password
+
+        request = RequestFactory().post("/account/password/", {"old_password": "x"})
+        request.user = self.user
+        with mock.patch("toto.socialhub.views.account.PasswordChangeForm",
+                        side_effect=RuntimeError("boom")), \
+                self.assertRaises(RuntimeError):
+            account_password(request)
+        self.assertEqual(set(request.sensitive_post_parameters),
+                         {"old_password", "new_password1", "new_password2"})

@@ -291,6 +291,24 @@ def _password_changed_on_chain(user, request, ended):
     return on_password_changed(user, request=request, sessions_ended=ended)
 
 
+def _password_guess_refused(request, user):
+    """The sign-in lockout's refusal for this member from this address, or None."""
+    from toto.core import signin_lockout
+
+    if not signin_lockout.enabled():
+        return None
+    return signin_lockout.refusal(request, user.get_username())
+
+
+def _password_guess_failed(request, user):
+    """A wrong current password counts as a failed sign-in for this member here."""
+    from toto.core import signin_lockout
+
+    if signin_lockout.enabled():
+        signin_lockout.note_failure(request, user.get_username())
+
+
+@sensitive_post_parameters("old_password", "new_password1", "new_password2")
 @require_POST
 @login_required
 def account_password(request):
@@ -308,8 +326,18 @@ def account_password(request):
         messages.error(request, _("Your account signs in through another service; "
                                   "change your password there."))
         return redirect("account:home")
+    # The current password is a password guess like any at the sign-in form
+    # (2026-10-01): a borrowed or stolen session must not get unlimited tries
+    # at it. PasswordChangeForm checks it with check_password, which no
+    # lockout sees, so the lockout is asked first and told of each miss here.
+    held = _password_guess_refused(request, user)
+    if held is not None:
+        messages.error(request, held.message)
+        return redirect(f"{reverse('account:home')}#password")
     form = PasswordChangeForm(user, request.POST)
     if not form.is_valid():
+        if form.has_error("old_password"):
+            _password_guess_failed(request, user)
         return _page(request, password_form=form, status=400)
     form.save()
     old_key = request.session.session_key
