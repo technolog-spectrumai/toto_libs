@@ -152,6 +152,27 @@ creates or deletes an account (console only; a first save creates the
   `toto.core.notices.send_notice` — synchronous and fail-safe; a failed mail
   never fails the change. An account that signs in elsewhere (no usable
   password) is told so instead of shown the form.
+- **Sessions** (`/account/sessions/…`, 2026-09-30): where the member is signed
+  in now — browsers and desktop/API tokens — from `toto.core.models.UserSession`,
+  a row per sign-in written on `user_logged_in` (Django's session table has no
+  user column) and removed on `user_logged_out` or when ended here. Each shows
+  its kind, user agent, address (`toto.core.client_ip`), first sign-in and
+  last seen (refreshed at most every five minutes, `UserSessionMiddleware` for
+  cookies and `toto.api.tokens` for tokens); the one in use is marked "this
+  device". The row stores the session key itself — deleting a session needs
+  it, and it already sits in `django_session` in the same database — but the
+  page, the log and the chain name a session only by the row's id. **End**
+  (`sessions/<id>/end/`, POST) ends one of the member's own sessions, another
+  member's id is a 404; **Sign out everywhere else** (`sessions/end-others/`)
+  ends every one but this. Ending deletes the session from the store, so a
+  desktop token made from it is refused from its next request. Rows whose
+  session expired or vanished drop out of the list (and are deleted) when it
+  is drawn. `AUTH.SESSION_ENDED` (kind, row id) and
+  `AUTH.SIGNED_OUT_EVERYWHERE` (`sessions_ended`) go on the chain. A sign-in
+  from a (user agent, address) pair not seen for this member in 90 days mails
+  a "new sign-in" notice (`toto.core.user_sessions`, pairs kept as hashes in
+  `KnownSignIn`); an account's first sign-in with nothing known is the
+  baseline and mails nothing.
 
 Every profile or time-zone change is a `SOCIALHUB.PROFILE_CHANGED` record
 naming the fields (`fields`), never their values.
