@@ -255,7 +255,9 @@ def _ensure_directory_chain(repo: GitRepo, rel_dir: str) -> VaultDirectory:
 
 def import_worktree(repo: GitRepo) -> dict:
     """worktree → vault DB after pull/merge/checkout.
-    Returns {"created": [...], "updated": [...], "deleted": [...]}."""
+    Returns {"created": [...], "updated": [...], "deleted": [...],
+    "refused": [...]} — refused being the Microsoft Office files the pull
+    brought, which never enter the vault (2026-09-30)."""
     worktree = repo.worktree
     # A trashed file has left the repo (2026-10-01), as export already says by
     # dropping it: forget its mapping, so a pull neither writes into a file
@@ -265,7 +267,9 @@ def import_worktree(repo: GitRepo) -> dict:
     repo.files.filter(vault_file__trashed_at__isnull=False).delete()
     by_relpath = {m.relpath: m for m in repo.files.select_related("vault_file")}
 
-    created, updated = [], []
+    from toto.vault.models import is_office_file
+
+    created, updated, refused = [], [], []
     present = set()
 
     for dirpath, dirnames, filenames in os.walk(worktree):
@@ -275,6 +279,12 @@ def import_worktree(repo: GitRepo) -> dict:
             relpath = str(full.relative_to(worktree))
             present.add(relpath)
             content = full.read_bytes()
+            if is_office_file(fname, content):
+                # Left in the worktree, kept out of the vault. Counted as
+                # present so a mapping from before the rule is not deleted
+                # by a pull that still carries it.
+                refused.append(relpath)
+                continue
 
             mapping = by_relpath.get(relpath)
             if mapping is None:
@@ -325,7 +335,8 @@ def import_worktree(repo: GitRepo) -> dict:
             mapping.delete()
         deleted.append(relpath)
 
-    return {"created": created, "updated": updated, "deleted": deleted}
+    return {"created": created, "updated": updated, "deleted": deleted,
+            "refused": refused}
 
 
 def nesting_conflict(directory: VaultDirectory) -> GitRepo | None:

@@ -209,7 +209,8 @@ class ImportTests(RepoTestCase):
     def test_import_noop(self):
         repo = self._repo()
         summary = sync.import_worktree(repo)
-        self.assertEqual(summary, {"created": [], "updated": [], "deleted": []})
+        self.assertEqual(summary, {"created": [], "updated": [], "deleted": [],
+                                   "refused": []})
 
 
 class TrashTests(RepoTestCase):
