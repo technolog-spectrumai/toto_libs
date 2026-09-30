@@ -193,6 +193,14 @@ Tests: `tests_version_doors`, `tests_more_version_views`.
 
 ## The trash (2026-10-01)
 
+In short, for a member: a deleted file waits in the Trash tab for
+`VAULT_TRASH_DAYS` days (30), where its owner restores it or deletes it for
+good; after that the nightly purge deletes it. While it waits it STILL
+counts — against the bucket's `storage_quota_mb` and in the daily
+`storage.gb_day` levy — so the trash is never a free place to keep bytes.
+A file in a bucket mounted from another Zenobia has no trash: its delete is
+immediate and permanent, and every dialog that offers it says so.
+
 Deleting a vault file moves it to the trash. The file keeps its bytes, its
 versions, its bucket (so the bucket's clearances still keep it) and its key;
 it leaves its folder (`directory` cleared, the folder kept in `trashed_from`
@@ -333,6 +341,37 @@ nothing due. Files of a bucket being deleted are left to the bucket purge,
 which takes the trash of every age (`all_objects`). Audited per file as
 `FILE_PURGED`, door `trash_expired`, no actor, ids only. Tests:
 `tests_trash_purge`.
+
+### Several files at once (`bulk.py`, `vault:bulk_trash`, `vault:bulk_move`)
+
+The file list ticks a member's own files (a checkbox on each of their rows
+and cards, "Select my shown files" for what the search and filters show) and
+offers **Move to…** and **Move to the trash** for the selection. Each file is
+checked on its own by its single-file door's rules and answered on its own —
+`{"results": [{"id", "status", "reason"}], "done", "refused"}`, status
+`trashed` / `deleted` / `moved` / `unchanged` / `refused` — never all or
+nothing; what was refused stays ticked, listed with the reason. One audit
+record per file, refusals included (`FILE_TRASHED` / `FILE_DELETED` /
+`FILE_MOVED`, ids only), and the request is marked so the middleware adds
+none; a request refused whole (no files, a destination that does not exist)
+is the middleware's one failed record.
+
+* **Move to the trash** — `DeleteFileView`'s rules: the member's own file, in
+  a bucket whose clearances let them read (no owner bypass), never a mirror
+  row; through `trash.remove_file`. A mounted remote bucket's file is deleted
+  at once — only when the request says `remote=yes`, which the dialog sends
+  after saying how many of the selection that is; without it such a file is
+  refused, not deleted.
+* **Move to…** — a bucket and a folder (`bulk.move_targets`: the member's own
+  buckets they may fill, plus buckets where they have files, for moves inside
+  those). Within the file's bucket, `MoveFileView`'s rules. Into ANOTHER
+  bucket, also `bulk.may_move_into`: the member's own bucket, not being
+  deleted, not hidden from them by its clearances, and both ends on this
+  server's disk — there a move is the row changing buckets (the key changes
+  if the new bucket has it; title, versions and owner stay). Between storage
+  kinds it would be a transfer, which Copy files does; such a file is refused.
+
+Bounded at `bulk.MAX_FILES` (500) files per request. Tests: `tests_bulk`.
 
 ## Buckets: types, custody and deletion (2026-09-30)
 
