@@ -152,6 +152,24 @@ creates or deletes an account (console only; a first save creates the
   `toto.core.notices.send_notice` — synchronous and fail-safe; a failed mail
   never fails the change. An account that signs in elsewhere (no usable
   password) is told so instead of shown the form.
+- **E-mail address** (`/account/email/`, 2026-09-30; `email_change.py`):
+  the member types a new address and nothing about the account changes yet.
+  A random token is mailed to the NEW address (`send_notice(...,
+  "email_change_confirm", to=new)`) and only its SHA-256 is kept, on a
+  `PendingEmailChange` row — one per member, a new request replacing the old.
+  The link (`/account/email/confirm/?token=…`, a query parameter so the
+  chain's recorded path never carries it) moves the account only when opened
+  within 24 hours by that same member, signed in; opened by another member it
+  changes nothing and stays usable. It works once (the row is deleted as it is
+  used). `User.email` changes, and `Person.email` with it when the Person held
+  the old address or none. The old address gets an "e-mail changed" notice.
+  An address is refused when another account, another Person or any
+  membership application holds it, compared without case, at the request and
+  again at the click — `social_login` matches accounts by `User.email` and an
+  accepted application activates the account with its address.
+  `AUTH.EMAIL_CHANGE_REQUESTED` and `AUTH.EMAIL_CHANGED` carry the addresses
+  masked (`j***@example.org`). A federated account (no usable password) is
+  told to change it at its provider, which rewrites it at each sign-in.
 - **Sessions** (`/account/sessions/…`, 2026-09-30): where the member is signed
   in now — browsers and desktop/API tokens — from `toto.core.models.UserSession`,
   a row per sign-in written on `user_logged_in` (Django's session table has no
@@ -176,7 +194,7 @@ creates or deletes an account (console only; a first save creates the
 - **Recent sign-ins** (2026-09-30): the member's own `AUTH.*` records of the
   last 30 days — sign-ins and sign-outs, failed attempts typed with their
   username or e-mail (any case), sign-in pauses naming them, password changes
-  and resets, ended sessions, changes to the account's flags — each with its
+  and resets, e-mail changes asked for and made, ended sessions, changes to the account's flags — each with its
   time (in their time zone), what, address and browser. Read through
   `toto.audit.queries.member_auth_records`; the audit pages stay staff-only.
   A change made by another account (a staff member) shows without that
