@@ -140,9 +140,21 @@ creates or deletes an account (console only; a first save creates the
   `ProfileLanguageMiddleware`, activates it for each request and deactivates
   it after, so every page shows times in the member's zone; a name this
   Python no longer knows falls back to the default.
+- **Password** (`/account/password/`, 2026-09-30): Django's
+  `PasswordChangeForm` — the current password, then the new one twice through
+  `AUTH_PASSWORD_VALIDATORS`. This session stays signed in
+  (`update_session_auth_hash`, which also gives it a new key) and every other
+  session of the member is ended, desktop tokens included
+  (`toto.core.user_sessions.end_other_sessions`; a token that escaped the sweep
+  is still refused by its session-hash check, `toto.api.tokens`). Recorded as
+  `AUTH.PASSWORD_CHANGED` with the number of sessions ended, and the member is
+  mailed a "your password was changed" notice through
+  `toto.core.notices.send_notice` — synchronous and fail-safe; a failed mail
+  never fails the change. An account that signs in elsewhere (no usable
+  password) is told so instead of shown the form.
 
-Every change is a `SOCIALHUB.PROFILE_CHANGED` record naming the fields
-(`fields`), never their values.
+Every profile or time-zone change is a `SOCIALHUB.PROFILE_CHANGED` record
+naming the fields (`fields`), never their values.
 
 ## On the audit chain
 
