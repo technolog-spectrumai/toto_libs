@@ -24,7 +24,6 @@ from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.views import View
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from toto.core import assistant
@@ -55,8 +54,13 @@ def _get_owned_file(request, file_pk) -> VaultFile:
     ``notebook`` type is still accepted. Only files whose content is a
     ``<notebook>`` open here, so a contract or other XML can't reach the editor.
     """
+    from toto.vault.access import gate_by_bucket
+
+    # The bucket's clearances first (2026-10-01): pessimistic, no owner
+    # bypass — an owner who lost the clearance loses the editor too.
     vf = get_object_or_404(
-        VaultFile.objects.select_related("bucket", "directory", "owner"),
+        gate_by_bucket(request.user,
+                       VaultFile.objects.select_related("bucket", "directory", "owner")),
         pk=file_pk,
         owner=request.user,
         file_type__in=["xml", "notebook"],
@@ -248,11 +252,13 @@ class TpyDisplayView(LoginRequiredMixin, View):
         return render(request, self.template_name, context)
 
 
-@csrf_exempt
+# Signed in, POST and CSRF (2026-10-01), like the delete door below: these
+# were csrf_exempt with no login check, so another site could make a member's
+# browser overwrite a notebook or run code in its kernel. The page's fetches
+# already send X-CSRFToken (the stop beacon a csrfmiddlewaretoken field).
+@login_required
+@require_POST
 def tpy_save(request, file_pk):
-    if request.method != "POST":
-        return JsonResponse({"error": "POST required"}, status=400)
-
     vault_file = _get_owned_file(request, file_pk)
     if vault_file.is_encrypted:
         return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
@@ -298,11 +304,9 @@ def tpy_delete(request, file_pk):
 # Kernel management (session keyed by the vault file)
 # ---------------------------------------------------------------------------
 
-@csrf_exempt
+@login_required
+@require_POST
 def tpy_start_kernel(request, file_pk):
-    if request.method != "POST":
-        return JsonResponse({"error": "POST required"}, status=400)
-
     vault_file = _get_owned_file(request, file_pk)
     if vault_file.is_encrypted:
         return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
@@ -346,7 +350,8 @@ def tpy_start_kernel(request, file_pk):
     return JsonResponse(result)
 
 
-@csrf_exempt
+@login_required
+@require_POST
 def tpy_stop_kernel(request, file_pk):
     _get_owned_file(request, file_pk)
     result = client.stop(_session_id(file_pk))
@@ -372,11 +377,9 @@ def tpy_kernel_status(request, file_pk):
 # Cell execution
 # ---------------------------------------------------------------------------
 
-@csrf_exempt
+@login_required
+@require_POST
 def tpy_run_cell(request, file_pk):
-    if request.method != "POST":
-        return JsonResponse({"error": "POST required"}, status=400)
-
     if _get_owned_file(request, file_pk).is_encrypted:
         return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
 
