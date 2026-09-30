@@ -10,6 +10,7 @@ membership flow, a management command.
 | `AUTH.LOGIN` | a session starts (`user_logged_in`) |
 | `AUTH.LOGOUT` | a session ends (`user_logged_out`) |
 | `AUTH.LOGIN_FAILED` | credentials refused, a lockout included (`user_login_failed`); `success=False`, the attempted username only |
+| `AUTH.TOKEN_REFUSED` | a session key presented as an API or WebSocket token named an account and was refused (`toto.api.tokens`, 2026-09-30); `success=False`, the door and the reason only |
 | `AUTH.ACCOUNT_CREATED` | a `User` row is created, by whatever door |
 | `AUTH.ACCOUNT_ACTIVATED` / `_DEACTIVATED` | `is_active` changes |
 | `AUTH.STAFF_GRANTED` / `_REVOKED` | `is_staff` changes |
@@ -81,6 +82,27 @@ def on_login_failed(sender, credentials, request=None, **kwargs):
     attempted = str(credentials.get("username") or credentials.get("email") or "")[:150]
     _record("login_failed", username=attempted, actor_user=SYSTEM, request=request,
             success=False, metadata={"username": attempted})
+
+
+def on_token_refused(user, *, account_id, reason, door, request=None):
+    """A token that named an account and was refused (2026-09-30).
+
+    Called by ``toto.api.tokens``, not a signal: Django has none for a session
+    that fails its check. ``reason`` is one of ``inactive``, ``no_account``,
+    ``backend_refused``, ``backend`` or ``session_hash`` (the password changed
+    since the sign-in); ``door`` is ``api`` or ``websocket``. The key itself
+    is a credential and is never recorded, nor anything derived from it. The
+    actor is the system: whoever presented the key, it is not proven to be
+    the account.
+    """
+    from .services import SYSTEM
+
+    metadata = {"door": door, "reason": reason}
+    if user is None:
+        # The account is gone; its id is all that is left to name it by.
+        metadata["account_id"] = str(account_id)
+    _record("token_refused", user, actor_user=SYSTEM, request=request,
+            success=False, metadata=metadata)
 
 
 def before_user_saved(sender, instance, update_fields=None, **kwargs):
