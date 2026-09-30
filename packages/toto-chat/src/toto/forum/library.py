@@ -42,6 +42,22 @@ def ensure_forum_bucket(*, owner=None):
                                  owner=owner)
 
 
+def _directory_owner(bucket, owner=None):
+    """Who owns a new room folder: the bucket's owner — or, since buckets
+    may lose theirs (the owner FK is SET_NULL), whoever the caller named or
+    the first superuser. Never nobody: the folder row needs an owner."""
+    from django.contrib.auth import get_user_model
+
+    found = bucket.owner or owner or (
+        get_user_model().objects.filter(is_superuser=True, is_active=True).order_by("pk").first())
+    if found is None:
+        from django.core.exceptions import ImproperlyConfigured
+
+        raise ImproperlyConfigured(
+            "The forum bucket has no owner and no superuser exists to hold a room folder.")
+    return found
+
+
 def ensure_channel_library(channel, *, owner=None):
     """The room's directory and gateway, created once, synced always."""
     from toto.vault.models import FileGateway, VaultDirectory
@@ -49,7 +65,7 @@ def ensure_channel_library(channel, *, owner=None):
     bucket = ensure_forum_bucket(owner=owner)
     directory, _ = VaultDirectory.objects.get_or_create(
         bucket=bucket, parent=None, name=channel.slug,
-        defaults={"owner": bucket.owner})
+        defaults={"owner": _directory_owner(bucket, owner)})
     FileGateway.objects.get_or_create(
         directory=directory,
         defaults={"name": f"forum-{channel.slug}", "bucket": bucket})
@@ -69,7 +85,9 @@ def sync_channel_library_users(channel) -> None:
         uid for uid in channel.forum_members.filter(is_active=True)
         .values_list("person__user_id", flat=True) if uid
     }
-    ids.add(directory.bucket.owner_id)  # never leave the whitelist empty
+    # Never leave the whitelist empty (empty means everybody): the bucket's
+    # owner, or — for a bucket that lost its owner — the folder's.
+    ids.add(directory.bucket.owner_id or directory.owner_id)
     directory.allowed_users.set(ids)
     gateway = getattr(directory, "gateway", None)
     if gateway is not None:

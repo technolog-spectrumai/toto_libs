@@ -52,7 +52,7 @@
             {% include "vault/partials/_bucket_badge.html" with bucket=bucket %}
           </h1>
           <p class="mt-1 text-sm opacity-55">
-            {% trans "Owner" %}: {{ bucket.owner.username }}
+            {% trans "Owner" %}: {{ bucket.owner.username|default:"—" }}
               {% for gw in gateways %}
               &middot; <i class="fa-solid fa-upload text-xs"></i>
               <a href="{% url 'vault:gateway_page' gw.directory_id %}"

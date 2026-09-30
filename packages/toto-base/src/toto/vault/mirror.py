@@ -141,6 +141,14 @@ def execute_refresh_run(run_id: int):
     peer = bucket.peer if bucket.peer_id else None
     if peer is None or bucket.storage_backend != "remote_toto":
         return _fail(run, "This bucket is not a mounted remote bucket.")
+    if bucket.is_being_deleted:
+        return _fail(run, "This bucket is being deleted, so it is not refreshed.")
+    if bucket.owner_id is None:
+        # Stubs are owned by the bucket's owner (the storage levy and the
+        # owner clause read VaultFile.owner): an ownerless mount has nobody
+        # to hold them, and inventing one would hand somebody the listing.
+        return _fail(run, "This bucket has no owner. Give it one in Storage → "
+                          "Management, then refresh again.")
 
     client = PeerClient(peer)
     seen_keys: set[str] = set()

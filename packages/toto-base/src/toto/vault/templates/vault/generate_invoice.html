@@ -101,7 +101,7 @@
         </div>
 
         <p class="text-xs opacity-40 border-t pt-3" :class="darkMode ? 'border-accent-1/30' : 'border-accent-2/30'">
-          {% trans "Issued to" %}: <strong>{{ bucket.owner.username }}</strong>
+          {% trans "Issued to" %}: <strong>{{ bucket.owner.username|default:"—" }}</strong>
           &nbsp;·&nbsp;{% trans "Bucket" %}: <strong>{{ bucket.name }}</strong>
         </p>
 

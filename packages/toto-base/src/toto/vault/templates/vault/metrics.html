@@ -175,7 +175,7 @@
                 <span class="inline-flex items-center gap-2">{{ bucket.name }}
                   {% include "vault/partials/_bucket_badge.html" with bucket=bucket %}</span>
               </td>
-              <td class="px-4 py-3 opacity-60 text-xs">{{ bucket.owner.username }}</td>
+              <td class="px-4 py-3 opacity-60 text-xs">{{ bucket.owner.username|default:"—" }}</td>
               <td class="px-4 py-3 text-right font-mono text-sm">{{ bucket.file_count }}</td>
               <td class="px-4 py-3 text-right font-mono text-sm opacity-70">{{ bucket.dir_count }}</td>
               <td class="px-4 py-3 text-right font-mono text-sm">

@@ -95,6 +95,19 @@ class PlanReportTests(EraseCase):
         notes = plan(self.ada)["notes"]
         self.assertTrue(any(note.startswith("1 file(s) live in a remote bucket") for note in notes))
 
+    def test_a_bucket_they_owned_stays_ownerless_and_the_report_says_so(self):
+        # Bucket.owner is SET_NULL since 2026-09-30: a bucket may hold other
+        # people's files, so erasing its owner detaches it and deletes nothing.
+        from toto.vault.models import Bucket
+
+        bucket = Bucket.objects.create(name="Shared", slug="shared", owner=self.ada)
+        report = plan(self.ada)
+        self.assertEqual(report["detached"].get("vault.Bucket.owner"), 1)
+        self.assertTrue(any(note.startswith("1 bucket(s) they owned stay") for note in report["notes"]))
+        self.ada.delete()
+        bucket.refresh_from_db()
+        self.assertIsNone(bucket.owner_id)
+
     def test_files_on_this_disk_bring_no_remote_note(self):
         from toto.vault.models import Bucket, VaultFile
 

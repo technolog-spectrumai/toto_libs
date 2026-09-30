@@ -917,7 +917,8 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
             for f in copy_files_qs
         ]
         context["dest_buckets"] = list(
-            Bucket.objects.filter(owner=self.request.user).exclude(pk=bucket.pk).order_by("name")
+            Bucket.objects.filter(owner=self.request.user, deletion_requested_at__isnull=True)
+            .exclude(pk=bucket.pk).order_by("name")
         )
 
         total_files = bucket_files.count()
@@ -1244,16 +1245,15 @@ def resolve_new_file_target(user, bucket_id=None, directory_id=None):
     app can create a file inside another user's bucket/folder.
     """
     if bucket_id in (None, "", 0, "0"):
-        bucket, _ = Bucket.objects.get_or_create(
-            owner=user,
-            slug=f"personal-{user.username}",
-            defaults={
-                "name": f"Personal — {user.username}",
-                "storage_backend": "local",
-            },
-        )
+        # models.personal_bucket: never hands over a personal-<username>
+        # bucket that lost its owner (an old account's) or changed hands.
+        from .models import personal_bucket
+
+        bucket = personal_bucket(user)
     else:
-        bucket = get_object_or_404(Bucket, pk=bucket_id, owner=user)
+        # A bucket being deleted takes nothing new: it is not a target.
+        bucket = get_object_or_404(Bucket, pk=bucket_id, owner=user,
+                                   deletion_requested_at__isnull=True)
 
     directory = None
     if directory_id not in (None, "", 0, "0"):
@@ -1268,9 +1268,9 @@ def new_file_picker_json(user):
     Returns two empty-list JSON strings for anonymous users."""
     if not getattr(user, "is_authenticated", False):
         return "[]", "[]"
-    buckets = Bucket.objects.filter(owner=user).order_by("name")
+    buckets = Bucket.objects.filter(owner=user, deletion_requested_at__isnull=True).order_by("name")
     directories = (
-        VaultDirectory.objects.filter(owner=user)
+        VaultDirectory.objects.filter(owner=user, bucket__deletion_requested_at__isnull=True)
         .select_related("bucket")
         .order_by("bucket__name", "name")
     )
@@ -1336,7 +1336,8 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
     @staticmethod
     def _build_dest_tree(request, source_bucket):
         buckets = list(
-            Bucket.objects.filter(owner=request.user).exclude(pk=source_bucket.pk).order_by("name")
+            Bucket.objects.filter(owner=request.user, deletion_requested_at__isnull=True)
+            .exclude(pk=source_bucket.pk).order_by("name")
         )
         bucket_pks = [b.pk for b in buckets]
         all_dirs = list(VaultDirectory.objects.filter(bucket__in=bucket_pks).order_by("name"))
@@ -1742,6 +1743,11 @@ class BucketCopyAjaxView(LoginRequiredMixin, View):
             destination_bucket = Bucket.objects.get(pk=dest_bucket_id, owner=request.user)
         except Bucket.DoesNotExist:
             return JsonResponse({"ok": False, "error": "Invalid destination bucket."}, status=400)
+        if destination_bucket.is_being_deleted:
+            from .models import closed_bucket_sentence
+
+            return JsonResponse({"ok": False, "error": closed_bucket_sentence(destination_bucket)},
+                                status=409)
 
         if destination_bucket.pk == source_bucket.pk:
             return JsonResponse({"ok": False, "error": "Source and destination must differ."}, status=400)
@@ -2105,8 +2111,12 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
             return JsonResponse({"error": "directory_id is required."}, status=400)
 
         directory = get_object_or_404(VaultDirectory, pk=int(dir_id))
-        if directory.bucket.owner != request.user:
+        if directory.bucket.owner_id is None or directory.bucket.owner_id != request.user.pk:
             return JsonResponse({"error": "Permission denied."}, status=403)
+        if directory.bucket.is_being_deleted:
+            from .models import closed_bucket_sentence
+
+            return JsonResponse({"error": closed_bucket_sentence(directory.bucket)}, status=409)
         if not directory.bucket.is_local:
             # An empty file exists to be edited, and editors need local bytes.
             return JsonResponse(

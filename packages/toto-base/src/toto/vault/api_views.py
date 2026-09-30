@@ -74,15 +74,11 @@ def _file_to_dict(request, vf):
 
 
 def _get_or_create_default_bucket(user):
-    bucket, _ = Bucket.objects.get_or_create(
-        owner=user,
-        slug=f"personal-{user.username}",
-        defaults={
-            "name": f"Personal — {user.username}",
-            "storage_backend": "local",
-        },
-    )
-    return bucket
+    """The user's ``personal-<username>`` bucket (``models.personal_bucket``:
+    one that lost its owner or changed hands is never reused)."""
+    from .models import personal_bucket
+
+    return personal_bucket(user)
 
 
 def _resolve_owned_bucket(user, slug):
@@ -809,6 +805,10 @@ class FileCreateApiView(CorsApiView):
             bucket = Bucket.objects.get(slug=bucket_slug, owner=request.user)
         except Bucket.DoesNotExist:
             return JsonResponse({"error": "Bucket not found."}, status=404)
+        if bucket.is_being_deleted:
+            from .models import closed_bucket_sentence
+
+            return JsonResponse({"error": closed_bucket_sentence(bucket)}, status=409)
         if not bucket.is_local:
             return JsonResponse(
                 {"error": "This bucket's storage is remote — files are "

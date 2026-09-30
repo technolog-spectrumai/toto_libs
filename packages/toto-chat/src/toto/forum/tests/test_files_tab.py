@@ -76,6 +76,20 @@ class LibraryPlumbingTests(LibraryBase):
 
         self.assertGreater(directory.allowed_users.count(), 0)
 
+    def test_a_forum_bucket_that_lost_its_owner_never_opens_a_room(self):
+        """Bucket.owner is SET_NULL (2026-09-30). A new room's folder is then
+        owned by the first superuser, and its whitelist is never None and
+        never empty — empty would mean everybody."""
+        from toto.vault.models import Bucket
+
+        Bucket.objects.create(slug=library.FORUM_BUCKET_SLUG, name="Forum", owner=None)
+        empty_room = ForumChannel.objects.create(name="Lonely", slug="lonely")
+
+        directory = library.ensure_channel_library(empty_room)
+
+        self.assertEqual(directory.owner, self.root)
+        self.assertEqual(list(directory.allowed_users.all()), [self.root])
+
     def test_membership_drives_the_whitelist(self):
         directory = library.ensure_channel_library(self.room)
         self.assertIn(self.member_user,

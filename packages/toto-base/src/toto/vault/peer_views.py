@@ -163,6 +163,14 @@ def _upload(request, grant):
     # The exporter owns what lands in their bucket — the storage levy bills
     # the exporting operator, consistent with them granting the space.
     owner = grant.bucket.owner
+    if owner is None:
+        # Nobody to own (and pay for) the file: refuse rather than invent one.
+        return JsonResponse(
+            {"error": "The shared bucket has no owner on its host, so it takes "
+                      "no uploads until its operator gives it one."}, status=409)
+    if grant.bucket.is_being_deleted:
+        return JsonResponse(
+            {"error": "The shared bucket is being deleted on its host."}, status=409)
 
     # The same metrics, the same ladder, the same subject as the gateway and
     # API doors: this is the third door onto one resource and for a while it

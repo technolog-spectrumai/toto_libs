@@ -12,13 +12,16 @@ wiped colleague would be a button.
 What "as if they never existed" can and cannot mean here, said plainly:
 
 * **Erased:** the account, its person, their community and clearance
-  memberships, their files and buckets (the bytes on this disk too), their
+  memberships, their files (the bytes on this disk too), their
   wiki revisions — and the wiki pages only they ever wrote — their
   subscriptions, grants, sessions, tokens, and everything else that cascades
   from the account (Django's own collector decides; the report lists it).
 * **Kept, detached:** rows other people still need keep their place and lose
   the pointer — a workflow they started, a ledger account (its history is
-  the platform's money trail), a forum room they opened.
+  the platform's money trail), a forum room they opened, and — since
+  2026-09-30 — a vault bucket they owned (it may hold other people's files,
+  gateways and clearance keeping; it stays, without an owner, until a
+  superuser gives it one or deletes it in Storage → Management).
 * **Kept, as written:** the audit chain. Each record is sealed by a hash
   over its content and its predecessor's; removing or rewriting one breaks
   verification of every record after it. Their sign-ins, their changes and
@@ -82,6 +85,9 @@ def plan(user) -> dict:
     if remote:
         notes.append(f"{len(remote)} file(s) live in a remote bucket: their rows go, the remote "
                      "objects do not — remove them at the remote store.")
+    if detached.get("vault.Bucket.owner"):
+        notes.append(f"{detached['vault.Bucket.owner']} bucket(s) they owned stay, without an "
+                     "owner: give each a new owner, or delete it, in Storage → Management.")
     if deleted.get("gitea.GiteaAccount"):
         notes.append("The forge (Gitea) keeps its own account for them: remove it in Gitea's "
                      "site administration.")

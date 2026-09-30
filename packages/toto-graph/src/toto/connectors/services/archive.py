@@ -45,7 +45,9 @@ def ensure_connector_directory(bucket, connector):
         bucket=bucket,
         parent=None,
         name=connector.slug,
-        defaults={"owner": connector.owner or bucket.owner},
+        # The bucket may have lost its owner (SET_NULL): fall back further,
+        # never to nobody.
+        defaults={"owner": connector.owner or bucket.owner or _fallback_owner()},
     )
     return directory
 
