@@ -11,10 +11,10 @@ the chat app was removed when its auth/identity views moved into ``toto.api``.
 """
 from urllib.parse import urlparse
 
-from django.contrib.auth import get_user_model
-from django.contrib.sessions.backends.db import SessionStore
 from django.http import HttpResponse, JsonResponse
 from django.views import View
+
+from .tokens import DOOR_API, user_for_session_key
 
 CORS_ALLOW_HEADERS = "Content-Type, X-Requested-With, Authorization"
 CORS_ALLOW_METHODS = "GET, POST, OPTIONS"
@@ -43,7 +43,12 @@ def _cors(request, response):
 
 
 def _try_bearer_auth(request):
-    """Authenticate request via Authorization: Bearer <session_key> header."""
+    """Authenticate request via Authorization: Bearer <session_key> header.
+
+    The key is checked as a cookie would be — the backend's ``get_user`` and
+    the session hash — in ``tokens.user_for_session_key`` (2026-09-30). A key
+    it refuses leaves the request exactly as anonymous as no header at all.
+    """
     if request.user.is_authenticated:
         return
     auth_header = request.META.get("HTTP_AUTHORIZATION", "")
@@ -52,18 +57,13 @@ def _try_bearer_auth(request):
     session_key = auth_header[7:].strip()
     if not session_key:
         return
-    try:
-        store = SessionStore(session_key=session_key)
-        user_id = store.get("_auth_user_id")
-        if not user_id:
-            return
-        User = get_user_model()
-        request.user = User.objects.get(pk=user_id)
-        # Marked, so a cross-site guard can tell a token from a cookie: a
-        # Bearer header is never sent by a browser on its own.
-        request._toto_bearer_auth = True
-    except Exception:
-        pass
+    user = user_for_session_key(session_key, door=DOOR_API, request=request)
+    if user is None:
+        return
+    request.user = user
+    # Marked, so a cross-site guard can tell a token from a cookie: a
+    # Bearer header is never sent by a browser on its own.
+    request._toto_bearer_auth = True
 
 
 class CorsApiView(View):

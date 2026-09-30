@@ -11,7 +11,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser, Group
 from django.contrib.sessions.backends.db import SessionStore
 from django.http import HttpResponse, JsonResponse
-from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
+from django.test import Client, RequestFactory, SimpleTestCase, TestCase, override_settings
 
 from toto.api.auth_views import HealthApiView, MeApiView
 from toto.api.cors import (
@@ -33,10 +33,12 @@ User = get_user_model()
 
 
 def session_key_for(user):
-    store = SessionStore()
-    store["_auth_user_id"] = str(user.pk)
-    store.create()
-    return store.session_key
+    # A real sign-in, backend and password hash included: since 2026-09-30 a
+    # token is checked as a cookie is (toto.api.tokens), and a session that
+    # names an account and nothing else is refused.
+    client = Client()
+    client.force_login(user)
+    return client.session.session_key
 
 
 class _Probe(MeshGatedApiView):

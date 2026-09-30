@@ -5,20 +5,18 @@ from channels.db import database_sync_to_async
 
 @database_sync_to_async
 def _user_from_token(token):
-    """Resolve a session-key Bearer token to a User, or AnonymousUser."""
-    from django.contrib.auth import get_user_model
-    from django.contrib.auth.models import AnonymousUser
-    from django.contrib.sessions.backends.db import SessionStore
+    """Resolve a session-key token to a User, or AnonymousUser.
 
-    try:
-        store = SessionStore(session_key=token)
-        user_id = store.get("_auth_user_id")
-        if not user_id:
-            return AnonymousUser()
-        User = get_user_model()
-        return User.objects.get(pk=user_id)
-    except Exception:
-        return AnonymousUser()
+    Through the same check as the JSON doors' Bearer header
+    (``toto.api.tokens``, 2026-09-30): an inactive account and a session
+    signed before a password change are refused, and a refused token is as
+    anonymous as none.
+    """
+    from django.contrib.auth.models import AnonymousUser
+
+    from .tokens import DOOR_WEBSOCKET, user_for_session_key
+
+    return user_for_session_key(token, door=DOOR_WEBSOCKET) or AnonymousUser()
 
 
 class TokenAuthMiddleware:
