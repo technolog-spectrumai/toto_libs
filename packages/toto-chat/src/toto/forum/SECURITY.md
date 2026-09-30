@@ -140,6 +140,16 @@ allowed). Every forum JSON write refuses a cookie-authenticated request that a
 browser labelled `Sec-Fetch-Site: same-site|cross-site`
 (`toto.api.fetch_metadata`); a Bearer token passes.
 
+The desktop's token is the session key `/api/login/` hands out, sent as
+`?token=` on the socket and as a Bearer header to the JSON doors. Since
+2026-09-30 both doors check it as a cookie is checked (`toto.api.tokens`): the
+auth backend's `get_user`, which refuses an inactive account, and the session
+hash, which a password change breaks. A refused token is answered as no token
+at all, its session is ended, and `AUTH.TOKEN_REFUSED` goes on the audit chain
+with the door and the reason, never the key. The key still rides in the
+socket's URL, where a proxy's access log can keep it; it dies with the
+account, the password, or a sign-out.
+
 ## 10. Billing
 
 `billing.py`, the platform charge ladder:
