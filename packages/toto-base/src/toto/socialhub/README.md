@@ -108,6 +108,42 @@ those apps; each adds the clearance through its app's own door, which writes
 the app's own audit record, inside the same transaction as the clearance. Never the membership
 application: it names communities, and a community grants no reading.
 
+## My account
+
+Since 2026-09-30 a signed-in member has one page for their own account,
+**My account**, reached from the top bar (`oya/header.html`) and mounted by the
+host at `/account/` (`account_urls.py`, namespace `account`; views in
+`views/account.py`). It lives here because what it edits first is the member's
+`Person`, which this app already shows; `toto.core` keeps the sign-in helpers
+the later sections call. Its own URL module so the address stays short and
+does not move with the socialhub's prefix. Free on every plan (`account` is in
+the subscription gate's `ALWAYS_FREE`).
+
+Each section is its own form posting to its own door, own account only by
+construction — no view takes a person, a slug or a user id, and the page never
+creates or deletes an account (console only; a first save creates the
+`Person` row, as the map pin does):
+
+- **Profile** (`/account/profile/`, `AccountProfileForm`): display name, about
+  you, avatar and phone — nothing that decides access rides along. The avatar
+  goes through the platform's upload rules without entering the vault: Pillow
+  must read it as JPEG, PNG, GIF or WebP, at most 2 MB
+  (`SOCIALHUB_AVATAR_MAX_BYTES`) and 4096 pixels a side, the host's
+  `VAULT_REFUSED_FILE_TYPES` apply, and the antivirus door
+  (`toto.vault.scanning.scan`) is asked — today it answers "not scanned" for a
+  raster image. It is stored under a random name with the extension of what is
+  inside, never the member's filename, and the picture it replaces or clears
+  is deleted from storage.
+- **Time zone** (`/account/timezone/`): `Person.timezone`, an IANA name
+  validated against `zoneinfo` (blank = the platform's `TIME_ZONE`).
+  `toto.core.middleware.ProfileTimezoneMiddleware`, placed after
+  `ProfileLanguageMiddleware`, activates it for each request and deactivates
+  it after, so every page shows times in the member's zone; a name this
+  Python no longer knows falls back to the default.
+
+Every change is a `SOCIALHUB.PROFILE_CHANGED` record naming the fields
+(`fields`), never their values.
+
 ## On the audit chain
 
 Since 2026-09-28 every community and clearance operation is a record on the
@@ -118,7 +154,8 @@ added to or taken out of a community (`MEMBER_ADDED`/`_REMOVED`) or given or
 losing a clearance (`CLEARANCE_MEMBER_ADDED`/`_REMOVED`), from either side of
 the relation and through a `clear()`; senior members; privileges; an application submitted and
 each of its steps; a reference asked for, given (the applicant admitted) or
-declined. Communities and clearances are recorded apart — the chain is where
+declined; a member's own profile or time zone changed on My account
+(`PROFILE_CHANGED`, the field names only). Communities and clearances are recorded apart — the chain is where
 a crossing of the two axes would show. Sign-ins, sign-outs and
 accounts are recorded by `toto.audit.identity`. See `toto/audit/README.md`.
 
