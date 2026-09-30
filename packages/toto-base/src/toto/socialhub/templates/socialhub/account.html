@@ -22,7 +22,7 @@ sessions, sign-ins, e-mail) slot in as further sections.{% endcomment %}
            class="text-xs font-semibold uppercase tracking-wide">{{ request.user.get_username }}</p>
         <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
           <i class="fa-solid fa-user-gear"></i>{% translate "My account" %}</h1>
-        <p class="mt-1 text-sm opacity-70">{% translate "Your profile and how the platform shows you times." %}</p>
+        <p class="mt-1 text-sm opacity-70">{% translate "Your profile, your password and how the platform shows you times." %}</p>
       </div>
       {% if person.pk %}
       <nav class="flex flex-wrap gap-2">
@@ -87,6 +87,28 @@ sessions, sign-ins, e-mail) slot in as further sections.{% endcomment %}
                 class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-floppy-disk"></i>{% translate "Save time zone" %}</button>
       </form>
+    </section>
+
+    <!-- Password -->
+    <section id="password"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm sm:p-6">
+      <h2 class="mb-2 flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-key"></i>{% translate "Password" %}</h2>
+      {% if has_password %}
+      <p class="mb-4 text-sm opacity-70">{% blocktranslate %}You stay signed in here. Every other sign-in of yours — other browsers and the desktop apps — is ended, and a notice is mailed to your address.{% endblocktranslate %}</p>
+
+      <form method="post" action="{% url 'account:password' %}" class="space-y-4">
+        {% csrf_token %}
+        {% include "oya/_form_fields.html" with form=password_form %}
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-key"></i>{% translate "Change password" %}</button>
+      </form>
+      {% else %}
+      <p class="text-sm opacity-70">{% translate "Your account signs in through another service; change your password there." %}</p>
+      {% endif %}
     </section>
 
   </div>

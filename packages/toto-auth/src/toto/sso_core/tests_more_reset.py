@@ -87,6 +87,42 @@ class EmailFlowTests(TestCase):
         self.assertTrue(self.user.check_password("a-much-better-pass-42"))
         self.assertFalse(self.client.get(url).context["validlink"])
 
+    def test_a_reset_by_email_is_on_the_auth_trail_without_its_token(self):
+        # 2026-09-30: the reset used to leave no AUTH record at all. The link's
+        # token is in the request path the record keeps, so the path is
+        # scrubbed; the uid (a primary key) may stay.
+        from django.apps import apps
+
+        if not apps.is_installed("toto.audit"):
+            self.skipTest("audit not installed on this host")
+        import json
+
+        from toto.audit.models import AuditRecord
+
+        token = default_token_generator.make_token(self.user)
+        self.client.post(self._confirm_url(self.user, token),
+                         {"new_password1": "a-much-better-pass-42",
+                          "new_password2": "a-much-better-pass-42"})
+        record = AuditRecord.objects.get(action="AUTH.PASSWORD_RESET")
+        self.assertEqual(record.object_id, str(self.user.pk))
+        self.assertEqual(record.actor_user, self.user)
+        self.assertEqual(record.metadata, {"flow": "email"})
+        self.assertIn("[token]", record.request_source["path"])
+        self.assertNotIn(token, json.dumps([record.request_source, record.metadata]))
+        self.assertNotIn("a-much-better-pass-42", json.dumps(record.metadata))
+
+    def test_a_refused_reset_is_not_on_the_trail(self):
+        from django.apps import apps
+
+        if not apps.is_installed("toto.audit"):
+            self.skipTest("audit not installed on this host")
+        from toto.audit.models import AuditRecord
+
+        self.client.post(self._confirm_url(self.user),
+                         {"new_password1": "a-much-better-pass-42",
+                          "new_password2": "something-else-42"})
+        self.assertFalse(AuditRecord.objects.filter(action="AUTH.PASSWORD_RESET").exists())
+
     def test_the_complete_page_renders(self):
         response = self.client.get(reverse("sso:password_reset_complete"))
         self.assertEqual(response.status_code, 200)

@@ -14,7 +14,9 @@ page never creates or deletes an ACCOUNT (console only); it creates the Person
 row on a first save, the way `set_my_address` does.
 
 Every successful change is a ``SOCIALHUB.PROFILE_CHANGED`` record naming the
-fields, never their values.
+fields, never their values; a password change is ``AUTH.PASSWORD_CHANGED``
+(the auth trail's, where the member's sign-ins are) and mails the member a
+notice through ``toto.core.notices.send_notice``.
 """
 
 from __future__ import annotations
@@ -23,11 +25,16 @@ import logging
 
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import PasswordChangeForm
 from django.shortcuts import redirect, render
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
+from toto.core.client_ip import client_ip
+from toto.core.notices import send_notice
+from toto.core.user_sessions import end_other_sessions
 from toto.people.models import Person
 from toto.socialhub import audit
 from toto.socialhub.forms import AccountProfileForm, TimeZoneForm, avatar_max_bytes
@@ -44,9 +51,15 @@ def own_person(user) -> Person:
     return person
 
 
-def _page(request, *, profile_form=None, timezone_form=None, status=200):
+def _page(request, *, profile_form=None, timezone_form=None, password_form=None,
+          status=200):
     person = own_person(request.user)
     context = {
+        # A federated account signs in at its provider and has no password
+        # here to change: the section says so instead of offering a form
+        # whose "current password" nothing could ever match.
+        "has_password": request.user.has_usable_password(),
+        "password_form": password_form or PasswordChangeForm(request.user),
         "person": person,
         "profile_form": profile_form or AccountProfileForm(instance=person),
         "timezone_form": timezone_form or TimeZoneForm(
@@ -105,4 +118,48 @@ def account_timezone(request):
         messages.success(request, _("Times are now shown in %(zone)s.") % {"zone": zone})
     else:
         messages.success(request, _("Times are now shown in the platform's time zone."))
+    return redirect("account:home")
+
+
+def _password_changed_on_chain(user, request, ended):
+    from django.apps import apps
+
+    if not apps.is_installed("toto.audit"):
+        return None
+    from toto.audit.identity import on_password_changed
+
+    return on_password_changed(user, request=request, sessions_ended=ended)
+
+
+@require_POST
+@login_required
+def account_password(request):
+    """Change one's own password, signed in (2026-09-30).
+
+    Django's ``PasswordChangeForm``: the current password, then the new one
+    twice through ``AUTH_PASSWORD_VALIDATORS``. On success this session is
+    re-signed with the new hash (``update_session_auth_hash``, which also
+    gives it a new key) and every OTHER session of the member is ended —
+    browsers and desktop tokens alike: whoever else held a sign-in made with
+    the old password loses it now, not at their next request.
+    """
+    user = request.user
+    if not user.has_usable_password():
+        messages.error(request, _("Your account signs in through another service; "
+                                  "change your password there."))
+        return redirect("account:home")
+    form = PasswordChangeForm(user, request.POST)
+    if not form.is_valid():
+        return _page(request, password_form=form, status=400)
+    form.save()
+    update_session_auth_hash(request, user)
+    ended = end_other_sessions(user, keep=request.session.session_key)
+    _password_changed_on_chain(user, request, ended)
+    send_notice(user, "password_changed",
+                {"address": client_ip(request), "sessions_ended": ended})
+    if ended:
+        messages.success(request, _("Your password is changed. Your other sign-ins "
+                                    "were ended; sign in there again with the new one."))
+    else:
+        messages.success(request, _("Your password is changed."))
     return redirect("account:home")

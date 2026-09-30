@@ -45,6 +45,9 @@ Two properties carried over from the old module, still load-bearing:
   happens, which is the standard non-enumerating behaviour.
 * **Generic responses everywhere.** The done page and the request page say the
   same words for a known and an unknown account; only the audit chain knows.
+
+A password set at the end of either flow is ``AUTH.PASSWORD_RESET`` on the
+chain (2026-09-30), with the flow — never the link.
 """
 from django.apps import apps as django_apps
 from django.contrib import messages
@@ -147,6 +150,19 @@ def _send_inline(form: PasswordResetForm, request) -> None:
         )
 
 
+def _reset_on_chain(user, request, flow):
+    """``AUTH.PASSWORD_RESET`` for a password set through a link (2026-09-30).
+
+    Soft edge like ``_email_send_mode``: ``toto.audit`` is optional here, and
+    ``on_password_reset`` already swallows a record it cannot write.
+    """
+    if not django_apps.is_installed("toto.audit"):
+        return None
+    from toto.audit.identity import on_password_reset
+
+    return on_password_reset(user, flow=flow, request=request)
+
+
 def password_reset_view(request):
     processor = PageProcessor()
     mode = _email_send_mode()
@@ -245,6 +261,7 @@ def password_reset_confirm_view(request, uidb64, token):
 
     if request.method == "POST" and valid and form.is_valid():
         form.save()
+        _reset_on_chain(user, request, "email")
         return redirect(reverse("sso:password_reset_complete"))
 
     return render(request, "sso/password_reset_confirm.html",
@@ -280,6 +297,7 @@ def password_reset_recover_view(request, token):
         with transaction.atomic():
             if recovery.mark_used(ticket, request=request):
                 form.save()
+                _reset_on_chain(ticket.user, request, "recovery")
                 return redirect(reverse("sso:password_reset_complete"))
         context.update({"form": None, "validlink": False})
 

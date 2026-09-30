@@ -13,6 +13,8 @@ membership flow, a management command.
 | `AUTH.LOCKED` | the sign-in lockout paused a name at an address, or a whole address (`toto.core.signin_lockout`, 2026-09-30); `success=False`, the scope, the typed name, the address, the failures and the minutes |
 | `AUTH.UNLOCKED` | a pause lifted from the console (`manage.py unlock_signin`); the name, the address or `all` |
 | `AUTH.TOKEN_REFUSED` | a session key presented as an API or WebSocket token named an account and was refused (`toto.api.tokens`, 2026-09-30); `success=False`, the door and the reason only |
+| `AUTH.PASSWORD_CHANGED` | a member changed their own password while signed in (My account, 2026-09-30); `sessions_ended` — how many other sign-ins went with the old one |
+| `AUTH.PASSWORD_RESET` | a password set through a reset link (`sso_core.password_reset`, 2026-09-30); `flow` is `email` (the mailed link) or `recovery` (a patron's one-time link) |
 | `AUTH.ACCOUNT_CREATED` | a `User` row is created, by whatever door |
 | `AUTH.ACCOUNT_ACTIVATED` / `_DEACTIVATED` | `is_active` changes |
 | `AUTH.STAFF_GRANTED` / `_REVOKED` | `is_staff` changes |
@@ -154,6 +156,30 @@ def on_token_refused(user, *, account_id, reason, door, request=None):
         metadata["account_id"] = str(account_id)
     _record("token_refused", user, actor_user=SYSTEM, request=request,
             success=False, metadata=metadata)
+
+
+def on_password_changed(user, *, request=None, sessions_ended=0):
+    """A member changed their own password, signed in (2026-09-30).
+
+    Called by the My account view, not a signal: Django sends none for a
+    password change, and ``set_password`` is also how an account is made, a
+    test user is set up and a reset lands — this record is the one door where
+    the member typed the old password and chose the new. Neither password,
+    nor anything derived from them, is recorded.
+    """
+    return _record("password_changed", user, actor_user=user, request=request,
+                   metadata={"sessions_ended": int(sessions_ended)})
+
+
+def on_password_reset(user, *, flow, request=None):
+    """A password set through a reset link (2026-09-30).
+
+    ``flow`` is ``email`` or ``recovery``. The actor is the account: whoever
+    held the link spoke as it. The link and its token are credentials and are
+    never recorded.
+    """
+    return _record("password_reset", user, actor_user=user, request=request,
+                   metadata={"flow": str(flow)})
 
 
 def before_user_saved(sender, instance, update_fields=None, **kwargs):

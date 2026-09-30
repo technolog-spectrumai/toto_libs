@@ -7,7 +7,12 @@ should not move with the socialhub's prefix. See `views/account.py`.
 
 from django.urls import path
 
-from toto.socialhub.views.account import account, account_profile, account_timezone
+from toto.socialhub.views.account import (
+    account,
+    account_password,
+    account_profile,
+    account_timezone,
+)
 
 app_name = "account"
 
@@ -15,4 +20,5 @@ urlpatterns = [
     path("", account, name="home"),
     path("profile/", account_profile, name="profile"),
     path("timezone/", account_timezone, name="timezone"),
+    path("password/", account_password, name="password"),
 ]

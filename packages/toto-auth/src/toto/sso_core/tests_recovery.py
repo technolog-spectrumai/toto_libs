@@ -413,6 +413,23 @@ class RedeemTests(RecoveryBase):
             AuditRecord.objects.filter(action="PASSWORD_RECOVERY_USED").exists()
         )
 
+    def test_the_reset_is_on_the_auth_trail(self):
+        # 2026-09-30: beside the recovery's own PASSWORD_RECOVERY_USED, the
+        # account's trail says its password was set, and by which flow.
+        if not django_apps.is_installed("toto.audit"):
+            self.skipTest("audit not installed on this host")
+        from toto.audit.models import AuditRecord
+
+        ticket, url = self._approved_link()
+        self.client.post(url, {
+            "new_password1": "brand-new-passw0rd",
+            "new_password2": "brand-new-passw0rd",
+        })
+        record = AuditRecord.objects.get(action="AUTH.PASSWORD_RESET")
+        self.assertEqual(record.object_id, str(self.user.pk))
+        self.assertEqual(record.metadata, {"flow": "recovery"})
+        self.assertIn("[uuid]", record.request_source["path"])
+
     def test_the_plain_token_never_reaches_the_audit_trail(self):
         # request_source captures the request PATH — which for the recover
         # route carries the bearer token. The audit layer scrubs UUID-shaped

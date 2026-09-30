@@ -71,6 +71,17 @@ _UUID_SEGMENT = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
 
+#: Django's password-reset token (``default_token_generator``: a base-36
+#: timestamp, a dash, 32 hex digits) as a path segment. The e-mailed link is
+#: redeemed at password-reset/<uidb64>/<token>/, and AUTH.PASSWORD_RESET is
+#: recorded on that very request (2026-09-30). The token dies with the
+#: password it reset, but a spent credential is still not the chain's to keep.
+_RESET_TOKEN_SEGMENT = re.compile(r"(?<=/)[0-9a-z]{1,13}-[0-9a-f]{32}(?=/|$)")
+
+
+def _scrub_path(path):
+    return _RESET_TOKEN_SEGMENT.sub("[token]", _UUID_SEGMENT.sub("[uuid]", path))
+
 
 def request_source(request):
     # The address is toto.core.client_ip's (2026-09-30): nginx's X-Real-IP from
@@ -81,7 +92,7 @@ def request_source(request):
         return {}
     return sanitize({
         "method": request.method,
-        "path": _UUID_SEGMENT.sub("[uuid]", request.path)[:1000],
+        "path": _scrub_path(request.path)[:1000],
         "ip_address": client_ip(request),
         "user_agent": request.META.get("HTTP_USER_AGENT", "")[:500],
     })
