@@ -1,25 +1,30 @@
-"""Reading gated by clearances — the one rule, for every app that keeps things
-to clearances (2026-09-29).
+"""Reading gated by clearances — the one rule (2026-09-29; groups 2026-09-30).
 
 A ``Clearance`` names what it opens (``internal``, ``confidential``); its
-members are whoever ``Person.clearances`` says. An app that gates an object
-by clearances keeps a through table of ``(object, clearance)`` rows — reached
-from the object by one related name, ``rows`` below, each row with a
-``clearance`` FK — and asks here:
+holders are whoever ``Person.clearances`` says.
 
-* **no clearance row → open**: the object is what it was before clearances
-  (the app's own rule decides — public, owner, a directory ACL, "everyone
+**Clearances go on GROUPS, never on items** (the owner, 2026-09-30): a map
+domain (locations), a bucket (vault), a wiki topic. Each group model keeps a
+through table of ``(group, clearance)`` rows, reached from the group by the
+related name ``clearance_rows``. An item is read by the rule of its groups:
+
+* an item in **no kept group** (no group, or only groups without clearances)
+  follows its app's own rule (``open`` — public, a directory ACL, "everyone
   signed in");
-* **clearance rows → the members of any one of them**, the object's owner
-  and superusers. Nobody else: not the public flag, not a folder's ACL —
-  clearances win, so a thing kept to a clearance is kept;
+* an item in **kept groups** is read by superusers and by whoever holds, for
+  EVERY one of its kept groups, at least one of that group's clearances —
+  **pessimistic**: a page with two kept topics needs a clearance of each.
+  Nobody else: not its owner or creator, not the public flag, not a folder's
+  ACL. A clearance both keeps and grants;
 * a user with no ``Person`` holds no clearance; anonymous visitors hold none.
 
-**Hidden is missing.** An object a reader may not read answers as one that
-does not exist; the app's doors 404 and its lists, counts and exports leave
-it out. ``gate`` is the queryset half, ``hidden`` the per-object twin — the
-same lookups, so the two cannot disagree. The wiki was first (zenobia's
-``toto.wiki.access``); the vault, locations and places share this.
+**Hidden is missing.** An item a reader may not read answers as one that does
+not exist; the app's doors 404 and its lists, counts and exports leave it out.
+``group_gate`` is the queryset half, ``group_hidden`` the per-object twin —
+the same subqueries, so the two cannot disagree.
+
+``set_clearances`` / ``clearances_of`` work on the GROUP (a domain, a bucket,
+a topic) and record the change on the audit chain.
 
 A community never grants reading: a clearance is its own model, so nothing
 here can be handed one by mistake (README, "Communities and clearances").
@@ -28,7 +33,7 @@ here can be handed one by mistake (README, "Communities and clearances").
 from __future__ import annotations
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Exists, Q
 
 
 def person_of(user):
@@ -43,6 +48,52 @@ def clearance_ids_of(user) -> set:
     if person is None:
         return set()
     return set(person.clearances.values_list("pk", flat=True))
+
+
+def _group_rule(user, groups):
+    """``(kept, blocked)`` subquery filters over ``groups`` — the item's groups,
+    each with ``clearance_rows``: kept = it has a group that carries
+    clearances; blocked = one of those groups carries none the user holds."""
+    kept_groups = groups.filter(clearance_rows__isnull=False)
+    mine = clearance_ids_of(user)
+    blocking = kept_groups.exclude(clearance_rows__clearance__in=mine) if mine else kept_groups
+    return Exists(kept_groups), Exists(blocking)
+
+
+def group_gate(user, queryset, *, groups, open: Q | None = None):
+    """The items in ``queryset`` that ``user`` may read.
+
+    ``groups`` is a queryset of the item's groups, correlated to the item with
+    ``OuterRef`` (e.g. ``MapDomain.objects.filter(route_rows__route=OuterRef("pk"))``,
+    ``Bucket.objects.filter(pk=OuterRef("bucket_id"))``). ``open`` is the app's
+    own rule for an item in no kept group (``None`` = everyone signed in).
+    """
+    if getattr(user, "is_superuser", False):
+        return queryset
+    kept, blocked = _group_rule(user, groups)
+    free = ~kept & open if open is not None else ~kept
+    return queryset.filter(free | (kept & ~blocked))
+
+
+def item_groups_kept(groups) -> bool:
+    """Whether any of these groups (a plain queryset of one item's groups)
+    carries clearances."""
+    return groups.filter(clearance_rows__isnull=False).exists()
+
+
+def group_hidden(user, groups) -> bool:
+    """Whether the kept groups in ``groups`` (a plain queryset of ONE item's
+    groups) hide the item from ``user`` — the per-object twin of
+    ``group_gate``. False when none is kept: then the app's own rule decides."""
+    if getattr(user, "is_superuser", False):
+        return False
+    kept_groups = groups.filter(clearance_rows__isnull=False)
+    if not kept_groups.exists():
+        return False
+    mine = clearance_ids_of(user)
+    if not mine:
+        return True
+    return kept_groups.exclude(clearance_rows__clearance__in=mine).exists()
 
 
 def gate(user, queryset, *, rows: str, open: Q | None = None, owner: Q | None = None):
