@@ -9,6 +9,8 @@ from django.urls import path
 
 from toto.socialhub.views.account import (
     account,
+    account_email,
+    account_email_confirm,
     account_password,
     account_profile,
     account_session_end,
@@ -23,6 +25,8 @@ urlpatterns = [
     path("profile/", account_profile, name="profile"),
     path("timezone/", account_timezone, name="timezone"),
     path("password/", account_password, name="password"),
+    path("email/", account_email, name="email"),
+    path("email/confirm/", account_email_confirm, name="email_confirm"),
     path("sessions/<int:session_id>/end/", account_session_end, name="session_end"),
     path("sessions/end-others/", account_sessions_end_others, name="sessions_end_others"),
 ]

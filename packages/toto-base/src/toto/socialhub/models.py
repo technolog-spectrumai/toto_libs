@@ -528,3 +528,27 @@ class CommunityForum(models.Model):
             return model.objects.filter(slug=self.channel_slug).first()
         except Exception:  # noqa: BLE001 — a missing room is not an error here
             return None
+
+
+class PendingEmailChange(models.Model):
+    """A member's request to move their account to a new e-mail address
+    (My account, 2026-09-30), waiting for the link mailed to that address.
+
+    The link carries a random token; only its SHA-256 is kept here, so a copy
+    of this table cannot confirm anything. One row per member at most — a new
+    request replaces the old — and the row is deleted the moment it is used,
+    which is what makes the link single-use. Expiry is ``created`` plus
+    ``toto.socialhub.email_change.LINK_HOURS``.
+    """
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE,
+                                related_name="pending_email_change")
+    new_email = models.EmailField()
+    token_hash = models.CharField(max_length=64, unique=True)
+    created = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        verbose_name = "pending e-mail change"
+
+    def __str__(self):
+        return f"e-mail change for account {self.user_id}"

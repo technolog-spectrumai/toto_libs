@@ -20,6 +20,12 @@ notice through ``toto.core.notices.send_notice``. Ending a session, one or
 all but this one, is ``AUTH.SESSION_ENDED`` / ``AUTH.SIGNED_OUT_EVERYWHERE``
 (``toto.core.user_sessions`` keeps the rows the list is made of).
 
+Changing the e-mail address is two steps (``toto.socialhub.email_change``):
+the form mails a single-use link to the new address, and the change happens
+only when that link is opened by the same member, signed in, within a day —
+``AUTH.EMAIL_CHANGE_REQUESTED`` then ``AUTH.EMAIL_CHANGED``, addresses masked;
+the old address is told.
+
 Recent sign-ins lists the member's own ``AUTH.*`` records of the last 30
 days, read through ``toto.audit.queries.member_auth_records`` — the audit
 pages stay staff-only; this is the one narrow read of rows about the member,
@@ -38,6 +44,7 @@ from django.contrib.auth.forms import PasswordChangeForm
 from django.core.paginator import Paginator
 from django.http import Http404
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy
 from django.views.decorators.http import require_POST
@@ -46,8 +53,13 @@ from toto.core.client_ip import client_ip
 from toto.core.notices import send_notice
 from toto.core.user_sessions import end_other_sessions, end_session, rekey, sessions_for
 from toto.people.models import Person
-from toto.socialhub import audit
-from toto.socialhub.forms import AccountProfileForm, TimeZoneForm, avatar_max_bytes
+from toto.socialhub import audit, email_change
+from toto.socialhub.forms import (
+    AccountEmailForm,
+    AccountProfileForm,
+    TimeZoneForm,
+    avatar_max_bytes,
+)
 from toto.ui import PageProcessor
 
 log = logging.getLogger("toto.socialhub")
@@ -92,6 +104,7 @@ SIGNIN_LABELS = {
     "AUTH.TOKEN_REFUSED": gettext_lazy("Desktop sign-in refused"),
     "AUTH.PASSWORD_CHANGED": gettext_lazy("Password changed"),
     "AUTH.PASSWORD_RESET": gettext_lazy("Password reset through a link"),
+    "AUTH.EMAIL_CHANGE_REQUESTED": gettext_lazy("New e-mail address asked for"),
     "AUTH.EMAIL_CHANGED": gettext_lazy("E-mail address changed"),
     "AUTH.SESSION_ENDED": gettext_lazy("Session ended"),
     "AUTH.SIGNED_OUT_EVERYWHERE": gettext_lazy("Signed out everywhere else"),
@@ -152,7 +165,7 @@ def _signins_page(request):
 
 
 def _page(request, *, profile_form=None, timezone_form=None, password_form=None,
-          status=200):
+          email_form=None, status=200):
     person = own_person(request.user)
     sessions = _sessions_page(request)
     signins = _signins_page(request)
@@ -177,6 +190,11 @@ def _page(request, *, profile_form=None, timezone_form=None, password_form=None,
         # whose "current password" nothing could ever match.
         "has_password": request.user.has_usable_password(),
         "password_form": password_form or PasswordChangeForm(request.user),
+        # The e-mail section hides behind has_password too: a federated
+        # account's address is its provider's, rewritten at each sign-in.
+        "email_form": email_form or AccountEmailForm(user=request.user),
+        "email_pending": email_change.pending_for(request.user),
+        "email_link_hours": email_change.LINK_HOURS,
         "person": person,
         "profile_form": profile_form or AccountProfileForm(instance=person),
         "timezone_form": timezone_form or TimeZoneForm(
@@ -330,3 +348,65 @@ def account_sessions_end_others(request):
     else:
         messages.info(request, _("There was no other session to end."))
     return redirect("account:home")
+
+
+@require_POST
+@login_required
+def account_email(request):
+    """Ask to move one's account to a new address (2026-09-30).
+
+    Changes nothing on the account: it mails the confirmation link to the new
+    address and says so. See ``toto.socialhub.email_change``.
+    """
+    if not request.user.has_usable_password():
+        messages.error(request, _("Your account signs in through another service; "
+                                  "change your e-mail address there."))
+        return redirect("account:home")
+    form = AccountEmailForm(request.POST, user=request.user)
+    if not form.is_valid():
+        return _page(request, email_form=form, status=400)
+    address = form.cleaned_data["new_email"]
+    if email_change.request_change(request.user, address, request=request):
+        messages.success(request, _("A link is on its way to %(address)s. Open it while "
+                                    "signed in here to use that address; until then "
+                                    "nothing changes.") % {"address": address})
+    else:
+        messages.error(request, _("The confirmation mail could not be sent. Try again "
+                                  "later, or tell an administrator."))
+    return redirect("account:home")
+
+
+#: What the member is told when a link is refused, by outcome.
+EMAIL_REFUSALS = {
+    email_change.INVALID: gettext_lazy(
+        "That link is not valid any more: it was used already, or a newer one "
+        "replaced it. Your address is unchanged."),
+    email_change.EXPIRED: gettext_lazy(
+        "That link has expired. Your address is unchanged; ask for a new one below."),
+    email_change.NOT_YOURS: gettext_lazy(
+        "That link was sent for another account. Sign in as that account to "
+        "open it; nothing was changed."),
+    email_change.TAKEN: gettext_lazy(
+        "That address has been taken by another account meanwhile. Your "
+        "address is unchanged."),
+}
+
+
+@login_required
+def account_email_confirm(request):
+    """The mailed link (2026-09-30): ``?token=`` — a query parameter, so the
+    path the chain keeps never carries it.
+
+    A GET that changes the account, on purpose: the link is opened from a mail
+    program, the token binds it to one member and one address, and it acts
+    only for that member's own signed-in session. Signed out, the login
+    redirect brings the member back here. Post/Redirect/Get either way.
+    """
+    outcome = email_change.confirm_change(request.user, request.GET.get("token", ""),
+                                          request=request)
+    if outcome == email_change.CHANGED:
+        messages.success(request, _("Your e-mail address is now %(address)s.")
+                         % {"address": request.user.email})
+    else:
+        messages.error(request, EMAIL_REFUSALS[outcome])
+    return redirect(f"{reverse('account:home')}#email")

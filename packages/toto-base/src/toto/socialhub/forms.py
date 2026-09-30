@@ -238,3 +238,24 @@ class TimeZoneForm(forms.Form):
 
     timezone = forms.ChoiceField(label=_("Time zone"), required=False,
                                  choices=time_zone_choices)
+
+
+class AccountEmailForm(forms.Form):
+    """A new address for one's own account (2026-09-30); see ``email_change``."""
+
+    new_email = forms.EmailField(label=_("New e-mail address"), max_length=254)
+
+    def __init__(self, *args, user, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+
+    def clean_new_email(self):
+        from toto.socialhub.email_change import address_taken
+
+        address = self.cleaned_data["new_email"].strip()
+        if address.lower() == (self.user.email or "").strip().lower():
+            raise forms.ValidationError(_("That is already your address."), code="same")
+        if address_taken(address, self.user):
+            raise forms.ValidationError(
+                _("That address belongs to another account or application."), code="taken")
+        return address
