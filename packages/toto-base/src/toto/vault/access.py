@@ -11,6 +11,11 @@ keeping a second copy is how it would come back.
 fileservices and manta now import from here; their old module is a re-export so
 nothing outside had to move at once.
 
+``may_write`` is its narrower twin (2026-09-30), for the doors that change a
+file's bytes without being an editor — the editing lock and the versions. They
+used to read "may work with the file" off the folder ACL and the public flag,
+so any reader of a public file could restore an old body over it.
+
 Encrypted vault files hold ciphertext, so they must never open in an editor. The
 per-app editor views call :func:`encrypted_lock_response` at their entry point to
 return a friendly "decrypt it first" page (HTTP 403) instead of the editor, mirroring
@@ -95,6 +100,41 @@ def may_read(user, vault_file) -> bool:
             pk=user.pk).exists():
         return True
     return False
+
+
+def may_write(user, vault_file) -> bool:
+    """May this user change these bytes — hold the editing lock, cut a version,
+    restore one?
+
+    Not a new rule: the per-object spelling of the one every editor's save door
+    already applies (2026-09-30). primula's ``_owned``, memo's and the vault's
+    own rename/move/delete ask ``gate_by_bucket`` then ``owner=request.user``;
+    cyprian adds the team that its wiki lends a page to, which is
+    :func:`may_edit_via_app`. Reading is wider on purpose — a public file, a
+    folder's ACL and a bucket's owner all read, and none of them writes.
+
+    **The bucket's clearances come first**, as in :func:`may_read`: a file
+    hidden by its bucket is written by nobody, its owner and a lending app
+    included.
+
+    **A superuser writes another member's file only on the Superuser plan**
+    (``plan_gate.superuser_plan_holder`` — both, never one). The account alone
+    still reads everything (``may_read``); it no longer rewrites what it can
+    read. Their own files they write as owners.
+    """
+    if vault_file is None:
+        return False
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    from .plan_gate import superuser_plan_holder
+
+    if superuser_plan_holder(user):
+        return True
+    if bucket_hidden(user, vault_file):
+        return False
+    if vault_file.owner_id == user.pk:
+        return True
+    return may_edit_via_app(user, vault_file)
 
 
 def may_edit_via_app(user, vault_file) -> bool:
