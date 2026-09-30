@@ -1,0 +1,102 @@
+{% extends "vault/base.html" %}
+{% load i18n %}
+{% comment %}The vault's Clearances tab (2026-09-30), for a superuser on the
+   Superuser plan (clearance_tab.py; `plan_gate.superuser_plan_door`).
+
+   Every bucket with the clearances that keep it and, per clearance, the
+   people holding it — a table on md+ (one body per bucket, a row per
+   clearance), a card per bucket below, paged (`rows`, `page_obj`). A bucket
+   kept by no clearance is shown as open. Read-only: a bucket's name leads to
+   its page, where its clearances are set; the clearances themselves (who
+   holds them) are made in the socialhub's Clearances tab (`socialhub_clearances_url`).
+   The three counters are also the filter (`?show=kept|open`).
+{% endcomment %}
+
+{% block vault_title %}{% trans "Clearances" %}{% endblock %}
+
+{% block vault_content %}
+<article class="space-y-6" data-testid="vault-clearances">
+  <header class="space-y-1">
+    <h2 class="flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-shield-halved opacity-70" aria-hidden="true"></i>{% trans "Clearances" %}</h2>
+    <p class="max-w-prose text-sm opacity-70">{% trans "Every bucket, the clearances that keep it and who holds each. A bucket kept to clearances has its files read by superusers and by whoever holds one of them — nobody else, not even their owner. A bucket kept by no clearance is open: its files follow the vault's usual rule. A bucket's clearances are set on its own page — follow its name." %}</p>
+  </header>
+
+  {# The counters, which are also the filter. #}
+  <nav class="grid gap-3 sm:grid-cols-3" aria-label="{% trans 'Which buckets' %}" data-testid="clearances-filter">
+    {% for key, label, count in filters %}
+    <a href="?{% if key != 'all' %}show={{ key }}{% endif %}" data-testid="clearances-show-{{ key }}"
+       {% if show == key %}aria-current="true"{% endif %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="block rounded-lg border p-4 transition {% if show == key %}ring-2 ring-current/40{% else %}opacity-70 hover:opacity-100{% endif %}">
+      <span class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ label }}</span>
+      <span class="mt-2 block text-3xl font-bold">{{ count }}</span>
+    </a>
+    {% endfor %}
+  </nav>
+
+  {% if rows %}
+  {# Wide screens: a table, one body per bucket, a row per clearance. #}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="hidden overflow-x-auto rounded-2xl border shadow-sm md:block">
+    <table class="min-w-full text-left text-sm" data-testid="clearances-table">
+      <thead :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-xs uppercase tracking-wide opacity-70">
+        <tr>
+          <th scope="col" class="px-4 py-3">{% trans "Bucket" %}</th>
+          <th scope="col" class="px-4 py-3">{% trans "Clearance" %}</th>
+          <th scope="col" class="px-4 py-3">{% trans "Holders" %}</th>
+        </tr>
+      </thead>
+      {% for r in rows %}
+      <tbody :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b align-top last:border-b-0" data-testid="clearances-bucket-{{ r.bucket.slug }}">
+        {% if r.open %}
+        <tr>
+          <th scope="row" class="px-4 py-3 font-normal">{% include "vault/partials/_clearance_bucket.html" %}</th>
+          <td colspan="2" class="px-4 py-3 opacity-70" data-testid="clearances-open-{{ r.bucket.slug }}">
+            <i class="fa-solid fa-lock-open mr-1 opacity-60" aria-hidden="true"></i>{% trans "No clearance: the vault's usual rule applies." %}</td>
+        </tr>
+        {% else %}
+        {% for keep in r.keeps %}
+        <tr>
+          {% if forloop.first %}<th scope="row" rowspan="{{ r.keeps|length }}" class="px-4 py-3 font-normal">{% include "vault/partials/_clearance_bucket.html" %}</th>{% endif %}
+          <td class="whitespace-nowrap px-4 py-3"><i class="fa-solid fa-shield-halved mr-1 opacity-60" aria-hidden="true"></i>{{ keep.clearance.name }}</td>
+          <td class="px-4 py-3">{% include "vault/partials/_clearance_holders.html" %}</td>
+        </tr>
+        {% endfor %}
+        {% endif %}
+      </tbody>
+      {% endfor %}
+    </table>
+  </div>
+
+  {# Narrow screens: a card per bucket. #}
+  <div class="space-y-3 md:hidden" data-testid="clearances-cards">
+    {% for r in rows %}
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="space-y-2 rounded-2xl border p-4 text-sm shadow-sm" data-testid="clearances-card-{{ r.bucket.slug }}">
+      <h3>{% include "vault/partials/_clearance_bucket.html" %}</h3>
+      {% if r.open %}
+      <p class="opacity-70"><i class="fa-solid fa-lock-open mr-1 opacity-60" aria-hidden="true"></i>{% trans "No clearance: the vault's usual rule applies." %}</p>
+      {% else %}
+      <dl class="space-y-2">
+        {% for keep in r.keeps %}
+        <div>
+          <dt class="break-words text-xs font-semibold uppercase tracking-wide opacity-70"><i class="fa-solid fa-shield-halved mr-1" aria-hidden="true"></i>{{ keep.clearance.name }}</dt>
+          <dd>{% include "vault/partials/_clearance_holders.html" %}</dd>
+        </div>
+        {% endfor %}
+      </dl>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+
+  {% include "oya/partials/_server_pagination.html" %}
+  {% else %}
+  <p class="rounded border border-dashed p-4 text-sm opacity-70" data-testid="clearances-empty">
+    {% if show == "kept" %}{% trans "No bucket is kept to a clearance." %}{% elif show == "open" %}{% trans "Every bucket is kept to a clearance." %}{% else %}{% trans "There are no buckets yet." %}{% endif %}</p>
+  {% endif %}
+
+  {% if socialhub_clearances_url %}<p class="text-sm"><a class="underline" href="{{ socialhub_clearances_url }}">{% trans "Make clearances and put people in them" %}</a> <span class="opacity-60">— {% trans "in the communities area; a bucket's own page decides which clearances keep it." %}</span></p>{% endif %}
+</article>
+{% endblock %}

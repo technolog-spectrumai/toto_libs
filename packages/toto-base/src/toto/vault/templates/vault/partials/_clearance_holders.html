@@ -1,0 +1,6 @@
+{% load i18n %}{# One clearance's holders on the vault's Clearances tab, by display name. Expects `r` (the bucket row) and `keep` ({"clearance", "holders", "count", "more"}). #}
+<ul class="flex flex-wrap gap-1.5" data-testid="holders-{{ r.bucket.slug }}-{{ keep.clearance.slug }}">
+  {% for name in keep.holders %}<li :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="break-words rounded-full border px-2 py-0.5 text-xs">{{ name }}</li>
+  {% empty %}<li class="text-xs opacity-60">{% trans "Nobody holds it." %}</li>{% endfor %}
+  {% if keep.more %}<li class="px-1 py-0.5 text-xs opacity-60" data-testid="holders-more-{{ r.bucket.slug }}-{{ keep.clearance.slug }}">{% blocktrans count n=keep.more %}and {{ n }} more{% plural %}and {{ n }} more{% endblocktrans %}</li>{% endif %}
+</ul>
