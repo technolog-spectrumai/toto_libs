@@ -24,7 +24,7 @@
 escapejs: a raw {% templatetag openblock %} trans {% templatetag closeblock %} inside a single-quoted JS string breaks the whole
 component the day a translation contains an apostrophe.{% endcomment %}
 {% trans "Delete" as i18n_delete %}
-{% trans "This cannot be undone." as i18n_undone %}
+{% trans "It goes to the trash, where you can restore it." as i18n_undone %}
   x-data="{
             destroy(pk, title) {
               var name = String(title || '').replace(/\s+/g, ' ').trim();

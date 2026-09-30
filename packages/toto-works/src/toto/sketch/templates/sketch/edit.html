@@ -107,7 +107,7 @@ a JS string is never a place to render a template tag into. {% endcomment %}
          expression, and a bare `return` in one is a syntax error that kills the
          whole component while the form still submits, unconfirmed.{% endcomment %}
       <form method="post" action="{{ delete_url }}"
-            onsubmit="return confirm('{% trans "Delete this drawing permanently?" %}');">
+            onsubmit="return confirm('{% trans "Move this drawing to the trash?" %}');">
         {% csrf_token %}
         <button type="submit"
                 class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold transition hover:opacity-85"

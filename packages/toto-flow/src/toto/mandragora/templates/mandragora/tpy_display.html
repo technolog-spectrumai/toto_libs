@@ -150,7 +150,7 @@
   <div class="w-full max-w-sm rounded-2xl border shadow-2xl p-6"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'">
     <h2 class="text-lg font-bold mb-2 flex items-center gap-2"><i class="fa-solid fa-trash opacity-60"></i>{% trans "Delete file?" %}</h2>
-    <p class="text-sm opacity-70 mb-5">{% trans "This will permanently delete" %} <span class="font-mono font-semibold">{{ vault_file.title }}</span>. {% trans "This cannot be undone." %}</p>
+    <p class="text-sm opacity-70 mb-5">{% trans "This moves" %} <span class="font-mono font-semibold">{{ vault_file.title }}</span> {% trans "to the trash, where you can restore it." %}</p>
     <div class="flex justify-end gap-2">
       <button id="delete-cancel" class="rounded-lg border border-current/20 px-4 py-1.5 text-sm font-semibold transition hover:opacity-75">{% trans "Cancel" %}</button>
       <button id="delete-confirm" :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'" class="rounded-lg px-4 py-1.5 text-sm font-semibold transition hover:opacity-85">
