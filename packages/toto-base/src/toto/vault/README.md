@@ -154,6 +154,39 @@ name leads to its page, where its clearances are set. A page costs the same
 queries however many buckets, clearances and holders it shows. Tests:
 `tests_clearance_tab`.
 
+## Versions and the editing lock: who reads, who writes (2026-09-30)
+
+`version_views.py` serves every editor's history and lock (cyprian, memo,
+primula, sketch, the ACE editor). Its doors used to share one gate that read
+"may work with this file" off the folder and the public flag, and it let far
+too many people in: a folder whose ACL is empty (every folder, until someone
+fills it) opened another member's file to any signed-in account, and a public
+file let every reader take the lock, cut a version and restore an old body
+over its owner's work. The doors are split now, and neither half is a new rule:
+
+| door | rule | refused |
+|---|---|---|
+| the history (`version_list`) | `access.may_read`, the download door's — superuser, owner, public, the bucket's owner, a folder ACL that names you — or a writer below | 404 |
+| take, beat and release the lock; cut a version; restore one | `access.may_write`, the rule the editors' save doors apply: the owner, the app that lends the file out (`VaultAccessPlugin`, cyprian's wiki team), or a superuser on the Superuser plan — asked after the read gate | 403 |
+
+* Both put the bucket's clearances first: a file hidden by its bucket is
+  missing on every door, to its owner and to a lending app too.
+* Staff is nobody special here any more; a superuser without the plan reads
+  (as `may_read` lets them) and writes only their own files.
+* 403 is for a file the caller may see, 404 for one they may not, as on every
+  vault door. A reader is not told 423: they are not a writer who has to wait.
+* The history answers `can_write`, and the versions panel
+  (`oya/_file_versions.html`, `oya/file_versions.js`) turns into a reader's
+  when that is false, when the page passes `can_write=False`, or when a lock
+  door refuses: the history and who is editing, no claim, heartbeat, beacon,
+  "Save version" or "Restore".
+* On the audit chain: a refused cut or restore is recorded like any vault
+  write (`FILE_EDITED` / `FILE_RESTORED`, `success=False`), and a refused lock
+  claim as `FILE_LOCK_REFUSED` (403 and 404 only — a granted claim, a 423 and
+  every heartbeat stay off, being an editor opening).
+
+Tests: `tests_version_doors`, `tests_more_version_views`.
+
 ## Buckets: types, custody and deletion (2026-09-30)
 
 Storage → Management (Superuser plan) creates, edits, tests and deletes buckets.

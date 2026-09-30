@@ -22,7 +22,7 @@ tests only, never a setting.
 | `socialhub` | `SOCIALHUB.COMMUNITY_CREATED`/`_CHANGED`/`_DELETED`, `MEMBER_ADDED`/`_REMOVED` (both sides of `Person.communities`, a `clear()` included), `SENIOR_ADDED`/`_REMOVED`, `PRIVILEGE_CHANGED`/`_REMOVED`, `APPLICATION_SUBMITTED`/`_<STATUS>`, `REFERENCE_REQUESTED`/`_GIVEN`/`_DECLINED`; `CLEARANCE_CREATED`/`_CHANGED`/`_DELETED` and `CLEARANCE_MEMBER_ADDED`/`_REMOVED` (both sides of `Person.clearances`, 2026-09-29) — communities and clearances are recorded apart | `toto.socialhub.audit` (2026-09-28) |
 | `wiki` | page created, updated, deleted, imported, exported, refused writes, a topic's clearances changed | zenobia's `toto.wiki.audit` / `access.py` |
 | `aralia` | a PDF render's life | zenobia's `toto.aralia.audit` |
-| file events | vault reads and writes | `FileAuditMiddleware` |
+| file events | vault reads and writes, refusals included; a refused claim on a file's editing lock (403/404) as `FILE_LOCK_REFUSED` (2026-09-30) — granted claims, 423s and heartbeats stay off | `FileAuditMiddleware` |
 
 **Deleting an account never breaks the chain** (2026-09-29). The digest
 covers `actor_user_id`; the field used to be SET_NULL, so deleting any
