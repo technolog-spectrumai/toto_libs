@@ -299,7 +299,12 @@ class FileDetailApiView(CorsApiView):
         if not vf:
             return JsonResponse({"error": "File not found."}, status=404)
 
-        vf.delete()
+        # To the trash like the web door (2026-10-01); a remote bucket's
+        # file goes at once — this host cannot hold it for a restore.
+        if vf.can_be_trashed:
+            vf.trash(request.user)
+        else:
+            vf.delete()
         return JsonResponse({}, status=204)
 
 

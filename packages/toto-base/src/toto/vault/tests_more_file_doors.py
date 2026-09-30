@@ -150,12 +150,27 @@ class DeleteTests(_Fixture):
     def test_a_missing_pk_is_400(self):
         self.assertEqual(self.post("delete_file", {}).status_code, 400)
 
-    def test_the_owner_deletes_the_row_and_the_bytes(self):
-        f = self.file()
+    def test_the_owner_moves_it_to_the_trash_bytes_kept(self):
+        # The trash (2026-10-01): hidden from every door, bytes kept, the
+        # folder remembered for the restore.
+        f = self.file(directory=self.folder)
         path = f.file.path
-        self.assertEqual(self.post("delete_file", {"file_pk": f.pk}).json(), {"ok": True})
+        self.assertEqual(self.post("delete_file", {"file_pk": f.pk}).json(),
+                         {"ok": True, "trashed": True})
         self.assertFalse(VaultFile.objects.filter(pk=f.pk).exists())
-        self.assertFalse(os.path.exists(path))
+        trashed = VaultFile.all_objects.get(pk=f.pk)
+        self.assertEqual((trashed.trashed_by, trashed.trashed_from, trashed.directory),
+                         (self.owner, self.folder, None))
+        self.assertIsNotNone(trashed.trashed_at)
+        self.assertTrue(os.path.exists(path))
+
+    def test_a_remote_bucket_s_file_still_goes_at_once(self):
+        remote = Bucket.objects.create(name="Mounted", slug="mounted", owner=self.owner,
+                                       storage_backend="remote_toto")
+        f = self.file(bucket=remote)
+        self.assertEqual(self.post("delete_file", {"file_pk": f.pk}).json(),
+                         {"ok": True, "trashed": False})
+        self.assertFalse(VaultFile.all_objects.filter(pk=f.pk).exists())
 
     def test_someone_elses_file_survives(self):
         f = self.file()

@@ -195,6 +195,9 @@ class PublicFileListView(TemplateView):
                         "editor_url": _editor_url_for(f),
                         "has_services": _has_services(f),
                         "scan_ok": f.pk in clean_pks if clean_pks else False,
+                        # False in a mounted remote bucket: Delete is
+                        # immediate there, and the dialog says so.
+                        "trashable": f.can_be_trashed,
                     })
 
         visit(None, 0)
@@ -218,6 +221,7 @@ class PublicFileListView(TemplateView):
                 "editor_url": _editor_url_for(f),
                 "has_services": _has_services(f),
                 "scan_ok": f.pk in clean_pks if clean_pks else False,
+                "trashable": f.can_be_trashed,
             })
 
         return flat
@@ -295,6 +299,9 @@ class PublicFileListView(TemplateView):
 
         context["flat_items"] = flat_items
         context["selected_bucket"] = bucket_slug
+        from toto.vault.models import trash_days
+
+        context["trash_days"] = trash_days()
         context["total_files"] = sum(1 for i in flat_items if i["t"] == "file")
         context["total_dirs"] = sum(1 for i in flat_items if i["t"] == "dir")
         # The metrics page is owner-or-superuser 404 now; render its link
@@ -324,8 +331,10 @@ class PublicFileListView(TemplateView):
         buckets = list(Bucket.objects.all())
         if buckets:
             from django.db.models import Sum as _Sum
+            # all_objects (2026-10-01): trashed bytes still count against
+            # the bucket's quota.
             usage_qs = (
-                VaultFile.objects
+                VaultFile.all_objects
                 .filter(bucket__in=buckets)
                 .values("bucket_id")
                 .annotate(used_bytes=_Sum("file_size_bytes"))
@@ -1025,8 +1034,12 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
         )
 
         quota_mb = bucket.storage_quota_mb
+        # Usage against the quota counts the trash (2026-10-01): its bytes
+        # are still held.
+        quota_files = (VaultFile.all_objects.none() if files_hidden
+                       else VaultFile.all_objects.filter(bucket=bucket))
         raw_user_stats = list(
-            bucket_files
+            quota_files
             .values("owner__id", "owner__username")
             .annotate(file_count=Count("id"), total_bytes=Sum("file_size_bytes"))
             .order_by("-total_bytes")
@@ -1716,9 +1729,16 @@ class DeleteFileView(LoginRequiredMixin, View):
             # Deleting the stub would neither delete the remote file nor
             # stick — the next refresh resurrects it.
             return access.mirror_lock_response(vault_file)
+        if vault_file.can_be_trashed:
+            # To the trash (2026-10-01): bytes and versions kept for the
+            # restore, and still counted against quota and levy.
+            vault_file.trash(request.user)
+            return JsonResponse({"ok": True, "trashed": True})
+        # A mounted remote bucket names the peer's file: nothing here can
+        # hold it for a restore, so it goes at once, as it always did.
         vault_file.file.delete(save=False)
         vault_file.delete()
-        return JsonResponse({"ok": True})
+        return JsonResponse({"ok": True, "trashed": False})
 
 
 class BucketCopyAjaxView(LoginRequiredMixin, View):

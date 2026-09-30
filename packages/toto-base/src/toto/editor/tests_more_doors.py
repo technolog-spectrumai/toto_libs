@@ -75,12 +75,14 @@ class DeleteDoorTests(EditorTestCase):
     def delete(self, vault_file=None):
         return self.client.post(reverse("editor:text_delete", args=[(vault_file or self.file).pk]))
 
-    def test_the_owner_deletes_the_row_and_the_bytes(self):
+    def test_the_owner_moves_it_to_the_trash_bytes_kept(self):
+        # The vault's trash (2026-10-01): hidden everywhere, restorable.
         storage, name = self.file.file.storage, self.file.file.name
         response = self.delete()
         self.assertEqual(response.json(), {"status": "ok", "redirect": "/vault/"})
         self.assertFalse(VaultFile.objects.filter(pk=self.file.pk).exists())
-        self.assertFalse(storage.exists(name))
+        self.assertIsNotNone(VaultFile.all_objects.get(pk=self.file.pk).trashed_at)
+        self.assertTrue(storage.exists(name))
 
     def test_a_colleague_cannot_delete_the_owner_s_file(self):
         self.client.force_login(self.other)
