@@ -227,7 +227,7 @@ def ensure_currency_reserve():
             "name": RESERVE_NAME,
             "account_type": AccountType.RESERVE,
             "active": True,
-            "metadata": {"kind": "currency_reserve", "system": "assarion_tpln"},
+            "metadata": {"kind": "currency_reserve", "system": "assarion_florin"},
         },
     )
     return account

@@ -34,10 +34,29 @@ GAS_DEFAULTS = {
     "ASR": ("Assarion", "Assari",
             "Assarion — fine-grained unit of account of the platform. 9 decimal places."),
 }
-TPLN_SUPPLY = Decimal("76658.70")
+#: The four-letter short name and the display symbol of a known gas ticker.
+#: The short name keys the asset's page (/assets/assets/ASAR/); an unknown
+#: ticker gets a code derived from its letters (Asset.save) and its ticker as
+#: the symbol.
+GAS_DISPLAY = {"ASR": ("ASAR", "ASR")}
+
+# The Florin — the platform's accounting currency, named after the historic
+# gold florin; no real currency stands behind it (economy.md, "No real
+# currency, anywhere"). It replaced TPLN, the "Toto Złoty", on 2026-09-30.
+# Its reference is create-flor, the same key bootstrap's CoreAsset derives from
+# the ticker, so ingress and bootstrap can never mint two opening supplies.
+FLOR_SUPPLY = Decimal("76658.70")
+FLOR_CODE = "FLOR"
+FLOR_SYMBOL = "ƒ"
+FLOR_REFERENCE = "create-flor"
+
+#: The reserve account's "system" tag. It said "assarion_tpln" until the Florin
+#: replaced TPLN; ingress rewrites that legacy value in place.
+RESERVE_SYSTEM = "assarion_florin"
+LEGACY_RESERVE_SYSTEM = "assarion_tpln"
 
 assert ASR_SUPPLY == Decimal("6666.666666667"), ASR_SUPPLY
-assert TPLN_SUPPLY == Decimal("76658.70"), TPLN_SUPPLY
+assert FLOR_SUPPLY == Decimal("76658.70"), FLOR_SUPPLY
 
 
 class Command(IngressCommand):
@@ -73,11 +92,11 @@ class Command(IngressCommand):
         self._seed_base_currencies(currency_assets)
 
         if not self.full:
-            # A real build ends here: the host's gas to spend, TPLN to account
+            # A real build ends here: the host's gas to spend, FLOR to account
             # in, nothing else. Every other asset below is demonstration material.
             gas_ticker = currency_assets["GAS"].unit_name
             self.stdout.write(self.style.SUCCESS(
-                f"✅  Base currency ingress complete ({gas_ticker} + TPLN). "
+                f"✅  Base currency ingress complete ({gas_ticker} + FLOR). "
                 "Use --full for the demo assets and data."
             ))
             return
@@ -107,7 +126,7 @@ class Command(IngressCommand):
                 "active": True,
                 "metadata": {
                     "kind": "currency_reserve",
-                    "system": "assarion_tpln",
+                    "system": RESERVE_SYSTEM,
                 },
             },
         )
@@ -123,9 +142,11 @@ class Command(IngressCommand):
                 acc.active = True
                 fields.append("active")
             meta = dict(acc.metadata or {})
+            if meta.get("system") == LEGACY_RESERVE_SYSTEM:
+                meta["system"] = RESERVE_SYSTEM
             for k, v in {
                 "kind": "currency_reserve",
-                "system": "assarion_tpln",
+                "system": RESERVE_SYSTEM,
             }.items():
                 meta.setdefault(k, v)
             if meta != (acc.metadata or {}):
@@ -137,7 +158,7 @@ class Command(IngressCommand):
         return {"currency_reserve": acc}
 
     # ------------------------------------------------------------------ #
-    # Always-on: the host's gas asset, TPLN                              #
+    # Always-on: the host's gas asset, FLOR                              #
     # ------------------------------------------------------------------ #
 
     def _seed_base_currency_assets(self, accounts: dict) -> dict:
@@ -155,6 +176,7 @@ class Command(IngressCommand):
         # One reference per ticker: create_currency is one-shot per reference, and
         # that is the whole immutability guarantee for a fixed supply.
         reference = f"create-{ticker.lower()}"
+        gas_code, gas_symbol = GAS_DISPLAY.get(ticker, ("", ticker))
 
         if LedgerTransaction.objects.filter(reference=reference).exists():
             gas = Asset.objects.get(unit_name=ticker)
@@ -180,6 +202,8 @@ class Command(IngressCommand):
                     "plural": plural,
                     "seeded_by": "ingress",
                 },
+                code=gas_code,
+                symbol=gas_symbol,
             )
             gas.reserve_account = reserve
             gas.save(update_fields=["reserve_account", "updated_at"])
@@ -191,64 +215,75 @@ class Command(IngressCommand):
         assets["GAS"] = gas          # ticker-agnostic handle for the seeder below
         self.stdout.write(f"  +/✓ asset {ticker} (gas) supply={supply}")
 
-        # ── TPLN ─────────────────────────────────────────────────────────
-        if LedgerTransaction.objects.filter(reference="create-tpln").exists():
-            tpln = Asset.objects.get(unit_name="TPLN")
-            existing_supply = tpln.max_supply_display
-            if existing_supply != TPLN_SUPPLY:
+        # ── FLOR, the Florin ─────────────────────────────────────────────
+        if LedgerTransaction.objects.filter(reference=FLOR_REFERENCE).exists():
+            flor = Asset.objects.get(unit_name="FLOR")
+            existing_supply = flor.max_supply_display
+            if existing_supply != FLOR_SUPPLY:
                 self.stdout.write(self.style.WARNING(
-                    f"  ⚠ TPLN already exists with supply={existing_supply}; "
-                    f"expected {TPLN_SUPPLY}. Ledger immutability preserved — "
+                    f"  ⚠ FLOR already exists with supply={existing_supply}; "
+                    f"expected {FLOR_SUPPLY}. Ledger immutability preserved — "
                     "update total_supply manually via a formal correction/reversal if needed."
                 ))
         else:
-            tpln = create_currency(
-                name="Toto Złoty",
-                unit_name="TPLN",
-                total_supply=TPLN_SUPPLY,
+            flor = create_currency(
+                name="Florin",
+                unit_name="FLOR",
+                total_supply=FLOR_SUPPLY,
                 decimals=2,
                 reserve_account=reserve,
-                reference="create-tpln",
-                description="Internal accounting currency of the platform. 2 decimal places.",
+                reference=FLOR_REFERENCE,
+                description=("Florin — internal accounting currency of the platform, "
+                             "named after the historic gold florin; no real currency "
+                             "stands behind it. 2 decimal places."),
                 metadata={
                     "kind": "currency",
                     "family": "toto_currency",
+                    "plural": "Florins",
                     "seeded_by": "ingress",
                 },
+                code=FLOR_CODE,
+                symbol=FLOR_SYMBOL,
             )
-            tpln.reserve_account = reserve
-            tpln.save(update_fields=["reserve_account", "updated_at"])
+            flor.reserve_account = reserve
+            flor.save(update_fields=["reserve_account", "updated_at"])
 
-        tpln.backing_document = "Issued and held by the platform's Currency Reserve account."
-        tpln.minting_authority = "Currency Reserve"
-        tpln.save(update_fields=["backing_document", "minting_authority", "updated_at"])
-        assets["TPLN"] = tpln
-        self.stdout.write(f"  +/✓ asset TPLN supply={TPLN_SUPPLY}")
+        flor.backing_document = "Issued and held by the platform's Currency Reserve account."
+        flor.minting_authority = "Currency Reserve"
+        flor.save(update_fields=["backing_document", "minting_authority", "updated_at"])
+        assets["FLOR"] = flor
+        self.stdout.write(f"  +/✓ asset FLOR supply={FLOR_SUPPLY}")
 
         assert Asset.objects.filter(unit_name=ticker).exists()
-        assert Asset.objects.filter(unit_name="TPLN").exists()
+        assert Asset.objects.filter(unit_name="FLOR").exists()
         assert gas.decimals == 9
-        assert tpln.decimals == 2
+        assert flor.decimals == 2
         # No is_currency assertion: an asset becomes a currency when a
         # platform bills in it, which is a contract, not a column.
 
         return assets
 
     # ------------------------------------------------------------------ #
-    # Always-on: display codes for the gas asset and TPLN                 #
+    # Always-on: short names and symbols for the gas asset and FLOR       #
     # ------------------------------------------------------------------ #
 
     def _seed_base_currencies(self, assets: dict) -> dict:
-        """Put the display code and symbol on the assets themselves.
+        """Put the short name and symbol on the assets themselves.
 
         These used to be rows in a separate Currency table. They are fields on
         the asset now: there is one kind of thing, and what makes it a
         platform's CURRENCY is that platform's contract, not a second row.
+
+        The short name is four capital letters and keys the asset's page
+        (/assets/assets/FLOR/). It is not the ticker: the Assarion's ticker is
+        ASR and its short name ASAR. A gas ticker this command does not know
+        keeps the short name Asset.save derived for it.
         """
         gas = assets["GAS"]
+        gas_code, gas_symbol = GAS_DISPLAY.get(gas.unit_name, (gas.code, gas.unit_name))
         specs = [
-            dict(unit_name=gas.unit_name, code=gas.unit_name, symbol=gas.unit_name),
-            dict(unit_name="TPLN", code="TPLN", symbol="tzł"),
+            dict(unit_name=gas.unit_name, code=gas_code, symbol=gas_symbol),
+            dict(unit_name="FLOR", code=FLOR_CODE, symbol=FLOR_SYMBOL),
         ]
         seeded = {}
         for spec in specs:
@@ -257,10 +292,10 @@ class Command(IngressCommand):
             asset.symbol = spec["symbol"]
             asset.save(update_fields=["code", "symbol", "updated_at"])
             seeded[spec["code"]] = asset
-            self.stdout.write(f"  +/✓ display code {spec['code']}")
+            self.stdout.write(f"  +/✓ short name {spec['code']} ({spec['unit_name']})")
 
-        assert assets["GAS"].code == gas.unit_name
-        assert assets["TPLN"].code == "TPLN"
+        assert assets["GAS"].code == gas_code
+        assert assets["FLOR"].code == FLOR_CODE
         return seeded
 
     # ------------------------------------------------------------------ #
@@ -270,9 +305,13 @@ class Command(IngressCommand):
     def _seed_demo_platform_assets(self) -> dict:
         """Playful per-resource tokens, for demos only.
 
-        A real build has exactly two assets — ASR to spend and TPLN to account
+        A real build has exactly two assets — ASR to spend and FLOR to account
         in — so these stay out of it. They exist to show that a price row can
         name any asset, not just the gas.
+
+        Each unit is a thing on a kitchen table, never an amount of money: no
+        asset of this platform is priced in, pegged to or converted through a
+        real currency (economy.md, "No real currency, anywhere").
         """
         from django.contrib.auth import get_user_model
         User = get_user_model()
@@ -303,22 +342,17 @@ class Command(IngressCommand):
                 reserve_account=platform_reserve,
                 reference="create-banana",
                 description=(
-                    "AI inference token. 1 BANANA = 1 banana (the fruit, ~120 g, ~0.42 PLN). "
-                    "Priced at OpenAI GPT-4o rates converted to PLN (3.95 USD/PLN) with 270% margin."
+                    "AI inference token. 1 BANANA = 1 banana (the fruit, ~120 g). "
+                    "A bunch of six ≈ 6 BANANA; a long conversation eats a few."
                 ),
                 metadata={
                     "kind": "platform_token",
                     "unit": "banana",
-                    "unit_label": "1 token = 1 banana (~120 g, ~0.42 PLN)",
-                    "pricing_reference": (
-                        "OpenAI GPT-4o × 2.70 margin, converted via 3.95 PLN/USD, "
-                        "then ÷ 0.42 PLN/banana"
-                    ),
-                    "banana_price_pln": "0.42",
-                    "usd_pln_rate": "3.95",
-                    "margin": "2.70",
+                    "unit_label": "1 token = 1 banana (~120 g)",
+                    "bunch": "6 BANANA",
                     "seeded_by": "ingress",
                 },
+                code="BNNA",
             ),
             dict(
                 name="Makaroni Token",
@@ -338,6 +372,7 @@ class Command(IngressCommand):
                     "bag_500g": "1000 MAKARONI",
                     "seeded_by": "ingress",
                 },
+                code="MACA",
             ),
         ]
         for spec in specs:
@@ -558,23 +593,23 @@ class Command(IngressCommand):
     # ------------------------------------------------------------------ #
 
     def _seed_user_wallets(self, accounts: dict, assets: dict):
-        tpln = assets.get("TPLN")
+        flor = assets.get("FLOR")
 
         distributions = []
-        if tpln and tpln.reserve_account:
+        if flor and flor.reserve_account:
             distributions += [
-                dict(asset=tpln, sender_account=tpln.reserve_account,
+                dict(asset=flor, sender_account=flor.reserve_account,
                      receiver_account=accounts["alice"],
-                     amount=Decimal("5000.00"), reference="dist-tpln-alice-001",
-                     description="TPLN allocation to Alice"),
-                dict(asset=tpln, sender_account=tpln.reserve_account,
+                     amount=Decimal("5000.00"), reference="dist-flor-alice-001",
+                     description="Florin allocation to Alice"),
+                dict(asset=flor, sender_account=flor.reserve_account,
                      receiver_account=accounts["bob"],
-                     amount=Decimal("3000.00"), reference="dist-tpln-bob-001",
-                     description="TPLN allocation to Bob"),
-                dict(asset=tpln, sender_account=tpln.reserve_account,
+                     amount=Decimal("3000.00"), reference="dist-flor-bob-001",
+                     description="Florin allocation to Bob"),
+                dict(asset=flor, sender_account=flor.reserve_account,
                      receiver_account=accounts["carol"],
-                     amount=Decimal("2000.00"), reference="dist-tpln-carol-001",
-                     description="TPLN allocation to Carol"),
+                     amount=Decimal("2000.00"), reference="dist-flor-carol-001",
+                     description="Florin allocation to Carol"),
             ]
 
         for spec in distributions:

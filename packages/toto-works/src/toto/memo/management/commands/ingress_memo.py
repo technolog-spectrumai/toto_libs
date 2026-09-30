@@ -93,9 +93,9 @@ def build(fmt) -> list:
         ]),
         _slide(fmt, "Where the quarter went", "grid", [
             _heading(fmt, "Revenue", slot="a"),
-            _text(fmt, "128,400 PLN, ahead of plan.", slot="b"),
+            _text(fmt, "ƒ128,400, ahead of plan.", slot="b"),
             _heading(fmt, "Costs", slot="c"),
-            _text(fmt, "91,200 PLN, in line.", slot="d"),
+            _text(fmt, "ƒ91,200, in line.", slot="d"),
         ]),
         _slide(fmt, "Next quarter", "title-content", [
             _list(fmt, ["Close the ledger export",
