@@ -7,7 +7,8 @@ all. Every door that checks a password calls
 ``django.contrib.auth.authenticate(request, ...)``: the sign-in form
 (``core:login``, and ``sso:login`` in every auth mode, which share
 ``auth_views.password_login_view``), the desktop's ``/api/login/`` and Django's
-admin login. So the lockout is enforced once, there:
+admin login (sso_master's signup API ends in it too, and asks ``refusal()``
+before it makes an account). So the lockout is enforced once, there:
 
 * ``SigninLockoutBackend``, first in ``AUTHENTICATION_BACKENDS``
   (``toto.auth_config.authentication_backends`` puts it ahead of
@@ -38,7 +39,9 @@ pause names an address. A stranger who fails a member's password from
 elsewhere pauses (member, stranger's address) and, past fifty, the
 stranger's address; the member signing in from their own is not asked to
 wait. The cost: everybody behind one address — an office's NAT, a Tor exit —
-shares its count.
+shares its count. On an onion service every visitor arrives from the tor
+daemon's address, so there the address rule is one count for everybody: such
+a host sets ``LOGIN_ADDRESS_LOCK_AFTER = 0`` and keeps the per-name rules.
 
 **Nothing about the account.** Counting is by the name as typed, whether or
 not an account has it, and is decided before any backend looks the name up;
