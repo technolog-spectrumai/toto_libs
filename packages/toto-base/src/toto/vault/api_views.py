@@ -107,13 +107,21 @@ def _resolve_owned_directory(user, directory_id, bucket):
         return None
 
 
+def _readable(user, queryset):
+    """Less the files in buckets kept to clearances ``user`` holds none of
+    (2026-09-30) — their owner included: hidden is missing, here too."""
+    from .access import gate_by_bucket
+
+    return gate_by_bucket(user, queryset)
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class FileListApiView(CorsApiView):
     def get(self, request):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
         files = (
-            VaultFile.objects.filter(owner=request.user)
+            _readable(request.user, VaultFile.objects.filter(owner=request.user))
             .select_related("bucket")
             .order_by("-uploaded_at")[:200]
         )
@@ -240,7 +248,8 @@ class FileDetailApiView(CorsApiView):
         # .first() (not .get()) so a legacy duplicate key never raises
         # MultipleObjectsReturned → 500; new uploads are deduped per owner.
         return (
-            VaultFile.objects.select_related("bucket").filter(owner=user, key=key).first()
+            _readable(user, VaultFile.objects.select_related("bucket").filter(owner=user, key=key))
+            .first()
         )
 
     def get(self, request, key):
@@ -304,7 +313,8 @@ class FileEncryptApiView(CorsApiView):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
         try:
-            vf = VaultFile.objects.select_related("bucket").get(key=key, owner=request.user)
+            vf = _readable(request.user, VaultFile.objects.select_related("bucket")).get(
+                key=key, owner=request.user)
         except VaultFile.DoesNotExist:
             return JsonResponse({"error": "File not found."}, status=404)
         try:
@@ -331,7 +341,8 @@ class FileDecryptApiView(CorsApiView):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
         try:
-            vf = VaultFile.objects.select_related("bucket").get(key=key, owner=request.user)
+            vf = _readable(request.user, VaultFile.objects.select_related("bucket")).get(
+                key=key, owner=request.user)
         except VaultFile.DoesNotExist:
             return JsonResponse({"error": "File not found."}, status=404)
         try:
@@ -362,7 +373,7 @@ class VaultMetricsApiView(CorsApiView):
         from toto.vault.models import Bucket
 
         user = request.user
-        qs = VaultFile.objects.filter(owner=user)
+        qs = _readable(user, VaultFile.objects.filter(owner=user))
 
         total_files = qs.count()
         public_files = qs.filter(is_public=True).count()
@@ -426,7 +437,7 @@ class FileDownloadApiView(CorsApiView):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
         try:
-            vf = VaultFile.objects.get(key=key, owner=request.user)
+            vf = _readable(request.user, VaultFile.objects.all()).get(key=key, owner=request.user)
         except VaultFile.DoesNotExist:
             return JsonResponse({"error": "File not found."}, status=404)
         from .views import _egress_refusal, _record_egress
@@ -582,7 +593,8 @@ class FileContentApiView(CorsApiView):
         # .first() (not .get()) so a legacy duplicate key never raises
         # MultipleObjectsReturned → 500; new uploads are deduped per owner.
         return (
-            VaultFile.objects.select_related("bucket").filter(owner=user, key=key).first()
+            _readable(user, VaultFile.objects.select_related("bucket").filter(owner=user, key=key))
+            .first()
         )
 
     def get(self, request, key):

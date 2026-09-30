@@ -103,29 +103,36 @@ pks. Panel: `/vault/transfers/`.
 | `BUILD_WORKFLOWS` off | refresh + transfer dispatch refuse by name |
 | `BUILD_ANTIVIRUS` off | scans degrade to clean-but-unscanned (façade) |
 
-## Clearances — a file kept to some people (2026-09-29)
+## Clearances — a bucket kept to some people (2026-09-30)
 
-A file may be kept to **clearances** (`VaultFileClearance`; a clearance is a
-`socialhub.Clearance`, named after what it opens, and its holders are whoever
-`Person.clearances` says). The rule is `toto.socialhub.clearance_access`, read
-by `access.may_read` and `filetree.accessible_files` — the same two doors
-every reader already used, so sheets, decks, the download URL, the versions
-and lock endpoints, the browser, attachments and every picker follow it with
-no rule of their own:
+Clearances go on groups, never on items: in the vault the group is the
+**bucket** (`BucketClearance`; a clearance is a `socialhub.Clearance`, named
+after what it opens, and its holders are whoever `Person.clearances` says). A
+file has one bucket; a file in no bucket is never kept. The rule is
+`toto.socialhub.clearance_access` (`group_gate` / `group_hidden`, with the
+file's bucket as its groups), read by `access.may_read`,
+`access.gate_by_bucket` / `access.bucket_hidden` and
+`filetree.accessible_files` — the doors every reader already used, so sheets,
+decks, the download URL, the versions and lock endpoints, the browser, the JSON
+API, the owner's own doors (rename, move, delete, encrypt, copy, zip),
+attachments and every picker follow it with no rule of their own:
 
-* a file with **no clearance** is what it always was — owner, public, bucket
-  owner, a folder's ACL;
-* a file **with clearances** is read by their members, its owner and superusers,
-  and by nobody else: not through the public flag, not through a folder's
-  ACL. A clearance both keeps and grants;
-* a hidden file is a missing file (404), and its history and lock with it.
+* a file in a bucket with **no clearance** is what it always was — owner,
+  public, bucket owner, a folder's ACL;
+* a file in a bucket **with clearances** is read by superusers and by whoever
+  holds one of the bucket's clearances, and by nobody else: not its owner, not
+  through the public flag, not the bucket's owner, not a folder's ACL. A
+  clearance both keeps and grants;
+* a hidden file is a missing file (404, absent from lists and counts — the
+  bucket's own page included), and its history and lock with it.
 
-Changing them: `clearances.file_access` — `files/<pk>/access/`, for the owner
-or a superuser, reached from the app that shows the file (a sheet's or a
-deck's toolbar: "Who can read") with `?next=` back. An owner is offered the
-clearances they are in. Every change is on the audit chain
-(`VAULT.FILE.CLEARANCES_CHANGED`: before, after, `open`). A clearance that still
-keeps a file cannot be deleted (PROTECT). Tests: `tests_clearances`.
+Changing them: only **superusers**, in the "Clearances" section of the
+bucket's page (`metrics/<slug>/`), which posts to `clearances.bucket_clearances`
+(`buckets/<slug>/clearances/`); whoever may see the bucket's page sees its
+clearances, read-only. Every change is on the audit chain
+(`VAULT.BUCKET.CLEARANCES_CHANGED`: before, after, `open`, the bucket). A
+clearance that still keeps a bucket cannot be deleted (PROTECT). There is no
+per-file door any more. Tests: `tests_clearances`, `tests_more_clearances`.
 
 ## Tests
 

@@ -22,6 +22,41 @@ from __future__ import annotations
 from django.shortcuts import render
 
 
+def bucket_groups(vault_file):
+    """The file's groups for ``socialhub.clearance_access``: its bucket (a
+    plain queryset of at most one row; none for a file in no bucket)."""
+    from toto.vault.models import Bucket
+
+    return Bucket.objects.filter(pk=vault_file.bucket_id)
+
+
+def gate_by_bucket(user, queryset, *, open=None):
+    """The files in ``queryset`` that ``user`` may read under the bucket
+    clearances (2026-09-30): a file in a kept bucket goes to superusers and
+    the holders of one of the bucket's clearances only; a file in no kept
+    bucket passes ``open`` (the caller's own rule; ``None`` = passes).
+
+    The queryset half of :func:`bucket_hidden` — the same subqueries
+    (``clearance_access.group_gate``), so a list and its door cannot disagree.
+    """
+    from django.db.models import OuterRef
+
+    from toto.socialhub.clearance_access import group_gate
+    from toto.vault.models import Bucket
+
+    return group_gate(user, queryset, groups=Bucket.objects.filter(pk=OuterRef("bucket_id")),
+                      open=open)
+
+
+def bucket_hidden(user, vault_file) -> bool:
+    """Whether the file's kept bucket hides it from ``user`` (the per-object
+    twin of :func:`gate_by_bucket`). False for a file in no kept bucket: the
+    vault's own rule decides."""
+    from toto.socialhub.clearance_access import group_hidden
+
+    return group_hidden(user, bucket_groups(vault_file))
+
+
 def may_read(user, vault_file) -> bool:
     """May this user read these bytes?
 
@@ -29,27 +64,29 @@ def may_read(user, vault_file) -> bool:
     clauses ``accessible_files`` uses as a queryset — this is the per-object
     twin, for the paths that already hold one row.
 
-    **Clearances come first (2026-09-29).** A file kept to clearances
-    (``VaultFileClearance`` rows) is read by their members, its owner and
-    superusers, and by nobody else — not through the public flag, not through
-    a folder's ACL. ``socialhub.clearance_access`` is the rule.
+    **The bucket's clearances come first (2026-09-30).** A file in a bucket
+    kept to clearances (``BucketClearance`` rows) is read by superusers and by
+    holders of one of the bucket's clearances, and by nobody else — not its
+    owner, not through the public flag, not the bucket's owner, not a folder's
+    ACL. ``socialhub.clearance_access`` is the rule.
 
     **Anonymous gets the public arm only.** Nothing else: an unauthenticated
     request has no ownership and no ACL membership to check.
     """
     if vault_file is None:
         return False
-    if user is None or not getattr(user, "is_authenticated", False):
-        return bool(vault_file.is_public) and not vault_file.clearance_rows.exists()
-    if user.is_superuser:
+    if getattr(user, "is_superuser", False):
         return True
+    from toto.socialhub.clearance_access import item_groups_kept
+
+    groups = bucket_groups(vault_file)
+    if item_groups_kept(groups):
+        # Kept by its bucket: the bucket's clearances alone decide.
+        return not bucket_hidden(user, vault_file)
+    if user is None or not getattr(user, "is_authenticated", False):
+        return bool(vault_file.is_public)
     if vault_file.owner_id == user.id:
         return True
-    from toto.socialhub.clearance_access import hidden, kept
-
-    if kept(vault_file, rows="clearance_rows"):
-        # Kept to clearances: theirs (and the owner's, above) alone.
-        return not hidden(user, vault_file, rows="clearance_rows")
     if vault_file.is_public:
         return True
     if vault_file.bucket_id and vault_file.bucket.owner_id == user.id:

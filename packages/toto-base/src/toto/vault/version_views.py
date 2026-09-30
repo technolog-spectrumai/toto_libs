@@ -39,14 +39,15 @@ def _file_for(request, pk: int) -> VaultFile:
     the existence of other people's documents.
     """
     vault_file = get_object_or_404(VaultFile, pk=pk)
-    if vault_file.owner_id == request.user.pk or request.user.is_superuser:
+    if request.user.is_superuser:
         return vault_file
-    # A file kept to clearances (2026-09-29) is theirs alone: no folder ACL,
-    # no public flag, no lending app opens its history or its lock.
-    from toto.socialhub.clearance_access import hidden
-
-    if hidden(request.user, vault_file, rows="clearance_rows"):
+    # A file in a bucket kept to clearances (2026-09-30) is the holders' alone:
+    # not its owner, no folder ACL, no public flag, no lending app opens its
+    # history or its lock to anyone who holds none of the bucket's clearances.
+    if access.bucket_hidden(request.user, vault_file):
         raise Http404("No such file.")
+    if vault_file.owner_id == request.user.pk:
+        return vault_file
     if request.user.is_staff:
         return vault_file
     directory = vault_file.directory

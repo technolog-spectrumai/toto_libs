@@ -250,13 +250,11 @@ class PublicFileListView(TemplateView):
             visibility_q = Q(is_public=True) | Q(owner=user)
         else:
             visibility_q = Q(is_public=True)
-        # A file kept to clearances (2026-09-29) is listed to their members and
-        # its owner alone — the public flag does not put it on this page.
-        from toto.socialhub.clearance_access import gate
-
-        file_qs = gate(user, VaultFile.objects.all(), rows="clearance_rows", open=visibility_q,
-                       owner=Q(owner=user) if user.is_authenticated else None
-                       ).select_related("owner", "bucket", "directory").order_by("title")
+        # A file in a bucket kept to clearances (2026-09-30) is listed to the
+        # holders of one of them alone — not its owner, and the public flag
+        # does not put it on this page.
+        file_qs = access.gate_by_bucket(user, VaultFile.objects.all(), open=visibility_q
+                                        ).select_related("owner", "bucket", "directory").order_by("title")
         if bucket_slug:
             file_qs = file_qs.filter(bucket__slug=bucket_slug)
 
@@ -585,9 +583,9 @@ class FileGatewayPageView(LoginRequiredMixin, DetailView):
         context["target_dir_path"] = get_full_path(target_dir)
         context["target_dir_id"] = target_dir.pk
 
-        recent = VaultFile.objects.filter(
+        recent = access.gate_by_bucket(user, VaultFile.objects.filter(
             directory=target_dir, owner=user
-        ).select_related("directory").order_by("-uploaded_at")[:10]
+        )).select_related("directory").order_by("-uploaded_at")[:10]
 
         context["recent_uploads_list"] = [
             {
@@ -905,9 +903,15 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
         if not (bucket.owner_id == self.request.user.pk
                 or self.request.user.is_superuser):
             raise Http404("No such bucket.")
-        copy_files_qs = VaultFile.objects.filter(
-            owner=self.request.user, bucket=bucket
-        ).order_by("title")
+        # A bucket kept to clearances (2026-09-30) keeps its files from whoever
+        # holds none of them — its owner included: to them its files are
+        # missing, so every list and count below comes out empty.
+        from toto.socialhub.clearance_access import group_hidden
+
+        files_hidden = group_hidden(self.request.user, Bucket.objects.filter(pk=bucket.pk))
+        bucket_files = (VaultFile.objects.none() if files_hidden
+                        else VaultFile.objects.filter(bucket=bucket))
+        copy_files_qs = bucket_files.filter(owner=self.request.user).order_by("title")
         context["copy_files_data"] = [
             {"id": str(f.pk), "title": f.title, "file_type": f.file_type, "key": f.key or ""}
             for f in copy_files_qs
@@ -916,13 +920,13 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
             Bucket.objects.filter(owner=self.request.user).exclude(pk=bucket.pk).order_by("name")
         )
 
-        total_files = VaultFile.objects.filter(bucket=bucket).count()
+        total_files = bucket_files.count()
         total_dirs = VaultDirectory.objects.filter(bucket=bucket).count()
-        public_files = VaultFile.objects.filter(bucket=bucket, is_public=True).count()
-        encrypted_files = VaultFile.objects.filter(bucket=bucket, is_encrypted=True).count()
-        root_files = VaultFile.objects.filter(bucket=bucket, directory__isnull=True).count()
+        public_files = bucket_files.filter(is_public=True).count()
+        encrypted_files = bucket_files.filter(is_encrypted=True).count()
+        root_files = bucket_files.filter(directory__isnull=True).count()
         week_ago = timezone.now() - timedelta(days=7)
-        recent_count = VaultFile.objects.filter(bucket=bucket, uploaded_at__gte=week_ago).count()
+        recent_count = bucket_files.filter(uploaded_at__gte=week_ago).count()
 
         gateways = list(bucket.gateways.select_related("directory").all())
 
@@ -946,19 +950,19 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
             "antivirus_report": (
                 None if bucket.storage_backend == StorageBackend.REMOTE_TOTO
                 else scanning.health_report(
-                    VaultFile.objects.filter(bucket=bucket))),
+                    bucket_files)),
             "remote_info": self._remote_info(bucket),
         })
 
         context["files_by_type"] = list(
-            VaultFile.objects.filter(bucket=bucket)
+            bucket_files
             .values("file_type")
             .annotate(count=Count("id"))
             .order_by("-count")
         )
 
         raw_by_dir = list(
-            VaultFile.objects.filter(bucket=bucket)
+            bucket_files
             .values("directory__name")
             .annotate(count=Count("id"))
             .order_by("-count")[:12]
@@ -971,9 +975,7 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
         thirty_days_ago = timezone.now() - timedelta(days=29)
         daily_qs = {
             entry["day"]: entry["count"]
-            for entry in VaultFile.objects.filter(
-                bucket=bucket, uploaded_at__gte=thirty_days_ago
-            )
+            for entry in bucket_files.filter(uploaded_at__gte=thirty_days_ago)
             .annotate(day=TruncDate("uploaded_at"))
             .values("day")
             .annotate(count=Count("id"))
@@ -1011,9 +1013,9 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
                 {
                     "pk": d.pk,
                     "full_path": get_full_path(d),
-                    "file_count": d.file_count,
-                    "public_count": d.public_count,
-                    "encrypted_count": d.encrypted_count,
+                    "file_count": 0 if files_hidden else d.file_count,
+                    "public_count": 0 if files_hidden else d.public_count,
+                    "encrypted_count": 0 if files_hidden else d.encrypted_count,
                     "locked": d.allowed_users.exists(),
                 }
                 for d in all_bucket_dirs
@@ -1023,7 +1025,7 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
 
         quota_mb = bucket.storage_quota_mb
         raw_user_stats = list(
-            VaultFile.objects.filter(bucket=bucket)
+            bucket_files
             .values("owner__id", "owner__username")
             .annotate(file_count=Count("id"), total_bytes=Sum("file_size_bytes"))
             .order_by("-total_bytes")
@@ -1047,11 +1049,15 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
         context["bucket_quota_mb"] = quota_mb
         context["bucket_total_mb"] = bucket_total_mb
 
-        context["recent_files"] = VaultFile.objects.filter(bucket=bucket).select_related(
+        context["recent_files"] = bucket_files.select_related(
             "owner", "directory"
         ).order_by("-uploaded_at")[:8]
 
         context["service_stats"] = self._service_stats(bucket)
+
+        from . import clearances
+
+        context.update(clearances.page_context(self.request.user, bucket))
 
         return PageProcessor().decorate(context, self.request)
 
@@ -1289,7 +1295,8 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
             .order_by("name")
         )
         files = list(
-            VaultFile.objects.filter(bucket=source_bucket, owner=request.user).order_by("title")
+            access.gate_by_bucket(request.user, VaultFile.objects.filter(
+                bucket=source_bucket, owner=request.user)).order_by("title")
         )
         by_parent = {}
         for d in dirs:
@@ -1506,7 +1513,8 @@ class EncryptFileView(LoginRequiredMixin, View):
         owner_password = request.POST.get("owner_password", "").strip() or None
         if not file_pk or not password:
             return JsonResponse({"ok": False, "error": "Missing required fields."}, status=400)
-        vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+        vault_file = get_object_or_404(access.gate_by_bucket(
+            request.user, VaultFile.objects.filter(owner=request.user)), pk=file_pk)
         if not access.is_local_content(vault_file):
             return access.remote_lock_response(request, vault_file)
         if vault_file.is_encrypted:
@@ -1601,7 +1609,8 @@ class DecryptFileView(LoginRequiredMixin, View):
         password = request.POST.get("password", "").strip()
         if not file_pk or not password:
             return JsonResponse({"ok": False, "error": "Missing required fields."}, status=400)
-        vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+        vault_file = get_object_or_404(access.gate_by_bucket(
+            request.user, VaultFile.objects.filter(owner=request.user)), pk=file_pk)
         if not access.is_local_content(vault_file):
             return access.remote_lock_response(request, vault_file)
         if not vault_file.is_encrypted:
@@ -1622,9 +1631,9 @@ class EncryptedDownloadView(LoginRequiredMixin, View):
         if not file_pk or not password:
             return JsonResponse({"ok": False, "error": "Missing required fields."}, status=400)
         try:
-            vault_file = VaultFile.objects.select_related("owner", "bucket").get(
-                pk=file_pk, owner=request.user
-            )
+            vault_file = access.gate_by_bucket(
+                request.user, VaultFile.objects.select_related("owner", "bucket")
+            ).get(pk=file_pk, owner=request.user)
         except VaultFile.DoesNotExist:
             return JsonResponse({"ok": False, "error": "File not found."}, status=404)
         if not vault_file.is_encrypted:
@@ -1652,7 +1661,8 @@ class MoveFileView(LoginRequiredMixin, View):
         dest_dir_pk = request.POST.get("destination_directory", "").strip()
         if not file_pk:
             return JsonResponse({"ok": False, "error": "Missing file_pk."}, status=400)
-        vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+        vault_file = get_object_or_404(access.gate_by_bucket(
+            request.user, VaultFile.objects.filter(owner=request.user)), pk=file_pk)
         if access.is_mirror_row(vault_file):
             return access.mirror_lock_response(vault_file)
         if dest_dir_pk:
@@ -1681,7 +1691,8 @@ class RenameFileView(LoginRequiredMixin, View):
                 {"ok": False,
                  "error": f"This host does not accept {file_type} files."},
                 status=400)
-        vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+        vault_file = get_object_or_404(access.gate_by_bucket(
+            request.user, VaultFile.objects.filter(owner=request.user)), pk=file_pk)
         if access.is_mirror_row(vault_file):
             return access.mirror_lock_response(vault_file)
         vault_file.title = new_title
@@ -1698,7 +1709,8 @@ class DeleteFileView(LoginRequiredMixin, View):
         file_pk = request.POST.get("file_pk", "").strip()
         if not file_pk:
             return JsonResponse({"ok": False, "error": "Missing file_pk."}, status=400)
-        vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+        vault_file = get_object_or_404(access.gate_by_bucket(
+            request.user, VaultFile.objects.filter(owner=request.user)), pk=file_pk)
         if access.is_mirror_row(vault_file):
             # Deleting the stub would neither delete the remote file nor
             # stick — the next refresh resurrects it.
@@ -1735,7 +1747,8 @@ class BucketCopyAjaxView(LoginRequiredMixin, View):
             return JsonResponse({"ok": False, "error": "Source and destination must differ."}, status=400)
 
         selected_files = list(
-            VaultFile.objects.filter(pk__in=file_ids, bucket=source_bucket, owner=request.user)
+            access.gate_by_bucket(request.user, VaultFile.objects.filter(
+                pk__in=file_ids, bucket=source_bucket, owner=request.user))
         )
         if len(selected_files) != len(file_ids):
             return JsonResponse({"ok": False, "error": "Some selected files are invalid."}, status=400)
@@ -1979,8 +1992,8 @@ class TransferRetryView(LoginRequiredMixin, View):
                  "error": "A transfer between these buckets is already "
                           "running — wait for it to finish."}, status=409)
 
-        files = list(VaultFile.objects.filter(
-            pk__in=retry_ids, bucket=run.source_bucket))
+        files = list(access.gate_by_bucket(request.user, VaultFile.objects.filter(
+            pk__in=retry_ids, bucket=run.source_bucket)))
         if not files:
             return JsonResponse(
                 {"ok": False,
@@ -2145,7 +2158,8 @@ class CreateZipView(LoginRequiredMixin, View):
         except (TypeError, ValueError):
             return JsonResponse({"error": "Invalid file selection."}, status=400)
         valid_ids = list(
-            VaultFile.objects.filter(pk__in=ids, bucket=source.bucket, is_encrypted=False)
+            access.gate_by_bucket(request.user, VaultFile.objects.filter(
+                pk__in=ids, bucket=source.bucket, is_encrypted=False))
             # Non-local content is filtered the same way encrypted is: the
             # zip task opens local handles, and a remote file has none.
             .filter(access.local_content_q())

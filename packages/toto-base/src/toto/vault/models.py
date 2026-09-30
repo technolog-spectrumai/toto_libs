@@ -545,29 +545,32 @@ class VaultFile(models.Model):
             return None
 
 
-class VaultFileClearance(models.Model):
-    """One clearance reading one file (2026-09-29).
+class BucketClearance(models.Model):
+    """One clearance keeping one bucket (2026-09-30).
 
-    A file with rows here is kept to their members, its owner and superusers
-    — the public flag and a folder's ACL no longer open it (``access.may_read``
-    and ``filetree.accessible_files``, through ``socialhub.clearance_access``).
-    A file with none is what it always was. The clearance is PROTECTED: a clearance
-    that still keeps a file cannot be deleted, which would open the file.
-    Sheets, decks and every other file type share this one table.
+    Clearances go on groups, never on items: a vault file is kept by its
+    BUCKET. A file in a bucket with rows here is read by superusers and by
+    holders of one of the bucket's clearances — nobody else: not its owner,
+    not the public flag, not the bucket's owner, not a folder's ACL
+    (``access.may_read`` / ``access.gate_by_bucket``, through
+    ``socialhub.clearance_access``). A file in a bucket with none — or in no
+    bucket — is what it always was. The clearance is PROTECTED: a clearance
+    still keeping a bucket cannot be deleted, which would open its files.
+    Only superusers set a bucket's clearances (``clearances.bucket_clearances``).
     """
 
-    file = models.ForeignKey(VaultFile, on_delete=models.CASCADE, related_name="clearance_rows")
+    bucket = models.ForeignKey(Bucket, on_delete=models.CASCADE, related_name="clearance_rows")
     clearance = models.ForeignKey("socialhub.Clearance", on_delete=models.PROTECT,
-                               related_name="vault_file_rows")
+                                  related_name="bucket_rows")
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["file", "clearance"], name="vault_file_clearance_once"),
+            models.UniqueConstraint(fields=["bucket", "clearance"],
+                                    name="vault_bucket_clearance_once"),
         ]
 
     def __str__(self):
-        return f"{self.file.title} — {self.clearance.name}"
-
+        return f"{self.bucket.name} — {self.clearance.name}"
 
 
 class FileGateway(models.Model):

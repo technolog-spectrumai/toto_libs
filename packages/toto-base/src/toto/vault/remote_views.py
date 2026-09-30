@@ -190,16 +190,16 @@ class ArchiveView(VaultPageMixin, LoginRequiredMixin, TemplateView):
                 "directories": VaultDirectory.objects.filter(
                     bucket=selected).order_by("name"),
                 "archives": (
-                    VaultFile.objects.filter(
-                        bucket=selected, file_type="zip")
+                    access.gate_by_bucket(user, VaultFile.objects.filter(
+                        bucket=selected, file_type="zip"))
                     .select_related("directory")
                     .order_by("-uploaded_at")[:25]
                 ),
             })
         else:
             context["archives"] = (
-                VaultFile.objects.filter(
-                    bucket__in=buckets, file_type="zip")
+                access.gate_by_bucket(user, VaultFile.objects.filter(
+                    bucket__in=buckets, file_type="zip"))
                 .select_related("bucket", "directory")
                 .order_by("-uploaded_at")[:25]
             )

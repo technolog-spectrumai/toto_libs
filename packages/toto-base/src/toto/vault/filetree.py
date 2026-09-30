@@ -38,12 +38,13 @@ def accessible_files(user, *, file_types=None, bucket=None, exclude_pk=None,
              | Q(directory__allowed_users=user))
     if include_public:
         claim = claim | Q(is_public=True)
-    # The clearances (2026-09-29): a file kept to clearances is read by their
-    # members and its owner alone, whatever the claim above says of it; a
-    # file kept to none is read by the claim.
-    from toto.socialhub.clearance_access import gate
+    # The bucket's clearances (2026-09-30): a file in a kept bucket is read by
+    # the holders of one of the bucket's clearances alone, whatever the claim
+    # above says of it — its owner included; a file in no kept bucket is read
+    # by the claim.
+    from toto.vault.access import gate_by_bucket
 
-    return gate(user, qs, rows="clearance_rows", open=claim, owner=Q(owner=user))
+    return gate_by_bucket(user, qs, open=claim).distinct()
 
 
 def _row(f) -> dict:

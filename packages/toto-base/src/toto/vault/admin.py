@@ -14,7 +14,7 @@ from django.utils.translation import gettext_lazy as _
 from toto.quota.admin import QuotaPolicyAdminBase, UsageEventAdminBase
 
 from .models import (
-    VaultFileClearance, VaultFile, Bucket, FileGateway, VaultDirectory, BucketCopyLog, StorageProvider,
+    VaultFile, Bucket, FileGateway, VaultDirectory, BucketCopyLog, StorageProvider,
     VaultQuotaPolicy, VaultUsageEvent,
     external_buckets_allowed,
 )
@@ -165,17 +165,8 @@ class BucketAdmin(admin.ModelAdmin):
         return tuple(fs for fs in fieldsets if fs[0] != 'Storage backend')
 
 
-class VaultFileClearanceInline(admin.TabularInline):
-    """The clearances a file is kept to (2026-09-29); none: the vault's rule."""
-
-    model = VaultFileClearance
-    extra = 0
-    autocomplete_fields = ("clearance",)
-
-
 @admin.register(VaultFile)
 class VaultFileAdmin(admin.ModelAdmin):
-    inlines = (VaultFileClearanceInline,)
     list_display = ('title', 'owner', 'file_type', 'is_encrypted', 'is_public',
                     'uploaded_at', 'bucket', 'directory', 'key', 'public_url_display')
     list_filter = ('file_type', 'is_encrypted', 'is_public', 'uploaded_at', 'bucket', 'directory')

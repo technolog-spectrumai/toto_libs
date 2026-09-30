@@ -61,7 +61,6 @@ urlpatterns = [
     # The wand's listing half. In the vault because the registry is, and
     # because a host without toto-media-ops still has files to act on.
     path("files/<int:file_pk>/services/", views.file_services, name="file_services"),
-    path("files/<int:pk>/access/", clearances.file_access, name="file_access"),
     path("gateways/dir/<int:dir_pk>/", FileGatewayPageView.as_view(), name="gateway_page"),
     path("gateways/dir/<int:dir_pk>/upload/", FileGatewayUploadView.as_view(), name="gateway_upload"),
     path("metrics/", VaultMetricsView.as_view(), name="metrics"),
@@ -87,6 +86,8 @@ urlpatterns = [
     path("file/move/", MoveFileView.as_view(), name="move_file"),
     path("file/rename/", RenameFileView.as_view(), name="rename_file"),
     path("file/delete/", DeleteFileView.as_view(), name="delete_file"),
+    path("buckets/<slug:bucket_slug>/clearances/", clearances.bucket_clearances,
+         name="bucket_clearances"),
     path("buckets/<slug:bucket_slug>/connection-url/", BucketConnectionUrlView.as_view(), name="bucket_connection_url"),
     path("buckets/<slug:bucket_slug>/refresh/", RefreshRemoteBucketView.as_view(), name="bucket_refresh"),
     path("refresh-runs/<int:pk>/", BucketRefreshStatusView.as_view(), name="bucket_refresh_status"),

@@ -97,6 +97,41 @@
       {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-clock-rotate-left" label="Last 7 Days" value=recent_count color="accent" %}
     </div>
 
+    {% comment %}Clearances (2026-09-30): who reads this bucket's files. Everyone
+       who may see this page sees them; only a superuser changes them
+       (clearances.bucket_clearances re-checks every POST).{% endcomment %}
+    <section id="clearances" data-testid="bucket-clearances"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-xl border p-5 shadow-sm">
+      <h2 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid {% if bucket_clearances %}fa-lock{% else %}fa-lock-open{% endif %} opacity-70" aria-hidden="true"></i>{% trans "Clearances" %}
+      </h2>
+      <p class="mt-1 max-w-prose text-sm opacity-70">{% trans "A bucket with no clearance: its files are read as the vault allows — their owner, anyone they are public to, the bucket's owner, their folder's people. A bucket given clearances: its files are read by superusers and by whoever holds one of them, and by nobody else — not their owner, public or not." %}</p>
+      {% if bucket_clearances_url %}
+        <form method="post" action="{{ bucket_clearances_url }}" class="mt-4 space-y-3">
+          {% csrf_token %}
+          {% if bucket_clearance_choices %}
+            <ul class="space-y-2">
+              {% for row in bucket_clearance_choices %}
+                <li><label class="inline-flex items-center gap-2">
+                  <input type="checkbox" name="clearance" value="{{ row.clearance.pk }}" {% if row.on %}checked{% endif %} class="h-4 w-4 rounded" data-testid="bucket-clearance">
+                  {{ row.clearance.name }}</label></li>
+              {% endfor %}
+            </ul>
+            <button type="submit" data-testid="bucket-clearances-save"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="rounded-lg px-5 py-2 text-sm font-bold">{% trans "Save clearances" %}</button>
+          {% else %}
+            <p class="text-sm opacity-70">{% trans "There are no clearances yet. Make one in the communities area." %}</p>
+          {% endif %}
+        </form>
+      {% elif bucket_clearances %}
+        <p class="mt-3 text-sm" data-testid="bucket-clearance-list">{% trans "Kept to" %}: {% for c in bucket_clearances %}{{ c.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+      {% else %}
+        <p class="mt-3 text-sm opacity-70" data-testid="bucket-clearances-open">{% trans "No clearance: the vault's usual rule applies." %}</p>
+      {% endif %}
+    </section>
+
     {% comment %}Antivirus health — only when the app exists on this host. The
        report is None otherwise (the façade's contract), so placidia and
        aurelian render this page exactly as before. "Current" everywhere here:
