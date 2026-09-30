@@ -21,6 +21,8 @@ from django.utils.module_loading import import_string
 from django.utils.text import slugify
 from django.utils.translation import gettext as _
 
+from toto.core.client_ip import client_ip
+
 from .models import (
     TranscriptAccessMode,
     TranscriptArtifact,
@@ -877,8 +879,9 @@ def record_event(*, request, source: TranscriptSource, event: str, seconds_playe
             request.session.save()
             session_key = request.session.session_key or ""
     user = request.user if getattr(getattr(request, "user", None), "is_authenticated", False) else None
-    xff = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    ip = xff.split(",")[0].strip() if xff else request.META.get("REMOTE_ADDR", "")
+    # toto.core.client_ip (2026-09-30): X-Forwarded-For's first entry is the
+    # client's own word, so one visitor could count as any number of them.
+    ip = client_ip(request)
     event_obj = TranscriptEvent.objects.create(
         source=source,
         user=user,
