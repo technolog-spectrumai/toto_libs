@@ -1,0 +1,1 @@
+{% load i18n %}{% if site_name %}{% blocktranslate %}{{ site_name }}: confirm your new e-mail address{% endblocktranslate %}{% else %}{% translate "Confirm your new e-mail address" %}{% endif %}

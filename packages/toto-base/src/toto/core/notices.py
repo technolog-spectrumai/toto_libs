@@ -1,9 +1,10 @@
 """Security notices mailed to a member about their own account (2026-09-30).
 
 "Your password was changed", "a new sign-in" (``toto.core.user_sessions``),
-and later "your e-mail was changed": short mails that tell the owner of an account something happened to
-it, so that a change they did not make is noticed. Every one leaves through
-``send_notice`` and nothing else:
+"your e-mail was changed" (``toto.socialhub.email_change``): short mails that
+tell the owner of an account something happened to it, so that a change they
+did not make is noticed. Every one leaves through ``send_notice`` and nothing
+else:
 
     send_notice(user, "password_changed", {"address": "203.0.113.7"})  -> bool
 
@@ -20,6 +21,12 @@ refuses — is logged and answered ``False``; nothing is raised into the view.
 today the mail lands in the log; the moment SMTP is armed the same call
 delivers it. A notice carries no secret, no link that acts on the account and
 no content of the member's — only what happened, when, and from which address.
+
+The e-mail change is the exception, on purpose (2026-09-30): its two kinds
+go elsewhere than ``user.email``, named by ``to=``. ``email_change_confirm``
+carries the single-use link that proves the member reads the NEW address and
+goes only to that address; ``email_changed`` goes to the OLD one, which the
+account no longer names. Every other kind goes to the account's own address.
 
 A kind is a pair of templates, ``core/notices/<kind>_subject.txt`` and
 ``core/notices/<kind>.txt``, listed in ``KINDS`` so that a misspelt kind is a
@@ -43,6 +50,8 @@ log = logging.getLogger("toto.core.notices")
 KINDS = frozenset({
     "password_changed",
     "new_sign_in",
+    "email_change_confirm",
+    "email_changed",
 })
 
 #: Carried to SMTP untouched; lets a mail log tell notices from other mail.
@@ -79,17 +88,18 @@ def _language(user) -> str:
     return getattr(person, "preferred_language", "") or settings.LANGUAGE_CODE
 
 
-def send_notice(user, kind: str, context: dict | None = None) -> bool:
+def send_notice(user, kind: str, context: dict | None = None, *, to: str = "") -> bool:
     """Mail ``user`` the notice ``kind``; True when the backend took it.
 
-    Never raises. See the module docstring for why and for what a template
-    sees.
+    ``to`` sends it to another address than the account's — only the e-mail
+    change does that, see the module docstring. Never raises. See the module
+    docstring for why and for what a template sees.
     """
     try:
         if kind not in KINDS:
             log.error("notice: unknown kind %r", kind)
             return False
-        address = (getattr(user, "email", "") or "").strip()
+        address = (to or getattr(user, "email", "") or "").strip()
         if not address:
             log.info("notice: %s not sent — account %s has no e-mail address",
                      kind, getattr(user, "pk", None))

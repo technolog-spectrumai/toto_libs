@@ -1,0 +1,8 @@
+{% load i18n %}{% autoescape off %}{% blocktranslate with name=user.get_username %}Hello {{ name }},{% endblocktranslate %}
+
+{% blocktranslate with when=when|date:"Y-m-d H:i T" %}The e-mail address of your account was changed on {{ when }}, to {{ new_masked }}. This address will get no more mail from the account.{% endblocktranslate %}{% if address %}
+{% blocktranslate %}The change came from the address {{ address }}.{% endblocktranslate %}{% endif %}
+
+{% translate "If this was you, there is nothing to do." %}
+{% translate "If it was not, someone else is signed in to your account: ask an administrator to lock the account now." %}
+{% endautoescape %}

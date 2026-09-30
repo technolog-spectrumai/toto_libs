@@ -1,0 +1,1 @@
+{% load i18n %}{% if site_name %}{% blocktranslate %}{{ site_name }}: your e-mail address was changed{% endblocktranslate %}{% else %}{% translate "Your e-mail address was changed" %}{% endif %}
