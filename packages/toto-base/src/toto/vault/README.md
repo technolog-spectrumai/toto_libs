@@ -123,7 +123,11 @@ file's bucket as its groups), read by `access.may_read`,
 `filetree.accessible_files` — the doors every reader already used, so sheets,
 decks, the download URL, the versions and lock endpoints, the browser, the JSON
 API, the owner's own doors (rename, move, delete, encrypt, copy, zip),
-attachments and every picker follow it with no rule of their own:
+attachments and every picker follow it with no rule of their own. So do the
+editors' own owner-only doors (2026-09-30): the ACE editor's open, save and
+delete and its sync socket, the writer (cyprian), memo, primula and sketch ask
+`gate_by_bucket` before `owner=` — an owner without the clearance gets 404
+there too (`toto.editor.tests_clearance`, `toto.cyprian.tests.test_clearance`):
 
 * a file in a bucket with **no clearance** is what it always was — owner,
   public, bucket owner, a folder's ACL;

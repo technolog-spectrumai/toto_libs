@@ -47,6 +47,13 @@ a file the vault would otherwise refuse them — and **no Play or Edit plugin**,
 so the vault's own buttons are drawn by `toto.editor`, not by this app. The
 sentence claiming otherwise went with the table above.
 
+**The bucket's clearances come first on every door here** (2026-09-30). The
+writer, its save, the Source tab and a rendition fetch through `views._files`
+(`access.gate_by_bucket`) before the owner or a bridge is asked, so a document
+in a bucket kept to clearances its owner does not hold is 404 to its owner —
+and to a wiki team a bridge lends it to — as it is on the vault's own doors
+("no owner bypass"). Tests: `tests.test_clearance`.
+
 ## The pagination contract
 
 Real pages in a browser editor are usually approximate, because the browser and
