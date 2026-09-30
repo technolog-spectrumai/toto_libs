@@ -363,10 +363,13 @@ def workspace_destroy(request, slug):
         messages.error(request, "; ".join(exc.messages))
         return redirect(_rev(request, "workspace", slug))
 
+    from django.utils.translation import gettext
+
     messages.warning(
         request,
-        f"{result['name']} destroyed — {result['files']} file(s) and "
-        f"{result['folders']} folder(s) deleted permanently.")
+        gettext("%(name)s destroyed — %(files)d file(s) moved to the trash, "
+                "%(folders)d folder(s) deleted.")
+        % {"name": result["name"], "files": result["files"], "folders": result["folders"]})
     return redirect(_rev(request, "lobby"))
 
 
@@ -475,7 +478,8 @@ def file_rename(request, slug, pk):
 def file_delete(request, slug, pk):
     workspace = _get_workspace(request, slug, for_edit=True)
     vault_file = _workspace_file(workspace, pk)
-    services.delete_file(workspace=workspace, vault_file=vault_file)
+    services.delete_file(workspace=workspace, vault_file=vault_file, by=request.user,
+                         request=request)
     return _ok(items=filetree.flatten(workspace))
 
 

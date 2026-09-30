@@ -168,17 +168,21 @@ def create_workspace(*, owner, name: str, bucket, directory=None,
 
 @transaction.atomic
 def destroy_workspace(*, workspace, user) -> dict:
-    """Delete the workspace AND its folder, with everything inside it.
+    """Delete the workspace AND its folder; every file inside goes to the
+    vault's trash.
 
-    Irreversible, and the counterpart to `close_workspace`, which keeps the
-    files. Returns what was removed so the caller can say so.
+    The counterpart to `close_workspace`, which keeps the files. Returns what
+    was removed so the caller can say so. The folders and the workspace row
+    are gone for good; the FILES are not (2026-10-01): like every other delete
+    door they wait in the trash, restorable to the bucket's root once their
+    folder is gone, until the trash's purge — or their owner — ends them.
 
     The order matters. `VaultFile.directory` is **SET_NULL**, so deleting the
-    directory first would not delete its files — it would quietly spill every one
-    of them into the bucket root, where they would reappear in the vault browser
-    as loose files nobody meant to keep. Files go first, explicitly, one queryset
-    delete so vault's post_delete signal fires per row and removes each blob from
-    disk. Subdirectories then go with the root by CASCADE.
+    directory first would not remove its files — it would quietly spill every
+    one of them into the bucket root, where they would reappear in the vault
+    browser as loose files nobody meant to keep. Files go first, explicitly,
+    one by one through the vault's trash. Subdirectories then go with the root
+    by CASCADE.
     """
     if workspace.owner_id != user.pk:
         raise ValidationError("Only the owner can destroy a workspace.")
@@ -186,9 +190,12 @@ def destroy_workspace(*, workspace, user) -> dict:
     root = workspace.root_directory
     scope = workspace.directory_ids()
 
-    files = VaultFile.objects.filter(directory_id__in=scope)
-    file_count = files.count()
-    files.delete()
+    from toto.vault.trash import remove_file
+
+    files = list(VaultFile.objects.filter(directory_id__in=scope))
+    file_count = len(files)
+    for vault_file in files:
+        remove_file(vault_file, by=user, door="ambrosia_destroy")
 
     folder_count = max(0, len(scope) - 1)
     name = workspace.name
@@ -319,8 +326,11 @@ def rename_file(*, workspace, vault_file, name: str) -> VaultFile:
     return vault_file
 
 
-def delete_file(*, workspace, vault_file) -> None:
-    vault_file.delete()
+def delete_file(*, workspace, vault_file, by=None, request=None) -> None:
+    """To the vault's trash (2026-10-01), like every other delete door."""
+    from toto.vault.trash import remove_file
+
+    remove_file(vault_file, by=by, request=request, door="ambrosia_delete")
 
 
 # What the editor will load in one go. A pdfTeX log on a document with a

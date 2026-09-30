@@ -153,6 +153,17 @@ class DestroyWorkspaceTests(AmbrosiaTestCase):
         self.assertEqual(result["folders"], 1)    # pkg
         self.assertFalse(VaultFile.objects.filter(bucket=self.bucket).exists())
 
+    def test_destroying_moves_the_files_to_the_trash(self):
+        # The vault's trash (2026-10-01): the folders go for good, the files
+        # wait in their owner's trash with their bytes.
+        services.destroy_workspace(workspace=self.ws, user=self.owner)
+        trashed = VaultFile.all_objects.filter(bucket=self.bucket)
+        self.assertEqual(trashed.count(), 2)
+        for row in trashed:
+            self.assertIsNotNone(row.trashed_at)
+            self.assertEqual(row.trashed_by, self.owner)
+            self.assertTrue(row.file.storage.exists(row.file.name))
+
     def test_destroying_removes_the_folder_and_its_subfolders(self):
         root_pk, sub_pk = self.ws.root_directory_id, self.sub.pk
         services.destroy_workspace(workspace=self.ws, user=self.owner)

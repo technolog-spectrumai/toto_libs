@@ -186,9 +186,10 @@
         <div class="space-y-2">
           <h4 class="text-sm font-semibold text-red-500">{% trans "Destroy project" %}</h4>
           <p class="text-xs opacity-70">
-            {% blocktrans with path=workspace.path_label %}Permanently deletes
-            <strong>{{ path }}</strong> and everything inside it — every file, every
-            sub-folder. This cannot be undone.{% endblocktrans %}
+            {% blocktrans with path=workspace.path_label %}Deletes
+            <strong>{{ path }}</strong> and every sub-folder for good; every file
+            inside goes to the vault's trash, where its owner can restore it
+            until the trash is emptied.{% endblocktrans %}
           </p>
           <form method="post" action="{% url ns|add:':workspace_destroy' workspace.slug %}"
                 class="space-y-2"
@@ -197,7 +198,7 @@
                 the button submitting UNCONFIRMED — on the one form here that
                 deletes every file in a folder. Found while adding the same
                 control to the forum's polls.{% endcomment %}
-                @submit="if (!confirm('{% trans "Delete every file in this folder permanently?" %}')) $event.preventDefault()">
+                @submit="if (!confirm('{% trans "Delete this folder and move every file in it to the trash?" %}')) $event.preventDefault()">
             {% csrf_token %}
             <label class="block space-y-1 text-xs">
               <span class="block opacity-70">

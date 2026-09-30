@@ -306,7 +306,7 @@ def file_rename(request, owner, slug, pk):
 def file_delete(request, owner, slug, pk):
     workspace = _own_workspace(owner, slug, for_edit=True)
     vault_file = _workspace_file(workspace, pk)
-    services.delete_file(workspace=workspace, vault_file=vault_file)
+    services.delete_file(workspace=workspace, vault_file=vault_file, by=owner, request=request)
     return JsonResponse({"items": filetree.flatten(workspace)})
 
 
