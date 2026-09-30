@@ -290,6 +290,8 @@ class SketchLifecycleTests(_SketchFixture):
         self.client.force_login(self.user)
         self.client.post(reverse("sketch:delete", args=[doomed.pk]))
         self.assertFalse(VaultFile.objects.filter(pk=doomed.pk).exists())
+        # To the trash (2026-10-01), not gone: the restore still has it.
+        self.assertIsNotNone(VaultFile.all_objects.get(pk=doomed.pk).trashed_at)
 
 
 class SketchIndexRedirectTests(_SketchFixture):

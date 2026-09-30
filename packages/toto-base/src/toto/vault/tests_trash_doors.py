@@ -207,3 +207,77 @@ class FigureTests(_Fixture):
         slugs = {b["slug"] for b in self.client.get(reverse("vault:api_bucket_tree"))
                  .json()["buckets"]}
         self.assertNotIn("theirs", slugs)
+
+
+class OtherAppDoorTests(_Fixture):
+    """The delete doors of the apps that keep their documents in the vault:
+    each moves the file to the trash, recorded as FILE_TRASHED. Called as
+    views, not through urls: a host mounts only some of them (zenobia mounts
+    memo's reader urls only, and no notebook routes)."""
+
+    def post(self, view, *args):
+        request = RequestFactory().post("/x/")
+        request.user = self.owner
+        request.session = {}
+        request._dont_enforce_csrf_checks = True
+        return view(request, *args), request
+
+    def assert_trashed(self, vault_file):
+        row = VaultFile.all_objects.get(pk=vault_file.pk)
+        self.assertIsNotNone(row.trashed_at)
+        self.assertEqual(row.trashed_by, self.owner)
+        self.assertTrue(os.path.isfile(vault_file.file.path))
+        self.assertEqual(vault_actions(), ["FILE_TRASHED"])
+
+    def test_a_deck(self):
+        from django.apps import apps
+
+        if not apps.is_installed("toto.memo"):
+            self.skipTest("toto.memo is not installed on this host")
+        from toto.memo.views import presentation_delete
+
+        deck = self.file("deck", b"<presentation/>", file_type="pxml", ext="pxml")
+        response, request = self.post(presentation_delete, deck.pk)
+        self.assertEqual(response.status_code, 302)
+        self.assert_trashed(deck)
+        self.assertTrue(getattr(request, AUDITED_ATTR))
+
+    def test_a_notebook(self):
+        from unittest import mock
+
+        from django.apps import apps
+
+        if not apps.is_installed("toto.mandragora"):
+            self.skipTest("toto.mandragora is not installed on this host")
+        from toto.mandragora import tpy_format, tpy_views
+
+        body = tpy_format.dumps(tpy_format.new_notebook("N")).encode()
+        notebook = self.file("nb", body, file_type="xml", ext="xml")
+        with mock.patch.object(tpy_views, "client"):
+            response, _request = self.post(tpy_views.tpy_delete, notebook.pk)
+        self.assertEqual(response.status_code, 200)
+        self.assert_trashed(notebook)
+
+    def test_a_drawing(self):
+        from django.apps import apps
+
+        if not apps.is_installed("toto.sketch"):
+            self.skipTest("toto.sketch is not installed on this host")
+        from toto.sketch.views import sketch_delete
+
+        drawing = self.file("drawing", b"<svg xmlns='http://www.w3.org/2000/svg'/>",
+                            file_type="svg", ext="svg")
+        response, _request = self.post(sketch_delete, drawing.pk)
+        self.assertEqual(response.status_code, 302)
+        self.assert_trashed(drawing)
+
+    def test_a_workspace_file(self):
+        from django.apps import apps
+
+        if not apps.is_installed("toto.ambrosia"):
+            self.skipTest("toto.ambrosia is not installed on this host")
+        from toto.ambrosia import services
+
+        source = self.file("main", b"print(1)\n", file_type="text", ext="py")
+        services.delete_file(workspace=None, vault_file=source, by=self.owner)
+        self.assert_trashed(source)

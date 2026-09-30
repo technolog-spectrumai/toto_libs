@@ -283,8 +283,10 @@ def tpy_delete(request, file_pk):
         client.stop(_session_id(file_pk))
     except Exception:
         pass
-    vault_file.file.delete(save=False)
-    vault_file.delete()
+    # To the vault's trash (2026-10-01), like every other delete door.
+    from toto.vault.trash import remove_file
+
+    remove_file(vault_file, by=request.user, request=request, door="tpy_delete")
     return JsonResponse({"status": "ok", "redirect": "/vault/"})
 
 

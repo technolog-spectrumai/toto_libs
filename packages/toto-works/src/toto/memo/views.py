@@ -678,10 +678,12 @@ def presentation_create(request):
 @login_required
 @require_POST
 def presentation_delete(request, file_pk):
-    """Remove a deck: its blob, its row, and its versions by cascade."""
+    """Move a deck to the vault's trash (2026-10-01): its bytes and versions
+    stay for the restore; a mounted remote bucket's deck goes at once."""
+    from toto.vault.trash import remove_file
+
     vault_file = _get_owned_file(request, file_pk)
-    vault_file.file.delete(save=False)
-    vault_file.delete()
+    remove_file(vault_file, by=request.user, request=request, door="memo_delete")
     return redirect(reverse("memo:index"))
 
 

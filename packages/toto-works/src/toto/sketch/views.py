@@ -413,8 +413,9 @@ def sketch_source(request, file_pk):
 @login_required
 @require_POST
 def sketch_delete(request, file_pk):
-    """Remove a drawing (its vault file). Owner only."""
+    """Move a drawing (its vault file) to the trash (2026-10-01). Owner only."""
+    from toto.vault.trash import remove_file
+
     vault_file = _get_owned_file(request, file_pk)
-    vault_file.file.delete(save=False)
-    vault_file.delete()
+    remove_file(vault_file, by=request.user, request=request, door="sketch_delete")
     return redirect(reverse("sketch:index"))
