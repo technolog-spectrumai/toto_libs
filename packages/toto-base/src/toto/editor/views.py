@@ -12,10 +12,22 @@ from django.views.decorators.http import require_POST
 
 from toto.core import assistant
 from toto.ui import PageProcessor
-from toto.vault import editing, versions
+from toto.vault import access, editing, versions
 from toto.vault.models import VaultFile
 
 log = logging.getLogger("toto.editor")
+
+
+def _own_file(user, file_pk) -> VaultFile:
+    """A file of this user's, or 404 — its bucket's clearances first.
+
+    The owner filter alone let an owner who lacks their bucket's clearance
+    open, save and delete there, against "no owner bypass" (2026-09-30).
+    `access.gate_by_bucket` is the queryset the vault's own doors, memo and
+    primula ask, so a file hidden by its bucket is missing here too.
+    """
+    files = VaultFile.objects.select_related("bucket", "directory", "owner")
+    return get_object_or_404(access.gate_by_bucket(user, files), pk=file_pk, owner=user)
 
 
 class BaseFileDisplayView(LoginRequiredMixin, View):
@@ -82,14 +94,9 @@ class BaseFileDisplayView(LoginRequiredMixin, View):
     def get(self, request, file_pk):
         from django.urls import reverse
 
-        vault_file = get_object_or_404(
-            VaultFile.objects.select_related("bucket", "directory", "owner"),
-            pk=file_pk,
-            owner=request.user,
-        )
+        vault_file = _own_file(request.user, file_pk)
         if vault_file.is_encrypted:
-            from toto.vault.access import encrypted_lock_response
-            return encrypted_lock_response(request, vault_file)
+            return access.encrypted_lock_response(request, vault_file)
 
         try:
             content = vault_file.file.read().decode("utf-8")
@@ -141,7 +148,7 @@ def save_file(request, file_pk):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Not authenticated."}, status=401)
 
-    vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+    vault_file = _own_file(request.user, file_pk)
     if vault_file.is_encrypted:
         return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
 
@@ -240,7 +247,7 @@ def delete_file(request, file_pk):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Not authenticated."}, status=401)
 
-    vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+    vault_file = _own_file(request.user, file_pk)
     vault_file.file.delete(save=False)
     vault_file.delete()
     return JsonResponse({"status": "ok", "redirect": "/vault/"})

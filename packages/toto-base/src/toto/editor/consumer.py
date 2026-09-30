@@ -15,7 +15,8 @@ class BaseFileSyncConsumer(AsyncWebsocketConsumer):
         self.file_pk = self.scope["url_route"]["kwargs"]["file_pk"]
         # The socket rewrites file content, so it carries the same contract as
         # editor save_file: an authenticated OWNER of an unencrypted file, on a
-        # host that allows edits at all. Anyone else is refused at the door.
+        # host that allows edits at all, cleared for the file's bucket if it
+        # is kept. Anyone else is refused at the door.
         user = self.scope.get("user")
         self.user = user if user is not None and user.is_authenticated else None
         if self.user is None or not await self._may_edit():
@@ -30,19 +31,29 @@ class BaseFileSyncConsumer(AsyncWebsocketConsumer):
         if getattr(self, "room", None):
             await self.channel_layer.group_discard(self.room, self.channel_name)
 
+    def _own_files(self):
+        """This user's files, less those their bucket's clearances hide.
+
+        The socket is the editor's save door by another road, so it asks what
+        `views._own_file` asks (2026-09-30): an owner who lacks their bucket's
+        clearance is turned away at `connect`, and one whose clearance goes
+        while the socket is open is closed on the next message.
+        """
+        from toto.vault import access
+        from toto.vault.models import VaultFile
+        return access.gate_by_bucket(
+            self.user, VaultFile.objects.filter(pk=self.file_pk, owner=self.user))
+
     @database_sync_to_async
     def _may_edit(self) -> bool:
-        from toto.vault.models import VaultFile, file_edits_allowed
+        from toto.vault.models import file_edits_allowed
         if not file_edits_allowed():
             return False
-        return VaultFile.objects.filter(
-            pk=self.file_pk, owner=self.user, is_encrypted=False,
-        ).exists()
+        return self._own_files().filter(is_encrypted=False).exists()
 
     @database_sync_to_async
     def read_file(self) -> str:
-        from toto.vault.models import VaultFile
-        vf = VaultFile.objects.get(pk=self.file_pk, owner=self.user)
+        vf = self._own_files().get()
         with vf.file.open("r") as f:
             return f.read()
 
@@ -89,9 +100,8 @@ class BaseFileSyncConsumer(AsyncWebsocketConsumer):
         import hashlib
 
         from toto.vault import scanning
-        from toto.vault.models import VaultFile
 
-        vf = VaultFile.objects.get(pk=self.file_pk, owner=self.user)
+        vf = self._own_files().get()
         if scanning.should_scan(self.user, vf.file_type, door="socket"):
             verdict = scanning.scan(content, file_type=vf.file_type,
                                     filename=vf.title)
@@ -116,6 +126,13 @@ class BaseFileSyncConsumer(AsyncWebsocketConsumer):
         incoming_content = data.get("content", "")
         incoming_patch = data.get("patch", "")
         msg_type = data.get("type", "full")
+
+        # The door again, not only at `connect`: a clearance taken away, an
+        # encryption or edits switched off since then close the socket rather
+        # than let it keep writing (2026-09-30).
+        if not await self._may_edit():
+            await self.close()
+            return
 
         # Before anything is read or written: the lock is the whole point of
         # this check being here rather than only in save_file.
