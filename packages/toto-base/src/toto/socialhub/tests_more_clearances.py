@@ -26,7 +26,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser, Permission
 from django.contrib.messages import get_messages
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.db.models import Q
 from django.db.models.signals import m2m_changed
 from django.test import Client, RequestFactory, TestCase
@@ -40,6 +40,8 @@ from toto.locations.models import MapDomain, MapDomainClearance, MapLayer, MapLa
 from toto.people.models import Person
 from toto.socialhub import clearance_access
 from toto.socialhub.models import MAX_CLEARANCES, Clearance, Community
+from toto.socialhub.plugins import clearance_plugins
+from toto.socialhub.plugins.clearance_plugins import SEARCH_LIMIT, ClearanceTargetPlugin
 
 User = get_user_model()
 
@@ -827,6 +829,7 @@ class ClearanceAddDraftTests(ClearanceAddCase):
             "open": True, "name": "Restricted docs", "error": "fast is not a number.",
             "speeds": {"security": "5", "compute": "fast", "storage": ""},
             "people": [{"pk": self.cy.pk, "name": "Cy", "username": "cy"}],
+            "targets": [],
         })
         self.assertEqual(self.said(response), [])          # inside the modal, not flashed
         self.assertContains(response, 'data-testid="clearance-new-error"')
@@ -983,3 +986,461 @@ class ClearanceAdminLimitsTests(ClearanceFixture):
         self.assertEqual(response.status_code, 302)
         restricted = Clearance.objects.get(slug="restricted")
         self.assertEqual(restricted.regen_speeds(), {"storage": Decimal("2.5")})
+
+
+# ---------------------------------------------------------------------------
+# What a clearance clears (2026-09-30): the ClearanceTargetPlugin point and
+# the New clearance modal's "What it clears". Every test here registers FAKE
+# kinds only (the registry patched, cleared, for the test), so nothing
+# depends on which apps are installed.
+# ---------------------------------------------------------------------------
+
+
+class Thing:
+    """Something a fake kind keeps — just a pk, a label and a detail."""
+
+    def __init__(self, pk, label, detail=""):
+        self.pk, self.label, self.detail = pk, label, detail
+
+    def __str__(self):
+        return self.label
+
+    def __repr__(self):
+        return f"Thing({self.pk})"
+
+
+class FakeThings(ClearanceTargetPlugin):
+    """A kind that remembers what it was asked; ``keep`` also notes where it
+    ran (inside which transaction, after which holders)."""
+
+    key = "fake.thing"
+    title = "Things"
+    icon = "cube"
+    order = 50
+
+    def __init__(self, *things):
+        self.things = {thing.pk: thing for thing in things}
+        self.searches, self.resolved, self.kept = [], [], []
+
+    def search(self, q, limit=SEARCH_LIMIT):
+        self.searches.append((q, limit))
+        return [self.row(thing) for thing in self.things.values()
+                if q.lower() in thing.label.lower()][:limit]
+
+    def resolve(self, pks):
+        pks = set(pks)
+        self.resolved.append(pks)
+        return [self.things[pk] for pk in sorted(pks) if pk in self.things]
+
+    def keep(self, objects, clearance, *, actor):
+        self.kept.append({
+            "objects": list(objects), "clearance": clearance, "actor": actor,
+            "in_atomic_block": connection.in_atomic_block,
+            "depth": len(connection.atomic_blocks),
+            "saved": Clearance.objects.filter(pk=clearance.pk).exists(),
+            "holders": set(clearance.members.all()),
+        })
+        return len(objects)
+
+    def detail(self, obj):
+        return obj.detail
+
+
+class FakeDecks(FakeThings):
+    key = "fake.deck"
+    title = "Decks"
+    icon = "person-chalkboard"
+    order = 10
+
+
+class RefusingThings(FakeThings):
+    """A kind whose door refuses — the app's own ValidationError."""
+
+    key = "fake.refusing"
+    title = "Refusing things"
+    order = 90
+
+    def keep(self, objects, clearance, *, actor):
+        super().keep(objects, clearance, actor=actor)
+        raise ValidationError("This thing is kept elsewhere.")
+
+
+class FakeLayers(ClearanceTargetPlugin):
+    """A kind that really writes: map domains (a real group) kept through their
+    clearance table, so an undone clearance can be seen undoing an app's rows
+    too."""
+
+    key = "fake.layer"
+    title = "Layers"
+    icon = "layer-group"
+    order = 30
+
+    def search(self, q, limit=SEARCH_LIMIT):
+        return [self.row(domain) for domain in MapDomain.objects.filter(name__icontains=q)[:limit]]
+
+    def resolve(self, pks):
+        return list(MapDomain.objects.filter(pk__in=pks).order_by("pk"))
+
+    def keep(self, objects, clearance, *, actor):
+        for domain in objects:
+            MapDomainClearance.objects.create(domain=domain, clearance=clearance)
+        return len(objects)
+
+
+def registered(test, *plugins):
+    """Only ``plugins`` are kinds for the rest of ``test``."""
+    patcher = mock.patch.dict(ClearanceTargetPlugin.registry,
+                              {plugin.get_key(): plugin for plugin in plugins}, clear=True)
+    patcher.start()
+    test.addCleanup(patcher.stop)
+
+
+class ClearanceTargetRegistryTests(ClearanceFixture):
+    """The plugin point itself: its own registry, its order, ``add_to``."""
+
+    def test_the_kinds_have_a_registry_of_their_own(self):
+        from toto.core.plugin import BasePlugin
+
+        self.assertIsNot(ClearanceTargetPlugin.registry, BasePlugin.registry)
+        self.assertTrue(all(isinstance(plugin, ClearanceTargetPlugin)
+                            for plugin in ClearanceTargetPlugin.registry.values()))
+
+    def test_kinds_are_in_their_order_whatever_order_they_came_in(self):
+        things, decks, layers = FakeThings(), FakeDecks(), FakeLayers()
+        registered(self, things, layers, decks)
+        self.assertEqual(clearance_plugins.kinds(), [decks, layers, things])
+
+    def test_no_kind_at_all(self):
+        registered(self)
+        self.assertEqual(clearance_plugins.kinds(), [])
+        self.assertIsNone(clearance_plugins.kind("fake.thing"))
+
+    def test_a_kind_by_its_key(self):
+        things, decks = FakeThings(), FakeDecks()
+        registered(self, things, decks)
+        self.assertIs(clearance_plugins.kind("fake.thing"), things)
+        self.assertIs(clearance_plugins.kind("fake.deck"), decks)
+        for key in ("", "fake", "FAKE.THING", "fake.thing ", "nope"):
+            with self.subTest(key=key):
+                self.assertIsNone(clearance_plugins.kind(key))
+
+    def test_a_kind_registered_through_the_decorator_lands_in_this_registry(self):
+        registered(self)
+
+        @ClearanceTargetPlugin.plugin(key="fake.decorated", title="Decorated", order=1)
+        class Decorated(FakeThings):
+            pass
+
+        self.assertIsInstance(clearance_plugins.kind("fake.decorated"), Decorated)
+        self.assertEqual([p.get_key() for p in clearance_plugins.kinds()], ["fake.decorated"])
+        with self.assertRaises(ValueError):                           # a key is registered once
+            ClearanceTargetPlugin.register(Decorated)
+
+    def test_the_patched_registry_is_restored(self):
+        before = dict(ClearanceTargetPlugin.registry)
+        with mock.patch.dict(ClearanceTargetPlugin.registry, {"fake.thing": FakeThings()}, clear=True):
+            self.assertEqual(list(ClearanceTargetPlugin.registry), ["fake.thing"])
+        self.assertEqual(ClearanceTargetPlugin.registry, before)
+
+    def test_a_row_is_pk_label_and_detail(self):
+        self.assertEqual(FakeThings().row(Thing(7, "Budget", "2026")),
+                         {"pk": 7, "label": "Budget", "detail": "2026"})
+        self.assertEqual(ClearanceTargetPlugin().row(Thing(7, "Budget", "2026")),
+                         {"pk": 7, "label": "Budget", "detail": ""})   # the defaults: str(), ""
+
+    def test_the_interface_is_left_to_each_kind(self):
+        bare = ClearanceTargetPlugin()
+        for call in (lambda: bare.search("x"), lambda: bare.resolve([1]),
+                     lambda: bare.keep([], self.internal, actor=self.root)):
+            with self.subTest(call=call), self.assertRaises(NotImplementedError):
+                call()
+
+    def test_add_to_adds_the_clearance_and_keeps_the_others(self):
+        payroll = Clearance.objects.create(name="payroll", slug="payroll")
+        self.assertEqual(clearance_plugins.add_to([self.internal], payroll), [self.internal, payroll])
+        self.assertEqual(clearance_plugins.add_to([], payroll), [payroll])
+        self.assertEqual(clearance_plugins.add_to(
+            Clearance.objects.filter(pk__in=[self.internal.pk, self.confidential.pk]).order_by("name"),
+            payroll), [self.confidential, self.internal, payroll])
+
+    def test_add_to_adds_once(self):
+        current = [self.internal, self.confidential]
+        again = Clearance.objects.get(pk=self.internal.pk)          # the same clearance, another object
+        self.assertEqual(clearance_plugins.add_to(current, again), [self.internal, self.confidential])
+        self.assertEqual(clearance_plugins.add_to(iter(current), self.confidential),
+                         [self.internal, self.confidential])
+        self.assertEqual(current, [self.internal, self.confidential])  # the caller's list untouched
+
+
+class ClearanceTargetsPageTests(ClearanceFixture):
+    """The page offers exactly the registered kinds in the modal's "What it
+    clears", and no such section when there is none."""
+
+    def page(self):
+        response = client_for(self.root).get(reverse("socialhub:clearances"))
+        self.assertEqual(response.status_code, 200)
+        return response
+
+    def test_the_page_offers_exactly_the_registered_kinds_in_order(self):
+        registered(self, FakeThings(), FakeDecks())
+        response = self.page()
+        self.assertEqual(response.context["target_kinds"], [
+            {"key": "fake.deck", "title": "Decks", "icon": "person-chalkboard"},
+            {"key": "fake.thing", "title": "Things", "icon": "cube"},
+        ])
+        for testid in ("clearance-targets", "clearance-target-kind", "clearance-target-search",
+                       "clearance-targets-chosen"):
+            with self.subTest(testid=testid):
+                self.assertContains(response, f'data-testid="{testid}"', count=1)
+        page = response.content.decode()
+        self.assertEqual(re.findall(r'<option value="([^"]*)" data-icon="([^"]*)">([^<]*)</option>', page),
+                         [("fake.deck", "person-chalkboard", "Decks"), ("fake.thing", "cube", "Things")])
+        self.assertIn(reverse("socialhub:clearance_targets"), page)     # where the modal searches
+        self.assertIn("'fake.deck')", page)                             # the first kind, chosen
+        self.assertContains(response, 'name="target"')
+
+    def test_no_kind_is_no_what_it_clears(self):
+        registered(self)
+        response = self.page()
+        self.assertEqual(response.context["target_kinds"], [])
+        for testid in ("clearance-targets", "clearance-target-kind", "clearance-target-search"):
+            with self.subTest(testid=testid):
+                self.assertNotContains(response, f'data-testid="{testid}"')
+        self.assertNotContains(response, 'name="target"')
+        self.assertContains(response, 'data-testid="clearance-new"')    # the modal itself stays
+
+    def test_a_closed_page_draws_no_targets(self):
+        registered(self, FakeThings())
+        response = self.page()
+        self.assertEqual(response.context["draft"]["targets"], [])
+        self.assertFalse(response.context["draft"]["open"])
+
+
+class ClearanceTargetSearchTests(ClearanceFixture):
+    """``clearance_targets``: the modal's search of one kind, JSON."""
+
+    def setUp(self):
+        self.things = FakeThings(Thing(1, "Budget 2026", "finance"), Thing(2, "Budget 2027", "finance"),
+                                 Thing(3, "Roadmap", ""))
+        registered(self, self.things, FakeDecks())
+        self.url = reverse("socialhub:clearance_targets")
+
+    def ask(self, client=None, **query):
+        return (client or client_for(self.root)).get(self.url, query)
+
+    def test_a_member_and_staff_are_refused_in_json(self):
+        clerk = User.objects.create_user("clerk", "clerk@example.com", "pw", is_staff=True)
+        clerk.user_permissions.add(*Permission.objects.filter(content_type__app_label="socialhub"))
+        for user in (self.ada.user, clerk):
+            with self.subTest(user=user.username):
+                response = self.ask(client_for(user), kind="fake.thing", q="budget")
+                self.assertEqual(response.status_code, 403)
+                self.assertEqual(response["Content-Type"], "application/json")
+                self.assertEqual(set(response.json()), {"error"})
+                # Refused before the kind is even looked at.
+                self.assertEqual(self.ask(client_for(user), kind="nope", q="x").status_code, 403)
+        self.assertEqual(self.things.searches, [])
+
+    def test_a_visitor_is_sent_to_sign_in(self):
+        response = self.ask(Client(), kind="fake.thing", q="budget")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("login", response["Location"])
+        self.assertEqual(self.things.searches, [])
+
+    def test_get_only(self):
+        root = client_for(self.root)
+        for method in ("post", "put", "delete"):
+            with self.subTest(method=method):
+                response = getattr(root, method)(f"{self.url}?kind=fake.thing&q=budget")
+                self.assertEqual(response.status_code, 405)
+        self.assertEqual(self.things.searches, [])
+
+    def test_an_unknown_kind_is_a_404(self):
+        for query in ({"kind": "nope", "q": "budget"}, {"q": "budget"}, {"kind": "", "q": "budget"},
+                      {"kind": "FAKE.THING", "q": "budget"}):
+            with self.subTest(query=query):
+                response = self.ask(**query)
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(response["Content-Type"], "application/json")
+                self.assertEqual(set(response.json()), {"error"})
+
+    def test_no_query_answers_nothing_and_asks_nobody(self):
+        for q in (None, "", "   ", "\t\n"):
+            with self.subTest(q=q):
+                response = self.ask(kind="fake.thing", **({} if q is None else {"q": q}))
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json(), {"results": []})
+        self.assertEqual(self.things.searches, [])
+
+    def test_the_query_is_tidied_and_the_limit_passed(self):
+        self.ask(kind="fake.thing", q="  budget \t  2026 ")
+        self.ask(kind="fake.thing", q="x" * 200)
+        self.assertEqual(self.things.searches, [("budget 2026", SEARCH_LIMIT), ("x" * 80, SEARCH_LIMIT)])
+        self.assertEqual(SEARCH_LIMIT, 20)
+
+    def test_the_shape_of_an_answer(self):
+        response = self.ask(kind="fake.thing", q="budget")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")
+        self.assertEqual(response.json(), {"results": [
+            {"pk": 1, "label": "Budget 2026", "detail": "finance"},
+            {"pk": 2, "label": "Budget 2027", "detail": "finance"},
+        ]})
+
+    def test_only_the_asked_kind_is_searched(self):
+        decks = clearance_plugins.kind("fake.deck")
+        self.assertEqual(self.ask(kind="fake.deck", q="budget").json(), {"results": []})
+        self.assertEqual(decks.searches, [("budget", SEARCH_LIMIT)])
+        self.assertEqual(self.things.searches, [])
+
+
+class ClearanceAddTargetsTests(ClearanceAddCase):
+    """``clearance_add`` with ``target=<kind>:<pk>``: each kind keeps what it
+    was given, in the same transaction as the clearance and its holders."""
+
+    def setUp(self):
+        super().setUp()
+        self.things = FakeThings(Thing(1, "Budget", "finance"), Thing(2, "Roadmap"), Thing(3, "Payslips"))
+        self.decks = FakeDecks(Thing(1, "Board deck"), Thing(8, "Kickoff"))
+        self.refusing = RefusingThings(Thing(5, "Locked"))
+        self.layers = FakeLayers()
+        registered(self, self.things, self.decks, self.refusing, self.layers)
+
+    def post(self, name="restricted", *, people=(), targets=(), **speeds):
+        data = {"name": name, "person": [str(p) for p in people], "target": list(targets), **speeds}
+        return self.client.post(reverse("socialhub:clearance_add"), data)
+
+    def test_each_kind_keeps_its_things_once_with_the_clearance_and_the_actor(self):
+        depth = len(connection.atomic_blocks)
+        response = self.post(people=[self.cy.pk],
+                             targets=["fake.thing:2", "fake.deck:8", "fake.thing:1", "fake.deck:1"])
+        made = self.assert_made(response)
+        self.assertEqual(len(self.things.kept), 1)
+        self.assertEqual(len(self.decks.kept), 1)
+        self.assertEqual(self.refusing.kept, [])
+        for plugin, objects in ((self.things, [1, 2]), (self.decks, [1, 8])):
+            with self.subTest(kind=plugin.get_key()):
+                call = plugin.kept[0]
+                self.assertEqual([obj.pk for obj in call["objects"]], objects)
+                self.assertEqual(call["clearance"], made)
+                self.assertEqual(call["actor"].pk, self.root.pk)
+                # Inside the view's own transaction, after the clearance and its holders.
+                self.assertTrue(call["in_atomic_block"])
+                self.assertGreater(call["depth"], depth)
+                self.assertTrue(call["saved"])
+                self.assertEqual(call["holders"], {self.cy})
+
+    def test_the_things_kept_are_counted_in_a_message(self):
+        response = self.post(people=[self.cy.pk], targets=["fake.thing:1", "fake.thing:3", "fake.deck:8"])
+        self.assert_made(response)
+        said = self.said(response)
+        self.assertEqual(said[0], "Clearance restricted made, held by 1.")
+        self.assertEqual(said[1:], ["It keeps 3 groups: what is in them is read only by its holders "
+                                    "and superusers now."])
+
+    def test_no_target_is_no_keep_and_no_message(self):
+        response = self.post(people=[self.cy.pk])
+        self.assert_made(response)
+        self.assertEqual(self.said(response), ["Clearance restricted made, held by 1."])
+        for plugin in (self.things, self.decks, self.refusing):
+            self.assertEqual(plugin.kept, [])
+            self.assertEqual(plugin.resolved, [])
+
+    def test_junk_targets_are_ignored(self):
+        junk = ["fake.thing", "fake.thing:", ":1", "1", "", " ", "fake.thing:x", "fake.thing:-1",
+                "fake.thing:１", "fake.thing: 1", "fake.thing:1 ", " fake.thing:1", "nope:1",
+                "FAKE.THING:1", "fake.thing:1:2", "fake.thing:" + "9" * 19, "fake.thing:²"]
+        response = self.post(targets=junk)
+        self.assert_made(response)
+        self.assertEqual(self.things.kept, [])
+        self.assertEqual(self.things.resolved, [])                    # never even looked up
+        self.assertEqual(self.said(response), ["Clearance restricted made."])
+
+    def test_a_pk_that_does_not_exist_is_ignored(self):
+        response = self.post(targets=["fake.thing:99", "fake.thing:2", "fake.deck:99"])
+        self.assert_made(response)
+        self.assertEqual([obj.pk for obj in self.things.kept[0]["objects"]], [2])
+        self.assertEqual(self.decks.resolved, [{99}])
+        self.assertEqual(self.decks.kept, [])                         # nothing of its kind: not asked
+        self.assertIn("It keeps 1 group", self.said(response)[-1])
+
+    def test_only_missing_pks_is_nothing_kept_and_no_message(self):
+        response = self.post(targets=["fake.thing:99", "fake.deck:0"])
+        self.assert_made(response)
+        self.assertEqual((self.things.kept, self.decks.kept), ([], []))
+        self.assertEqual(self.said(response), ["Clearance restricted made."])
+
+    def test_the_same_target_twice_is_kept_and_counted_once(self):
+        response = self.post(targets=["fake.thing:1", "fake.thing:1", "fake.thing:01"])
+        self.assert_made(response)
+        self.assertEqual(self.things.resolved, [{1}])
+        self.assertEqual([obj.pk for obj in self.things.kept[0]["objects"]], [1])
+        self.assertIn("It keeps 1 group", self.said(response)[-1])
+
+    def test_a_kind_that_writes_keeps_through_its_own_rows(self):
+        layer = MapDomain.objects.create(name="Pipes")
+        made = self.assert_made(self.post(targets=[f"fake.layer:{layer.pk}"]))
+        self.assertEqual(list(MapDomainClearance.objects.filter(clearance=made).values_list("domain", flat=True)),
+                         [layer.pk])
+
+    def test_a_refused_keep_undoes_the_whole_clearance(self):
+        layer = MapDomain.objects.create(name="Pipes")
+        response = self.post(people=[self.cy.pk, self.bob.pk],
+                             targets=[f"fake.layer:{layer.pk}", "fake.thing:1", "fake.refusing:5"])
+        # The kinds before it did keep (inside the transaction)...
+        self.assertEqual(len(self.things.kept), 1)
+        self.assertEqual(len(self.refusing.kept), 1)
+        page = self.assert_refused(response, "This thing is kept elsewhere.")
+        # ...and all of it is undone: no clearance, no holder, no app row, no record.
+        self.assertEqual(Clearance.objects.count(), 2)
+        self.assertFalse(self.cy.clearances.exists())
+        self.assertEqual(set(self.bob.clearances.all()), {self.confidential})
+        self.assertFalse(MapDomainClearance.objects.exists())
+        self.assertFalse(self.new_records("CLEARANCE_CREATED", "CLEARANCE_MEMBER_ADDED").exists())
+        self.assertFalse(AuditRecord.objects.exclude(id__in=self.known).exists())
+        self.assertEqual(page.context["draft"]["error"], "This thing is kept elsewhere.")
+        self.assertEqual(self.said(page), [])                          # inside the modal, not flashed
+
+    def test_the_refusal_draft_carries_the_targets(self):
+        layer = MapDomain.objects.create(name="Pipes")
+        page = self.assert_refused(
+            self.post(people=[self.cy.pk],
+                      targets=["fake.thing:2", "fake.refusing:5", f"fake.layer:{layer.pk}", "nope:1",
+                               "fake.thing:99"]),
+            "This thing is kept elsewhere.")
+        draft = page.context["draft"]
+        self.assertTrue(draft["open"])
+        self.assertEqual(draft["people"], [{"pk": self.cy.pk, "name": "Cy", "username": "cy"}])
+        self.assertEqual(draft["targets"], [
+            {"key": "fake.thing", "kind": "Things", "icon": "cube", "pk": 2, "label": "Roadmap", "detail": ""},
+            {"key": "fake.refusing", "kind": "Refusing things", "icon": "cube", "pk": 5, "label": "Locked",
+             "detail": ""},
+            {"key": "fake.layer", "kind": "Layers", "icon": "layer-group", "pk": layer.pk, "label": "Pipes",
+             "detail": ""},
+        ])
+        self.assertContains(page, '"key": "fake.refusing"')           # in the draft the modal reads
+
+    def test_any_other_refusal_keeps_nothing_and_carries_the_targets(self):
+        for name, speeds, said in (("restricted", {"regen_security": "fast"}, "fast is not a number."),
+                                   ("INTERNAL", {}, "There is already a clearance called INTERNAL"),
+                                   ("   ", {}, "A clearance needs a name.")):
+            with self.subTest(name=name):
+                page = self.refused_page(self.post(name, targets=["fake.thing:1"], **speeds))
+                self.assertContains(page, said)
+                self.assertEqual([(t["key"], t["pk"]) for t in page.context["draft"]["targets"]],
+                                 [("fake.thing", 1)])
+        self.assertEqual(self.things.kept, [])
+        self.assertEqual(Clearance.objects.count(), 2)
+
+    def test_the_cap_keeps_nothing(self):
+        for n in range(Clearance.objects.count(), MAX_CLEARANCES):
+            Clearance.objects.create(name=f"x{n}", slug=f"x{n}")
+        self.assert_refused(self.post(targets=["fake.thing:1"]), f"at most {MAX_CLEARANCES} clearances")
+        self.assertEqual(self.things.kept, [])
+
+    def test_a_member_cannot_make_a_clearance_that_keeps_things(self):
+        response = client_for(self.ada.user).post(reverse("socialhub:clearance_add"),
+                                                  {"name": "restricted", "target": ["fake.thing:1"]})
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual((self.things.resolved, self.things.kept), ([], []))
+        self.assertIsNone(self.made())
