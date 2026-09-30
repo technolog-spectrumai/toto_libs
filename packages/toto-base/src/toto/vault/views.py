@@ -1303,6 +1303,22 @@ def new_file_picker_json(user):
     return buckets_json, directories_json
 
 
+def _office_titles(files) -> str:
+    """'' or the refusal naming the Office files among ``files``.
+
+    A copy between two LOCAL buckets does not go through the transfer runner,
+    which skips an Office row from before the rule (2026-09-30); without this
+    the same row walked into another bucket here (2026-10-01).
+    """
+    from .models import is_office_file, office_refusal_sentence
+
+    names = [f.title or f.key for f in files if is_office_file(f.title or "")
+             or is_office_file(f.key or "")]
+    if not names:
+        return ""
+    return "%s: %s" % (", ".join(names), office_refusal_sentence())
+
+
 class CopyFilesToBucketView(LoginRequiredMixin, View):
     template_name = "vault/copy_files.html"
 
@@ -1457,6 +1473,11 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
                     preview += f" … (+{len(conflicts) - 5} more)"
                 form.add_error(None, f"Key conflict(s): {preview}")
                 return render(request, self.template_name, self._build_context(request, source_bucket, form))
+
+        office = _office_titles(selected_files)
+        if office:
+            form.add_error(None, office)
+            return render(request, self.template_name, self._build_context(request, source_bucket, form))
 
         src_driver = get_bucket_storage(source_bucket)
         dst_driver = get_bucket_storage(destination_bucket)
@@ -1790,6 +1811,10 @@ class BucketCopyAjaxView(LoginRequiredMixin, View):
             return _delegate_to_transfer(
                 request, source_bucket, destination_bucket, None,
                 selected_files, "add_suffix")
+
+        office = _office_titles(selected_files)
+        if office:
+            return JsonResponse({"ok": False, "error": office}, status=400)
 
         src_driver = get_bucket_storage(source_bucket)
         dst_driver = get_bucket_storage(destination_bucket)

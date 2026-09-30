@@ -241,3 +241,66 @@ class MirrorTests(TestCase):
         self.assertEqual(seen, set())
         self.assertFalse(VaultFile.all_objects.filter(bucket=bucket).exists())
         self.assertIn(SENTENCE, run.add_skip.call_args[0][1])
+
+
+@override_settings(MEDIA_ROOT=_MEDIA)
+class ReviewDoorTests(TestCase):
+    """Two doors the stage's review found open (2026-10-01): the API's rename,
+    and a copy between two local buckets, which never meets the transfer
+    runner's check."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.files.base import ContentFile
+
+        from toto.core.models import Platform
+
+        # The copy page is rendered through the page processor, which needs one.
+        Platform.objects.create(site_name="Test", author="Test",
+                                publication_year=2024, active=True)
+        cls.user = User.objects.create_user("copier-office", password="pw")
+        cls.src = Bucket.objects.create(name="Src", owner=cls.user, slug="office-src")
+        cls.dst = Bucket.objects.create(name="Dst", owner=cls.user, slug="office-dst")
+        cls.note = VaultFile(owner=cls.user, title="note.txt", key="note",
+                             file_type="text", bucket=cls.src)
+        cls.note.file.save("note.txt", ContentFile(b"hello"), save=True)
+        # A row from before the rule.
+        cls.old = VaultFile(owner=cls.user, title="minutes.docx", key="minutes-docx",
+                            file_type="xml", bucket=cls.src)
+        cls.old.file.save("minutes.docx", ContentFile(ooxml()), save=True)
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_the_api_rename_refuses_an_office_name(self):
+        url = reverse("vault:api_file_detail", args=[self.note.key])
+        resp = self.client.patch(url, json.dumps({"title": "note.docx"}),
+                                 content_type="application/json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn(SENTENCE, resp.json()["error"])
+        self.note.refresh_from_db()
+        self.assertEqual(self.note.title, "note.txt")
+        resp = self.client.patch(url, json.dumps({"title": "note.md"}),
+                                 content_type="application/json")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_the_copy_page_refuses_an_office_row(self):
+        resp = self.client.post(reverse("vault:copy_files", args=[self.src.slug]),
+                                {"files": [self.note.pk, self.old.pk],
+                                 "destination_bucket": self.dst.pk})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "minutes.docx")
+        self.assertFalse(VaultFile.objects.filter(bucket=self.dst).exists())
+
+    def test_the_copy_dialog_refuses_an_office_row(self):
+        url = reverse("vault:copy_files_ajax", args=[self.src.slug])
+        resp = self.client.post(url, {"files": [self.old.pk],
+                                      "destination_bucket": self.dst.pk})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn(SENTENCE, resp.json()["error"])
+        self.assertFalse(VaultFile.objects.filter(bucket=self.dst).exists())
+        resp = self.client.post(url, {"files": [self.note.pk],
+                                      "destination_bucket": self.dst.pk})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(VaultFile.objects.filter(bucket=self.dst).count(), 1)

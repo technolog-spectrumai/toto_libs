@@ -271,6 +271,12 @@ class FileDetailApiView(CorsApiView):
             title = str(data["title"]).strip()
             if not title:
                 return JsonResponse({"error": "Title cannot be empty."}, status=400)
+            # The API's rename is the page's rename: a note renamed to .docx
+            # would list an Office file every upload door refused (2026-10-01).
+            from toto.vault.models import upload_refusal
+            refusal = upload_refusal(title)
+            if refusal:
+                return JsonResponse({"error": refusal}, status=400)
             vf.title = title
             update_fields.append("title")
         # "directory_id" present with null → move to bucket root; with an int →
