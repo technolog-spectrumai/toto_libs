@@ -82,12 +82,14 @@ class MapLayerAdmin(TotoModelAdmin):
         "owner",
     )
 
+    # The owner is a Person, who has a display name and no first or last
+    # one: searching by those was a FieldError (500) on every search
+    # (2026-10-01, the 37c regression net).
     search_fields = (
         "name",
         "slug",
         "description",
-        "owner__first_name",
-        "owner__last_name",
+        "owner__display_name",
     )
 
     prepopulated_fields = {"slug": ("name",)}

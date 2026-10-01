@@ -647,3 +647,21 @@ class JsonDoorRefusalTests(PageTestCase):
         row = self.client.get(reverse("locations:api_address_detail", args=[self.gdansk.pk])).json()
         self.assertEqual((round(row["lat"], 3), round(row["lng"], 3)), (54.349, 18.653))
         self.assertEqual(row["display"], "Długa 1, Gdańsk")
+
+
+class MapLayerAdminSearchTests(TestCase):
+    """The map layers' admin search, a 500 until 2026-10-01: it searched the
+    owner's first and last name, and the owner is a Person with neither."""
+
+    def test_a_search_finds_a_layer_by_its_owner(self):
+        from toto.people.models import Person
+
+        root = User.objects.create_superuser("root", password="x")
+        owner = Person.objects.create(display_name="Ada Lovelace")
+        MapLayer.objects.create(name="Rainfall", slug="rainfall", owner=owner)
+        MapLayer.objects.create(name="Noise", slug="noise")
+        self.client.force_login(root)
+        response = self.client.get(reverse("admin:locations_maplayer_changelist") + "?q=Lovelace")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Rainfall")
+        self.assertNotContains(response, "Noise")
