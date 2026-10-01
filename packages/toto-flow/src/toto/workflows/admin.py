@@ -1,7 +1,9 @@
+import json
+
+from django import forms
 from django.contrib import admin
 from django.db import models
 from django.utils.html import format_html
-from jsoneditor.forms import JSONEditor
 
 from .models import (
     LambdaFunction,
@@ -24,14 +26,29 @@ _RUN_STATUS_COLORS = {
     "skipped":   "#9ca3af",
 }
 
-JSON_EDITOR_WIDGET = JSONEditor(
-    init_options={
-        "mode": "code",
-        "modes": ["code", "tree", "form", "view"],
-        "search": True,
-        "history": True,
-    }
-)
+
+class JsonTextarea(forms.Textarea):
+    """The JSON fields' widget: a monospace box with the stored value indented
+    (2026-10-01, 37c.27).
+
+    It was django-jsoneditor's editor, and that package brought 1.7 MB of
+    static (its own copy of ACE) into every image for these staff-only forms.
+    Django's JSONField still refuses text that is not JSON and gives back what
+    was typed; the indent only makes a stored value readable.
+    """
+
+    def __init__(self, attrs=None):
+        super().__init__(attrs={"rows": 16, "class": "vLargeTextField",
+                                "style": "font-family: monospace;", **(attrs or {})})
+
+    def format_value(self, value):
+        try:
+            return json.dumps(json.loads(value), indent=2, ensure_ascii=False)
+        except (TypeError, ValueError):
+            return super().format_value(value)
+
+
+JSON_EDITOR_WIDGET = JsonTextarea()
 
 
 def _run_badge(status_val, label):

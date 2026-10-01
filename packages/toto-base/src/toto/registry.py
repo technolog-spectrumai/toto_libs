@@ -35,8 +35,9 @@ BASE_APPS = [*CORE_APPS, *AUTH_APPS]
 # Feature key (see toto.features.Features) -> apps the feature installs.
 # Includes the third-party companions a feature block always shipped with.
 FEATURE_APPS = {
+    # No "jsoneditor" since 2026-10-01: toto.workflows.admin draws its JSON
+    # fields in a plain textarea, so the package is nobody's companion.
     "workflows": [
-        "jsoneditor",        # JSON widget — imported by toto.workflows.admin
         "toto.mandragora",   # Jupyter kernel server — runs workflow lambda nodes
         "toto.workflows",    # DAG workflow engine
     ],
