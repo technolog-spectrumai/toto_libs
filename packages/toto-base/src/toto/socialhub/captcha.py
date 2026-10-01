@@ -4,12 +4,82 @@ Visual verification-code helpers for the membership application flow.
 The verification code is never emailed: it is rendered as a distorted
 CAPTCHA-style image the applicant retypes. This only needs to keep bots
 out — the reference/endorsement step is what actually gates membership.
+
+Drawn with Pillow since 2026-10-01 (37c.30). OpenCV and numpy drew it until
+then: 235 MB of the image, for this one picture (and an encryption library
+OpenCV bundles that no longer gets security fixes), where Pillow is
+installed anyway. The picture looks different; what makes it work is kept:
+paper-like noise, faint decoy letters and lines behind the code, each
+character on its own slant and height, a wave through the whole, and a
+translucent band across it.
 """
 
 import base64
+import io
+import math
+import random
 import string
 
 from django.conf import settings
+
+#: Each character's cell and the margin around the code, in pixels.
+CHAR_W = 46
+MARGIN = 28
+#: How far the wave moves a row, in pixels, and how tall one swing is.
+WAVE_AMPLITUDE = 3.0
+WAVE_PERIOD = 13.0
+
+
+def _font(size):
+    """Pillow's own font (Aileron) at ``size`` pixels: the image needs no
+    font file of its own, and every Pillow wheel carries FreeType."""
+    from PIL import ImageFont
+
+    return ImageFont.load_default(size=size)
+
+
+def _background(rng, width, height):
+    """Light paper with a faint grain of its own, so flat-colour OCR struggles."""
+    from PIL import Image, ImageChops
+
+    grain = Image.frombytes("L", (width, height), rng.randbytes(width * height))
+    grain = grain.point([value % 18 for value in range(256)])
+    paper = ImageChops.subtract(Image.new("L", (width, height), 244), grain)
+    return Image.merge("RGB", (paper, paper, paper))
+
+
+def _glyph(rng, ch, height):
+    """One character as a mask at full strength, on its own size, place and
+    slant, so the ink colour chosen for it can never drop it. Twice a cell
+    wide, so a slanted character keeps its corners and may lean into its
+    neighbours' cells."""
+    from PIL import Image, ImageDraw
+
+    font = _font(int(height * 0.56 * rng.uniform(0.92, 1.08)))
+    mask = Image.new("L", (CHAR_W * 2, height), 0)
+    draw = ImageDraw.Draw(mask)
+    left, top, right, bottom = draw.textbbox((0, 0), ch, font=font, stroke_width=2)
+    x = (CHAR_W * 2 - (right - left)) // 2 - left + rng.randint(-4, 4)
+    y = (height - (bottom - top)) // 2 - top + rng.randint(-6, 6)
+    draw.text((x, y), ch, fill=255, font=font, stroke_width=2, stroke_fill=255)
+    return mask.rotate(rng.uniform(-15, 15), resample=Image.Resampling.BICUBIC)
+
+
+def _wave(img):
+    """Every row slid sideways along a sine, so no baseline is straight —
+    drawn as thin strips of a mesh, which keeps the strokes smooth."""
+    from PIL import Image
+
+    width, height = img.size
+    mesh = []
+    for top in range(0, height, 2):
+        bottom = min(top + 2, height)
+        upper = WAVE_AMPLITUDE * math.sin(top / WAVE_PERIOD)
+        lower = WAVE_AMPLITUDE * math.sin(bottom / WAVE_PERIOD)
+        mesh.append(((0, top, width, bottom),
+                     (upper, top, lower, bottom, width + lower, bottom, width + upper, top)))
+    return img.transform(img.size, Image.Transform.MESH, mesh,
+                         resample=Image.Resampling.BILINEAR, fillcolor=(236, 236, 236))
 
 
 def generate_code_captcha(code, *, height=90, spurious_letters=None):
@@ -17,94 +87,75 @@ def generate_code_captcha(code, *, height=90, spurious_letters=None):
     Render ``code`` as a slightly distorted image and return it as a
     ``data:image/png;base64,...`` URI suitable for an ``<img src>``.
 
-    The digits are jittered and waved for mild distortion, a handful of
-    faint spurious decoy letters are scattered behind them to confuse OCR
-    bots, and a semi-transparent skewed red band is drawn across them.
+    The characters are jittered, slanted and waved for mild distortion, a
+    handful of faint spurious decoy letters are scattered behind them to
+    confuse OCR bots, and a semi-transparent skewed red band is drawn across
+    them.
 
     ``spurious_letters`` defaults to the ``SOCIALHUB_CAPTCHA_SPURIOUS_LETTERS``
     setting; the decoys are background noise, not part of the typed code.
     """
-    import cv2
-    import numpy as np
+    from PIL import Image, ImageDraw
 
     if spurious_letters is None:
         spurious_letters = getattr(settings, "SOCIALHUB_CAPTCHA_SPURIOUS_LETTERS", 4)
 
     code = str(code)
-    char_w = 46
-    margin = 28
-    width = margin * 2 + char_w * max(len(code), 1)
-
-    # Light paper-like background with faint noise so flat-colour OCR struggles.
-    rng = np.random.default_rng(abs(hash(code)) % (2**32))
-    img = np.full((height, width, 3), 244, dtype=np.uint8)
-    noise = rng.integers(0, 18, size=(height, width, 1), dtype=np.uint8)
-    img = cv2.subtract(img, np.repeat(noise, 3, axis=2))
+    width = MARGIN * 2 + CHAR_W * max(len(code), 1)
+    # The same code draws the same picture in a process, so asking again
+    # gives a script no second, differently noisy copy to average.
+    rng = random.Random(abs(hash(code)) % (2**32))
+    img = _background(rng, width, height)
+    draw = ImageDraw.Draw(img)
 
     # A couple of faint distractor lines.
     for _ in range(3):
-        p1 = (int(rng.integers(0, width)), int(rng.integers(0, height)))
-        p2 = (int(rng.integers(0, width)), int(rng.integers(0, height)))
-        shade = int(rng.integers(170, 210))
-        cv2.line(img, p1, p2, (shade, shade, shade), 1, cv2.LINE_AA)
+        shade = rng.randint(170, 210)
+        draw.line([(rng.randrange(width), rng.randrange(height)),
+                   (rng.randrange(width), rng.randrange(height))],
+                  fill=(shade, shade, shade), width=1)
 
     # Faint spurious decoy letters scattered behind the code. They are light
     # grey so a human reads past them but OCR picks them up as garbage.
     for _ in range(max(int(spurious_letters), 0)):
-        ch = string.ascii_uppercase[int(rng.integers(0, 26))]
-        scale = 1.2 + float(rng.uniform(-0.2, 0.4))
-        x = int(rng.integers(margin // 2, max(width - margin // 2, margin // 2 + 1)))
-        y = int(rng.integers(int(height * 0.45), int(height * 0.95)))
-        shade = int(rng.integers(195, 220))
-        cv2.putText(img, ch, (x, y), cv2.FONT_HERSHEY_TRIPLEX, scale,
-                    (shade, shade, shade), 1, cv2.LINE_AA)
+        ch = rng.choice(string.ascii_uppercase)
+        shade = rng.randint(195, 220)
+        font = _font(int(height * rng.uniform(0.32, 0.44)))
+        x = rng.randint(MARGIN // 2, max(width - MARGIN, MARGIN // 2 + 1))
+        y = rng.randint(int(height * 0.15), int(height * 0.55))
+        draw.text((x, y), ch, fill=(shade, shade, shade), font=font)
 
-    # Draw each character with its own jitter, scale and slight rotation.
-    font = cv2.FONT_HERSHEY_DUPLEX
-    baseline_y = int(height * 0.68)
+    # Each character in dark ink through its own mask, centred on its cell.
     for i, ch in enumerate(code):
-        scale = 1.7 + float(rng.uniform(-0.15, 0.15))
-        angle = float(rng.uniform(-18, 18))
-        (tw, th), _ = cv2.getTextSize(ch, font, scale, 3)
+        ink = rng.randint(20, 60)
+        x0 = MARGIN + i * CHAR_W - CHAR_W // 2
+        img.paste((ink, ink, ink), (x0, 0, x0 + CHAR_W * 2, height), _glyph(rng, ch, height))
 
-        # Render the glyph as a single-channel alpha mask at full intensity so
-        # the (independently chosen, possibly very dark) ink colour can't push
-        # it below a threshold and drop the digit.
-        alpha = np.zeros((height, char_w), dtype=np.uint8)
-        ox = (char_w - tw) // 2 + int(rng.integers(-4, 5))
-        oy = baseline_y + int(rng.integers(-6, 7))
-        cv2.putText(alpha, ch, (ox, oy), font, scale, 255, 3, cv2.LINE_AA)
+    # One thin, lighter stroke through the characters: a reader looks past
+    # it, and a script that cuts the picture into characters at the gaps
+    # between dark shapes finds them joined.
+    shade = rng.randint(80, 115)
+    phase, rise = rng.uniform(0, math.tau), rng.uniform(-0.12, 0.12)
+    mid = height * rng.uniform(0.45, 0.6)
+    draw.line([(x, mid + rise * (x - width / 2) + 7 * math.sin(x / 23 + phase))
+               for x in range(MARGIN // 2, width - MARGIN // 2, 3)],
+              fill=(shade, shade, shade), width=2, joint="curve")
 
-        rot = cv2.getRotationMatrix2D((char_w / 2, height / 2), angle, 1.0)
-        alpha = cv2.warpAffine(alpha, rot, (char_w, height), borderValue=0)
+    img = _wave(img)
 
-        x0 = margin + i * char_w
-        region = img[:, x0:x0 + char_w]
-        a = (alpha.astype(np.float32) / 255.0)[:, :, None]
-        ink = int(rng.integers(20, 60))
-        region[:] = (region * (1.0 - a) + ink * a).astype(np.uint8)
-
-    # Gentle horizontal wave so the baseline isn't perfectly straight.
-    ys, xs = np.indices((height, width), dtype=np.float32)
-    xs_shift = xs + 4.0 * np.sin(ys / 9.0)
-    img = cv2.remap(img, xs_shift, ys, interpolation=cv2.INTER_LINEAR,
-                    borderMode=cv2.BORDER_REFLECT)
-
-    # Semi-transparent skewed red band across the digits.
-    overlay = img.copy()
+    # Semi-transparent skewed red band across the characters.
     band_cy = int(height * 0.55)
     band_h = int(height * 0.34)
     skew = int(height * 0.30)
-    band = np.array([
-        [0, band_cy - band_h // 2 - skew],
-        [width, band_cy - band_h // 2 + skew],
-        [width, band_cy + band_h // 2 + skew],
-        [0, band_cy + band_h // 2 - skew],
-    ], dtype=np.int32)
-    cv2.fillPoly(overlay, [band], (40, 40, 210))  # BGR red
-    cv2.addWeighted(overlay, 0.38, img, 0.62, 0, dst=img)
+    overlay = img.copy()
+    ImageDraw.Draw(overlay).polygon([
+        (0, band_cy - band_h // 2 - skew),
+        (width, band_cy - band_h // 2 + skew),
+        (width, band_cy + band_h // 2 + skew),
+        (0, band_cy + band_h // 2 - skew),
+    ], fill=(210, 40, 40))
+    img = Image.blend(img, overlay, 0.38)
 
-    ok, buf = cv2.imencode(".png", img)
-    if not ok:
-        raise RuntimeError("Failed to encode CAPTCHA image.")
-    return "data:image/png;base64," + base64.b64encode(buf.tobytes()).decode("ascii")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")

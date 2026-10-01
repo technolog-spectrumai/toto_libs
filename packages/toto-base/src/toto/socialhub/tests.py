@@ -44,6 +44,67 @@ class CodeCaptchaTests(TestCase):
         self.assertTrue(generate_code_captcha("123456", spurious_letters=0))
         with override_settings(SOCIALHUB_CAPTCHA_SPURIOUS_LETTERS=12):
             self.assertTrue(generate_code_captcha("123456"))
+        self.assertNotEqual(generate_code_captcha("123456", spurious_letters=0),
+                            generate_code_captcha("123456", spurious_letters=12))
+
+    # Drawn with Pillow since 2026-10-01 (37c.30): OpenCV and numpy are not
+    # installed on the hosts any more.
+
+    @staticmethod
+    def picture(uri):
+        import io
+
+        from PIL import Image
+
+        return Image.open(io.BytesIO(base64.b64decode(uri.split(",", 1)[1]))).convert("L")
+
+    def test_it_is_drawn_where_opencv_and_numpy_cannot_import(self):
+        import sys
+
+        class Refuse:
+            def find_spec(self, name, path=None, target=None):
+                if name.split(".")[0] in ("cv2", "numpy"):
+                    raise ImportError(f"No module named {name!r} (refused by the test)")
+                return None
+
+        hidden = {name: sys.modules.pop(name) for name in list(sys.modules)
+                  if name.split(".")[0] in ("cv2", "numpy")}
+        self.addCleanup(sys.modules.update, hidden)
+        finder = Refuse()
+        sys.meta_path.insert(0, finder)
+        self.addCleanup(sys.meta_path.remove, finder)
+        uri = generate_code_captcha("482915")
+        self.assertEqual(base64.b64decode(uri.split(",", 1)[1])[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertFalse({"cv2", "numpy"} & set(sys.modules))
+
+    def test_one_cell_per_character_at_the_height_asked(self):
+        from toto.socialhub.captcha import CHAR_W, MARGIN
+
+        self.assertEqual(self.picture(generate_code_captcha("482915")).size,
+                         (2 * MARGIN + 6 * CHAR_W, 90))
+        self.assertEqual(self.picture(generate_code_captcha("4829", height=120)).size,
+                         (2 * MARGIN + 4 * CHAR_W, 120))
+
+    def test_every_character_is_inked_dark_in_its_own_cell(self):
+        """The decoys, the lines and the band stay light; what a person must
+        read is dark, and no character is dropped, whatever its ink."""
+        from toto.socialhub.captcha import CHAR_W, MARGIN
+
+        for code in ("482915", "103877", "990066", "111111", "808080"):
+            with self.subTest(code=code):
+                img = self.picture(generate_code_captcha(code, spurious_letters=12))
+                pixels = img.load()
+                for i in range(len(code)):
+                    cell = range(MARGIN + i * CHAR_W, MARGIN + (i + 1) * CHAR_W)
+                    dark = sum(1 for x in cell for y in range(img.height) if pixels[x, y] < 76)
+                    self.assertGreater(dark, 150, f"character {i + 1} of {code}")
+                margin = sum(1 for x in range(6) for y in range(img.height) if pixels[x, y] < 76)
+                self.assertEqual(margin, 0)
+
+    def test_the_same_code_draws_the_same_picture_and_another_code_another(self):
+        """Asking again gives a script no second, differently noisy copy."""
+        self.assertEqual(generate_code_captcha("482915"), generate_code_captcha("482915"))
+        self.assertNotEqual(generate_code_captcha("482915"), generate_code_captcha("482916"))
 
 
 class DefaultCommunityIngressTests(TestCase):
