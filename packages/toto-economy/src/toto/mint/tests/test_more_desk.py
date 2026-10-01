@@ -183,7 +183,7 @@ class EngraveTests(DeskTestCase):
 
 class MintAndBurnTests(DeskTestCase):
     def test_minting_adds_to_the_reserve_and_names_the_event(self):
-        asset = self._engraved("MNT", minted="100")
+        asset = self._engraved("MINT", minted="100")
         response = self.client.post(
             reverse("mint:mint_units", args=[asset.pk]),
             {"amount": "10", "reason": "top up"})
@@ -194,7 +194,7 @@ class MintAndBurnTests(DeskTestCase):
         event = CurrencyMintEvent.objects.filter(asset=asset).last()
         self.assertEqual((event.kind, event.amount_base_units, event.actor),
                          ("mint", 1000, self.staff))
-        self.assertIn("Minted 1000 base units of MNT", _messages(response))
+        self.assertIn("Minted 1000 base units of MINT", _messages(response))
 
     def test_minting_past_the_engraved_maximum_is_a_message(self):
         asset = self._engraved("CAP", maximum="100", minted="100")
@@ -248,7 +248,7 @@ class MintAndBurnTests(DeskTestCase):
         self.assertEqual(supply(asset), 1_000)
 
     def test_without_the_key_minting_and_burning_are_403(self):
-        asset = self._engraved("NOK", minted="10")
+        asset = self._engraved("NOKY", minted="10")
         with mock.patch("toto.assets.issuer.is_monetary_master",
                         return_value=False):
             for name in ("mint:mint_units", "mint:burn_units"):

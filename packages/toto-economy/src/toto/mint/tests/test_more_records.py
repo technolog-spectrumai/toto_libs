@@ -67,7 +67,7 @@ class AuditRecordTests(TestCase):
         from toto.assets.contracts import assign_contract
         from toto.assets.statement import UNREACHABLE
 
-        asset = issue_asset(name="Audit coin", unit_name="AUD",
+        asset = issue_asset(name="Audit coin", unit_name="AUDT",
                             total_supply=Decimal("10"), decimals=0, reason="x")
         assign_contract(node="far-branch", asset=asset)
         with mock.patch("requests.get", side_effect=OSError("timed out")):
