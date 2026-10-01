@@ -39,11 +39,9 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "django_jsonform",
-    "django_json_widget",
     "rest_framework",
     "colorfield",
     "reversion",
-    "markdownx",
     "trix_editor",
     *CORE_APPS,
     # The provider half, and only it: a host is one or the other.

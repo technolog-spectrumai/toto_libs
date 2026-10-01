@@ -43,11 +43,9 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "django_jsonform",
-    "django_json_widget",
     "rest_framework",
     "colorfield",
     "reversion",
-    "markdownx",
     "trix_editor",
     # BASE_APPS rather than CORE_APPS, as in the ocr harness: oya/header.html
     # reverses `sso:login`/`sso:logout` on every page.

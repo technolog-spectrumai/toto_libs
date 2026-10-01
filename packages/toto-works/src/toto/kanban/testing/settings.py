@@ -36,11 +36,9 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "django_jsonform",
-    "django_json_widget",
     "rest_framework",
     "colorfield",
     "reversion",
-    "markdownx",
     "trix_editor",
     # BASE_APPS rather than CORE_APPS: oya/header.html — which every memo page
     # inherits — reverses `sso:login`/`sso:logout`, so the view tests need the auth

@@ -29,11 +29,9 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "django_jsonform",
-    "django_json_widget",
     "rest_framework",
     "colorfield",
     "reversion",
-    "markdownx",
     "trix_editor",
     *CORE_APPS,
     # Both halves of the federation. auth_apps() would return one or the other;
