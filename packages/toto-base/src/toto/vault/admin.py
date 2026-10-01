@@ -208,6 +208,23 @@ class VaultFileAdmin(admin.ModelAdmin):
         return "-"
     public_url_display.short_description = _("Public URL")
 
+    # A stored file's bytes have no address (storage.py: `.url` raises on
+    # purpose), and the file input asks for one to draw its "Currently:" link,
+    # so a file's change page was a 500 (2026-10-01, the 37c regression net).
+    # An existing file shows its stored name instead; its bytes change through
+    # the vault's own doors, which scan and record them.
+    def get_exclude(self, request, obj=None):
+        exclude = tuple(super().get_exclude(request, obj) or ())
+        return exclude + ('file',) if obj is not None else exclude
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = tuple(super().get_readonly_fields(request, obj))
+        return fields + ('stored_file',) if obj is not None else fields
+
+    @admin.display(description=_("Stored file"))
+    def stored_file(self, obj):
+        return obj.file.name or "-"
+
     def encrypt_selected_files(self, request, queryset):
         selected = request.POST.getlist(ACTION_CHECKBOX_NAME)
         url = reverse('admin:vaultfile_encrypt') + f'?ids={",".join(selected)}'

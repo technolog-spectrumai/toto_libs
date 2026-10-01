@@ -124,6 +124,23 @@ class BulkEncryptTests(_Fixture):
         self.assertIn("kept.txt", response.content.decode())
 
 
+class FileChangePageTests(_Fixture):
+    """A file's change page, a 500 until 2026-10-01: the file input asked the
+    storage for a URL, which vault bytes deliberately do not have."""
+
+    def test_it_opens_and_names_the_stored_file_without_a_link(self):
+        f = self.file("ledger.txt")
+        response = self.client.get(reverse("admin:vault_vaultfile_change", args=[f.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f.file.name)
+        self.assertNotContains(response, 'type="file"')
+
+    def test_the_add_page_still_takes_a_file(self):
+        response = self.client.get(reverse("admin:vault_vaultfile_add"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'type="file"')
+
+
 class ContentHashActionTests(_Fixture):
     def test_unhashed_files_get_their_sha256_and_hashed_ones_are_left(self):
         import hashlib
