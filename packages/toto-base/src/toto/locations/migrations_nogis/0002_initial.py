@@ -1,5 +1,5 @@
-# GIS-off variant — identical to locations/migrations/0002_initial.py
-# (no geometry involved). Keep in lockstep with the GIS-on graph.
+# GIS-off variant of locations/migrations/0002_initial.py. Keep it in lockstep with the
+# GIS-on graph (2026-10-01 reset): only geometry fields may differ, and this one has none.
 
 from django.db import migrations, models
 import django.db.models.deletion
@@ -19,9 +19,5 @@ class Migration(migrations.Migration):
             model_name='maplayer',
             name='owner',
             field=models.ForeignKey(blank=True, help_text='Person who owns or manages this map layer', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='owned_map_layers', to='people.person'),
-        ),
-        migrations.AddIndex(
-            model_name='maplayerpolygon',
-            index=models.Index(fields=['layer'], name='locations_m_layer_i_ecb370_idx'),
         ),
     ]
