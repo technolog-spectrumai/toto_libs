@@ -78,12 +78,16 @@ urlpatterns = [
     path("privacy/erasure/<int:pk>/decline/", erasure_request_decline,
          name="erasure_request_decline"),
 
+    # The steps after applying name nobody (2026-10-01, 37c.21): no address
+    # typed and no application number in a path, which nginx logs and other
+    # sites receive as the Referer. Each finds its application in the
+    # session of the browser that applied (views/application.py).
     path("apply/membership/", membership_application_view, name="membership_application"),
-    path("apply/success/<str:username>/", application_success_view, name="application_success"),
-    path("verify/user/<str:username>/", verify_application_view, name="membership_verification"),
+    path("apply/success/", application_success_view, name="application_success"),
+    path("verify/", verify_application_view, name="membership_verification"),
     path("verify/success/", verification_success_view, name="application_verified"),
-    path("reference/submit/<int:application_id>/", reference_request_view, name="reference_request"),
-    path("reference/next/<int:application_id>/", reference_next, name="reference_next"),
+    path("reference/submit/", reference_request_view, name="reference_request"),
+    path("reference/next/", reference_next, name="reference_next"),
     path("reference/<int:ref_id>/accept/", reference_accept, name="reference_accept"),
     path("reference/<int:ref_id>/reject/", reference_reject, name="reference_reject"),
 ]

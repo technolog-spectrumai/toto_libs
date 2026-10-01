@@ -21,10 +21,14 @@ import logging
 from django.core.exceptions import PermissionDenied
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
+from django.utils.crypto import constant_time_compare
 from django.utils.dateparse import parse_datetime
 from django.utils.translation import gettext as _
 
 
+#: The log names an application by its id (2026-10-01, 37c.21): never the
+#: address, the username or the code, which the container's log kept and
+#: shipped wherever its lines went.
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
@@ -32,12 +36,47 @@ User = get_user_model()
 # header is simply carried through to SMTP, so this costs nothing there.
 _JESS_PURPOSE_HEADER = "X-Jess-Purpose"
 
+#: The application this browser applied with (2026-10-01, 37c.21): its id and
+#: the end of its week (``expires_at``, which a renewal moves on). The
+#: verification page, the reference step and its thank-you page find their
+#: application through it, so no URL carries the address typed or the
+#: application's number — the pages used to be /apply/success/<e-mail>/,
+#: /verify/user/<e-mail>/ and /reference/submit/<number counted up from 1>/,
+#: and paths go into nginx's log and other sites' Referer headers — and the
+#: code's picture is shown only to the browser that applied.
+APPLIED_SESSION_KEY = "socialhub_application"
+
 #: The applications this browser verified, by id, each with the moment it was
 #: verified (2026-10-01, the review of stage 35). The reference step — the
-#: referrer, the message and the password — opens only for them: before,
-#: anybody holding an application's id, a number counted up from 1, could set
+#: referrer, the message and the password — opens only for the one it applied
+#: with and verified: before, anybody holding an application's id could set
 #: the password of a pending applicant's account and read their address.
 VERIFIED_SESSION_KEY = "socialhub_verified_applications"
+
+
+def remember_applied(session, application):
+    """Put ``application`` in this browser's session — the application view,
+    and tests that make an application without the form."""
+    session[APPLIED_SESSION_KEY] = {"id": application.pk,
+                                    "round": application.expires_at.isoformat()}
+
+
+def _applied_here(request):
+    """The application this browser applied with, in the same round; else None.
+
+    A renewal (``applications.renew``) gives the application a new week, so a
+    browser that applied in an earlier round — maybe not the applicant's — no
+    longer reaches its code once the address applied again.
+    """
+    held = request.session.get(APPLIED_SESSION_KEY)
+    if not isinstance(held, dict) or not isinstance(held.get("round"), str):
+        return None
+    when = parse_datetime(held["round"])
+    application = (MembershipApplication.objects.select_related("community")
+                   .filter(pk=held.get("id")).first() if when is not None else None)
+    if application is None or application.expires_at != when:
+        return None
+    return application
 
 
 def _remember_verified(request, application):
@@ -46,27 +85,25 @@ def _remember_verified(request, application):
     request.session[VERIFIED_SESSION_KEY] = verified
 
 
-def _verified_here(request, application_id):
-    """The application, when this browser's session verified it; else None.
+def _verified_here(request):
+    """The application this browser applied with, when it also verified it
+    here; else None.
 
-    The session is asked first, so an id this browser never verified gets
-    the same answer whether or not it exists. The moment must still be the
-    application's own: a renewal (``applications.renew``) clears
-    ``verified_at``, so the browser that verified an earlier round — maybe
-    not the applicant's — no longer counts once the address applied again.
+    The moment must still be the application's own: a renewal clears
+    ``verified_at``, so the browser that verified an earlier round no longer
+    counts once the address applied again.
     """
-    stamp = (request.session.get(VERIFIED_SESSION_KEY) or {}).get(str(application_id))
-    when = parse_datetime(stamp) if isinstance(stamp, str) else None
-    if when is None:
+    application = _applied_here(request)
+    if application is None:
         return None
-    application = get_object_or_404(MembershipApplication, pk=application_id)
-    return application if application.verified_at == when else None
+    stamp = (request.session.get(VERIFIED_SESSION_KEY) or {}).get(str(application.pk))
+    when = parse_datetime(stamp) if isinstance(stamp, str) else None
+    return application if when is not None and application.verified_at == when else None
 
 
-def _not_this_browser(request, processor, application_id):
+def _not_this_browser(request, processor):
     """The reference step's refusal: a sentence, no form, no address, nothing set."""
-    logger.warning(f"Reference step refused for application ID '{application_id}': "
-                   f"not verified in this browser.")
+    logger.warning("Reference step refused: no application verified in this browser.")
     context = {
         "page_title": "Endorse Application",
         "refusal": _("Only the browser in which this application's code was typed can "
@@ -106,7 +143,10 @@ def membership_application_view(request):
     processor = PageProcessor()
     form = MembershipApplicationForm(request.POST or None)
     context = {"form": form, "page_title": "Apply for Membership",
-               "privacy_notice": form.privacy_notice}
+               "privacy_notice": form.privacy_notice,
+               # An application this browser made and has not verified yet:
+               # the page offers the way back to its code.
+               "applied": _applied_here(request) is not None}
 
     if request.method == "POST" and form.is_valid():
         email = form.cleaned_data["email"]
@@ -126,12 +166,13 @@ def membership_application_view(request):
             from toto.socialhub import audit
 
             audit.notice_accepted(application)
-            logger.info(f"Lapsed application renewed for '{email}' (username '{username}').")
-            return redirect("socialhub:application_success", username=email)
+            remember_applied(request.session, application)
+            logger.info("Lapsed application %s renewed.", application.pk)
+            return redirect("socialhub:application_success")
 
         # The login username is chosen by the applicant (validated unique in the
-        # form); the email stays the stable key for the application + verification
-        # steps below. The account stays inactive until a reference is accepted.
+        # form); the email is the application's key — one application per
+        # address. The account stays inactive until a reference is accepted.
         user, _ = User.objects.get_or_create(
             username=username, defaults={"email": email, "is_active": False}
         )
@@ -154,85 +195,93 @@ def membership_application_view(request):
             from toto.socialhub import audit
 
             audit.notice_accepted(application)
-            logger.info(f"New application created for '{email}' (username '{username}') with code '{application.code}'.")
+            # This browser's from now on (2026-10-01, 37c.21): the next pages
+            # find it in the session, never in their address.
+            remember_applied(request.session, application)
+            logger.info("Application %s created.", application.pk)
         else:
-            logger.info(f"Existing application reused for '{email}'.")
+            # Only a race reaches here (the form refuses a taken address):
+            # the browser that made the application keeps it.
+            logger.info("Application %s reused.", application.pk)
 
-        # The success/verification URLs are keyed by email (their stable identifier).
-        return redirect("socialhub:application_success", username=email)
+        return redirect("socialhub:application_success")
 
     return render(request, "socialhub/membership_application.html", processor.decorate(context, request))
 
 
-def application_success_view(request, username):
+def application_success_view(request):
     processor = PageProcessor()
-    # The `username` URL slug is the applicant's email — the stable key for the
-    # application + verification flow (the login username is chosen separately).
-    # The verification code is never emailed: the verification page shows it as
-    # a CAPTCHA the applicant retypes, and the reference/endorsement step is
-    # what actually gates membership.
-    email = username
-    context = {"page_title": "Application Submitted", "username": email}
+    # The verification code is never emailed: the verification page shows it
+    # as a CAPTCHA the applicant retypes, and the reference/endorsement step
+    # is what actually gates membership. Nothing names the applicant here
+    # (2026-10-01, 37c.21): the application is the session's.
+    context = {"page_title": "Application Submitted",
+               "applied": _applied_here(request) is not None}
 
-    logger.info(f"Application success page viewed for '{email}'.")
+    logger.info("Application success page viewed.")
     return render(request, "socialhub/application_success.html", processor.decorate(context, request))
 
 
-def verify_application_view(request, username):
+def verify_application_view(request):
     processor = PageProcessor()
     form = CodeVerificationForm(request.POST or None)
-    context = {"form": form, "page_title": "Verify Application", "username": username}
+    context = {"form": form, "page_title": "Verify Application"}
 
     # The code is never mailed — it is shown as a distorted CAPTCHA the
     # applicant retypes to prove they are human. The reference/endorsement
-    # step is what actually gates membership.
-    application = MembershipApplication.objects.filter(email=username).first()
-    captcha_mode = application is not None
-    if captcha_mode:
-        try:
-            context["captcha_image"] = generate_code_captcha(application.code)
-        except Exception as e:
-            logger.error(f"Failed to render CAPTCHA for '{username}': {e}")
+    # step is what actually gates membership. Only to the browser that applied
+    # (2026-10-01, 37c.21): the page used to answer anybody who typed an
+    # address into its URL, with that application's code.
+    application = _applied_here(request)
+    if application is None:
+        context["refusal"] = _("This browser has no application waiting for its code. "
+                               "Apply for membership first; if you applied in another "
+                               "browser, type the code there.")
+        return render(request, "socialhub/membership_verification.html",
+                      processor.decorate(context, request), status=403)
+    context["application"] = application
+    try:
+        context["captcha_image"] = generate_code_captcha(application.code)
+    except Exception as e:
+        logger.error("Failed to render the CAPTCHA for application %s: %s",
+                     application.pk, type(e).__name__)
 
-    # While the CAPTCHA is shown, rate-limit retries the same way login does:
-    # a failed code starts a short cooldown during which the form is disabled.
-    if request.method == "POST" and captcha_mode:
+    # Rate-limit retries the same way login does: a failed code starts a
+    # short cooldown during which the form is disabled.
+    if request.method == "POST":
         remaining = captcha_retry_cooldown_remaining(request)
         if remaining > 0:
             context["error"] = f"Please wait {remaining} seconds before trying again."
             context["cooldown_remaining"] = remaining
-            logger.warning(f"CAPTCHA retry blocked by cooldown for '{username}' ({remaining}s left).")
+            logger.warning("CAPTCHA retry blocked by the cooldown for application %s (%ss left).",
+                           application.pk, remaining)
             return render(request, "socialhub/membership_verification.html", processor.decorate(context, request))
 
     if request.method == "POST" and form.is_valid():
-        code = form.cleaned_data["code"]
-        try:
-            app = MembershipApplication.objects.get(code=code, email=username)
-            if app.is_expired():
-                # Since 2026-10-01 applying again renews a lapsed application
-                # (applications.renew), so the answer says how.
-                context["error"] = _("This code has expired. Apply again with the same "
-                                     "e-mail address to get a new one.")
-                logger.warning(f"Verification failed: code expired for '{username}'.")
-            elif app.is_verified:
-                context["message"] = "This application is already verified."
-                logger.info(f"Verification skipped: already verified for '{username}'.")
-            else:
-                app.verified_at = timezone.now()
-                app.status = "verified"
-                app.save()
-                # The reference step is this browser's from now on (2026-10-01).
-                _remember_verified(request, app)
-                if captcha_mode:
-                    clear_captcha_retry_cooldown(request)
-                logger.info(f"Verification successful for '{username}'.")
-                return redirect("socialhub:reference_request", application_id=app.id)
-        except MembershipApplication.DoesNotExist:
-            context["error"] = "Invalid code or username."
-            logger.warning(f"Verification failed: no application found for '{username}' with code '{code}'.")
-            if captcha_mode:
-                context["cooldown_remaining"] = captcha_retry_cooldown_seconds()
-                start_captcha_retry_cooldown(request)
+        app = application
+        if not constant_time_compare(form.cleaned_data["code"].strip(), app.code):
+            context["error"] = _("That is not the code in the picture.")
+            logger.warning("Verification failed: a wrong code for application %s.", app.pk)
+            context["cooldown_remaining"] = captcha_retry_cooldown_seconds()
+            start_captcha_retry_cooldown(request)
+        elif app.is_expired():
+            # Since 2026-10-01 applying again renews a lapsed application
+            # (applications.renew), so the answer says how.
+            context["error"] = _("This code has expired. Apply again with the same "
+                                 "e-mail address to get a new one.")
+            logger.warning("Verification failed: application %s has expired.", app.pk)
+        elif app.is_verified:
+            context["message"] = "This application is already verified."
+            logger.info("Verification skipped: application %s is already verified.", app.pk)
+        else:
+            app.verified_at = timezone.now()
+            app.status = "verified"
+            app.save()
+            # The reference step is this browser's from now on (2026-10-01).
+            _remember_verified(request, app)
+            clear_captcha_retry_cooldown(request)
+            logger.info("Application %s verified.", app.pk)
+            return redirect("socialhub:reference_request")
 
     return render(request,"socialhub/membership_verification.html", processor.decorate(context, request))
 
@@ -240,17 +289,17 @@ def verify_application_view(request, username):
 def verification_success_view(request):
     processor = PageProcessor()
     context = {"page_title": "Verification Complete"}
-    logger.info(f"Verification success page viewed by user '{request.user.username}'.")
+    logger.info("Verification success page viewed.")
     return render(request, "socialhub/verification_success.html", processor.decorate(context, request))
 
 
-def reference_request_view(request, application_id):
+def reference_request_view(request):
     processor = PageProcessor()
-    # Only the browser that verified the code (2026-10-01): the page shows
-    # the applicant's address and sets their account's password.
-    application = _verified_here(request, application_id)
+    # Only the browser that applied and verified the code (2026-10-01): the
+    # page sets the account's password. Its address names no application.
+    application = _verified_here(request)
     if application is None:
-        return _not_this_browser(request, processor, application_id)
+        return _not_this_browser(request, processor)
     form = ReferenceRequestForm(request.POST or None, application=application)
 
     context = {
@@ -264,7 +313,7 @@ def reference_request_view(request, application_id):
         reference_request.application = application
         reference_request.referrer = form.cleaned_data["referrer"]
         reference_request.save()
-        logger.info(f"Reference submitted by '{request.user.username}' for application ID '{application_id}'.")
+        logger.info("Reference requested for application %s.", application.pk)
 
         # Optional: capture the applicant's chosen password now. They stay INACTIVE
         # until a referrer accepts (see ReferenceRequest.save) — set_password here just
@@ -280,24 +329,25 @@ def reference_request_view(request, application_id):
             if applicant:
                 applicant.set_password(password)
                 applicant.save(update_fields=["password"])
-                logger.info(f"Applicant '{application.email}' set a password during the endorsement request.")
+                logger.info("The applicant of application %s set a password at the "
+                            "reference step.", application.pk)
 
-        return redirect("socialhub:reference_next", application_id=application.id)
+        return redirect("socialhub:reference_next")
 
     return render(request, "socialhub/reference_request.html", processor.decorate(context, request))
 
 
-def reference_next(request, application_id):
+def reference_next(request):
     processor = PageProcessor()
-    # The thank-you page names the applicant's address too (2026-10-01).
-    application = _verified_here(request, application_id)
+    # The verifying browser's too (2026-10-01).
+    application = _verified_here(request)
     if application is None:
-        return _not_this_browser(request, processor, application_id)
+        return _not_this_browser(request, processor)
     context = {
         "application": application,
         "page_title": "Thank You for Your Endorsement",
     }
-    logger.info(f"Reference thank-you page viewed for application ID '{application_id}' by user '{request.user.username}'.")
+    logger.info("Reference thank-you page viewed for application %s.", application.pk)
     return render(request, "socialhub/reference_next.html", processor.decorate(context, request))
 
 
@@ -332,10 +382,11 @@ def reference_accept(request, ref_id):
             f"{community.name} Team"
         )
         _send_endorsement_mail(subject, body, to=user.email, community=community)
-        logger.info(f"Approval email queued for '{user.email}'.")
+        logger.info("Approval mail queued for application %s.", application.pk)
 
     except Exception as e:
-        logger.error(f"Failed to send approval email for reference '{ref_id}': {e}")
+        logger.error("Failed to send the approval mail for reference %s: %s", ref_id,
+                     type(e).__name__)
 
     return redirect("socialhub:profile_details", slug=request.user.community_profile.slug)
 
@@ -374,10 +425,11 @@ def reference_reject(request, ref_id):
             f"{community.name} Team"
         )
         _send_endorsement_mail(subject, body, to=user.email, community=community)
-        logger.info(f"Rejection email queued for '{user.email}'.")
+        logger.info("Rejection mail queued for application %s.", application.pk)
 
     except Exception as e:
-        logger.error(f"Failed to send rejection email for reference '{ref_id}': {e}")
+        logger.error("Failed to send the rejection mail for reference %s: %s", ref_id,
+                     type(e).__name__)
 
     return redirect("socialhub:profile_details", slug=request.user.community_profile.slug)
 

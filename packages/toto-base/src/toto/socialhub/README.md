@@ -436,6 +436,18 @@ again, and an inactive account nobody would ever use.
   verified", and a renewal clears `verified_at`, so the browser that verified
   a lapsed round no longer counts. An applicant who lost that browser applies
   again once the application has lapsed, as the sentence says.
+- **No step's address names the applicant** (2026-10-01, 37c.21): the pages
+  were `apply/success/<e-mail>/`, `verify/user/<e-mail>/` and
+  `reference/submit/<application number>/`, and a path goes into nginx's
+  access log and, as the Referer, to the next site. Now they are
+  `apply/success/`, `verify/`, `reference/submit/` and `reference/next/`, and
+  each finds its application in the session of the browser that applied
+  (`APPLIED_SESSION_KEY`: the id and the end of its week, which a renewal
+  moves on). So only that browser is shown the code's picture — before,
+  anybody who typed an address into the URL was — and only after it typed
+  the code does the reference step open. Any other browser gets a sentence
+  and the way to apply (403). No page shows the address typed, and the log
+  names an application by its id, never its address, username or code.
 - **The nightly housekeeping prunes it** (`applications.prune`, called by
   `toto.core.housekeeping` on the beat) once it lapsed more than
   `SOCIALHUB_EXPIRED_APPLICATION_DAYS` (default 30) days ago — the

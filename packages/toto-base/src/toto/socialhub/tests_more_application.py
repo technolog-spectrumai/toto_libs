@@ -15,6 +15,7 @@ from django.utils import timezone
 from toto.core.models import Platform
 from toto.people.models import Person
 from toto.socialhub.models import Community, MembershipApplication, PrivacyNotice, ReferenceRequest
+from toto.socialhub.tests import applied_here
 
 User = get_user_model()
 
@@ -41,15 +42,16 @@ class FlowCase(TestCase):
         PrivacyNotice.objects.create(version=1, text_pl="Informacja", text_en="Notice")
 
     def verify(self, code):
-        return self.client.post(reverse("socialhub:membership_verification",
-                                        args=[self.application.email]), {"code": code})
+        # The browser that applied (2026-10-01, 37c.21): the page finds the
+        # application in its session.
+        applied_here(self.client, self.application)
+        return self.client.post(reverse("socialhub:membership_verification"), {"code": code})
 
 
 class VerificationTests(FlowCase):
     def test_the_right_code_verifies_and_leads_to_the_reference_step(self):
         response = self.verify("424242")
-        self.assertRedirects(response, reverse("socialhub:reference_request",
-                                               args=[self.application.pk]),
+        self.assertRedirects(response, reverse("socialhub:reference_request"),
                              fetch_redirect_response=False)
         self.application.refresh_from_db()
         self.assertEqual(self.application.status, "verified")
@@ -74,21 +76,24 @@ class VerificationTests(FlowCase):
         self.application.refresh_from_db()
         self.assertEqual((self.application.status, self.application.verified_at), ("endorsed", stamp))
 
-    def test_a_code_belongs_to_its_own_email(self):
+    def test_a_code_belongs_to_its_own_application(self):
         MembershipApplication.objects.create(
             email="someone@example.com", community=self.guild, code="777777",
             expires_at=timezone.now() + timedelta(days=7))
         response = self.verify("777777")
-        self.assertEqual(response.context["error"], "Invalid code or username.")
+        self.assertEqual(response.context["error"], "That is not the code in the picture.")
         self.application.refresh_from_db()
         self.assertEqual(self.application.status, "pending")
 
-    def test_an_email_nobody_applied_with_shows_no_captcha_and_starts_no_cooldown(self):
-        response = self.client.post(reverse("socialhub:membership_verification",
-                                            args=["ghost@example.com"]), {"code": "424242"})
+    def test_a_browser_that_never_applied_gets_no_captcha_and_no_cooldown(self):
+        response = self.client.post(reverse("socialhub:membership_verification"),
+                                    {"code": "424242"})
+        self.assertEqual(response.status_code, 403)
         self.assertNotIn("captcha_image", response.context)
         self.assertNotIn("cooldown_remaining", response.context)
-        self.assertEqual(response.context["error"], "Invalid code or username.")
+        self.assertIn("This browser has no application waiting", response.context["refusal"])
+        self.application.refresh_from_db()
+        self.assertEqual(self.application.status, "pending")
 
 
 class ApplyAgainTests(FlowCase):
@@ -134,20 +139,17 @@ class ReferenceRequestPageTests(FlowCase):
         self.verify("424242")
 
     def test_only_members_of_the_community_applied_to_may_be_named(self):
-        form = self.client.get(reverse("socialhub:reference_request",
-                                       args=[self.application.pk])).context["form"]
+        form = self.client.get(reverse("socialhub:reference_request")).context["form"]
         self.assertEqual(list(form.fields["referrer"].queryset), [self.referrer])
-        response = self.client.post(reverse("socialhub:reference_request",
-                                            args=[self.application.pk]),
+        response = self.client.post(reverse("socialhub:reference_request"),
                                     {"referrer": self.outsider.pk, "message": "hi"})
         self.assertEqual(response.status_code, 200)
         self.assertFalse(ReferenceRequest.objects.exists())
 
     def test_a_request_is_made_and_the_thank_you_page_follows(self):
-        response = self.client.post(reverse("socialhub:reference_request",
-                                            args=[self.application.pk]),
+        response = self.client.post(reverse("socialhub:reference_request"),
                                     {"referrer": self.referrer.pk, "message": "vouch"})
-        next_url = reverse("socialhub:reference_next", args=[self.application.pk])
+        next_url = reverse("socialhub:reference_next")
         self.assertRedirects(response, next_url, fetch_redirect_response=False)
         self.assertEqual(ReferenceRequest.objects.get().referrer, self.referrer)
         self.assertEqual(self.client.get(next_url).status_code, 200)
@@ -165,7 +167,7 @@ class ReferenceRequestPageTests(FlowCase):
         # (2026-10-01) This page is public, and it set the password of the
         # first account at the address — a member's.
         member = self.member_with_the_address()
-        self.client.post(reverse("socialhub:reference_request", args=[self.application.pk]),
+        self.client.post(reverse("socialhub:reference_request"),
                          {"referrer": self.referrer.pk, "message": "vouch", "password": "chosen-pw-1"})
         member.refresh_from_db()
         self.applicant.refresh_from_db()
@@ -176,18 +178,18 @@ class ReferenceRequestPageTests(FlowCase):
         self.applicant.is_active = True
         self.applicant.set_password("own-pw")
         self.applicant.save()
-        self.client.post(reverse("socialhub:reference_request", args=[self.application.pk]),
+        self.client.post(reverse("socialhub:reference_request"),
                          {"referrer": self.referrer.pk, "message": "again", "password": "other-pw-1"})
         self.applicant.refresh_from_db()
         self.assertTrue(self.applicant.check_password("own-pw"))
 
-    def test_an_application_gone_since_it_was_verified_here_is_a_404(self):
-        # One this browser never verified is refused before it is looked up
-        # (tests_reference_session); one it did, and that is gone since, is a 404.
-        pk = self.application.pk
+    def test_an_application_gone_since_it_was_verified_here_is_refused(self):
+        # The step finds its application in the session (2026-10-01, 37c.21):
+        # one gone since is no application, and the browser is told so.
         self.application.delete()
-        self.assertEqual(self.client.get(reverse("socialhub:reference_request",
-                                                 args=[pk])).status_code, 404)
+        response = self.client.get(reverse("socialhub:reference_request"))
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("Only the browser in which this application", response.context["refusal"])
 
 
 class ReferenceAnswerTests(FlowCase):

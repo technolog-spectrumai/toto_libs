@@ -110,19 +110,34 @@
           <div>
             <h2 class="text-2xl font-bold">{% trans "Submit verification code" %}</h2>
 
-            <p class="mt-2 text-sm leading-6 opacity-70">{% trans "Verifying application for" %}<span
-                :class="darkMode
-                  ? 'border-accent-1 bg-sunken-dark'
-                  : 'border-accent-2 bg-sunken-light'"
-                class="inline-flex rounded-lg border px-2 py-0.5 font-mono font-semibold">
-                {{ username }}
-              </span>
-            </p>
+            {% if application %}
+            <!-- The community, never the address typed (2026-10-01, 37c.21). -->
+            <p class="mt-2 text-sm leading-6 opacity-70">{% blocktranslate with community=application.community.name %}Your application to {{ community }}.{% endblocktranslate %}</p>
+            {% endif %}
           </div>
 
+          {% if refusal %}
+          <!-- No application from this browser (2026-10-01, 37c.21): the page
+               finds it in the session of the browser that applied, never in
+               its address. views/application.py, _applied_here. -->
+          <div
+            role="alert"
+            :class="darkMode
+              ? 'border-warn-dark bg-sunken-dark text-warn-dark'
+              : 'border-warn-light bg-sunken-light text-warn-light'"
+            class="rounded-lg border px-4 py-3 text-sm font-medium">
+            {{ refusal }}
+          </div>
+
+          <a
+            href="{% url 'socialhub:membership_application' %}"
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="inline-flex items-center gap-2 text-sm font-semibold underline-offset-4 transition hover:underline hover:opacity-80">{% trans "Apply for membership" %}<i class="fa-solid fa-arrow-right text-xs"></i>
+          </a>
+          {% else %}
           <form
             method="POST"
-            action="{% url 'socialhub:membership_verification' username %}"
+            action="{% url 'socialhub:membership_verification' %}"
             class="space-y-5">
 
             {% csrf_token %}
@@ -227,6 +242,7 @@
               </a>
             </div>
           </form>
+          {% endif %}
 
         </div>
       </section>

@@ -122,7 +122,7 @@
               : 'border-accent-2 bg-sunken-light'"
             class="rounded-2xl border p-5 text-sm shadow-sm">
 
-            {% if username %}
+            {% if applied %}
               <div class="space-y-3">
                 <div
                   :class="darkMode
@@ -140,7 +140,7 @@
                 </div>
 
                 <a
-                  href="{% url 'socialhub:membership_verification' username %}"
+                  href="{% url 'socialhub:membership_verification' %}"
                   :class="darkMode
                     ? 'bg-accent-dark text-primary-bg-dark'
                     : 'bg-accent-light text-primary-bg-light'"

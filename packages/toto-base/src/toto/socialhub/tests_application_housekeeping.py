@@ -22,6 +22,7 @@ from toto.people.models import Person
 from toto.socialhub import applications
 from toto.socialhub.models import (Community, DataExport, ErasureRequest, MembershipApplication,
                                    PrivacyAcceptance, PrivacyNotice, ReferenceRequest)
+from toto.socialhub.tests import applied_here
 
 User = get_user_model()
 EMAIL = "newbie@example.com"
@@ -72,7 +73,7 @@ class LapsedCase(TestCase):
 class RenewalTests(LapsedCase):
     def test_applying_again_renews_the_lapsed_application(self):
         response = self.apply()
-        self.assertRedirects(response, reverse("socialhub:application_success", args=[EMAIL]),
+        self.assertRedirects(response, reverse("socialhub:application_success"),
                              fetch_redirect_response=False)
         self.assertEqual(MembershipApplication.objects.count(), 1)
         self.application.refresh_from_db()
@@ -91,14 +92,15 @@ class RenewalTests(LapsedCase):
     def test_the_new_code_verifies(self):
         self.apply()
         self.application.refresh_from_db()
-        response = self.client.post(reverse("socialhub:membership_verification", args=[EMAIL]),
+        response = self.client.post(reverse("socialhub:membership_verification"),
                                     {"code": self.application.code})
-        self.assertRedirects(response, reverse("socialhub:reference_request",
-                                               args=[self.application.pk]),
+        self.assertRedirects(response, reverse("socialhub:reference_request"),
                              fetch_redirect_response=False)
 
     def test_the_lapsed_code_says_how_to_get_a_new_one(self):
-        response = self.client.post(reverse("socialhub:membership_verification", args=[EMAIL]),
+        # The browser that applied in the lapsed round (2026-10-01, 37c.21).
+        applied_here(self.client, self.application)
+        response = self.client.post(reverse("socialhub:membership_verification"),
                                     {"code": "424242"})
         self.assertIn("Apply again with the same e-mail address", response.context["error"])
         self.application.refresh_from_db()
@@ -130,8 +132,7 @@ class RenewalTests(LapsedCase):
         # Compared without case since 2026-10-01: one application, one
         # account, one spelling — the one typed now.
         response = self.apply(email=EMAIL.upper())
-        self.assertRedirects(response, reverse("socialhub:application_success",
-                                               args=[EMAIL.upper()]),
+        self.assertRedirects(response, reverse("socialhub:application_success"),
                              fetch_redirect_response=False)
         self.assertEqual(MembershipApplication.objects.count(), 1)
         self.application.refresh_from_db()
@@ -186,7 +187,7 @@ class RenewalTests(LapsedCase):
         # stayed taken for the rest of the week.
         self.declined_live()
         response = self.apply()
-        self.assertRedirects(response, reverse("socialhub:application_success", args=[EMAIL]),
+        self.assertRedirects(response, reverse("socialhub:application_success"),
                              fetch_redirect_response=False)
         self.application.refresh_from_db()
         self.assertNotEqual(self.application.code, "424242")

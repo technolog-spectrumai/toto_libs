@@ -243,9 +243,9 @@
                   class="font-semibold underline-offset-4 transition hover:underline hover:opacity-80">{% trans "Log in instead" %}</a>
               </p>
 
-              {% if username %}
+              {% if applied %}
                 <p class="opacity-75">{% trans "Already have a verification code?" %}<a
-                    href="{% url 'socialhub:membership_verification' username %}"
+                    href="{% url 'socialhub:membership_verification' %}"
                     :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                     class="font-semibold underline-offset-4 transition hover:underline hover:opacity-80">{% trans "Submit Code" %}</a>
                 </p>

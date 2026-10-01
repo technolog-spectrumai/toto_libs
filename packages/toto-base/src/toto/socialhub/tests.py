@@ -13,6 +13,7 @@ from toto.core.auth_cooldown import CAPTCHA_RETRY_COOLDOWN_SESSION_KEY
 from toto.core.models import Platform
 from toto.people.models import Person
 from toto.socialhub.captcha import generate_code_captcha
+from toto.socialhub.views.application import remember_applied
 from toto.socialhub.models import (
     Community,
     MembershipApplication,
@@ -20,6 +21,15 @@ from toto.socialhub.models import (
 )
 
 User = get_user_model()
+
+
+def applied_here(client, application):
+    """Put ``application`` in ``client``'s session, as applying in that
+    browser does (2026-10-01, 37c.21: the steps find it there)."""
+    session = client.session
+    # As stored: a test may have moved its week with a queryset update.
+    remember_applied(session, type(application).objects.get(pk=application.pk))
+    session.save()
 
 
 class CodeCaptchaTests(TestCase):
@@ -86,9 +96,8 @@ class ApplicationSuccessViewTests(TestCase):
     def test_renders_captcha_flow_copy(self):
         # The verification code is never emailed — the page always points the
         # applicant at the code-image (CAPTCHA) verification step.
-        res = self.client.get(
-            reverse("socialhub:application_success", args=[self.application.email])
-        )
+        applied_here(self.client, self.application)
+        res = self.client.get(reverse("socialhub:application_success"))
         self.assertEqual(res.status_code, 200)
         self.assertContains(res, "code image")
 
@@ -104,11 +113,10 @@ class VerifyCaptchaViewTests(TestCase):
             code="246810",
             expires_at=timezone.now() + timezone.timedelta(days=7),
         )
+        applied_here(self.client, self.application)
 
     def _verify_url(self):
-        return reverse(
-            "socialhub:membership_verification", args=[self.application.email]
-        )
+        return reverse("socialhub:membership_verification")
 
     def test_shows_captcha(self):
         res = self.client.get(self._verify_url())
@@ -125,7 +133,7 @@ class VerifyCaptchaViewTests(TestCase):
     def test_wrong_code_starts_cooldown_in_captcha_mode(self):
         res = self.client.post(self._verify_url(), {"code": "000000"})
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.context["error"], "Invalid code or username.")
+        self.assertEqual(res.context["error"], "That is not the code in the picture.")
         self.assertGreater(res.context["cooldown_remaining"], 0)
         self.assertIn(CAPTCHA_RETRY_COOLDOWN_SESSION_KEY, self.client.session)
 
@@ -183,11 +191,11 @@ class ReferenceRequestPasswordTests(TestCase):
         self.referrer.communities.add(self.community)
         # The applicant types the code first: the step is that browser's
         # (2026-10-01, tests_reference_session).
-        self.client.post(reverse("socialhub:membership_verification",
-                                 args=["applicant@example.com"]), {"code": "111222"})
+        applied_here(self.client, self.application)
+        self.client.post(reverse("socialhub:membership_verification"), {"code": "111222"})
 
     def _url(self):
-        return reverse("socialhub:reference_request", args=[self.application.id])
+        return reverse("socialhub:reference_request")
 
     def test_password_set_now_but_user_activated_only_on_accept(self):
         res = self.client.post(
