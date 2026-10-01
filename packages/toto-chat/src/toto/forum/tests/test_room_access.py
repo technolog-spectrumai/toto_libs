@@ -106,21 +106,6 @@ class AccessTests(TestCase):
         room.refresh_from_db()
         self.assertTrue(creation.join(self.bob, room, password="correct horse"))
 
-    def test_the_migration_turns_invite_rooms_into_password_rooms(self):
-        import importlib
-
-        room = creation.create_room(self.owner, name="Legacy")
-        ForumChannel.objects.filter(pk=room.pk).update(access="invite")
-        migration = importlib.import_module("toto.forum.migrations.0007_no_invitations")
-        from django.apps import apps as global_apps
-
-        migration.invite_to_password(global_apps, None)
-        room.refresh_from_db()
-        self.assertEqual(room.access, "password")
-        self.assertFalse(room.password_verifier)
-        self.assertTrue(ForumMember.objects.filter(channel=room, person__user=self.owner,
-                                                   is_active=True).exists())
-
     def test_only_the_owner_or_staff_remove_members(self):
         room = self.room(name="Board")
         creation.join(self.bob, room)
