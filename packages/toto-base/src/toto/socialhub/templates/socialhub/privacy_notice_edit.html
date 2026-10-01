@@ -89,7 +89,7 @@ link, and nothing else is markup.{% endcomment %}
             <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b last:border-b-0">
               <td class="px-4 py-3 font-semibold">{{ notice.version }}{% if current and notice.pk == current.pk %} <span class="text-xs font-normal opacity-60">({% translate "current" %})</span>{% endif %}</td>
               <td class="whitespace-nowrap px-4 py-3">{{ notice.published_at|date:"Y-m-d H:i" }}</td>
-              <td class="px-4 py-3">{% if notice.published_by %}{{ notice.published_by.get_username }}{% else %}<span class="opacity-50">{% translate "the platform" %}</span>{% endif %}</td>
+              <td class="px-4 py-3" data-testid="notice-by-{{ notice.version }}">{% if notice.published_by %}{{ notice.published_by.get_username }}{% elif notice.seeded %}<span class="opacity-50">{% translate "the platform" %}</span>{% else %}<span class="opacity-50">{% translate "an erased account" %}</span>{% endif %}</td>
               <td class="px-4 py-3 text-right"><a href="{% url 'socialhub:privacy_notice_version' notice.version %}" class="font-semibold underline">{% translate "Read" context "privacy notice version" %}</a></td>
             </tr>
           {% endfor %}
@@ -104,7 +104,7 @@ link, and nothing else is markup.{% endcomment %}
                  class="flex items-center justify-between gap-2 rounded-2xl border p-4 text-sm shadow-sm">
           <div class="min-w-0">
             <p class="font-bold">{% blocktranslate with version=notice.version %}Version {{ version }}{% endblocktranslate %}{% if current and notice.pk == current.pk %} <span class="text-xs font-normal opacity-60">({% translate "current" %})</span>{% endif %}</p>
-            <p class="text-xs opacity-70">{{ notice.published_at|date:"Y-m-d H:i" }} · {% if notice.published_by %}{{ notice.published_by.get_username }}{% else %}{% translate "the platform" %}{% endif %}</p>
+            <p class="text-xs opacity-70">{{ notice.published_at|date:"Y-m-d H:i" }} · {% if notice.published_by %}{{ notice.published_by.get_username }}{% elif notice.seeded %}{% translate "the platform" %}{% else %}{% translate "an erased account" %}{% endif %}</p>
           </div>
           <a href="{% url 'socialhub:privacy_notice_version' notice.version %}" class="font-semibold underline">{% translate "Read" context "privacy notice version" %}</a>
         </article>

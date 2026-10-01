@@ -21,7 +21,7 @@ membership flow, the wiki's Clearances page, the ingress, a shell:
 | `PRIVACY.EXPORT_READY` / `_FAILED` | the copy is in their bucket — the rows per table, the files and the vault file's id — or could not be made; the system's, not the member's (2026-10-01) |
 | `PRIVACY.ERASURE_REQUESTED` | a member files a request to have their account erased on My account (2026-10-01) |
 | `PRIVACY.ERASURE_DONE` / `_DECLINED` | the console's `erase_user` erased them and closed the request (the system's), or a superuser on the plan declined it — with the note's length, not the note (2026-10-01) |
-| `PRIVACY.NOTICE_PUBLISHED` | a new version of the privacy notice is published — its number, the one it replaces and each text's length, never the text (2026-10-01) |
+| `PRIVACY.NOTICE_PUBLISHED` | a new version of the privacy notice is published — its number, the one it replaces, each text's length and whether the platform seeded it (37c.32), never the text (2026-10-01) |
 
 Communities and clearances are orthogonal on purpose (README) and are
 recorded apart, so the chain shows which axis a change touched. The actor is whoever is at the keyboard (the audit context); nothing is
@@ -104,12 +104,14 @@ def notice_published(notice, *, previous=None) -> None:
     """A new version of the privacy notice (2026-10-01). Its own family,
     ``PRIVACY.*``, so the data-protection trail reads apart from the
     membership one. The lengths show a change happened; the text itself is
-    public on the notice's own page and has no place on the chain."""
+    public on the notice's own page and has no place on the chain. ``seeded``
+    says the platform published it from the host's files (37c.32)."""
     return _record("notice_published", family="privacy", object_type="socialhub.privacynotice",
                    object_id=notice.pk, description=f"v{notice.version}",
                    metadata={"version": notice.version, "previous": previous,
                              "length_pl": len(notice.text_pl),
-                             "length_en": len(notice.text_en)})
+                             "length_en": len(notice.text_en),
+                             "seeded": bool(getattr(notice, "seeded", False))})
 
 
 def notice_accepted(application) -> None:

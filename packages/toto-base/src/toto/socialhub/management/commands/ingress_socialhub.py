@@ -182,8 +182,10 @@ class Command(IngressCommand):
         would ask people to accept nothing. The host's own text where its
         settings name one (``PRIVACY_NOTICE_TEXTS``, 37c.16), else a marked
         PLACEHOLDER in Polish and English; a platform still on the
-        placeholder gets the host's text as its next version. Never edits a
-        version, never replaces somebody's text (``toto.socialhub.privacy``).
+        placeholder gets the host's text as its next version, and so does
+        one on a text it seeded itself once the host's files have changed
+        (37c.32). Never edits a version, never replaces a text a person
+        published (``toto.socialhub.privacy``).
         What the text it publishes leaves to fill in is named, loudly: the
         notice is public the moment it is seeded."""
         from toto.socialhub.privacy import is_placeholder, markers, seed_notice

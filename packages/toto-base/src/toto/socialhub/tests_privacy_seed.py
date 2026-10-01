@@ -1,7 +1,13 @@
 """A host's own privacy notice (2026-10-01, 37c.16): ``PRIVACY_NOTICE_TEXTS``
 names two plain-text files; the ingress publishes them as version 1 on a
 fresh database and as the next version over the placeholder, never over
-somebody's text, and names what they still leave to fill in."""
+somebody's text, and names what they still leave to fill in.
+
+A corrected host text reaches a running platform (37c.32): the ingress
+publishes it as the next version where the current one is the platform's
+own seed (``PrivacyNotice.seeded``) and the files have changed since — never
+over a version a person published, an erased superuser's (``published_by``
+emptied by SET_NULL, like the platform's) included."""
 
 from __future__ import annotations
 
@@ -143,6 +149,122 @@ class SeedTests(HostTextsFixture):
         self.assertIs(seed_placeholder, seed_notice)
         with self.host():
             self.assertEqual(seed_placeholder().text_pl, HOST_PL.strip())
+
+
+class CorrectedTextTests(HostTextsFixture):
+    """37c.32: the host's files changed after the platform seeded them."""
+
+    def correct(self):
+        self.pl.write_text(HOST_PL.replace("serwisu testowego", "serwisu testowego, poprawiona"),
+                           encoding="utf-8")
+        self.en.write_text(HOST_EN.replace("test service's", "test service's corrected"),
+                           encoding="utf-8")
+
+    def test_what_the_platform_seeds_is_marked_and_what_a_person_publishes_is_not(self):
+        with self.without_texts():
+            self.assertTrue(seed_notice().seeded)               # the placeholder
+        with self.host():
+            self.assertTrue(seed_notice().seeded)               # the host's text over it
+        from django.contrib.auth import get_user_model
+
+        root = get_user_model().objects.create_superuser("root", "root@example.com", "pw")
+        self.assertFalse(publish(text_pl="Nasza", text_en="Ours", user=root).seeded)
+        self.assertFalse(publish(text_pl="Nasza", text_en="Ours").seeded)
+
+    def test_a_corrected_host_text_follows_the_platforms_own_seed(self):
+        with self.host():
+            first = seed_notice()
+        self.correct()
+        with self.host():
+            second = seed_notice()
+        self.assertEqual(second.version, 2)
+        self.assertTrue(second.seeded)
+        self.assertIn("corrected", second.text_en)
+        self.assertIn("poprawiona", second.text_pl)
+        first.refresh_from_db()                                 # never an edit
+        self.assertEqual(first.text_en, HOST_EN.strip())
+        with self.host():
+            self.assertIsNone(seed_notice())                    # the same files: nothing new
+        self.assertEqual(PrivacyNotice.objects.count(), 2)
+        records = _published_records()
+        if records is not None:
+            self.assertEqual([(r.metadata["version"], r.metadata["seeded"]) for r in records],
+                             [(1, True), (2, True)])
+
+    def test_unchanged_files_saved_another_way_are_not_a_correction(self):
+        with self.host():
+            seed_notice()
+        self.pl.write_text(HOST_PL.replace("\n", "\r\n") + "\n\n", encoding="utf-8")
+        with self.host():
+            self.assertIsNone(seed_notice())
+        self.assertEqual(PrivacyNotice.objects.count(), 1)
+
+    def test_a_text_a_person_published_is_never_followed(self):
+        from django.contrib.auth import get_user_model
+
+        with self.host():
+            seed_notice()
+        editor = get_user_model().objects.create_superuser("editor", "editor@example.com", "pw")
+        publish(text_pl="Nasza", text_en="Ours", user=editor)
+        self.correct()
+        with self.host():
+            self.assertIsNone(seed_notice())
+        self.assertEqual(PrivacyNotice.current().text_en, "Ours")
+
+    def test_an_erased_superusers_text_is_not_mistaken_for_the_platforms(self):
+        """SET_NULL leaves the erased publisher's version with no
+        ``published_by`` — what the platform's own seeds have too."""
+        from django.contrib.auth import get_user_model
+
+        with self.host():
+            seed_notice()
+        editor = get_user_model().objects.create_superuser("editor", "editor@example.com", "pw")
+        theirs = publish(text_pl="Nasza", text_en="Ours", user=editor)
+        editor.delete()
+        theirs.refresh_from_db()
+        self.assertIsNone(theirs.published_by)
+        self.correct()
+        with self.host():
+            self.assertIsNone(seed_notice())
+        self.assertEqual(PrivacyNotice.current(), theirs)
+
+    def test_a_host_that_stops_naming_texts_changes_nothing(self):
+        with self.host():
+            seed_notice()
+        with self.without_texts():
+            self.assertIsNone(seed_notice())
+        self.assertEqual(PrivacyNotice.objects.count(), 1)
+
+    def test_the_ingress_publishes_the_correction_and_names_its_marks(self):
+        out = io.StringIO()
+        with self.host():
+            call_command("ingress_socialhub", mode="realistic", stdout=io.StringIO())
+        self.correct()
+        with self.host():
+            call_command("ingress_socialhub", mode="realistic", stdout=out)
+        said = out.getvalue()
+        self.assertIn("Privacy notice v2 (the host's text) published.", said)
+        self.assertIn("still leaves 4 place(s) to fill in", said)
+        self.assertIn("corrected", PrivacyNotice.current().text_en)
+
+    def test_the_editor_names_the_platform_and_an_erased_account_apart(self):
+        from django.contrib.auth import get_user_model
+
+        with self.host():
+            seed_notice()
+        users = get_user_model().objects
+        editor = users.create_superuser("editor", "editor@example.com", "pw")
+        publish(text_pl="Nasza", text_en="Ours", user=editor)
+        editor.delete()
+        root = users.create_superuser("root", "root@example.com", "pw")
+        if apps.is_installed("toto.subscriptions"):
+            call_command("bootstrap_plans", stdout=io.StringIO())
+            root = users.get(pk=root.pk)
+        self.client.force_login(root)
+        page = self.client.get(reverse("socialhub:privacy_notice_edit"))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'data-testid="notice-by-1"><span class="opacity-50">the platform')
+        self.assertContains(page, 'data-testid="notice-by-2"><span class="opacity-50">an erased account')
 
 
 class MarkerTests(HostTextsFixture):

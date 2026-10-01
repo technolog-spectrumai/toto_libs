@@ -19,6 +19,13 @@ files, and ``seed_notice`` — the ingress's — publishes them as version 1 on 
 fresh database, and as the next version where the current one is still the
 placeholder. What such a text leaves for its owner to fill in is marked
 ``[[…]]`` (``markers``), and the ingress names it when it seeds.
+
+A corrected host text reaches a running platform the same way (37c.32): where
+the current version is one the platform seeded itself (``seeded``) and the
+host's files now say something else, the next start publishes them as the
+next version. Never over a version a person published — an empty
+``published_by`` does not tell one apart, since an erased superuser's version
+has one too, so the platform marks its own.
 """
 
 from __future__ import annotations
@@ -132,8 +139,9 @@ def clean_text(value) -> str:
     return str(value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
 
 
-def publish(*, text_pl: str, text_en: str, user=None):
-    """Publish a new version and return it: the next number, now, by ``user``.
+def publish(*, text_pl: str, text_en: str, user=None, seeded: bool = False):
+    """Publish a new version and return it: the next number, now, by ``user``
+    — or, ``seeded``, by the platform itself (``seed_notice`` alone says so).
 
     Two editors publishing at once both read the same highest number; the
     unique ``version`` refuses the second insert, which then takes the number
@@ -152,7 +160,8 @@ def publish(*, text_pl: str, text_en: str, user=None):
             with transaction.atomic():
                 notice = PrivacyNotice.objects.create(
                     version=latest + 1, text_pl=text_pl, text_en=text_en,
-                    published_by=user if getattr(user, "pk", None) else None)
+                    published_by=user if getattr(user, "pk", None) else None,
+                    seeded=bool(seeded))
                 break
         except IntegrityError:
             if attempt:
@@ -203,15 +212,26 @@ def host_texts():
     return texts[0], texts[1]
 
 
+def differs(notice, texts) -> bool:
+    """Whether ``notice`` says something other than ``texts`` (``(pl, en)``),
+    compared as stored (``clean_text``): a host file saved with other line
+    endings or a trailing newline has not changed."""
+    return ((clean_text(notice.text_pl), clean_text(notice.text_en))
+            != (clean_text(texts[0]), clean_text(texts[1])))
+
+
 def seed_notice():
     """What the ingress publishes (``ingress_socialhub``, every mode but none):
     version 1 when there is no version at all — the host's own text where its
     settings name one, the placeholder otherwise — and, since 2026-10-01
     (37c.16), the host's text as the NEXT version where the current one is
     still the placeholder, so a platform seeded before its host had a text
-    moves off it by itself. Through ``publish``: a new version, audited, never
-    an edit. A current version that is not the placeholder — somebody's
-    text — is left alone. Returns the notice published, or None."""
+    moves off it by itself; and (37c.32) where the current one is the
+    platform's own seed and the host's files have changed since, so a
+    corrected text reaches a running platform at its next start. Through
+    ``publish``, marked ``seeded``: a new version, audited, never an edit. A
+    current version a person published is left alone, whoever they were and
+    whatever the files say. Returns the notice published, or None."""
     from .models import PrivacyNotice
 
     texts = host_texts()
@@ -220,9 +240,11 @@ def seed_notice():
         text_pl, text_en = texts or (PLACEHOLDER_PL, PLACEHOLDER_EN)
     elif texts is not None and is_placeholder(current):
         text_pl, text_en = texts
+    elif texts is not None and current.seeded and differs(current, texts):
+        text_pl, text_en = texts
     else:
         return None
-    return publish(text_pl=text_pl, text_en=text_en, user=None)
+    return publish(text_pl=text_pl, text_en=text_en, user=None, seeded=True)
 
 
 #: The name from when the ingress could seed only the placeholder. Other

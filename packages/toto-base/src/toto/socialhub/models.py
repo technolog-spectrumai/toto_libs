@@ -601,6 +601,12 @@ class PrivacyNotice(models.Model):
     # the version with it — applicants accepted that text.
     published_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
                                      related_name="+")
+    # Published by the platform itself — the ingress, from the host's files
+    # or the placeholder — and never by a person (2026-10-01, 37c.32). Only
+    # such a version is ever followed by the host's corrected text
+    # (``privacy.seed_notice``). An empty ``published_by`` cannot say it:
+    # that is also what an erased superuser's version is left with.
+    seeded = models.BooleanField(default=False, editable=False)
 
     class Meta:
         ordering = ["-version"]

@@ -400,16 +400,23 @@ the socialhub is where a person first hands the platform their data.
   the NEXT version where the current one is still the placeholder (its first
   line in either language is the mark), so a platform seeded before its host
   had a text moves off it by itself, through `publish` like any version.
-  Once the current version is anything else — the host's text or somebody's
-  own — the ingress leaves it alone: a later change to the files reaches a
-  running platform through the editor. A file named but missing or
+  Since 37c.32 a corrected text reaches a running platform by itself too:
+  where the current version is the platform's own seed (`seeded`, set by
+  `seed_notice` alone) and the files now say something else (`differs`,
+  compared as stored), the next start publishes them as the next version.
+  A version a person published is never followed, whatever the files say —
+  and an empty `published_by` cannot tell the two apart, since an erased
+  superuser's version is left with one too (SET_NULL); the editor's list
+  names such a publisher "an erased account" and the seeds "the platform".
+  A file named but missing or
   unreadable is `ImproperlyConfigured`, not a quiet placeholder. What a text
   still leaves its owner to fill in is marked `[[UZUPEŁNIJ: …]]` /
   `[[FILL IN: …]]` (`privacy.markers` lists them by name), and the ingress
   names each one, per language, when it publishes the text — the notice is
   public from that moment. `tests_privacy_seed`.
 - **Audited**: `PRIVACY.NOTICE_PUBLISHED`, with the version, the one it
-  replaces and each text's length — never the text.
+  replaces, each text's length and whether the platform seeded it — never
+  the text.
 - **Accepted on the membership application** (2026-10-01): the form links
   the current version and requires a tick; the version shown rides along in
   a hidden field, so a version published while the page was open is drawn
