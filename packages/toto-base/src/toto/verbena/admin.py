@@ -1,16 +1,25 @@
 from django.contrib import admin
 from django import forms
-from trix_editor.widgets import TrixEditorWidget
+
+from toto.verbena.widgets import use_local_trix
 
 
 def make_section_form(section_model):
-    """Returns a ModelForm with TrixEditorWidget for the content field."""
+    """Returns a ModelForm with the Trix editor for the content field — its
+    files from this platform, not unpkg (`use_local_trix`, 2026-10-01).
+
+    The content field's own form field already brings the editor
+    (`TrixEditorField.formfield`, which a `Meta.widgets` entry cannot
+    override); only where its files come from is changed here."""
 
     class _Form(forms.ModelForm):
         class Meta:
             model = section_model
             fields = "__all__"
-            widgets = {"content": TrixEditorWidget()}
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            use_local_trix(self.fields)
 
     return _Form
 

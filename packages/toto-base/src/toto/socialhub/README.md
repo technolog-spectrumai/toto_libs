@@ -320,6 +320,15 @@ platform their data, and the rest in `toto.core`:
   `contact_access.py`. The org chart answers with what the member shows and
   nothing more, the caller's own included: the desktop client copies it on,
   peer to peer.
+- **No visitor's address for other websites** (2026-10-01, 37c.20): the
+  Administrata page draws its chain graph with the image's own Cytoscape
+  (`vendor/cytoscape/`, as every other graph page), where it fetched it from
+  cdnjs.cloudflare.com, and the news editor's Trix comes from the image's
+  copy (`vendor/trix/`) through `toto.verbena.widgets.LocalTrixEditorWidget`,
+  where django-trix-editor's widget links unpkg.com. A form cannot name that
+  widget in `Meta.widgets` — `TrixEditorField.formfield` puts the package's
+  back — so the news form and `make_section_form` call `use_local_trix` on
+  their built fields.
 - **Nothing kept longer than needed**: membership applications that lapse
   are renewed when their applicant applies again, and pruned with the
   never-used accounts they made 30 days after they lapsed

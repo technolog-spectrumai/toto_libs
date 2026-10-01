@@ -4,7 +4,6 @@ import uuid
 from django import forms
 from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
-from trix_editor.widgets import TrixEditorWidget
 
 from toto.people.models import Person
 
@@ -16,6 +15,7 @@ from toto.socialhub.models import (
     ReferenceRequest,
 )
 from toto.verbena.forms import apply_oya_field_styles
+from toto.verbena.widgets import use_local_trix
 
 
 class MembershipApplicationForm(forms.ModelForm):
@@ -196,13 +196,14 @@ class CommunityNewsPostForm(forms.ModelForm):
         fields = _community_news_fields()
         widgets = {
             "title": forms.TextInput(attrs={"placeholder": "Optional headline"}),
-            "content": TrixEditorWidget(),
             "topics": forms.SelectMultiple(),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["content"].required = True
+        # Trix from the image, not unpkg (2026-10-01, 37c.20).
+        use_local_trix(self.fields)
         self.fields["topics"].queryset = CommunityNewsTopic.objects.order_by("name")
         apply_oya_field_styles(self.fields, skip={"content"})
 
