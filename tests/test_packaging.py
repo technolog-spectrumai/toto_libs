@@ -13,9 +13,20 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # sso_core left this set when it gained the RecoveryTicket table: the app had
 # no models for years, and the exemption outlived the fact. An entry here is
 # read as "this app must NOT ship migrations", so a stale one turns a real
-# table into a test failure — and the failure was invisible behind the count
-# assertion above, which stopped this test before it ever got here.
+# table into a test failure.
 NO_MIGRATION_APPS = {"editor", "neo_editor"}
+# Every app that ships a migrations package, by app directory name.
+APPS_WITH_MIGRATIONS = {
+    "ambrosia", "anastasia", "antivirus", "api", "assets", "audit", "bento",
+    "clearing", "comments", "company", "connectors", "core", "cyprian",
+    "events", "fileservices", "formica", "forum", "gervazy", "gitea",
+    "ingestor", "jess", "kanban", "ledger", "locations", "mail", "mana",
+    "mandragora", "manta", "memo", "mint", "monit", "ocr", "people", "quota",
+    "ravioli", "repo", "sabbia", "sketch", "social_login", "socialhub",
+    "sql_neo4j_sync", "sso_client", "sso_core", "sso_master", "steven",
+    "subscriptions", "tariffs", "tax", "transcription", "vault", "verbena",
+    "vicuna", "vod", "voting", "weather", "workflows",
+}
 # Non-app packages inside toto/ (no AppConfig, no migrations expected).
 NON_APP_PACKAGES = {"ui", "ingress"}
 # The shared host API every host imports; all of it lives in toto-base.
@@ -64,126 +75,12 @@ def test_migrations_are_packaged(all_names, owner):
         for name in all_names
         if name.startswith("toto/") and name.endswith("/migrations/__init__.py")
     }
-    # 40 as of 1.29: 39 plus toto.primula, a toto-works app with its own table (the
-    # sheet version history). 39 came in 1.25 with toto.jess, a new toto-base app with
-    # its own tables (the provider config and the outbox). 38 came in 1.21 with toto.datalink, and 37 before
-    # that, when assets + tariffs were promoted out of the zenobia host into
-    # toto-economy (a second host needed to price its own work). Moving an app between
-    # HOSTS never touches this; adding one to a PACKAGE, or moving one into or out of
-    # one, does. The 1.21 media split moved four apps between packages and so left the
-    # count alone: manta, fileservices and transcription are packaged in toto-media-ops
-    # and ocr in toto-media, so all four still ship. What WOULD change it is retiring
-    # one to limbo/, which is not a package and never ships.
-    # 41 as of 1.29: 40 plus toto.clearing, the toto-economy app that federates
-    # selected assets with a paired platform (its own tables: the peer, and the
-    # bridge state that follows in later stages).
-    # 40 as of 1.45: antaresia was DELETED from toto-works (not moved) — its
-    # name now belongs to zenobia's Python workspace host app, ambrosia's
-    # successor, and its PythonRun table dies with it.
-    # 43 as of 1.50, and the jump from 40 is three apps, not one:
-    #   * toto.tax     (8/2026, toto-economy) — the levy engine's own tables
-    #   * toto.cyprian (8/2026, toto-works)   — gained a quota/usage pair
-    #   * toto.gitvault(1.50,  toto-flow)     — came IN from the zenobia host
-    #     (the repo, the run, the quota pair, the custom remote). It was
-    #     host-owned while only zenobia had surfaces to version; the workspace
-    #     apps moved to placidia and versioning had to follow them, which a
-    #     host app cannot do. The app LABEL is unchanged, so no deployed
-    #     database notices the move.
-    # The first two drifted in unnoticed because dist/ held stale wheels: this
-    # assertion only bites once the wheels are rebuilt, so rebuild before
-    # trusting it.
-    # 44: toto.mint (toto-economy) — where currencies are engraved, minted and
-    # burned, and where the append-only chain of monetary events lives. It is
-    # installed on the MASTER only, but it SHIPS in the wheel like every other
-    # app here; what keeps a branch from minting is that the branch does not
-    # install it and holds no issuer key.
-    # 45: toto.gitvault SPLIT into toto.repo + toto.gitea and moved to the new
-    # toto-repo wheel. A package→package MOVE would have left this alone (see
-    # the 1.21 media split above); it is the split that costs one, because one
-    # app label became two. Zenobia installs the gitea half, placidia the repo
-    # half, and neither installs both — which one flag could not express and is
-    # the whole reason for the change.
-    # 46: toto.antivirus (toto-base) — the scan verdict cache and the per-user
-    # "which types are screened automatically" row. Note what did NOT move this
-    # number in the same release: toto.sketch shipped in toto-works alongside it
-    # and is not counted, because it has no models at all (the vault file IS the
-    # drawing) and so carries no migrations package. An empty one arrived with it
-    # from delta and was deleted — boilerplate that would have inflated exactly
-    # this tripwire.
-    # 47: toto.subscriptions (toto-base) — plans, the community discount, one
-    # subscription per user and one row per month. It arrived in the same
-    # release that DELETED two things which were never counted here, because
-    # neither owned an app: the head tax was a metric plus a levy provider
-    # inside socialhub, and the company tribute was two models inside zenobia's
-    # host-owned portfolio, which does not ship in any wheel.
-    # 48: toto.steven (toto-ai) — the assistant's provider row and its run log.
-    # The app existed before and was NOT counted: it was 235 lines of floating
-    # chat widget with no models at all, which is why it appears in
-    # NO_MIGRATION_APPS at the top of this file. Rewriting it gave it tables, so
-    # that exemption went with the rewrite.
-    # 49: toto.polls (toto-base) — came IN from the zenobia host, where it had
-    # always lived. The Forum has to show the polls belonging to a room and the
-    # poll stays owned by the Polls app; forum ships in toto-chat, and a wheel
-    # cannot import a host portion, so the app had to move to be reachable at
-    # all. Same move, and the same reason, as cyprian in 1.41 and gitvault in
-    # 1.50. The app LABEL is unchanged, so no deployed database notices.
-    # 48 again: toto.datalink went OUT — parked to limbo/ with the sealing
-    # decision that made the vault's bucket peer API the platform's one
-    # host-to-host data channel. It had migrations but was installed by no
-    # host, so no deployed database notices this either.
-    # 49 again: toto.mail (toto-base) — real per-user mailboxes on real IMAP/
-    # SMTP servers, with the connection, the sealed credential, the attachment
-    # rows and one sent-record per recipient. It is NOT jess: jess is the
-    # platform's own outbox for transactional mail, and this is people's
-    # accounts, which is why it owns tables rather than extending that app's.
-    # 47 now: toto.hesperis went OUT — parked to limbo/ on 2026-08-29 and
-    # succeeded by toto.lacedo, a HOST portion on zenobia, which is why the
-    # replacement does not come back into this count. It took its six models
-    # and the toto-economy edge with it; see limbo/hesperis/PARKED.md.
-    # 48 before that: toto.polls went OUT — parked to limbo/ when the Forum stopped
-    # borrowing it and started owning its polls. It came in (entry 49 above) so
-    # that a wheel could reach it at all; a room's poll is a `forum` model with
-    # a real ForeignKey to its channel now, so the app it was reached FOR no
-    # longer needs it. Its tables are deliberately left in place, and the quiz
-    # desk it carried is parked with it — see limbo/polls/PARKED.md.
-    #
-    # ---- 54, and a reconciliation rather than another entry ----------------
-    #
-    # The ledger above stopped describing reality. It was last correct at 49;
-    # after that the number was hand-DECREMENTED for each app that left while
-    # eight arrived unnoticed, so it read 47 against a real 54 and had been
-    # failing on every host's gate for weeks. It could not do otherwise: dist/
-    # holds only the wheels a host PINS, and the conftest falls back to
-    # building all sixteen packages, so whether this assertion was even
-    # reachable depended on which host ran it.
-    #
-    # Everything that moved since 49, in one list rather than eight entries:
-    #
-    #   IN   toto.ambrosia  — the workspace base became its OWN wheel when the
-    #                         labs went to placidia and both hosts needed it.
-    #   IN   toto.anastasia — Compute Gears: the reservation and the run.
-    #   IN   toto.audit     — placidia's hash-chained audit trail, promoted to
-    #                         toto-base so both hosts share one chain.
-    #   IN   toto.company   ) the Business Center's three apps, moved host →
-    #   IN   toto.ledger    ) wheel as toto-business (8/2026). One move, three
-    #   IN   toto.voting    ) app labels, so it costs three here.
-    #   IN   toto.sketch    — it shipped in toto-works with NO models and was
-    #                         explicitly not counted; the SVG editor gained a
-    #                         table and the exemption lapsed.
-    #   IN   toto.sso_core  — same shape: years with no models, then the
-    #                         RecoveryTicket table. It is why the app had to
-    #                         leave NO_MIGRATION_APPS below.
-    #   OUT  toto.backup    — DELETED (32/130 coverage); pg_dump and media-tar
-    #                         sidecars in deploy.py replace it.
-    #   OUT  toto.polls     — parked, as the entry above records.
-    #   OUT  toto.primula   — parked to zenobia/limbo/primula on 2026-09-02.
-    #
-    # 49 + 8 - 3 = 54. Rebuild the wheels before trusting a failure here: the
-    # assertion reads what is in dist/, and a stale wheel is why two of these
-    # drifted in without anybody seeing it.
-    # 55 (2026-09-25): toto.comments (toto-base) came IN — the generic
-    # comment, attached by per-app through-tables with a real FK.
-    assert len(apps_with_migrations) == 55, sorted(apps_with_migrations)
+    # Named, not counted: a count hides an app leaving while another arrives,
+    # and says nothing about which one moved. An app gaining or losing its
+    # migrations package edits this set and nothing else.
+    assert apps_with_migrations == APPS_WITH_MIGRATIONS, (
+        f"new: {sorted(apps_with_migrations - APPS_WITH_MIGRATIONS)}, "
+        f"gone: {sorted(APPS_WITH_MIGRATIONS - apps_with_migrations)}")
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"
@@ -368,8 +265,8 @@ def test_federation_pairing_ships_in_toto_auth(owner, all_names):
 
     sso_core is the only auth app installed in BOTH provider and consumer mode, so
     it is the one place code both sides need can live without either app importing
-    the other. It still ships no migrations — the models stay in sso_master and
-    sso_client — which test_migrations_are_packaged asserts by app count.
+    the other. The pairing models stay in sso_master and sso_client; sso_core's
+    own migrations carry only the RecoveryTicket table.
     """
     for module in ("enrollment", "qr", "vault"):
         assert owner.get(f"toto/sso_core/{module}.py") == "toto-auth", module

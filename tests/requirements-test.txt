@@ -17,6 +17,8 @@ Pillow
 PyJWT
 pypdf
 cryptography
+# toto.gervazy.sealed (the sealed-box envelope) imports nacl at check time.
+PyNaCl
 PyYAML
 requests
 # tier matrix: toto-flow and everything above it import these at module level
