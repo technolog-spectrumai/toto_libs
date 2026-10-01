@@ -59,3 +59,35 @@ class Snapshot(models.Model):
 
     def __str__(self):
         return f"Snapshot {self.created:%Y-%m-%d %H:%M:%S}"
+
+
+class CheckState(models.Model):
+    """The last verdict of one record check, as the scheduled run saw it.
+
+    One row per check key (``toto.monit.record``), written every
+    ALERT_CHECK_MINUTES by ``toto.monit.alerts``. It is what lets a mail say
+    "changed" rather than "is": each run compares what it measured with this
+    row and mails only the difference — see that module for the rules.
+    """
+
+    key = models.CharField(max_length=40, unique=True)
+    label = models.CharField(max_length=80, blank=True)
+    status = models.CharField(max_length=10)
+    summary = models.CharField(max_length=300, blank=True)
+    #: When the check entered `status`.
+    since = models.DateTimeField(default=timezone.now)
+    #: When it last went from fine (ok, off) to bad: the incident's start,
+    #: which the recovery mail names.
+    bad_since = models.DateTimeField(null=True, blank=True)
+    checked_at = models.DateTimeField(default=timezone.now)
+    #: The worst bad verdict the operators were mailed and not yet told is
+    #: over; "" when nothing is outstanding.
+    alerted_status = models.CharField(max_length=10, blank=True)
+    #: When the last mail about the problem went — the first or a reminder.
+    alerted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("key",)
+
+    def __str__(self):
+        return f"{self.key}: {self.status}"

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Snapshot
+from .models import CheckState, Snapshot
 
 
 @admin.register(Snapshot)
@@ -11,6 +11,24 @@ class SnapshotAdmin(admin.ModelAdmin):
     list_display = ("created", "sys_cpu_percent", "db_ok", "db_latency_ms",
                     "redis_ok", "celery_ok", "web_ok", "web_latency_ms")
     list_filter = ("db_ok", "redis_ok", "celery_ok", "web_ok")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(CheckState)
+class CheckStateAdmin(admin.ModelAdmin):
+    """Read-only: the scheduled run (toto.monit.alerts) is the only writer."""
+
+    list_display = ("key", "status", "since", "checked_at", "alerted_status",
+                    "alerted_at")
+    list_filter = ("status",)
 
     def has_add_permission(self, request):
         return False

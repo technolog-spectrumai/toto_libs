@@ -16,6 +16,8 @@ def beat_schedule(
     formica_minutes=5,
     monit=False,
     monit_minutes=2,
+    alerts=False,
+    alerts_minutes=5,
     gitea=False,
     gitea_hour=3,
     gitea_minute=30,
@@ -91,6 +93,19 @@ def beat_schedule(
         schedule["monit-prune"] = {
             "task": "toto.monit.tasks.monit_prune",
             "schedule": crontab(minute="17"),
+        }
+
+    if alerts:
+        from celery.schedules import crontab
+
+        # The Database page's checks on a schedule, and mail to ALERT_EMAILS
+        # when one changes (toto.monit.alerts, 2026-10-01). Until then they
+        # ran only when somebody opened the page, which is never at 3am.
+        schedule["monit-alert-checks"] = {
+            "task": "toto.monit.tasks.monit_alert_checks",
+            "schedule": crontab(minute=f"*/{alerts_minutes}")
+            if alerts_minutes > 1
+            else crontab(),
         }
 
     if clearing:

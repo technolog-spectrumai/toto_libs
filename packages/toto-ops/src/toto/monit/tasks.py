@@ -29,3 +29,18 @@ def monit_prune():
     deleted, _ = Snapshot.objects.filter(created__lt=cutoff).delete()
     if deleted:
         logger.info("monit: pruned %d snapshots older than %dh", deleted, hours)
+
+
+@shared_task(name="toto.monit.tasks.monit_alert_checks", ignore_result=True,
+             soft_time_limit=240, time_limit=280)
+def monit_alert_checks():
+    """Run the record checks, keep each one's state, mail what changed.
+
+    Every ALERT_CHECK_MINUTES (toto.schedules); the rules are in
+    toto.monit.alerts. The limits stay under the default five-minute step.
+    """
+    from .alerts import run
+
+    sent = run()
+    if any(sent.values()):
+        logger.info("monit: alert mail sent %s", sent)
