@@ -76,7 +76,7 @@ def password_login_view(request, *, template_name, page_title, extra_context=Non
         if user:
             clear_login_retry_cooldown(request)
             login(request, user)
-            logger.info(f"User '{user.username}' logged in successfully.")
+            logger.info("Account %s signed in.", user.pk)
             return redirect(next_url or reverse("core:dashboard"))
         held = refusal_for(request)
         if held is not None:
@@ -88,7 +88,10 @@ def password_login_view(request, *, template_name, page_title, extra_context=Non
             context["cooldown_remaining"] = held.retry_after
             messages.error(request, context["error"])
             return render(request, template_name, processor.decorate(context, request))
-        logger.warning(f"Failed login attempt for username '{form.cleaned_data['username']}'.")
+        # Not the name typed (2026-10-01): it is often an e-mail address, now
+        # and then a password typed into the wrong box. AUTH.LOGIN_FAILED on
+        # the audit chain names it for those who may read it.
+        logger.warning("Failed sign-in attempt.")
         context["error"] = "Invalid username or password."
         context["cooldown_remaining"] = login_retry_cooldown_seconds()
         messages.error(request, context["error"])
@@ -116,7 +119,7 @@ def _social_login_providers(request):
 
 def password_logout_view(request):
     if request.user.is_authenticated:
-        logger.info(f"User '{request.user.username}' logged out.")
+        logger.info("Account %s signed out.", request.user.pk)
     logout(request)
     next_url = safe_next(request, request.GET.get("next"))
     return redirect(next_url or reverse("core:dashboard"))

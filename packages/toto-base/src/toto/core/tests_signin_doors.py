@@ -118,6 +118,24 @@ class FormDoorTests(_Door):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(request.session[SESSION_KEY], str(self.ada.pk))
 
+    def test_the_log_names_the_account_by_its_id_and_never_the_name_typed(self):
+        """The log wrote the name typed at every failed sign-in — often an
+        e-mail address — and the username at every sign-in and sign-out
+        (2026-10-01, 37c.21). The chain's AUTH records keep what may be read."""
+        from toto.core.auth_views import password_logout_view
+
+        with self.assertLogs("toto.core.auth_views", level="INFO") as logs:
+            self.knock("ada@example.com", "wrong")
+            request, _ = self.knock("ada", RIGHT)
+            request.user = self.ada
+            password_logout_view(request)
+        text = "\n".join(logs.output)
+        self.assertNotIn("ada@example.com", text)
+        self.assertNotIn("'ada'", text)
+        self.assertIn("Failed sign-in attempt.", text)
+        self.assertIn(f"Account {self.ada.pk} signed in.", text)
+        self.assertIn(f"Account {self.ada.pk} signed out.", text)
+
 
 class ApiDoorTests(_Door):
     def knock(self, username, password, address=HERE, body=None):
