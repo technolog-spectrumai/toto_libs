@@ -23,7 +23,15 @@ days=30)` is the one read outside the staff pages — My account's "Recent
 sign-ins". It answers the `AUTH.*` records whose actor is the member, whose
 subject is their account, or (a refused sign-in, a pause) whose typed name is
 their username or e-mail address, any case; a pause of a whole address names
-no one and is nobody's.
+no one and is nobody's. `queries.records_about(user, also=())` (2026-10-01)
+is the other half of their data export (`toto.core.personal_data`): the
+records about them that somebody ELSE wrote — their account as the subject,
+a refused sign-in or a pause naming them, a socialhub record carrying their
+account's id in `metadata["user"]` (a community or clearance given or taken,
+their data copy, their erasure request declined), and whatever the caller
+adds (`also`: their profile, their applications and the references asked for
+them). The export leaves out each one's `request_source` and the address a
+pause names: those are the other side's.
 
 ## Who writes to it
 
@@ -57,6 +65,6 @@ membership change never fails because the chain could not be written.
 and nothing else from the credentials.
 
 Tests: `tests/test_chain.py`, `test_pages.py`, `test_file_audit.py`,
-`test_identity.py`; socialhub's `tests_audit.py` and `tests_account_signins.py` (`member_auth_records`); the refused tokens in
+`test_identity.py`; socialhub's `tests_audit.py` and `tests_account_signins.py` (`member_auth_records`); core's `tests_records_about_you.py` (`records_about`); the refused tokens in
 `toto/api/tests/test_token_resolution.py`; the sign-in pauses in
 `toto/core/tests_signin_lockout.py`.

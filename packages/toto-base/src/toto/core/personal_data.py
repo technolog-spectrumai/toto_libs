@@ -12,8 +12,10 @@ and clearances held, membership applications made with their address, the
 privacy notices accepted, the subscription and its charges, the ledger
 accounts and a statement of every entry on them, events owned, organised and
 invited to (with the answer given), availability, forum messages they sent,
-their sign-in sessions, the audit records whose actor is them — and their own
-vault files, the bytes in folders by bucket, with an index.
+their sign-in sessions, the audit records whose actor is them and, apart,
+those about them that somebody else wrote (without that side's address and
+browser — :func:`_about_you`) — and their own vault files, the bytes in
+folders by bucket, with an index.
 
 What never goes in: a password hash, a key, a token, a session key, a sealed
 or encrypted body, a verification code (:data:`SECRET_FIELD`). Vault files
@@ -257,16 +259,67 @@ def _sessions(user) -> list[Table]:
                   rows_of(UserSession.objects.filter(user=user).order_by("created_at")))]
 
 
-def _audit(user) -> list[Table]:
+#: The chain's own columns: they say nothing about the member.
+CHAIN_COLUMNS = ("chain", "previous_hash", "record_hash", "algorithm")
+
+#: Metadata keys that hold an address or a browser — the address a sign-in
+#: pause names is the guesser's (``AUTH.LOCKED``).
+OTHER_SIDE_KEYS = frozenset({"address", "ip", "ip_address", "user_agent"})
+
+
+def _about_you(record) -> dict:
+    """A record about the member that somebody else wrote, without that
+    side's address and browser (2026-10-01): ``request_source`` is theirs,
+    and so is the address a pause names. A copy of one's data must not give
+    away somebody else's (RODO art. 15(4)). Who it was stays — their
+    username: who changed the member's account is the member's to know."""
+    row = row_of(record, omit=(*CHAIN_COLUMNS, "request_source"))
+    if isinstance(row.get("metadata"), dict):
+        row["metadata"] = {key: value for key, value in row["metadata"].items()
+                           if key not in OTHER_SIDE_KEYS}
+    return row
+
+
+def _subjects(user, person) -> list:
+    """What else on the chain is the member's, as ``records_about`` takes it:
+    their profile, the applications made with their address and the
+    references asked for those."""
+    from toto.socialhub.models import MembershipApplication, ReferenceRequest
+
+    subjects = []
+    if person is not None:
+        subjects.append(("people.person", [person.pk]))
+    if user.email:
+        applications = list(MembershipApplication.objects.filter(email__iexact=user.email)
+                            .values_list("pk", flat=True))
+        subjects.append(("socialhub.membershipapplication", applications))
+        subjects.append(("socialhub.referencerequest", list(
+            ReferenceRequest.objects.filter(application_id__in=applications)
+            .values_list("pk", flat=True))))
+    return subjects
+
+
+def _audit(user, person) -> list[Table]:
     if not apps.is_installed("toto.audit"):
         return []
     from toto.audit.models import AuditRecord
+    from toto.audit.queries import records_about
 
-    return [Table("audit_records", _("What the platform's audit trail records you doing: "
-                                     "sign-ins, changes, requests."),
-                  rows_of(AuditRecord.objects.filter(actor_user=user)
-                          .order_by("timestamp", "sequence"),
-                          omit=("chain", "previous_hash", "record_hash", "algorithm")))]
+    # Two tables, which the README tells apart (2026-10-01): what the member
+    # did, with the address and browser they did it from, and what others
+    # did about them, without the others' (_about_you).
+    return [
+        Table("audit_records", _("What the platform's audit trail records you doing: "
+                                 "sign-ins, changes, requests."),
+              rows_of(AuditRecord.objects.filter(actor_user=user)
+                      .order_by("timestamp", "sequence"), omit=CHAIN_COLUMNS)),
+        Table("audit_records_about_you", _(
+            "What the audit trail records others doing about you: an administrator "
+            "changing your account, sign-ins tried with your name and the pauses that "
+            "followed, communities and clearances given or taken, your applications and "
+            "requests handled. Their address and browser are left out: those are theirs."),
+              [_about_you(r) for r in records_about(user, also=_subjects(user, person))]),
+    ]
 
 
 def tables_for(user) -> list[Table]:
@@ -274,7 +327,7 @@ def tables_for(user) -> list[Table]:
     person = _person(user)
     tables = [*_account(user, person), *_socialhub(user, person), *_subscriptions(user),
               *_ledger(user), *_events(person), *_forum(user), *_sessions(user),
-              *_audit(user)]
+              *_audit(user, person)]
     for plugin in plugins():
         tables.extend(plugin.tables(user))
     return tables
