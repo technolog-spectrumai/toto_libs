@@ -18,6 +18,9 @@ address as taken and the code answered "This code has expired." So:
   they chose this time). The account the lapsed attempt made is reused under
   the username typed now, so the address still has one account and the
   acceptance (``ReferenceRequest.save``, by address) finds it.
+* **So does one whose every reference was declined** (2026-10-01): the
+  decline mail tells the applicant they may apply again, yet the address
+  stayed taken for the rest of the week (:func:`declined`).
 * **The nightly housekeeping prunes it** (:func:`prune`, from
   ``toto.core.housekeeping``) once it lapsed more than
   ``SOCIALHUB_EXPIRED_APPLICATION_DAYS`` (30) days ago, together with the
@@ -134,9 +137,18 @@ def leftovers(application):
     return accounts
 
 
+def declined(application) -> bool:
+    """Was every reference asked for ``application`` declined — at least one,
+    none pending or accepted? Then it is over, as a lapsed one is."""
+    statuses = set(application.reference_requests.values_list("status", flat=True))
+    return statuses == {"declined"}
+
+
 def renewable(application) -> bool:
-    """Has ``application`` lapsed, so that applying again renews it?"""
-    return application.is_expired() and leftovers(application) is not None
+    """Has ``application`` lapsed, or had every reference declined, so that
+    applying again renews it?"""
+    return ((application.is_expired() or declined(application))
+            and leftovers(application) is not None)
 
 
 def _new_code(old: str) -> str:

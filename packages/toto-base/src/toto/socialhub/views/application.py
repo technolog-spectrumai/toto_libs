@@ -74,7 +74,8 @@ def membership_application_view(request):
             # applicant got in (2026-10-01): it starts over — a new code, a
             # new week, the account it made named as typed now — instead of
             # the address being refused and the old code answering "expired"
-            # for ever. See toto.socialhub.applications.
+            # for ever. One whose every reference was declined starts over
+            # the same way. See toto.socialhub.applications.
             application = applications.renew(form.renewing, username=username,
                                               community=community, notice=notice)
             from toto.socialhub import audit

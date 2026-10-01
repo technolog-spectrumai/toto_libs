@@ -154,6 +154,35 @@ class RenewalTests(LapsedCase):
         self.assertFalse(mine.filter(action="SOCIALHUB.APPLICATION_PENDING").exists())
         self.assertEqual(mine.get(action="PRIVACY.NOTICE_ACCEPTED").metadata["version"], 2)
 
+    def declined_live(self, *also):
+        """A live, verified application with a declined reference — and
+        ``also`` more references in those states."""
+        MembershipApplication.objects.filter(pk=self.application.pk).update(
+            expires_at=timezone.now() + timedelta(days=3), status="verified",
+            verified_at=timezone.now())
+        voucher = Person.objects.create(
+            user=User.objects.create_user("voucher", "v@example.com", "pw"), display_name="V")
+        for status in ("declined", *also):
+            ReferenceRequest.objects.create(application=self.application, referrer=voucher,
+                                            status=status)
+
+    def test_an_application_whose_references_were_declined_renews_at_once(self):
+        # The decline mail says they may apply again (2026-10-01); the address
+        # stayed taken for the rest of the week.
+        self.declined_live()
+        response = self.apply()
+        self.assertRedirects(response, reverse("socialhub:application_success", args=[EMAIL]),
+                             fetch_redirect_response=False)
+        self.application.refresh_from_db()
+        self.assertNotEqual(self.application.code, "424242")
+        self.assertEqual((self.application.status, self.application.community),
+                         ("pending", self.other))
+        self.assertFalse(ReferenceRequest.objects.filter(application=self.application).exists())
+
+    def test_a_reference_still_pending_holds_the_address(self):
+        self.declined_live("pending")
+        self.refused(self.apply())
+
     def test_a_live_application_still_holds_its_address(self):
         MembershipApplication.objects.filter(pk=self.application.pk).update(
             expires_at=timezone.now() + timedelta(days=3))
