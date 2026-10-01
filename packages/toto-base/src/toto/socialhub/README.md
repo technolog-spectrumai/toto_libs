@@ -130,13 +130,16 @@ creates or deletes an account (console only; a first save creates the
   protection](#data-protection-rodo--gdpr)) — nothing that decides access
   rides along. The avatar
   goes through the platform's upload rules without entering the vault: Pillow
-  must read it as JPEG, PNG, GIF or WebP, at most 2 MB
-  (`SOCIALHUB_AVATAR_MAX_BYTES`) and 4096 pixels a side, the host's
+  must read it as JPEG, PNG, GIF or WebP (a camera's MPO, a JPEG with a second
+  picture behind it, too since 2026-10-01: stored as the plain JPEG in front),
+  at most 2 MB (`SOCIALHUB_AVATAR_MAX_BYTES`) and 4096 pixels a side, the host's
   `VAULT_REFUSED_FILE_TYPES` apply, and the antivirus door
   (`toto.vault.scanning.scan`) is asked. The antivirus cannot scan images: it
   answers "not scanned" for every raster picture, avatars included. Since
   2026-10-01 what is stored is the picture drawn again from its pixels
-  (`forms.reencode_avatar`): turned as its EXIF orientation says, in the same
+  (`forms.reencode_avatar`, through `forms.redraw_picture`, which a host may
+  call with a cap of its own — zenobia's Trix attachments do): turned as its
+  EXIF orientation says, in the same
   format, without its EXIF (the GPS position, the camera), XMP, ICC profile or
   comments; an animated GIF or WebP keeps its first frame. A JPEG or WebP is
   encoded at quality 90, or 80 or 70 when that is what fits under the same

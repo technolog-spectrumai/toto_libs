@@ -83,6 +83,14 @@ with a sentence. Whole-bucket export — directory ACLs do NOT cross hosts.
 Encrypted non-PDF files answer 409: they are sealed under the exporting
 host's local salt and would be garbage anywhere else.
 
+The path is a credential, so nothing keeps it whole (2026-10-01): the audit
+chain and the error mail cut the grant and the token (37c.25), and so do the
+console's lines — Django's `django.request` and uvicorn's access line, through
+`toto.core.error_reports.PathSecretsLogFilter` (a host names it on
+`django.request` in its LOGGING; the socket stack puts it on uvicorn's
+loggers) — and zenobia's nginx access log, which writes `[token]` for both
+segments (37c.24).
+
 ## Mirror (`mirror.py`)
 
 `BucketRefreshRun` walks the peer's listing page by page (one transaction
