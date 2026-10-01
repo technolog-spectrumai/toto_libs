@@ -9,8 +9,15 @@ Business Center exports for free.
 **No Django templates either.** These build strings. A `render_to_string` would
 put the page's base template, its Alpine attributes and its stylesheet into a
 document that is going to a printer, and then somebody would spend an afternoon
-finding out why the PDF has a navigation bar in it. What goes to WeasyPrint is
-written here, in full, with its own CSS.
+finding out why the PDF has a navigation bar in it. The body is written here,
+in full.
+
+**The page's head does not print (2026-10-01).** Aralia renders an approved
+source only, so an export is filed as a vault page and resolved like one
+(`services.export`): the body goes through the platform's document sanitiser
+and onto the federation's letterhead, whose stylesheet is the one that
+prints. `BASE_CSS` stays in the page for whoever opens it in the vault, and
+nothing here may depend on it for the PDF — hence `QR_SCALE`.
 
 Images are `data:` URIs because aralia refuses to fetch anything — see
 `aralia/render.py::refuse_fetch`.
