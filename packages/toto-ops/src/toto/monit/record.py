@@ -442,6 +442,16 @@ def check_overdue():
                  value=str(len(late)))
 
 
+def backend_name() -> str:
+    """The mail backend's short name: "django.core.mail.backends.console.
+    EmailBackend" is "console" — what the Mail check and the alert summary
+    say when nothing reaches anyone."""
+    from django.conf import settings
+
+    parts = str(getattr(settings, "EMAIL_BACKEND", "")).split(".")
+    return parts[-2] if len(parts) > 1 else parts[0]
+
+
 @_guard("mail", gettext_lazy("Mail"))
 def check_mail():
     """Do the notices and the alert mail still leave (2026-10-01)?
@@ -453,7 +463,6 @@ def check_mail():
     again. A backend that delivers nothing (console, dummy) succeeds every
     time and reaches nobody, so the detail says it.
     """
-    from django.conf import settings
     from django.utils import timezone
 
     from toto.core.email_config import email_delivery_configured
@@ -466,11 +475,8 @@ def check_mail():
                       key=lambda row: row.updated_at, reverse=True)
     notes = []
     if not email_delivery_configured():
-        # "django.core.mail.backends.console.EmailBackend" is "console".
-        parts = str(getattr(settings, "EMAIL_BACKEND", "")).split(".")
-        backend = parts[-2] if len(parts) > 1 else parts[0]
         notes.append(_("Nothing reaches anyone: the mail backend is %(backend)s.")
-                     % {"backend": backend})
+                     % {"backend": backend_name()})
     notes += [_("%(kind)s: %(status)s, try %(tries)d, %(error)s, %(when)s") % {
                   "kind": row.purpose, "status": row.get_status_display(),
                   "tries": row.tries, "error": row.error or "—",

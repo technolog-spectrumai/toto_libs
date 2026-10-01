@@ -35,6 +35,11 @@ cannot report the server itself being down. No power, no network, a stopped
 worker or beat, a database that cannot be reached (the states live in it) —
 each ends in silence, not in a mail. Only something outside the server can
 notice those.
+
+The Database page shows all of this read-only (``overview``, 2026-10-01): who
+is mailed — every address masked — how often the checks run, what each check
+last mailed, and how the last alert and recovery mail fared. The settings
+themselves live in the deploy profile, not on a page.
 """
 
 from __future__ import annotations
@@ -55,6 +60,11 @@ RANK = {record.OK: 0, record.OFF: 0, record.UNKNOWN: 1, record.WARN: 2,
         record.FAIL: 3}
 
 PROBLEM, REMINDER, RECOVERED = "problem", "reminder", "recovered"
+
+#: The beat entry's task, as the schedule names it (toto.schedules).
+TASK = "toto.monit.tasks.monit_alert_checks"
+#: The notice kinds this module sends, in the order the page lists them.
+KINDS = ("check_alert", "check_recovered")
 
 
 def _rank(status: str) -> int:
@@ -81,6 +91,65 @@ def remind_hours() -> int:
         return max(0, int(getattr(settings, "ALERT_REMIND_HOURS", 6)))
     except (TypeError, ValueError):
         return 6
+
+
+def error_recipients() -> list[str]:
+    """Where a page that crashes mails its report: the addresses in Django's
+    ADMINS — the host fills it from ERROR_EMAILS, else ALERT_EMAILS. A pair
+    (name, address) or a bare address, as either Django release takes it."""
+    out = []
+    for entry in getattr(settings, "ADMINS", None) or []:
+        address = entry[-1] if isinstance(entry, (list, tuple)) and entry else entry
+        address = str(address or "").strip()
+        if address and address not in out:
+            out.append(address)
+    return out
+
+
+def mask(address: str) -> str:
+    """``ops@example.org`` -> ``o***@example.org``: the e-mail change's shape
+    (``toto.socialhub.email_change.mask_email``), enough to recognise a
+    mailbox and not to write to it — the page shows no address in full."""
+    from toto.socialhub.email_change import mask_email
+
+    return mask_email(address)
+
+
+def overview() -> dict:
+    """What the Database page's Alerts section shows (2026-10-01). Read-only.
+
+    Who is mailed (masked), whether and how often the beat runs the checks,
+    the reminder interval, the last scheduled run, each check's kept state
+    (``CheckState``: its verdict, the last problem mail, an alert not yet
+    followed by its recovery) and how the last mail of each alert kind fared
+    (``toto.core.models.NoticeDelivery``: status, tries, error class — never
+    an address). ``delivers`` is False on a backend that reaches nobody.
+    """
+    from toto.core.email_config import email_delivery_configured
+    from toto.core.models import NoticeDelivery
+
+    from . import heartbeats
+    from .models import CheckState
+
+    scheduled, cadence = False, None
+    for entry in heartbeats.beat_schedule().values():
+        if entry["task"] == TASK:
+            scheduled, cadence = True, heartbeats.cadence_seconds(entry.get("schedule"))
+            break
+    states = list(CheckState.objects.all())
+    sent = {row.purpose: row for row in NoticeDelivery.objects.filter(purpose__in=KINDS)}
+    return {
+        "recipients": [mask(address) for address in recipients()],
+        "error_recipients": [mask(address) for address in error_recipients()],
+        "scheduled": scheduled,
+        "every": heartbeats.span(cadence) if cadence else "",
+        "remind_hours": remind_hours(),
+        "last_run": max((state.checked_at for state in states), default=None),
+        "states": states,
+        "deliveries": [sent[kind] for kind in KINDS if kind in sent],
+        "delivers": email_delivery_configured(),
+        "backend": record.backend_name(),
+    }
 
 
 def decide(state, status: str, now, remind_after) -> str | None:

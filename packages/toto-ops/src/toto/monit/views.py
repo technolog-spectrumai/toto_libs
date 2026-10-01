@@ -355,14 +355,23 @@ class StatusView(MonitAccessMixin, TemplateView):
     template_name = "monit/status.html"
 
     def get_context_data(self, **kwargs):
-        from toto.monit import record
+        from toto.monit import alerts, record
 
         context = super().get_context_data(**kwargs)
         checks = record.run_checks()
+        # The alert settings and what they did (2026-10-01): read-only, the
+        # addresses masked — toto.monit.alerts.overview. Never a 500 for it:
+        # the checks above are what this page is for.
+        try:
+            summary = alerts.overview()
+        except Exception:  # noqa: BLE001 - the page must render without it
+            log.warning("monit: the alert summary could not be read", exc_info=True)
+            summary = None
         context.update({
             "checks": checks,
             "worst": record.worst(checks),
             "bad": [check for check in checks if check.is_bad],
+            "alerts": summary,
         })
         processor = PageProcessor()
         return processor.decorate(context, self.request)

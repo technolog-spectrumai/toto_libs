@@ -1,0 +1,13 @@
+{% load i18n %}{# params: status — a toto.monit.record verdict: ok, off, unknown, warn, fail #}
+{% if status == "ok" %}
+  <span :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+    <i class="fa-solid fa-circle-check" aria-hidden="true"></i> {% trans "OK" %}</span>
+{% elif status == "off" %}
+  <span class="opacity-60"><i class="fa-solid fa-circle-minus" aria-hidden="true"></i> {% trans "Off" %}</span>
+{% elif status == "unknown" %}
+  <span class="opacity-60"><i class="fa-solid fa-circle-question" aria-hidden="true"></i> {% trans "Unknown" %}</span>
+{% else %}
+  <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+    <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+    {% if status == "fail" %}{% trans "Failing" %}{% else %}{% trans "Warning" %}{% endif %}</span>
+{% endif %}
