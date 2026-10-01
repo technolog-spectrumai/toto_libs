@@ -401,8 +401,8 @@ class RecordCheckTests(TestCase):
         with mock.patch.object(record.shutil, "disk_usage", side_effect=OSError("gone")):
             checks = record.run_checks()
         self.assertEqual([c.key for c in checks],
-                         ["database", "migrations", "media", "disk", "backups", "audit",
-                          "certificate", "overdue", "mail"])
+                         ["database", "migrations", "media", "disk", "backups", "offsite",
+                          "audit", "certificate", "overdue", "mail"])
         disk = next(c for c in checks if c.key == "disk")
         self.assertEqual(disk.status, record.UNKNOWN)
         self.assertIn("OSError", disk.detail)

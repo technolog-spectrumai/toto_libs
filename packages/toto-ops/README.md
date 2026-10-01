@@ -29,8 +29,9 @@ without standing up a separate metrics stack.
   corresponding service is actually configured or installed. A check that can't
   be run reads as "unknown," never as a misleading zero.
 - **Told when something breaks.** The record checks behind the Database
-  page — database, migrations, media store, disk, backups, audit chain, the
-  platform's own TLS certificate, and whether mail still leaves — run on a
+  page — database, migrations, media store, disk, backups, the off-site copy
+  of them, audit chain, the platform's own TLS certificate, and whether mail
+  still leaves — run on a
   schedule, and the operators in `ALERT_EMAILS` get a mail when one goes bad,
   a reminder while it keeps failing, and a mail when it recovers; a mail the
   mail server refuses is tried again for about an hour. The Database page
@@ -149,6 +150,20 @@ notAfter: WARN under 21 days left, FAIL under 7. The handshake does not verify,
 so a self-signed or an expired certificate is read too; `cryptography` is
 imported lazily, and without it the check is OFF. Localhost, an address
 or a local-only name is no public domain, and the check is OFF ("Not checked").
+
+`check_offsite` ("Off-site backup", key `offsite`; 2026-10-01) watches the
+copy of the backups that leaves the server: zenobia's deploy.py runs restic in
+a container of its own for a profile's `backups.offsite:` block, and after
+each run that container writes `key=value` files into the backups directory —
+`backup` (the nightly copy: its result, when the newest copy was made, the
+snapshot, restic's answer when it failed), `check` (the weekly integrity
+check) and `since` (when it first started). `MONIT_OFFSITE_DIR` names that
+directory as this container sees it; unset is OFF. The newest copy's age is
+judged like a scheduled task's (`heartbeats.judge`, a daily cadence): none for
+twice a day plus the grace is WARN, three times FAIL, counted from `since`
+before the first copy — so a copy that keeps failing or stopped running is
+mailed like other overdue work. A failed last run is at least WARN, a failed
+check FAIL; a password in a URL of restic's answer is starred.
 
 `monit.tasks.monit_alert_checks`, every `ALERT_CHECK_MINUTES` (beat entry
 `monit-alert-checks` from `toto.schedules.beat_schedule(alerts=True,
@@ -353,6 +368,8 @@ corresponding panel):
   page's Alerts section.
 - `MONIT_CERT_DOMAIN` (the name whose certificate is checked; unset:
   `PLATFORM_DOMAIN`; empty: not checked).
+- `MONIT_OFFSITE_DIR` (where the off-site copy's state files are; unset: the
+  Off-site backup check is OFF).
 - `NOTICES_VIA_WORKER` (toto-base's; on where a Celery worker runs) — the
   alert mail is queued with retry instead of sent at once.
 - `MONIT_RUN_RETENTION_DAYS` (default 30) — how long the scheduled tasks' run

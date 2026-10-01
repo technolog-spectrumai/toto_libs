@@ -5,7 +5,8 @@ about the MACHINE: CPU, memory, disk pressure, service liveness, as trends.
 This module answers questions about the PLATFORM's own record, none of which
 are trends: are there unapplied migrations, does the audit chain still
 verify, when was the last backup taken and is it recent enough to be worth
-having, can the media store be written to, how long has the certificate got.
+having, does a copy of it still leave the server (``check_offsite``), can
+the media store be written to, how long has the certificate got.
 Every check runs when the page is requested, and none is graphed — a broken
 audit chain is not interesting as a chart. Since 2026-10-01 the same checks
 also run on the beat, and a change is mailed (``toto.monit.alerts``); one of
@@ -45,6 +46,9 @@ OFF = "off"
 #: A backup older than this is worth saying out loud. Two days rather than
 #: one: a nightly schedule plus a slow run must not cry wolf every morning.
 BACKUP_STALE_HOURS = 48
+#: The off-site copy (2026-10-01) runs once a night; its newest copy's age
+#: is judged against this the way a scheduled task's is (check_offsite).
+OFFSITE_CADENCE_SECONDS = 86400
 #: Below this, the disk is the next outage.
 DISK_WARN_PERCENT = 85
 DISK_FAIL_PERCENT = 95
@@ -263,6 +267,122 @@ def check_backups():
     detail = label + (f" · missing: {', '.join(missing)}" if missing else "")
     return Check("backups", "Backups", status,
                  f"Newest {_age(age)}.", detail=detail, value=_age(age))
+
+
+def _offsite_state(path: Path) -> dict:
+    """One file the off-site container writes after a run — ``key=value``
+    lines (zenobia's ``deploy/offsite/offsite_backup.sh``) — as a dict; {}
+    when there is none yet."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        return {}
+    state = {}
+    for line in text.splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key.strip():
+            state[key.strip()] = value.strip()
+    return state
+
+
+def _stamp(value):
+    """A state file's moment (seconds since the epoch), or None."""
+    try:
+        stamp = float(value)
+    except (TypeError, ValueError):
+        return None
+    return stamp if stamp > 0 else None
+
+
+def _when(stamp) -> str:
+    from datetime import datetime
+    from datetime import timezone as dt_timezone
+
+    from django.utils import timezone
+
+    moment = datetime.fromtimestamp(stamp, tz=dt_timezone.utc)
+    return timezone.localtime(moment).strftime("%Y-%m-%d %H:%M")
+
+
+@_guard("offsite", gettext_lazy("Off-site backup"))
+def check_offsite():
+    """Does a copy of the backups still leave the server every night, and
+    does the repository it goes to still verify (2026-10-01)?
+
+    The copy is the restic container zenobia's deploy.py starts for a
+    profile's ``backups.offsite:`` block. After each run it writes what
+    happened into the backups directory, which this container sees
+    read-only at ``MONIT_OFFSITE_DIR``: ``backup`` (the nightly copy — its
+    outcome, when the newest copy was made, the snapshot), ``check`` (the
+    weekly integrity check) and ``since`` (when the container first started
+    on this host). Unset means this host makes no off-site copy: OFF.
+
+    The newest copy's age is judged the way a scheduled task's is
+    (``heartbeats.judge``, a daily cadence): none for twice a day plus the
+    grace is WARN, three times FAIL — so a copy that keeps failing, or has
+    stopped running, raises the same alert as other overdue work. Before the
+    first copy the age counts from ``since``. A last run that failed is at
+    least WARN, a repository that failed its check FAIL.
+    """
+    from django.conf import settings
+
+    from toto.core.error_reports import hide_secrets_in
+
+    from . import heartbeats
+
+    label = _("Off-site backup")
+    configured = str(getattr(settings, "MONIT_OFFSITE_DIR", "") or "").strip()
+    if not configured:
+        return Check("offsite", label, OFF, _("No off-site copy is made on this host."),
+                     detail=_("A backups.offsite block in the deploy profile sets one up."))
+    root = Path(configured)
+    copy, verify = _offsite_state(root / "backup"), _offsite_state(root / "check")
+    last_ok = _stamp(copy.get("last_ok"))
+    began = last_ok or _stamp(_offsite_state(root / "since").get("since"))
+    if began is None:
+        recorded = heartbeats.recording_began()
+        began = recorded.timestamp() if recorded else None
+    age = max(0.0, time.time() - began) if began else None
+    status = heartbeats.judge(age, OFFSITE_CADENCE_SECONDS)
+    if status == OFF:                       # nothing to count from at all
+        status = WARN
+    copy_failed = copy.get("result") == "failed"
+    check_failed = verify.get("result") == "failed"
+    if copy_failed and status == OK:
+        status = WARN
+    if check_failed:
+        status = FAIL
+
+    def said(state):
+        return hide_secrets_in(state.get("message") or "", ()) or "—"
+
+    if check_failed:
+        summary = _("The off-site repository failed its check: %(error)s") % {
+            "error": said(verify)}
+    elif copy_failed:
+        summary = _("The last off-site copy failed: %(error)s") % {"error": said(copy)}
+    elif last_ok:
+        summary = _("The newest off-site copy is %(age)s old.") % {
+            "age": heartbeats.span(age)}
+    elif status == OK:
+        summary = _("No off-site copy yet: the first is made at the next nightly run.")
+    elif began:
+        summary = _("No off-site copy has been made since %(when)s.") % {"when": _when(began)}
+    else:
+        summary = _("No off-site copy has been made yet.")
+
+    notes = []
+    if last_ok:
+        notes.append(_("Newest copy: %(when)s, snapshot %(snapshot)s") % {
+            "when": _when(last_ok), "snapshot": copy.get("snapshot") or "—"})
+    if copy.get("result") == "running" and _stamp(copy.get("started")):
+        notes.append(_("A copy is running since %(when)s") % {
+            "when": _when(_stamp(copy.get("started")))})
+    checked = _stamp(verify.get("last_ok"))
+    notes.append(_("Last good check: %(when)s") % {"when": _when(checked)} if checked
+                 else _("No check has passed yet"))
+    return Check("offsite", label, status, summary, detail="; ".join(notes),
+                 value=_age(age) if age is not None else "—")
 
 
 def _verify_audit_on_schedule():
@@ -569,8 +689,8 @@ def check_mail():
 
 
 ALL_CHECKS = (check_database, check_migrations, check_media, check_disk,
-              check_backups, check_audit, check_certificate, check_overdue,
-              check_mail)
+              check_backups, check_offsite, check_audit, check_certificate,
+              check_overdue, check_mail)
 
 
 #: The checks with a cheaper form for the scheduled run (2026-10-01): the two
