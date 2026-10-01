@@ -101,8 +101,11 @@ PURPOSE_HEADER = "X-Toto-Notice"
 
 #: Seconds the worker waits before the 2nd, 3rd, 4th and 5th try: five tries,
 #: the last about an hour after the first. A mail server down for longer than
-#: that is the Mail check's to report, not a queue's to hide.
-RETRY_DELAYS = (60, 5 * 60, 15 * 60, 40 * 60)
+#: that is the Mail check's to report, not a queue's to hide. No wait is longer
+#: than half an hour: a retry waits on the worker unacknowledged, and Redis
+#: hands a message unacknowledged past the broker's visibility timeout (35
+#: minutes on zenobia) to a worker again — the mail would go twice.
+RETRY_DELAYS = (2 * 60, 10 * 60, 20 * 60, 30 * 60)
 TRIES = len(RETRY_DELAYS) + 1
 
 

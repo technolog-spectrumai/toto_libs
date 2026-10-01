@@ -176,8 +176,10 @@ class RetryTests(NoticeTestCase):
                 mock.patch.object(deliver_notice, "retry", wraps=deliver_notice.retry) as retry:
             deliver_notice.apply(args=[alert()])
         self.assertEqual([call.kwargs["countdown"] for call in retry.call_args_list],
-                         [60, 300, 900, 2400])
+                         [120, 600, 1200, 1800])
         self.assertTrue(55 * 60 <= sum(notices.RETRY_DELAYS) <= 65 * 60)
+        # Under the broker's visibility timeout, or a waiting retry is sent twice.
+        self.assertLessEqual(max(notices.RETRY_DELAYS), 30 * 60)
         # What the retry carries into the worker's log: the kind and the class.
         self.assertEqual(str(retry.call_args.kwargs["exc"]),
                          "check_alert: SMTPAuthenticationError (535)")
