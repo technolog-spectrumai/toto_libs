@@ -87,7 +87,8 @@
      sits beside Mana and outside the staff-only block on purpose: money is
      never mana, and reading the company's accounts is not the economy desk.
      Guarded like bourse: the app, then the URL, so a host without it shows
-     nothing.{% endcomment %}
+     nothing. Its icon was a money bag with a `$` until 2026-10-01: no icon
+     draws a living currency (economy.md), so it is a piggy bank.{% endcomment %}
   {% if "toto.budget"|app_installed %}{% url 'budget:index' as budget_url %}{% if budget_url %}
   <a href="{{ budget_url }}"
      class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
@@ -96,7 +97,7 @@
      {% else %}
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
      {% endif %}>
-    <i class="fa-solid fa-sack-dollar"></i>{% trans "Budget" %}</a>
+    <i class="fa-solid fa-piggy-bank"></i>{% trans "Budget" %}</a>
   {% endif %}{% endif %}
 
   {% if not user|economy_hidden %}
