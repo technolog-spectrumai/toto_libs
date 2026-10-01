@@ -11,12 +11,13 @@ phone camera, a screenshot — but it is only ever a *transport*. The same strin
 sits in a copy field beside the image, and the receiving end accepts either. See
 ``sso_core/enrollment.py`` for what the string contains.
 
-**No new dependency.** ``opencv-python-headless`` is pinned identically on every
-host (``portal/*/requirements.txt``) because ``socialhub/captcha.py`` needs it and
-socialhub is a CORE_APP, so ``cv2.QRCodeEncoder`` and ``cv2.QRCodeDetector`` are
-already present. Only faros pins the ``qrcode`` package, for ``toto.nomad``;
-adding it to two more hosts to draw one image would be waste. The data-URI idiom
-below is captcha.py's, deliberately (``captcha.py:107-110``).
+**OpenCV, where a host installs it.** ``cv2.QRCodeEncoder`` and
+``cv2.QRCodeDetector`` come from ``opencv-python-headless``, which every host
+pinned while ``socialhub/captcha.py`` needed it. It does not since 2026-10-01
+(37c.30): the captcha is drawn with Pillow, and zenobia dropped OpenCV and numpy
+from its image — its pairing pages (toto.sso_master) draw the code in the browser
+with the vendored qrcodejs and call nothing here. A host that renders or reads a
+QR code on the server pins OpenCV itself.
 
 **The one trap.** ``cv2.QRCodeEncoder.encode()`` returns a bare one-pixel-per-
 module array with **no quiet zone**, and feeding that straight back to the

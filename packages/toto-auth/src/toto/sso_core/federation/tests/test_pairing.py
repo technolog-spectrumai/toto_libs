@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import hashlib
 from datetime import timedelta
+from importlib.util import find_spec
+from unittest import skipUnless
 
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -89,6 +91,9 @@ class TicketFormatTests(TestCase):
         self.assertIn("version", str(caught.exception).lower())
 
 
+@skipUnless(find_spec("cv2"),
+            "OpenCV is not installed here: toto.core.qr draws and reads QR codes on the "
+            "hosts that install it (zenobia does not, since 2026-10-01)")
 class QRTests(TestCase):
     def test_a_rendered_qr_can_be_read_back(self):
         """The trap: cv2's encoder output does not survive its own decoder.

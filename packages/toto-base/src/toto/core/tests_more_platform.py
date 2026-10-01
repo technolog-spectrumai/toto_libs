@@ -4,8 +4,9 @@ dashboard's visibility arms, whether mail can be delivered, the admin's
 batch actions and read-only mode, and the QR transport federation pairing
 rides on."""
 
+from importlib.util import find_spec
 from types import SimpleNamespace
-from unittest import mock
+from unittest import mock, skipUnless
 
 from django.contrib.admin.sites import AdminSite
 from django.contrib.auth import get_user_model
@@ -273,6 +274,9 @@ class ReadOnlyAdminTests(TestCase):
         self.assertEqual(list(admin.get_readonly_fields(self.request)), [])
 
 
+@skipUnless(find_spec("cv2"),
+            "OpenCV is not installed here: toto.core.qr draws and reads QR codes on the "
+            "hosts that install it (zenobia does not, since 2026-10-01)")
 class QRTests(SimpleTestCase):
     def png(self, data_uri):
         import base64
