@@ -173,6 +173,23 @@ class RunRecordTests(TestCase):
         self.assertEqual(run.summary, "paid=1")
         self.assertLessEqual(run.started_at, run.finished_at)
 
+    def test_a_run_whose_worker_vanished_is_closed_by_the_sweeper(self):
+        if not django_apps.is_installed("toto.quota"):
+            self.skipTest("toto.quota is not installed on this host")
+        from toto.quota.sweeps import run_sweeps
+
+        stale = TaskRun.objects.create(task=LEVY, task_id="vanished-1",
+                                       started_at=timezone.now() - timedelta(hours=7))
+        young = TaskRun.objects.create(task=LEVY, task_id="running-1",
+                                       started_at=timezone.now() - timedelta(hours=1))
+        self.assertEqual(run_sweeps()["monit.TaskRun"], 1)
+        stale.refresh_from_db()
+        self.assertEqual(stale.status, heartbeats.FAILED)
+        self.assertIn("stuck-run sweeper", stale.error)
+        self.assertIsNotNone(stale.finished_at)
+        young.refresh_from_db()
+        self.assertEqual(young.status, heartbeats.RUNNING)
+
     def test_beat_start_notes_every_entry_and_keeps_the_first_sighting(self):
         signals.beat_init.send(sender=None)
         first = {row.name: row.first_seen for row in BeatEntry.objects.all()}

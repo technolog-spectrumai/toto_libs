@@ -13,7 +13,9 @@ Three pieces, all here:
   (``task_prerun``), its outcome when it ends (``task_postrun``) — success
   with a short summary of what it returned, or the error — and a failure the
   worker process itself saw (``task_failure``: a child killed by the hard
-  time limit or lost, which never reaches its own postrun). The receivers are
+  time limit or lost, which never reaches its own postrun). A run nothing
+  closed — the worker container stopped mid-run — is closed by the stuck-run
+  sweeper after six hours (``toto.monit.sweeps``). The receivers are
   connected in every process (``MonitConfig.ready``) and fire only where
   tasks run. They never raise: a heartbeat that broke the task it records
   would be worse than none.
@@ -352,6 +354,15 @@ def on_failure(sender=None, task_id=None, exception=None, **kwargs):
     except Exception:  # noqa: BLE001 - see the module docstring
         log.warning("heartbeats: could not record the failure of %s", task_id,
                     exc_info=True)
+
+
+def close_stuck(run, reason=""):
+    """The stuck-run sweeper's closer (``toto.monit.sweeps``): a run whose
+    worker went away without a word, failed, with the sweeper's reason."""
+    from .models import TaskRun
+
+    TaskRun.objects.filter(pk=run.pk, status=RUNNING).update(
+        status=FAILED, finished_at=timezone.now(), error=_clip(reason, ERROR_LENGTH))
 
 
 def on_beat_init(sender=None, **kwargs):
