@@ -40,7 +40,7 @@ from . import scanning as _scanning
 from . import storage_backends as _storage_backends
 from .models import VaultFile
 from .peering import BUCKET_RIGHTS, BucketGrant, has_bucket_right
-from .purge import purge_file
+from .trash import remove_file
 from .views import _unique_file_key
 
 API_KEY_HEADER = "X-Vault-Api-Key"
@@ -252,7 +252,8 @@ def _upload(request, grant):
 @csrf_exempt
 @require_http_methods(["GET", "DELETE"])
 def peer_file_detail(request, grant_uid, magic_token, key):
-    """GET: one file's metadata (may_list). DELETE: purge it (may_delete)."""
+    """GET: one file's metadata (may_list). DELETE: move it to this host's
+    trash (may_delete)."""
     grant, err = _resolve_grant(request, grant_uid, magic_token)
     if err:
         return err
@@ -263,7 +264,13 @@ def peer_file_detail(request, grant_uid, magic_token, key):
     if file_obj is None:
         raise Http404("No such file.")
     if request.method == "DELETE":
-        purge_file(file_obj)
+        # To the trash, not a purge (2026-10-01, the owner's call): the peer
+        # sees the file gone at once — every door here reads the live
+        # manager — while its owner on this host can still restore it until
+        # the nightly purge. Recorded as FILE_TRASHED with the share that
+        # asked; nobody here did it, so there is no actor.
+        remove_file(file_obj, by=None, request=request, door="peer_delete",
+                    extra={"share": grant.pk, "peer": grant.label})
         return JsonResponse({"ok": True, "deleted": key})
     return JsonResponse(_row(file_obj))
 

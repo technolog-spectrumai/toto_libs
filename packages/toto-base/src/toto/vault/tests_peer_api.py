@@ -377,16 +377,70 @@ class MeteringTests(PeerApiTestCase):
 
 
 class DeleteTests(PeerApiTestCase):
-    def test_delete_purges_row_and_bytes(self):
+    """A peer's DELETE moves the file to this host's trash (2026-10-01): it
+    was a purge. The peer sees the file gone at once; its owner here can
+    restore it until the nightly purge."""
+
+    def _delete(self, key="doc"):
+        return self.client.delete(self._url("peer_file_detail", key=key),
+                                  HTTP_X_VAULT_API_KEY=self.raw_key)
+
+    def test_delete_moves_the_file_to_the_trash_with_its_bytes(self):
         vf = self._file()
         stored_name = vf.file.name
-        resp = self.client.delete(self._url("peer_file_detail", key="doc"),
-                                  HTTP_X_VAULT_API_KEY=self.raw_key)
+        resp = self._delete()
         self.assertEqual(resp.status_code, 200)
-        self.assertFalse(
-            VaultFile.objects.filter(bucket=self.bucket, key="doc").exists())
+        self.assertEqual(json.loads(resp.content), {"ok": True, "deleted": "doc"})
+        row = VaultFile.all_objects.get(pk=vf.pk)
+        self.assertIsNotNone(row.trashed_at)
+        self.assertIsNone(row.trashed_by)
         from .storage_backends import get_bucket_storage
-        self.assertFalse(get_bucket_storage(self.bucket).exists(stored_name))
+        self.assertTrue(get_bucket_storage(self.bucket).exists(stored_name))
+
+    def test_the_peer_sees_it_gone(self):
+        self._file()
+        self._delete()
+        self.assertEqual(self._get("peer_file_detail", key="doc").status_code, 404)
+        self.assertEqual(self._get("peer_file_download", key="doc").status_code, 404)
+        self.assertEqual(json.loads(self._get("peer_files").content)["files"], [])
+        self.assertEqual(json.loads(self._get("peer_manifest").content)["total_files"], 0)
+        self.assertEqual(self._delete().status_code, 404)
+
+    def test_recorded_once_as_trashed_naming_the_share(self):
+        from toto.audit.models import AuditRecord
+
+        BucketGrant.objects.filter(pk=self.grant.pk).update(label="placidia")
+        vf = self._file(key="secret-name")
+        self._delete(key="secret-name")
+        # One act, one record: FileAuditMiddleware leaves the marked request.
+        self.assertEqual(list(AuditRecord.objects.filter(app_label="vault")
+                              .values_list("action", flat=True)), ["FILE_TRASHED"])
+        entry = AuditRecord.objects.get(action="FILE_TRASHED")
+        self.assertEqual((entry.object_id, entry.actor_user), (str(vf.pk), None))
+        self.assertEqual((entry.metadata["door"], entry.metadata["share"],
+                          entry.metadata["peer"]),
+                         ("peer_delete", self.grant.pk, "placidia"))
+        for secret in ("secret-name", self.raw_key, self.grant.magic_token):
+            self.assertNotIn(secret, str(entry.metadata))
+
+    def test_its_owner_here_restores_it_and_the_peer_sees_it_again(self):
+        from .trash import restore_file, trashed_for
+
+        vf = self._file()
+        self._delete()
+        trashed = VaultFile.all_objects.get(pk=vf.pk)
+        self.assertEqual(list(trashed_for(self.owner)), [trashed])
+        restore_file(trashed, by=self.owner)
+        self.assertEqual(self._get("peer_file_detail", key="doc").status_code, 200)
+
+    def test_the_peer_may_upload_the_same_name_again(self):
+        self._file()
+        self._delete()
+        resp = self.client.post(self._url("peer_files"),
+                                {"file": SimpleUploadedFile("doc.txt", b"new")},
+                                HTTP_X_VAULT_API_KEY=self.raw_key)
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(json.loads(resp.content)["key"], "doc")
 
     def test_meta_get_answers_one_row(self):
         self._file()

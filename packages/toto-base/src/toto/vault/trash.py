@@ -40,16 +40,19 @@ FILE_PURGED = "FILE_PURGED"
 RESTORED_SUFFIX = " (restored)"
 
 
-def remove_file(vault_file, *, by=None, request=None, door: str = "") -> bool:
+def remove_file(vault_file, *, by=None, request=None, door: str = "",
+                extra=None) -> bool:
     """Trash ``vault_file``, or delete it at once where the trash cannot
     hold it. Returns True when it went to the trash.
 
     ``by`` is who removed it (``trashed_by``; the audit actor), ``request``
-    the request it came in on, if any, ``door`` a short name for the trail.
+    the request it came in on, if any, ``door`` a short name for the trail,
+    ``extra`` more metadata for the record (ids and names only — never a
+    secret or content; the peer API names the share that removed it).
     The caller has already decided the member may delete the file."""
     if vault_file.can_be_trashed:
         vault_file.trash(by)
-        _record(FILE_TRASHED, vault_file, by=by, request=request, door=door)
+        _record(FILE_TRASHED, vault_file, by=by, request=request, door=door, extra=extra)
         return True
     # A mounted remote bucket's row names the peer's file: nothing here can
     # hold it for a restore, so it goes at once, the way the doors always did.
@@ -57,7 +60,7 @@ def remove_file(vault_file, *, by=None, request=None, door: str = "") -> bool:
     vault_file.file.delete(save=False)
     vault_file.delete()
     vault_file.pk = pk
-    _record(FILE_DELETED, vault_file, by=by, request=request, door=door)
+    _record(FILE_DELETED, vault_file, by=by, request=request, door=door, extra=extra)
     return False
 
 

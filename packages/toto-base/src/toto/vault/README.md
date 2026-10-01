@@ -311,28 +311,32 @@ restore finds a free key if its own was taken meanwhile.
 Zenobia (`remote_toto`), and any mirror row, names the PEER's file; this
 server cannot hold its bytes for a restore. `VaultFile.can_be_trashed` is
 False there, and the doors keep their immediate delete, whose dialog says
-it is permanent. A peer's own DELETE on an exported bucket
-(`peer_file_detail`) also stays a purge on this host.
+it is permanent.
 
-**One door: `trash.remove_file(vault_file, by=, request=, door=)`.** Every
-delete a member reaches goes through it: the listing's Delete
+**One door: `trash.remove_file(vault_file, by=, request=, door=, extra=)`.**
+Every delete a member reaches goes through it: the listing's Delete
 (`DeleteFileView`, answers `trashed: true|false`), the API's
 `DELETE /vault/api/files/<key>/`, the ACE editor's delete, primula's sheets,
 memo's decks, sketch's drawings, mandragora's notebooks, an ambrosia
 workspace's file delete AND its Destroy (the folders go for good, the files to
-the trash), and a git pull that deletes a tracked file (`toto.repo.sync`). It
-trashes where `can_be_trashed`, deletes at once where not, and records the act
-on the audit chain itself — `FILE_TRASHED` for a trash, distinct from a real
-`FILE_DELETED` — then marks the request so `FileAuditMiddleware` does not add
-the url's `FILE_DELETED` too. A refused delete (404) is still the middleware's
-failed `FILE_DELETED`.
+the trash), a git pull that deletes a tracked file (`toto.repo.sync`) — and a
+peer's DELETE on an exported bucket (`peer_file_detail`; a purge until
+2026-10-01): the peer sees the file gone at once, its owner here restores it
+from the Trash until the nightly purge, and the record (no actor, door
+`peer_delete`) names the share (`share`, the grant's id) and the peer
+(`peer`, the grant's label). It trashes where `can_be_trashed`, deletes at
+once where not, and records the act on the audit chain itself —
+`FILE_TRASHED` for a trash, distinct from a real `FILE_DELETED` — then marks
+the request so `FileAuditMiddleware` does not add the url's `FILE_DELETED`
+too. A refused delete (404) is still the middleware's failed `FILE_DELETED`.
+`extra=` adds ids or names to the record, never a secret or content.
 
 Doors that keep their behaviour, on purpose: a copy or transfer with the
 "replace" policy (an overwrite the copier chose, not a delete), a mirror
-refresh's prune (rows only), the bucket purge and the peer API's delete
-(purges), `erase_user` (console), the admin (superusers), a wiki page's
-image un-attach and kanban's attachment remove (the link only, never the
-file), forum attachments (not vault files).
+refresh's prune (rows only), the bucket purge (purges), `erase_user`
+(console), the admin (superusers), a wiki page's image un-attach and kanban's
+attachment remove (the link only, never the file), forum attachments (not
+vault files).
 
 **The delete signal and a trashed row.** `signals.delete_file_on_disk` never
 unlinks a trashed row's bytes while the delete can still roll back: it
@@ -352,7 +356,9 @@ row left alone).
 Tests: `tests_trash` (hidden on each door; levy, figures and bucket purge
 still count or take it; versions still find it; the key is free),
 `tests_trash_doors` (each door trashes and records FILE_TRASHED; the remote
-bucket's immediate delete; the signal; the figures; attachments).
+bucket's immediate delete; the signal; the figures; attachments),
+`tests_peer_api.DeleteTests` (a peer's DELETE trashes, recorded once naming
+the share; the owner restores it; the peer may upload the name again).
 
 ### The Trash tab (`trash_views.py`, `vault:trash`)
 
