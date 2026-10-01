@@ -34,7 +34,7 @@ Outside this directory, the pieces it relies on: `HeaderPlugin` (toto.core),
 - **Every increase is a faucet payout.** The hourly refill, the opening fill, the encrypt reward and a grant by hand each leave a `FaucetPayout` (source, recipient, amount, time, the transaction) on the pool's faucet, and the refill leaves a `FaucetRun` per pool per execution. Nothing else puts mana on an account: the asset's Distribute button refuses a pool asset and points at the manual faucet, which needs the mint right and a reason; the admin cannot type a balance. A refund of failed metered work is a reversal, labelled as such, not regeneration.
 - **A pool levy is clamped.** A levy priced in a pool must have `clamp_to_balance`, set *before* it is armed — or an empty pool freezes every metered write on the platform.
 - **Guards key on the asset, not the code.** "Priced in a pool asset" is the question; a host with the app but no pools yet still bills in gas.
-- **Every colour class is written out literally** in templates: tailwind reads the page, not the Python.
+- **Every colour class is written out literally** in templates: Tailwind is built from the source files (a host's image, 2026-10-01), and a class put together from pieces is not in them.
 
 ## Tests
 

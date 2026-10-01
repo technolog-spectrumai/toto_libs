@@ -53,3 +53,7 @@ Cargo.lock
 
 *.wasm
 tests/check_nogis.sqlite3
+
+# The stylesheet a host builds from every class its apps name (oya/base.html
+# links it when it is there; zenobia builds it in its image, 37c.15).
+/packages/toto-base/src/toto/core/static/oya/tailwind.css

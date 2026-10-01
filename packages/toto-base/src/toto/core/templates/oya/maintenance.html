@@ -7,8 +7,10 @@
   <title>{% trans "Maintenance Mode" %}</title>
 
   <!-- Tailwind & Alpine -->
-  {% load static %}
-  <script src="{% static 'oya/tailwind.js' %}"></script>
+  {% load static oya_tailwind %}
+  {# Built or compiled in the browser, as oya/base.html says (37c.15): the built stylesheet at the end of <head>, where the script put its own. This page names no theme colour. #}
+  {% tailwind_built as tailwind_css %}
+  {% if not tailwind_css %}<script src="{% static 'oya/tailwind.js' %}"></script>{% endif %}
   {# The Alpine every page loads (2026-10-01): the older 3.14 copy this page named is no longer fetched. #}
   <script defer src="{% static 'oya/alpine.js' %}"></script>
 
@@ -19,6 +21,7 @@
       color: #e0e0e0;
     }
   </style>
+  {% if tailwind_css %}<link rel="stylesheet" href="{% static 'oya/tailwind.css' %}" />{% endif %}
 </head>
 <body
   :class="darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'"

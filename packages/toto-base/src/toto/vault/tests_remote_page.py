@@ -408,7 +408,7 @@ class VaultPageSkinTests(RemoteTabTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.context.get("platform"))
         body = response.content.decode()
-        for marker in ("Zen", "tailwind.config", "darkMode"):
+        for marker in ("Zen", "oya-theme", "darkMode"):
             self.assertIn(marker, body)
 
     def setUp(self):
@@ -429,5 +429,5 @@ class VaultPageSkinTests(RemoteTabTestCase):
             with self.subTest(page=name):
                 body = self.client.get(reverse(name, args=args)).content.decode()
                 self.assertIn("Zen", body)                     # platform site_name
-                self.assertIn("tailwind.config", body)         # the theme block
+                self.assertIn("oya-theme", body)               # the theme block
                 self.assertIn("darkMode", body)                # the light/dark toggle

@@ -1,6 +1,7 @@
 {% load static %}
 {% load i18n %}
 {% load plugin_tags %}
+{% load oya_tailwind %}
 
 {% get_current_language as LANGUAGE_CODE %}
 <!DOCTYPE html>
@@ -31,14 +32,26 @@
   </style>
   {% endif %}
 
-  <!-- Tailwind & Alpine -->
+  {% comment %} Tailwind (2026-10-01, 37c.15). Built when the image is: the
+     stylesheet holds every class the installed apps name, and the theme's
+     colours and font reach it as CSS variables (--oya-<token>: R G B,
+     templatetags/oya_tailwind.py); it is linked at the END of <head>, where
+     the Play CDN script put the <style> it compiled, so it wins over the
+     head's other stylesheets as it did. A checkout without the build has no
+     oya/tailwind.css and keeps the Play CDN script, compiling in the
+     browser from the inline config, so a developer's runserver looks the
+     same. {% endcomment %}
+  {% tailwind_built as tailwind_css %}
+  {% if not tailwind_css %}
   <script src="{% static 'oya/tailwind.js' %}"></script>
+  {% endif %}
   <script defer src="{% static 'oya/alpine.js' %}"></script>
   {# Modals keep focus (x-trap, 2026-10-01). NOT deferred: it hooks alpine:init, and Alpine starts right after its own deferred script. #}
   <script src="{% static 'oya/focus_trap.js' %}"></script>
   <link rel="stylesheet" href="{% static 'vendor/fontawesome/6.7.2/css/all.min.css' %}" />
+  {% if not tailwind_css %}
   <!-- Tailwind Config -->
-  <script>
+  <script id="oya-theme">
     tailwind.config = {
       theme: {
         extend: {
@@ -56,6 +69,7 @@
       }
     };
   </script>
+  {% endif %}
 
 
   <style>
@@ -107,6 +121,12 @@
      page that takes it up loads it itself. {% endcomment %}
   <script defer src="{% static 'oya/functional_zones.js' %}"></script>
   {% block start_script %}{% endblock %}
+  {% if tailwind_css %}
+  <link rel="stylesheet" href="{% static 'oya/tailwind.css' %}" />
+  <style id="oya-theme">
+    :root { {% theme_color_vars theme.theme.colors %} --oya-font-sans: '{{ font.name }}', {{ font.style_family|default:"sans-serif" }}; }
+  </style>
+  {% endif %}
 </head>
 <body
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
