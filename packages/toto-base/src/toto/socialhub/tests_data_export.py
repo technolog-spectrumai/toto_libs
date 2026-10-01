@@ -158,11 +158,14 @@ class BuildTests(DataExportTestCase):
 
     def test_an_earlier_export_is_not_packed_into_the_next(self):
         first = self.build()
+        # Read now: the next copy purges this one once it is ready (2026-10-01,
+        # tests_export_replaced) — but it is still there while that is built.
+        first_title = first.output.title
         DataExport.objects.update(created_at=timezone.now() - timedelta(days=2))
         second = self.build()
         with second.output.file.open("rb") as fh, zipfile.ZipFile(io.BytesIO(fh.read())) as zf:
             titles = [r["title"] for r in json.loads(zf.read("files/index.json"))]
-        self.assertNotIn(first.output.title, titles)
+        self.assertNotIn(first_title, titles)
 
     def test_a_failure_closes_the_row_with_a_sentence(self):
         with mock.patch("toto.core.personal_data.write_zip", side_effect=RuntimeError("disk")):

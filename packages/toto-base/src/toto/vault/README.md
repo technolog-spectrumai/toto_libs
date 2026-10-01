@@ -411,6 +411,15 @@ which takes the trash of every age (`all_objects`). Audited per file as
 `FILE_PURGED`, door `trash_expired`, no actor, ids only. Tests:
 `tests_trash_purge`.
 
+**Round the trash, once** (`trash.purge_now`, 2026-10-01): a copy of personal
+data that must not wait a month in the trash is deleted for good at once —
+live or trashed, through `purge.purge_file` in STRICT mode (bytes that will
+not delete keep the row). Its one caller is socialhub's *Download my data*:
+a new zip, once ready, purges the member's earlier ones
+(`data_export.replace_earlier`). `FILE_PURGED`, door `data_export_replaced`,
+no actor, the export's id. A member's own delete never comes this way: their
+doors call `remove_file`. Tests: socialhub's `tests_export_replaced`.
+
 ### Several files at once (`bulk.py`, `vault:bulk_trash`, `vault:bulk_move`)
 
 The file list ticks a member's own files (a checkbox on each of their rows

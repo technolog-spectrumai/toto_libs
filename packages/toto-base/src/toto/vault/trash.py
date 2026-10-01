@@ -20,6 +20,8 @@ The Trash page (``trash_views.py``) asks the rest: whose trash a member sees
 :func:`purge_trashed` — "Delete for good", through ``purge.purge_file``
 (``FILE_PURGED``). The nightly beat (``tasks.purge_expired_trash``) runs
 :func:`purge_expired` for what has waited longer than ``VAULT_TRASH_DAYS``.
+:func:`purge_now` is the one way round the trash — for a copy of personal
+data that must not wait there (a replaced data export, 2026-10-01).
 """
 
 from __future__ import annotations
@@ -194,6 +196,25 @@ def purge_trashed(vault_file, *, by=None, request=None) -> None:
     purge_file(vault_file)
     vault_file.pk = pk
     _record(FILE_PURGED, vault_file, by=by, request=request, door="trash_purge")
+
+
+def purge_now(vault_file, *, door: str, by=None, extra=None) -> None:
+    """Delete ``vault_file`` for good, live or trashed, WITHOUT the trash:
+    for a copy that must not linger there for ``VAULT_TRASH_DAYS`` — an
+    earlier *Download my data* zip, replaced by a newer one (2026-10-01,
+    ``toto.socialhub.data_export``). Not a member's delete: their doors go
+    through :func:`remove_file`.
+
+    STRICT (``purge.purge_file``): bytes that cannot be deleted raise and
+    the row is kept, so a copy of personal data is never left behind as an
+    orphan nobody would collect; ``ProtectedError`` when an app still pins
+    the file. Recorded as ``FILE_PURGED`` under ``door``, ids only."""
+    from .purge import purge_file
+
+    pk = vault_file.pk
+    purge_file(vault_file, strict=True)
+    vault_file.pk = pk
+    _record(FILE_PURGED, vault_file, by=by, request=None, door=door, extra=extra)
 
 
 # ---------------------------------------------------------------------------

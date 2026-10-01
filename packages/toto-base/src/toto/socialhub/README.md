@@ -246,7 +246,17 @@ creates or deletes an account (console only; a first save creates the
   them. A redelivered job takes the file its export already filed. The
   section shows the last export's status and links the zip;
   `PRIVACY.EXPORT_REQUESTED` (the member), `_READY` / `_FAILED` (the system:
-  counts and the file's id, never contents).
+  counts and the file's id, never contents). **Only the latest zip is kept**
+  (the review, 2026-10-01): the zips sat in the bucket outside any quota, one
+  a day for ever; now a new one, once ready, deletes each earlier export's
+  file for good — the vault's purge (`vault.trash.purge_now`), not the
+  trash, where an old copy of personal data would wait a month — live or
+  trashed, wherever the member moved it, and marks its row `REPLACED`
+  (`data_export.replace_earlier`; the vault's `FILE_PURGED`, door
+  `data_export_replaced`). A copy whose bytes will not delete keeps its row
+  `READY` and the next export tries again. The section says so before the
+  button, and that the copy also holds the audit records others made about
+  the member (`toto.core.personal_data`, without their address and browser).
 - **Erase my account** (`/account/erasure-request/`, 2026-10-01, RODO art.
   17; `erasure.py`): the member FILES an `ErasureRequest` after a
   confirmation saying an operator carries it out at the console and what is

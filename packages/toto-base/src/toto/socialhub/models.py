@@ -661,17 +661,23 @@ class DataExport(models.Model):
     ``output`` is SET_NULL: the member may delete the zip from their bucket,
     and the record that an export was made outlives it. CASCADE on the user:
     it is theirs, and goes when the account is erased.
+
+    Only the latest zip is kept (2026-10-01): when a new export is ready,
+    each earlier ready one has its file purged — not trashed — and becomes
+    ``REPLACED`` (``data_export.replace_earlier``).
     """
 
     PENDING = "pending"
     RUNNING = "running"
     READY = "ready"
     FAILED = "failed"
+    REPLACED = "replaced"
     STATUS_CHOICES = [
         (PENDING, _("Queued")),
         (RUNNING, _("Being prepared")),
         (READY, _("Ready")),
         (FAILED, _("Failed")),
+        (REPLACED, _("Replaced by a newer copy")),
     ]
     OPEN = (PENDING, RUNNING)
 

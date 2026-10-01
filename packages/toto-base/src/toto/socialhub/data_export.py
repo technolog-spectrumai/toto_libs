@@ -18,8 +18,17 @@ not count, or a dead worker would lock the member out for a day. A row left
 open longer than :data:`STALE` (a worker killed mid-build) is closed as
 failed the next time the member looks, so it never blocks them for good.
 
+**Only the latest copy is kept** (2026-10-01, the review of stage 35). The
+zips sit in the member's bucket outside any quota, one a day; when a new one
+is ready, :func:`replace_earlier` deletes each earlier export's file for good
+— the vault's purge (``vault.trash.purge_now``), not the trash: an old copy
+of personal data should not linger there for a month — wherever the member
+moved it, trashed or not, and marks its row ``REPLACED``.
+
 On the chain: ``PRIVACY.EXPORT_REQUESTED`` (the member), ``_READY`` and
-``_FAILED`` (the system) — counts and the file's id, never the contents.
+``_FAILED`` (the system) — counts and the file's id, never the contents; a
+replaced zip is the vault's ``FILE_PURGED`` (door ``data_export_replaced``,
+the export's id).
 """
 
 from __future__ import annotations
@@ -175,4 +184,43 @@ def build(export_id: int):
     export.finished_at = timezone.now()
     export.save(update_fields=["status", "output", "summary", "finished_at"])
     audit.export_ready(export)
+    try:
+        replace_earlier(export)
+    except Exception:  # noqa: BLE001 - the copy is ready; the next export tries again
+        log.exception("data export %s: earlier copies not replaced", export.pk)
     return export
+
+
+#: The door a replaced zip's ``FILE_PURGED`` record names.
+REPLACED_DOOR = "data_export_replaced"
+
+
+def replace_earlier(export) -> int:
+    """Keep only ``export``'s zip: purge the file of each earlier ready
+    export of the same member — live or in the trash, wherever it was moved —
+    and mark its row ``REPLACED``. Returns how many rows were marked.
+
+    Earlier is by id, so a late job never takes a newer copy; an earlier
+    ready row whose file is already gone is marked too. A file that cannot
+    be purged (its bytes will not delete, an app pins it) is logged and its
+    row left ``READY``: the next export tries again, and the new copy is
+    ready either way."""
+    from toto.vault.trash import purge_now
+
+    marked = 0
+    earlier = (DataExport.objects.filter(user_id=export.user_id, status=DataExport.READY,
+                                         pk__lt=export.pk)
+               .select_related("output", "output__bucket").order_by("pk"))
+    for old in earlier:
+        if old.output is not None:
+            try:
+                purge_now(old.output, door=REPLACED_DOOR, extra={"export": old.pk})
+            except Exception:  # noqa: BLE001 - the new copy stands; the next one retries
+                log.warning("data export %s: the earlier copy of export %s could not be "
+                            "purged", export.pk, old.pk, exc_info=True)
+                continue
+        old.status = DataExport.REPLACED
+        old.output = None
+        old.save(update_fields=["status", "output"])
+        marked += 1
+    return marked
