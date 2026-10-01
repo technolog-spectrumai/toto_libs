@@ -162,18 +162,31 @@ owes the operators:
   a warning is said once;
 - one that gets worse is mailed again, one that gets better without coming
   back is not;
-- one that comes back (OK or OFF) is mailed once more, as recovered.
+- one that comes back (OK or OFF) is mailed once more, as recovered — once
+  it has stayed back for `alerts.RECOVERY_HOLD` (half an hour; 2026-10-01,
+  the review). Until then a relapse is the same incident: a check that flaps
+  every few minutes is mailed once, then its reminders, not on every run.
 
 Every mail goes through `toto.core.notices.send_notice` (kinds `check_alert`
 and `check_recovered`), one per address in `ALERT_EMAILS`. A mail no address
 took is not counted, so the next run tries again; with no address nothing is
 mailed and the states are still kept.
 
-Where the host runs a worker (`NOTICES_VIA_WORKER`, toto-base), "took" means
-queued: `send_notice` hands each mail to the worker only once the run's
-transaction commits — a run that fails queues nothing — and the worker tries
-it five times over about an hour (`toto.core.tasks.deliver_notice`). The next
-run does not send it again. `record.check_mail` ("Mail", key `mail`) reads
+Every mail leaves once the run's transaction commits, however it is sent
+(the review, 2026-10-01): the run saves each state as mailed and the mail
+follows the commit — a run that fails mails nothing, and no SMTP round trip
+holds the states' locks; a mail no address took puts its state back. Where
+the host runs a worker (`NOTICES_VIA_WORKER`, toto-base), "took" means
+queued, and the worker tries it five times over about an hour
+(`toto.core.tasks.deliver_notice`). The next run does not send it again.
+
+The run takes the checks' scheduled forms (`record.run_checks(scheduled=
+True)`, `record.SCHEDULED_FORMS`): the media store is checked there and
+writable without counting its files, and the audit chain is walked whole
+once every `AUDIT_WALK_HOURS` (24) and otherwise from where the last walk
+ended (`toto.audit.services.verify_chain(after=)`, the mark kept in the
+cache) — an old record edited is found within a day, a new one at the next
+run. The Database page still counts every file and walks the whole chain. `record.check_mail` ("Mail", key `mail`) reads
 the outcomes `toto.core` keeps per notice kind (`NoticeDelivery`): WARN when
 the last `MAIL_FAILURES_WARN` (3) notices, of any kind, could not be
 delivered after every try — one is a refused address, several are the mail
