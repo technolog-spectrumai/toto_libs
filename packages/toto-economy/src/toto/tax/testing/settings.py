@@ -36,7 +36,6 @@ INSTALLED_APPS = [
     "django_jsonform",
     "rest_framework",
     "colorfield",
-    "reversion",
     "trix_editor",
     *BASE_APPS,
     "toto.assets",

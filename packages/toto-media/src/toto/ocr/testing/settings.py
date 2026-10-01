@@ -41,7 +41,6 @@ INSTALLED_APPS = [
     "django_jsonform",
     "rest_framework",
     "colorfield",
-    "reversion",
     "trix_editor",
     # BASE_APPS rather than CORE_APPS: oya/header.html — which every page
     # here inherits — reverses `sso:login`/`sso:logout`.

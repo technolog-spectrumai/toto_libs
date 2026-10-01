@@ -41,7 +41,6 @@ INSTALLED_APPS = [
     "django_jsonform",
     "rest_framework",
     "colorfield",
-    "reversion",
     "trix_editor",
     *CORE_APPS,
     # The provider half, and only it: a host is one or the other.

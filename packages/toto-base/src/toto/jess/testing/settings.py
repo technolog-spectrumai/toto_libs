@@ -41,7 +41,6 @@ INSTALLED_APPS = [
     "django_jsonform",
     "rest_framework",
     "colorfield",
-    "reversion",
     "trix_editor",
     # BASE_APPS rather than CORE_APPS, because oya/header.html — the shared header
     # every Jess page inherits — reverses `sso:login` and `sso:logout`. A suite that

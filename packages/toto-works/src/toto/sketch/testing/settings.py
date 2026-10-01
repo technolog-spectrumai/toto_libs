@@ -32,7 +32,6 @@ INSTALLED_APPS = [
     "django_jsonform",
     "rest_framework",
     "colorfield",
-    "reversion",
     "trix_editor",
     # BASE_APPS rather than CORE_APPS: oya/header.html — which every Sketch page
     # inherits — reverses `sso:login`/`sso:logout`, so the view tests need the auth

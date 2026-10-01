@@ -31,7 +31,6 @@ INSTALLED_APPS = [
     "django_jsonform",
     "rest_framework",
     "colorfield",
-    "reversion",
     "trix_editor",
     *CORE_APPS,
     # Both halves of the federation. auth_apps() would return one or the other;
