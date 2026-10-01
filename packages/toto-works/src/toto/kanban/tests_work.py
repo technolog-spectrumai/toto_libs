@@ -54,8 +54,9 @@ def _reviewer(project, username):
 def _policy(name="1 of 1", reviews=1, accepts=1, rejects=1, changes=None):
     """Get-or-shape a policy by name.
 
-    update_or_create, not create: migration 0009 seeds the three canonical
-    names into every test database, so a plain create() of "1 of 1" collides
+    update_or_create, not create: migration 0002_seed_consensus_policies
+    seeds the three canonical names into every test database, so a plain
+    create() of "1 of 1" collides
     on the unique name. Shaping the seeded row is also closer to what an
     operator does — these are reference data they edit, not rows they mint.
     """

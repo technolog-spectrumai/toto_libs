@@ -67,8 +67,9 @@ class PlainBoardTests(TestCase):
         There IS a default row — the migration seeds one — and this is the test
         that stops `effective_consensus_policy` from quietly reaching for it.
         """
-        # The default row already exists: migration 0009 seeds "1 of 1" as
-        # the default. That is precisely the row that must not apply itself.
+        # The default row already exists: migration
+        # 0002_seed_consensus_policies seeds "1 of 1" as the default. That is
+        # precisely the row that must not apply itself.
         self.assertTrue(ConsensusPolicy.objects.filter(is_default=True).exists())
         self.mission.refresh_from_db()
         self.assertIsNone(self.mission.effective_consensus_policy)
