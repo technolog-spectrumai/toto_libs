@@ -41,6 +41,10 @@ class CoreConfig(AppConfig):
         from toto.core import user_sessions
 
         user_sessions.connect()
+        # The system checks (2026-10-01): REQUIRE_SMTP's, which stops a
+        # process whose mail settings could not send, where a host asks.
+        from toto.core import checks  # noqa: F401
+
         self._admin_says_why()
 
     @staticmethod
