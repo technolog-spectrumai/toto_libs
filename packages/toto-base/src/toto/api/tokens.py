@@ -3,9 +3,9 @@
 The desktop clients sign in at ``/api/login/`` (or ``/sso/api/register/``) and
 keep the session key they are handed. They present it as
 ``Authorization: Bearer <key>`` to every ``CorsApiView`` JSON door
-(``cors._try_bearer_auth``) and as ``?token=<key>`` to a WebSocket
-(``middleware.TokenAuthMiddleware``). Both doors resolve it HERE, and nowhere
-else.
+(``cors._try_bearer_auth``) and to a WebSocket after the ``toto.bearer``
+subprotocol, or as ``?token=<key>`` (``middleware.TokenAuthMiddleware``).
+Both doors resolve it HERE, and nowhere else.
 
 Until this date both doors read ``_auth_user_id`` out of the session and
 fetched that row with a bare ``User.objects.get``. That skipped the two checks
