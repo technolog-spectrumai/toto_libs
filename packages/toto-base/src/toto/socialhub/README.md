@@ -79,7 +79,10 @@ never of the others.
 ### Who gives clearances
 
 Superusers, on the **Clearances** tab of this app (`communities/clearances/`,
-beside Profiles and Communities in the strip, shown to superusers only). The
+beside Profiles and Communities in the strip). Since 2026-10-01 its doors
+ask the Superuser plan too (`views.clearances.may_manage`), and the strip
+shows the tab only to whom they open (`{% load socialhub_flags %}`,
+`user|may_manage_clearances`, 37c.32) — never a tab that answers 403. The
 list (2026-09-30) is read-only: a table on a wide screen, a card per
 clearance on a narrow one, five a page (the shared server pagination), each
 with its holders, its mana refill speeds, how many things it keeps, and a

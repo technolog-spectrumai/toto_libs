@@ -1,9 +1,10 @@
-{% load i18n %}
+{% load i18n socialhub_flags %}
 {% comment %}The socialhub's strip (2026-09-29): Profiles, Communities and — for a
-superuser — Clearances. Included with active_tab = profiles | communities |
-clearances. Clearances are hidden from members everywhere (a clearance decides who
-reads and how fast mana refills, never what anybody buys), so the tab is
-chrome shown to superusers only; the view re-checks.{% endcomment %}
+superuser on the Superuser plan (2026-10-01, 37c.32) — Clearances. Included
+with active_tab = profiles | communities | clearances. Clearances are hidden
+from members everywhere (a clearance decides who reads and how fast mana
+refills, never what anybody buys), so the tab is chrome shown only to whom its
+doors open (may_manage_clearances); the views re-check.{% endcomment %}
 <nav class="flex flex-wrap gap-2" aria-label="{% trans 'People and communities' %}">
   {% url 'socialhub:profile_list' as profiles_url %}
   {% url 'socialhub:community_list' as communities_url %}
@@ -23,7 +24,7 @@ chrome shown to superusers only; the view re-checks.{% endcomment %}
      {% endif %}
      class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
     <i class="fa-solid fa-people-group" aria-hidden="true"></i>{% trans "Communities" %}</a>
-  {% if user.is_superuser %}{% url 'socialhub:clearances' as clearances_url %}
+  {% if user|may_manage_clearances %}{% url 'socialhub:clearances' as clearances_url %}
   <a href="{{ clearances_url }}" data-testid="tab-clearances"
      {% if active_tab == 'clearances' %}aria-current="page"
        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"

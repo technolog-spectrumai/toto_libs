@@ -379,6 +379,31 @@ class ClearancesTabRefusalTests(OnThePlan, ClearanceFixture):
             with self.subTest(url=url):
                 self.assertEqual(getattr(root, method)(url, data).status_code, 200)
 
+    def test_the_tab_shows_only_where_its_doors_open(self):
+        """The strip asks the plan too (2026-10-01, 37c.32): a superuser off
+        the plan saw the tab on Profiles and Communities, and every click on
+        it was a 403 page."""
+        tab = 'data-testid="tab-clearances"'
+        for url in (reverse("socialhub:profile_list"), reverse("socialhub:community_list")):
+            with self.subTest(url=url):
+                self.assertContains(client_for(self.root).get(url), tab)
+                self.assertNotContains(client_for(self.ada.user).get(url), tab)
+                if apps.is_installed("toto.subscriptions"):
+                    page = client_for(self.bare_root).get(url)
+                    self.assertEqual(page.status_code, 200)
+                    self.assertNotContains(page, tab)
+
+    def test_the_filter_is_the_doors_rule(self):
+        from toto.socialhub.templatetags.socialhub_flags import may_manage_clearances
+        from toto.socialhub.views.clearances import may_manage
+
+        for user in (self.root, self.bare_root, self.ada.user, AnonymousUser()):
+            with self.subTest(user=str(user)):
+                self.assertEqual(may_manage_clearances(user), may_manage(user))
+        self.assertTrue(may_manage_clearances(self.root))
+        self.assertFalse(may_manage_clearances(self.ada.user))
+        self.assertFalse(may_manage_clearances(AnonymousUser()))
+
     def test_every_door_sends_a_visitor_to_sign_in(self):
         for method, url, data in self.doors():
             with self.subTest(url=url):
