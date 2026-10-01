@@ -459,7 +459,7 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
   lookups (2026-09-28): each is its own priced button, and clicking the map
   or a plain Save costs nothing.
   {% endcomment %}
-  <div x-show="addressModal" x-cloak x-transition.opacity
+  <div x-show="addressModal" x-trap="addressModal" x-cloak x-transition.opacity
        class="fixed inset-0 z-50 flex items-center justify-center p-4"
        role="dialog" aria-modal="true" aria-labelledby="address-modal-title">
     <div class="absolute inset-0"

@@ -2,7 +2,8 @@
 {% comment %}Several files at once (bulk.py, 2026-10-01): "Move to the trash"
    and "Move to…" for the ticked files. Inside the vaultTree() component of
    public_file_list.html. The server answers per file; what it refused stays
-   ticked and is listed here with the reason.{% endcomment %}
+   ticked and is listed here with the reason. An open dialog keeps focus
+   (x-trap, oya/focus_trap.js) and closes on Escape.{% endcomment %}
 
       <!-- Bulk: move to the trash -->
       <div x-show="bulkModal === 'trash'"
@@ -15,7 +16,7 @@
                       ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
                       : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
              class="relative z-10 w-full max-w-md rounded-2xl border p-6 shadow-2xl space-y-5"
-             role="dialog" aria-modal="true" @click.stop>
+             role="dialog" aria-modal="true" x-trap="bulkModal === 'trash'" @click.stop>
 
           <h2 class="flex items-center gap-2 text-base font-bold text-warn-light">
             <i class="fa-solid fa-trash text-sm"></i>
@@ -64,7 +65,7 @@
                       ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
                       : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
              class="relative z-10 w-full max-w-md rounded-2xl border p-6 shadow-2xl space-y-5"
-             role="dialog" aria-modal="true" @click.stop>
+             role="dialog" aria-modal="true" x-trap="bulkModal === 'move'" @click.stop>
 
           <h2 class="flex items-center gap-2 text-base font-bold">
             <i class="fa-solid fa-up-down text-sm"

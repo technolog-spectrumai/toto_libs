@@ -9,7 +9,8 @@
    paginated. The modals are Alpine; a refused submission comes back as
    `draft` (Post/Redirect/Get) with the modal open, what was typed and why —
    never a secret. Names reach the page through x-text or autoescaped
-   template text only, never as markup.
+   template text only, never as markup. An open modal keeps focus (x-trap,
+   oya/focus_trap.js) and closes on Escape.
 
    Places for the share / connect flow with another Zenobia, each a partial
    of its own so it extends this page without editing it:

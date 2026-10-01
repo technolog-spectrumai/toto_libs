@@ -295,7 +295,7 @@ document.addEventListener('alpine:init', () => {
 
       {% if room_left %}
       {# The New clearance modal. #}
-      <div x-show="open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+      <div x-show="open" x-trap="open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
            role="dialog" aria-modal="true" aria-labelledby="clearance-new-title">
         <div class="absolute inset-0 bg-black/60" @click="hide()"></div>
         <form method="post" action="{% url 'socialhub:clearance_add' %}" data-testid="clearance-new"

@@ -106,7 +106,7 @@ with a note the member reads on My account (socialhub/erasure.py).{% endcomment 
 
   </div>
 
-  <div x-show="decline" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+  <div x-show="decline" x-trap="decline" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
        role="dialog" aria-modal="true" aria-labelledby="erasure-decline-title">
     <div class="absolute inset-0 bg-black/60" @click="decline = null"></div>
     <form method="post" :action="decline ? decline.url : ''"

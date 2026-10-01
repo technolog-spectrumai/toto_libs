@@ -22,7 +22,7 @@
 {% trans "not stated" as l_not_stated %}{% trans "No end date" as l_no_end %}
 <div x-data="bucketConnect()" data-csrf="{{ csrf_token }}" data-testid="bucket-connect-root"
      @vault-connect-open.window="show()" @keydown.escape.window="open && close()">
-<div x-show="open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+<div x-show="open" x-trap="open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
      role="dialog" aria-modal="true" aria-labelledby="bucket-connect-title">
   <div class="absolute inset-0 bg-black/60" @click="close()"></div>
   <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"

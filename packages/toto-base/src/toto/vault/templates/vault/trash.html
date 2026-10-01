@@ -7,7 +7,8 @@
    md+, a card per file below, paged (`rows`, `page_obj`). Restore posts at
    once; Delete for good and Empty my trash open a modal whose checkbox must
    be ticked — the form then carries confirm=yes, which the server checks
-   again. Every form sends `page` back, so the redirect lands where it left.
+   again. An open modal keeps focus (x-trap, oya/focus_trap.js) and closes on
+   Escape. Every form sends `page` back, so the redirect lands where it left.
 {% endcomment %}
 
 {% block vault_title %}{% trans "Trash" %}{% endblock %}
@@ -93,7 +94,7 @@
   {% endif %}
 
   {# Delete for good: one modal for every row, filled by open('purge', button). #}
-  <div x-show="modal === 'purge'" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+  <div x-show="modal === 'purge'" x-trap="modal === 'purge'" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
        role="dialog" aria-modal="true" aria-labelledby="trash-purge-title">
     <div class="absolute inset-0 bg-black/60" @click="close()"></div>
     <form method="post" :action="target.url" data-testid="trash-purge-form"
@@ -119,7 +120,7 @@
   </div>
 
   {# Empty my trash. #}
-  <div x-show="modal === 'empty'" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+  <div x-show="modal === 'empty'" x-trap="modal === 'empty'" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
        role="dialog" aria-modal="true" aria-labelledby="trash-empty-title">
     <div class="absolute inset-0 bg-black/60" @click="close()"></div>
     <form method="post" action="{% url 'vault:trash_empty' %}" data-testid="trash-empty-form"

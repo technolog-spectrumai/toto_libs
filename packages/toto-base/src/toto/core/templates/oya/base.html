@@ -17,6 +17,8 @@
   <!-- Tailwind & Alpine -->
   <script src="{% static 'oya/tailwind.js' %}"></script>
   <script defer src="{% static 'oya/alpine.js' %}"></script>
+  {# Modals keep focus (x-trap, 2026-10-01). NOT deferred: it hooks alpine:init, and Alpine starts right after its own deferred script. #}
+  <script src="{% static 'oya/focus_trap.js' %}"></script>
   <link rel="stylesheet" href="{% static 'vendor/fontawesome/6.7.2/css/all.min.css' %}" />
   <!-- Tailwind Config -->
   <script>

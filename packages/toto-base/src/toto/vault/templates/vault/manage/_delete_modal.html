@@ -5,7 +5,7 @@
    connected from another Zenobia only disconnects: nothing is deleted there.
    One modal for every row: openDelete(pk) fills it from bucket-manage-rows; a
    refused post re-opens it from `draft` (open == "delete").{% endcomment %}
-<div x-show="modal === 'delete' && del.row" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+<div x-show="modal === 'delete' && del.row" x-trap="modal === 'delete' && del.row" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
      role="dialog" aria-modal="true" aria-labelledby="bucket-delete-title">
   <div class="absolute inset-0 bg-black/60" @click="close()"></div>
   <form method="post" :action="del.row ? del.row.delete_url : ''" data-testid="bucket-delete" autocomplete="off"
