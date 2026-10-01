@@ -137,8 +137,8 @@ def _mail(event: str, check, state, to: list[str], hours: int) -> bool:
 def run(*, now=None, checks=None) -> dict:
     """One scheduled pass: check, remember, mail what changed.
 
-    ``checks`` replaces ``record.run_checks()`` (tests). Returns how many
-    mails of each event went out.
+    ``checks`` replaces ``record.run_checks()`` (tests). Returns, per event,
+    how many checks were mailed about.
     """
     from .models import CheckState
 
