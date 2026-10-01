@@ -50,6 +50,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils.text import slugify
 from django.utils.translation import gettext as _
+from django.utils.translation import pgettext
 
 from toto.core.plugin import BasePlugin
 
@@ -113,7 +114,10 @@ def status_label(status: str) -> str:
 
 def health_label(health: str) -> str:
     return {
-        HEALTH_OK: _("Answered"),
+        # "Answered" of a storage that answered its test, with a context of its
+        # own: the bare word is the support bot's answer rate in Polish
+        # (2026-10-01, 37c.11).
+        HEALTH_OK: pgettext("storage health", "Answered"),
         HEALTH_ERROR: _("Failed"),
         HEALTH_UNKNOWN: _("Never tested"),
     }.get(health, health)
