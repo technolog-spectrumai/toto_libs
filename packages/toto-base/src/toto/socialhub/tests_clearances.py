@@ -157,7 +157,13 @@ class ClearanceHiddenTests(ClearanceTestCase):
         self.client.force_login(self.root)
         response = self.client.get("/socialhub/communities/")
         self.assertEqual({c.name for c in response.context["communities"]}, {"devs"})
-        self.assertContains(response, "fa-shield-halved")             # the Clearances tab
+        # The Clearances tab: `root` here is a superuser off the Superuser plan
+        # (no `bootstrap_plans`), whom it is not shown to since 37c.32; a host
+        # that sells no plan shows it to the superuser bit alone.
+        if apps.is_installed("toto.subscriptions"):
+            self.assertNotContains(response, "fa-shield-halved")
+        else:
+            self.assertContains(response, "fa-shield-halved")
 
     def test_a_profile_shows_a_member_no_clearance(self):
         self.client.force_login(self.senior.user)
