@@ -1,4 +1,4 @@
-{% load vault_share %}{% comment %}Modals other flows add to the Management page. Rendered inside the
+{% comment %}Modals other flows add to the Management page. Rendered inside the
    page's x-data="bucketManage(...)", after the Create, Edit and Delete
    modals.
 
@@ -7,8 +7,8 @@
    its QR code shown once) and the connect stepper. Each is an Alpine
    component of its own (vault/manage/_share_scripts.html), opened by a
    window event from its button (vault-share-open, vault-connect-open) and
-   closed by Escape. `sc` is share_views.page_config — nothing secret.{% endcomment %}
-{% share_connect_config as sc %}
+   closed by Escape. `sc` is the page's (manage.html works it out once with
+   share_connect_config: share_views.page_config) — nothing secret.{% endcomment %}
 {{ sc|json_script:"bucket-share-config" }}
 {% if sc.share_enabled or sc.connect_enabled %}
 {% include "vault/manage/_share_scripts.html" %}

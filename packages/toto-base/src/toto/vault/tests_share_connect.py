@@ -35,7 +35,7 @@ from django.test import Client, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from . import manage_views
+from . import manage_views, share_views
 from .models import Bucket, StorageBackend
 from .peer_client import PeerClient
 from .peering import BucketGrant, BucketPeer, pairing_code_for
@@ -263,6 +263,39 @@ class SharePageTests(ShareFixture):
             body = self.page()
         self.assertIn('<option value="Placidia (https://placidia.example.org)">', body)     # who it is for
         self.assertIn('<option value="https://placidia.example.org">', body)                # the address
+
+
+class OneSwitchTests(ShareFixture):
+    """The header's Connect, every row's Share and the modals read ONE switch,
+    the page's ``share_connect_config`` (2026-10-01, todo 29.10). The
+    ``remote_buckets_enabled`` tag asked the host flag again for each button,
+    beside the modals' own switch; it is gone."""
+
+    def test_the_page_works_its_switch_out_once(self):
+        with mock.patch("toto.vault.share_views.page_config",
+                        wraps=share_views.page_config) as config:
+            body = self.page()
+        self.assertEqual(config.call_count, 1)
+        self.assertIn('data-testid="bucket-connect-open"', body)
+        self.assertIn(f'data-testid="bucket-share-{self.local.pk}"', body)
+        self.assertIn('data-testid="bucket-share-root"', body)
+
+    def test_the_tag_is_gone_and_no_template_loads_it(self):
+        from pathlib import Path
+
+        from django.conf import settings
+        from django.template.utils import get_app_template_dirs
+
+        from .templatetags import vault_flags
+
+        self.assertNotIn("remote_buckets_enabled", vault_flags.register.tags)
+        self.assertIn("superuser_plan", vault_flags.register.filters)
+        roots = list(get_app_template_dirs("templates"))
+        for engine in settings.TEMPLATES:
+            roots += [Path(d) for d in engine.get("DIRS", [])]
+        offenders = [str(path) for root in roots for path in Path(root).rglob("*.html")
+                     if "remote_buckets_enabled" in path.read_text(encoding="utf-8", errors="replace")]
+        self.assertEqual(offenders, [])
 
 
 class ShareTests(ShareFixture):

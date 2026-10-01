@@ -1,22 +1,16 @@
-"""Template-side view of the vault's host flags.
+"""Template-side view of who may see Storage's superuser tabs.
 
-`VAULT_EXTERNAL_BUCKETS = False` closes every remote-bucket door — the
-driver chokepoint, the refresh endpoints, bucket clean — but the Remote tab
-used to be gated only on is_staff, so a hardened host showed operators a tab
-whose every action answered 403 "disabled". The base template's own comment
-says it: a tab that always answers 403 is worse than no tab.
+A tab that always answers 403 is worse than no tab (the base template says
+it), so the tab strip asks what the tabs' doors ask. The
+``remote_buckets_enabled`` tag that used to live here (the Remote tab's) is
+gone (2026-10-01): Management's share and connect buttons read the page's
+``share_connect_config`` (``vault_share.py``), the same switch as their
+modals.
 """
 
 from django import template
 
-from toto.vault.models import external_buckets_allowed
-
 register = template.Library()
-
-
-@register.simple_tag
-def remote_buckets_enabled() -> bool:
-    return external_buckets_allowed()
 
 
 @register.filter

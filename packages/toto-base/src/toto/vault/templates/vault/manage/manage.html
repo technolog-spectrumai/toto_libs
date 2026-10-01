@@ -1,5 +1,5 @@
 {% extends "vault/base.html" %}
-{% load i18n %}
+{% load i18n vault_share %}
 {% comment %}Storage → Management (manage_views.py): every bucket, and the doors
    that make, edit, test and delete them. Superuser plan only — the view
    refuses anybody else, and the tab in vault/base.html shows to the same
@@ -17,6 +17,9 @@
                                         another Zenobia" (beside New bucket)
      vault/manage/_row_share.html       a bucket's "Share" action (row and card)
      vault/manage/_extra_modals.html    its modals (inside the page's x-data)
+   All three read `sc` (share_views.page_config, through the
+   share_connect_config tag), worked out once at the top of the content: a
+   button shows exactly when its modal is on the page.
 {% endcomment %}
 
 {% block vault_title %}{% trans "Management" %}{% endblock %}
@@ -33,6 +36,7 @@
 {% endblock %}
 
 {% block vault_content %}
+{% share_connect_config as sc %}
 <div x-data="bucketManage('{% url 'vault:manage_people' %}')" @keydown.escape.window="close()"
      data-csrf="{{ csrf_token }}" data-test-failed="{% trans 'The test could not run.' %}"
      class="space-y-6" data-testid="bucket-manage">

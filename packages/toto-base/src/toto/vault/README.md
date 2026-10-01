@@ -672,8 +672,10 @@ are scrubbed of what was typed into them.
 
 The two-sided flow with another Zenobia plugs in through three partials:
 `vault/manage/_connect_button.html` (header), `vault/manage/_row_share.html`
-(per bucket) and `vault/manage/_extra_modals.html` (its modals) — see the next
-section.
+(per bucket) and `vault/manage/_extra_modals.html` (its modals), which all
+read one switch, the page's `share_connect_config` (2026-10-01: a button shows
+exactly when its modal is on the page; the old `remote_buckets_enabled` tag is
+gone) — see the next section.
 
 Tests: `tests_management` (doors × visitors, the list in table and cards,
 Create / Edit / Delete / Test), `tests_remote_page` (the tab bar, remote rows),

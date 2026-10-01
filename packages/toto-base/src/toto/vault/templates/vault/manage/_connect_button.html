@@ -1,11 +1,12 @@
-{% load i18n vault_flags %}{% comment %}"Connect a bucket from another Zenobia": opens the guided connect
+{% load i18n %}{% comment %}"Connect a bucket from another Zenobia": opens the guided connect
    stepper (vault/manage/_connect_modal.html — the code pasted, scanned or
    read from an image → what it grants → connection test → name and owner →
-   Connect). Beside New bucket in the page's header; not offered where
-   external buckets are off. The generic Create modal never offers this kind
-   (manage_views.GUIDED_KINDS), and its door refuses it.{% endcomment %}
-{% remote_buckets_enabled as remote_ok %}
-{% if remote_ok %}
+   Connect). Beside New bucket in the page's header; offered exactly when
+   the stepper is on the page (`sc.connect_enabled`, the page's
+   share_connect_config — not where external buckets are off). The generic
+   Create modal never offers this kind (manage_views.GUIDED_KINDS), and its
+   door refuses it.{% endcomment %}
+{% if sc.connect_enabled %}
 <button type="button" @click="$dispatch('vault-connect-open')" data-testid="bucket-connect-open"
         class="inline-flex items-center gap-1.5 rounded-lg border border-current/30 px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-80">
   <i class="fa-solid fa-link" aria-hidden="true"></i>{% trans "Connect a bucket from another Zenobia" %}</button>
