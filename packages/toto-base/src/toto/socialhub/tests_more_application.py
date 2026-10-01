@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from toto.core.models import Platform
 from toto.people.models import Person
-from toto.socialhub.models import Community, MembershipApplication, ReferenceRequest
+from toto.socialhub.models import Community, MembershipApplication, PrivacyNotice, ReferenceRequest
 
 User = get_user_model()
 
@@ -37,6 +37,8 @@ class FlowCase(TestCase):
         self.outsider = Person.objects.create(
             user=User.objects.create_user("outsider", password="pw"), display_name="Outsider")
         self.outsider.communities.add(self.other)
+        # An application needs a notice to accept (2026-10-01).
+        PrivacyNotice.objects.create(version=1, text_pl="Informacja", text_en="Notice")
 
     def verify(self, code):
         return self.client.post(reverse("socialhub:membership_verification",
@@ -90,7 +92,8 @@ class VerificationTests(FlowCase):
 class ApplyAgainTests(FlowCase):
     def test_applying_again_with_the_same_email_is_refused_and_makes_no_account(self):
         response = self.client.post(reverse("socialhub:membership_application"), {
-            "username": "newbie2", "email": "newbie@example.com", "community": self.other.pk})
+            "username": "newbie2", "email": "newbie@example.com", "community": self.other.pk,
+            "privacy_version": 1, "privacy_accept": "on"})
         self.assertEqual(response.status_code, 200)
         self.assertIn("email", response.context["form"].errors)
         self.assertFalse(User.objects.filter(username="newbie2").exists())
@@ -100,7 +103,8 @@ class ApplyAgainTests(FlowCase):
 
     def test_a_new_application_gets_its_own_code_and_a_week(self):
         self.client.post(reverse("socialhub:membership_application"), {
-            "username": "fresh", "email": "fresh@example.com", "community": self.guild.pk})
+            "username": "fresh", "email": "fresh@example.com", "community": self.guild.pk,
+            "privacy_version": 1, "privacy_accept": "on"})
         made = MembershipApplication.objects.get(email="fresh@example.com")
         self.assertRegex(made.code, r"^\d{6}$")
         self.assertAlmostEqual((made.expires_at - timezone.now()).total_seconds(),

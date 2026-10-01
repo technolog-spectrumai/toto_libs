@@ -59,7 +59,8 @@ def _send_endorsement_mail(subject, body, *, to, community):
 def membership_application_view(request):
     processor = PageProcessor()
     form = MembershipApplicationForm(request.POST or None)
-    context = {"form": form, "page_title": "Apply for Membership"}
+    context = {"form": form, "page_title": "Apply for Membership",
+               "privacy_notice": form.privacy_notice}
 
     if request.method == "POST" and form.is_valid():
         email = form.cleaned_data["email"]
@@ -72,18 +73,26 @@ def membership_application_view(request):
         user, _ = User.objects.get_or_create(
             username=username, defaults={"email": email, "is_active": False}
         )
+        notice = form.privacy_notice
         application, created = MembershipApplication.objects.get_or_create(
             email=email,
             defaults={
                 "community": community,
                 "expires_at": timezone.now() + timezone.timedelta(days=7),
-                "status": "pending"
+                "status": "pending",
+                # The notice the form showed and the applicant ticked
+                # (2026-10-01); carried to the Person on admission.
+                "privacy_version": notice.version,
+                "privacy_accepted_at": timezone.now(),
             }
         )
 
         if created:
             application.code = generate_code()
             application.save()
+            from toto.socialhub import audit
+
+            audit.notice_accepted(application)
             logger.info(f"New application created for '{email}' (username '{username}') with code '{application.code}'.")
         else:
             logger.info(f"Existing application reused for '{email}'.")

@@ -186,12 +186,49 @@
               </div>
             </div>
 
+            {# The privacy notice (2026-10-01, RODO): outside the styled block above, whose rules would stretch a checkbox full width. #}
+            {{ form.privacy_version }}
+            {% if privacy_notice %}
+              <div
+                :class="darkMode
+                  ? 'border-accent-1 bg-sunken-dark'
+                  : 'border-accent-2 bg-sunken-light'"
+                class="space-y-2 rounded-xl border p-4 text-sm">
+                <p class="opacity-75">
+                  {% url 'socialhub:privacy_notice_version' privacy_notice.version as notice_url %}
+                  {% blocktranslate with version=privacy_notice.version %}Before you apply, read how we handle your data: <a href="{{ notice_url }}" target="_blank" rel="noopener" class="font-semibold underline underline-offset-4">privacy notice, version {{ version }}</a>.{% endblocktranslate %}
+                </p>
+                <label for="{{ form.privacy_accept.id_for_label }}" class="flex items-start gap-3 font-semibold">
+                  <input type="checkbox" name="{{ form.privacy_accept.html_name }}" id="{{ form.privacy_accept.id_for_label }}"
+                         class="mt-0.5 h-4 w-4 shrink-0 rounded" required
+                         {% if form.privacy_accept.value %}checked{% endif %}>
+                  <span>{{ form.privacy_accept.label }}</span>
+                </label>
+                {% if form.privacy_accept.errors %}
+                  <p
+                    :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+                    class="text-xs font-medium">
+                    {{ form.privacy_accept.errors|striptags }}
+                  </p>
+                {% endif %}
+              </div>
+            {% else %}
+              <div
+                :class="darkMode
+                  ? 'border-warn-dark bg-sunken-dark text-warn-dark'
+                  : 'border-warn-light bg-sunken-light text-warn-light'"
+                class="rounded-lg border px-4 py-3 text-sm font-medium">
+                {% translate "Applications are closed until a privacy notice is published." %}
+              </div>
+            {% endif %}
+
             <button
               type="submit"
+              {% if not privacy_notice %}disabled{% endif %}
               :class="darkMode
                 ? 'bg-accent-dark text-primary-bg-dark'
                 : 'bg-accent-light text-primary-bg-light'"
-              class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
+              class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
               <i class="fa-solid fa-paper-plane"></i>{% trans "Submit Application" %}</button>
 
             <div

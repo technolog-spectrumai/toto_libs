@@ -268,6 +268,22 @@ the socialhub is where a person first hands the platform their data.
   [brackets]. The real text is the organisation's.
 - **Audited**: `PRIVACY.NOTICE_PUBLISHED`, with the version, the one it
   replaces and each text's length — never the text.
+- **Accepted on the membership application** (2026-10-01): the form links
+  the current version and requires a tick; the version shown rides along in
+  a hidden field, so a version published while the page was open is drawn
+  again (box clear) rather than accepted unseen. With no version published
+  the application is closed. The application records `privacy_version` and
+  `privacy_accepted_at`, and `PRIVACY.NOTICE_ACCEPTED` (the version, the
+  application, its e-mail and community) goes on the chain. On admission
+  (`ReferenceRequest.save`) the acceptance is carried to the Person as a
+  `PrivacyAcceptance` row (person, version, when) — a small table rather
+  than fields on Person, because `toto.people` knows nothing of the
+  socialhub and a later version accepted is a second row. It cascades with
+  the Person on erasure. Members from before acceptance existed have no row
+  and are never asked (the owner's choice); nothing gates their sign-in.
+  The admin shows the version on applications (read-only) and lists the
+  acceptances; the referrer's reference panel on their profile shows
+  "Privacy notice vN accepted", linked to that version.
 
 ## On the audit chain
 
@@ -281,7 +297,8 @@ the relation and through a `clear()`; senior members; privileges; an application
 each of its steps; a reference asked for, given (the applicant admitted) or
 declined; a member's own profile or time zone changed on My account
 (`PROFILE_CHANGED`, the field names only); a privacy notice version published
-(`PRIVACY.NOTICE_PUBLISHED`). Communities and clearances are recorded apart — the chain is where
+(`PRIVACY.NOTICE_PUBLISHED`) and accepted by an applicant
+(`PRIVACY.NOTICE_ACCEPTED`). Communities and clearances are recorded apart — the chain is where
 a crossing of the two axes would show. Sign-ins, sign-outs and
 accounts are recorded by `toto.audit.identity`. See `toto/audit/README.md`.
 

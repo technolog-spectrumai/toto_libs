@@ -392,6 +392,18 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
                       {{ ref.get_status_display }}
                     </span>
 
+                    {# The privacy notice the applicant accepted (2026-10-01); none on applications older than acceptance. #}
+                    {% if ref.application.privacy_version %}
+                      <a href="{% url 'socialhub:privacy_notice_version' ref.application.privacy_version %}"
+                        :class="darkMode
+                          ? 'border-accent-1 bg-primary-bg-dark'
+                          : 'border-accent-2 bg-primary-bg-light'"
+                        class="rounded-full border px-3 py-1 font-semibold hover:underline"
+                        title="{{ ref.application.privacy_accepted_at|date:'DATETIME_FORMAT' }}">
+                        <i class="fa-solid fa-shield-halved"></i> {% blocktranslate with version=ref.application.privacy_version %}Privacy notice v{{ version }} accepted{% endblocktranslate %}
+                      </a>
+                    {% endif %}
+
                     <span class="rounded-full px-1 py-1 opacity-70">
                       Sent {{ ref.created_at|date:"F j, Y" }}
                     </span>

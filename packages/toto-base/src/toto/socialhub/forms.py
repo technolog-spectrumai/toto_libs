@@ -33,11 +33,48 @@ class MembershipApplicationForm(forms.ModelForm):
         help_text=_("You'll use this to log in once your application is approved."),
     )
 
+    # The privacy notice (2026-10-01, RODO): the version shown rides along in
+    # a hidden field so the one recorded is the one the applicant read — a
+    # version published while the page was open is shown before it is
+    # accepted, never accepted unseen.
+    privacy_version = forms.IntegerField(widget=forms.HiddenInput, required=False)
+    privacy_accept = forms.BooleanField(
+        required=True,
+        label=_("I have read the privacy notice and accept it."),
+        error_messages={"required": _("Please read the privacy notice and tick the box to apply.")},
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from toto.socialhub.models import PrivacyNotice
+
+        self.privacy_notice = PrivacyNotice.current()
+        if self.privacy_notice is not None:
+            self.fields["privacy_version"].initial = self.privacy_notice.version
+
     def clean_username(self):
         username = self.cleaned_data["username"].strip()
         if User.objects.filter(username__iexact=username).exists():
             raise forms.ValidationError(_("This username is already taken."))
         return username
+
+    def clean(self):
+        cleaned = super().clean()
+        notice = self.privacy_notice
+        if notice is None:
+            # Nothing to accept means nothing to tell an applicant what is
+            # done with their data: applications wait for a published notice.
+            raise forms.ValidationError(
+                _("Applications are closed until a privacy notice is published."))
+        if cleaned.get("privacy_accept") and cleaned.get("privacy_version") != notice.version:
+            self.add_error("privacy_accept", _(
+                "The privacy notice has changed since this page was opened. "
+                "Please read the current version and tick the box again."))
+            # Drawn again with the current version and the box clear.
+            self.data = self.data.copy()
+            self.data[self.add_prefix("privacy_version")] = str(notice.version)
+            self.data.pop(self.add_prefix("privacy_accept"), None)
+        return cleaned
 
     class Meta:
         model = MembershipApplication

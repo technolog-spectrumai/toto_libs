@@ -15,6 +15,7 @@ membership flow, the wiki's Clearances page, the ingress, a shell:
 | `SOCIALHUB.APPLICATION_<STATUS>` | the application moves: verified, endorsed, invited, rejected |
 | `SOCIALHUB.REFERENCE_REQUESTED` / `_GIVEN` / `_DECLINED` | a reference asked of a member, and their answer (given = the applicant admitted) |
 | `SOCIALHUB.PROFILE_CHANGED` | a member edits their own profile or time zone on My account — the field NAMES in `fields`, never the values (2026-09-30) |
+| `PRIVACY.NOTICE_ACCEPTED` | an applicant ticks the privacy notice on the membership application — the version and the application, the e-mail as every application record has it (2026-10-01) |
 | `PRIVACY.NOTICE_PUBLISHED` | a new version of the privacy notice is published — its number, the one it replaces and each text's length, never the text (2026-10-01) |
 
 Communities and clearances are orthogonal on purpose (README) and are
@@ -104,6 +105,18 @@ def notice_published(notice, *, previous=None) -> None:
                    metadata={"version": notice.version, "previous": previous,
                              "length_pl": len(notice.text_pl),
                              "length_en": len(notice.text_en)})
+
+
+def notice_accepted(application) -> None:
+    """An applicant accepted a version of the privacy notice (2026-10-01).
+    Called by the application view, the one door an acceptance comes
+    through; the Person it is carried to on admission is the socialhub's
+    ``PrivacyAcceptance`` row, not a second record."""
+    return _record("notice_accepted", family="privacy",
+                   object_type="socialhub.membershipapplication", object_id=application.pk,
+                   description=f"v{application.privacy_version} {application.email}",
+                   metadata={**_application_facts(application),
+                             "version": application.privacy_version})
 
 
 # ---------------------------------------------------------------------------

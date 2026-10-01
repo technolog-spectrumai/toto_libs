@@ -398,6 +398,13 @@ class MembershipApplication(models.Model):
     ]
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
 
+    # The privacy notice the applicant accepted (2026-10-01, RODO): its number,
+    # not a foreign key — a version is never deleted, and the number is what
+    # its public address (socialhub:privacy_notice_version) is keyed by. Empty
+    # on applications made before acceptance existed; nobody is asked again.
+    privacy_version = models.PositiveIntegerField(null=True, blank=True)
+    privacy_accepted_at = models.DateTimeField(null=True, blank=True)
+
     def is_expired(self):
         return timezone.now() > self.expires_at
 
@@ -472,6 +479,15 @@ class ReferenceRequest(models.Model):
                 if member.patron_id is None and self.referrer.pk != member.pk:
                     member.patron = self.referrer
                 member.save()
+
+                # 5. The privacy notice accepted on the application goes with
+                #    the person (2026-10-01): the application is housekeeping's
+                #    to prune, the acceptance has to outlive it.
+                if application.privacy_version:
+                    PrivacyAcceptance.objects.get_or_create(
+                        person=member, version=application.privacy_version,
+                        defaults={"accepted_at": application.privacy_accepted_at
+                                  or timezone.now()})
 
 
 class CommunityForum(models.Model):
@@ -599,3 +615,30 @@ class PrivacyNotice(models.Model):
         polish = (language or "").lower().startswith("pl")
         first, second = (self.text_pl, self.text_en) if polish else (self.text_en, self.text_pl)
         return first or second
+
+
+class PrivacyAcceptance(models.Model):
+    """A person accepted one version of the privacy notice (2026-10-01).
+
+    A table of its own, not fields on Person: ``toto.people`` knows nothing of
+    the socialhub, and a later version accepted is a second row, not an
+    overwrite of the first. Written when an applicant is admitted
+    (``ReferenceRequest.save``), from what the application recorded; members
+    who joined before acceptance existed have no row and are not asked for
+    one (the owner's choice). CASCADE: it is the person's data and goes with
+    them when the account is erased.
+    """
+
+    person = models.ForeignKey("people.Person", on_delete=models.CASCADE,
+                               related_name="privacy_acceptances")
+    version = models.PositiveIntegerField()
+    accepted_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-version"]
+        verbose_name = "privacy notice acceptance"
+        constraints = [models.UniqueConstraint(fields=["person", "version"],
+                                               name="socialhub_privacy_acceptance_once")]
+
+    def __str__(self):
+        return f"{self.person} accepted privacy notice v{self.version}"

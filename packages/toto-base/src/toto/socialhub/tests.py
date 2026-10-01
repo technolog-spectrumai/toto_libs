@@ -276,6 +276,10 @@ class MembershipApplicationUsernameTests(TestCase):
     def setUp(self):
         Platform.objects.create(site_name="Toto", author="Test", publication_year=2026)
         self.community = Community.objects.create(name="Cedar Guild")
+        # An application needs a notice to accept (2026-10-01).
+        from toto.socialhub.models import PrivacyNotice
+
+        PrivacyNotice.objects.create(version=1, text_pl="Informacja", text_en="Notice")
 
     def _url(self):
         return reverse("socialhub:membership_application")
@@ -283,7 +287,8 @@ class MembershipApplicationUsernameTests(TestCase):
     def test_signup_creates_user_with_chosen_username(self):
         res = self.client.post(
             self._url(),
-            {"username": "janek", "email": "janek@example.com", "community": self.community.id},
+            {"username": "janek", "email": "janek@example.com", "community": self.community.id,
+             "privacy_version": 1, "privacy_accept": "on"},
         )
         self.assertEqual(res.status_code, 302)
         user = User.objects.get(username="janek")          # username is what they chose…
@@ -295,7 +300,8 @@ class MembershipApplicationUsernameTests(TestCase):
         User.objects.create_user(username="taken", password="x")
         res = self.client.post(
             self._url(),
-            {"username": "taken", "email": "new@example.com", "community": self.community.id},
+            {"username": "taken", "email": "new@example.com", "community": self.community.id,
+             "privacy_version": 1, "privacy_accept": "on"},
         )
         self.assertEqual(res.status_code, 200)  # re-renders with a form error
         self.assertFalse(MembershipApplication.objects.filter(email="new@example.com").exists())

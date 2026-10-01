@@ -15,6 +15,7 @@ from .models import (
     CommunityNewsTopic,
     CommunityPrivilege,
     MembershipApplication,
+    PrivacyAcceptance,
     ReferenceRequest,
 )
 
@@ -136,11 +137,13 @@ class ClearanceAdmin(TotoModelAdmin):
 
 @admin.register(MembershipApplication)
 class MembershipApplicationAdmin(TotoModelAdmin):
-    list_display = ('email', 'code', 'community', 'status', 'is_verified_display', 'expires_at')
-    list_filter = ('community', 'status', 'expires_at')
+    list_display = ('email', 'code', 'community', 'status', 'is_verified_display', 'privacy_version',
+                    'expires_at')
+    list_filter = ('community', 'status', 'privacy_version', 'expires_at')
     search_fields = ('email', 'code', 'community__name')
     ordering = ('-created_at',)
-    readonly_fields = ('created_at',)
+    # What the applicant accepted is a record, not an editable field (2026-10-01).
+    readonly_fields = ('created_at', 'privacy_version', 'privacy_accepted_at')
 
     @admin.display(boolean=True, description='Verified')
     def is_verified_display(self, obj):
@@ -204,3 +207,20 @@ class CommunityForumAdmin(admin.ModelAdmin):
 
     list_display = ("community", "channel_slug", "created_at")
     search_fields = ("community__name", "channel_slug")
+
+
+@admin.register(PrivacyAcceptance)
+class PrivacyAcceptanceAdmin(TotoModelAdmin):
+    """Who accepted which privacy notice (2026-10-01). Read-only: a row is
+    written on admission from the application and never by hand."""
+    list_display = ('person', 'version', 'accepted_at')
+    list_filter = ('version',)
+    search_fields = ('person__display_name', 'person__user__username')
+    ordering = ('-accepted_at',)
+    readonly_fields = ('person', 'version', 'accepted_at')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
