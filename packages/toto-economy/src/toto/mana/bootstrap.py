@@ -30,12 +30,8 @@ from .colours import HUE, REGEN_DEFAULTS, ROLES, TICKER
 SUPPLY = Decimal("1000000000")
 DECIMALS = 9
 
-#: The retired asset. Deactivated, never deleted: balances somebody holds are
-#: ledger history, and an inactive asset still reads.
-LEGACY_UNIT = "MANA"
 #: Each pool's short name, the key of its asset page (2026-09-30).
 CODE = {"security": "SECU", "compute": "COMP", "storage": "STOR"}
-LEGACY_FAUCET_SLUG = "default-mana"
 
 _NAMES = {"security": "Security mana", "compute": "Compute mana",
           "storage": "Storage mana"}
@@ -72,26 +68,6 @@ MANA_ASSETS: tuple[ManaAsset, ...] = tuple(
 def _say(reporter, message: str) -> None:
     if reporter is not None:
         reporter.write(message)
-
-
-def retire_legacy_mana(*, reporter=None) -> int:
-    """Switch off the single MANA currency and its faucet. Returns rows changed.
-
-    Only the INGRESS-seeded one: a "MANA" somebody minted by hand is theirs,
-    and the metadata marker is what tells the two apart. Idempotent — a second
-    run finds nothing active to change.
-    """
-    from toto.assets.models import Asset, Faucet
-
-    changed = Asset.objects.filter(
-        unit_name=LEGACY_UNIT, active=True,
-        metadata__seeded_by="ingress").update(active=False)
-    changed += Faucet.objects.filter(
-        slug=LEGACY_FAUCET_SLUG, active=True).update(active=False)
-    if changed:
-        _say(reporter, f"  - retired {LEGACY_UNIT} and its faucet "
-                       "(superseded by the three mana pools)")
-    return changed
 
 
 def ensure_mana_assets(*, reporter=None) -> dict:
@@ -162,13 +138,12 @@ def ensure_pools(assets: dict, *, reporter=None) -> dict:
 
 
 def ensure_mana(*, reporter=None) -> dict:
-    """Retire MANA, mint the colours, bind the pools. Never raises.
+    """Mint the colours, bind the pools. Never raises.
 
     An ingress run for some unrelated app must not die because mana could not
     be set up — the same promise ``bootstrap_economy`` makes for itself.
     """
     try:
-        retire_legacy_mana(reporter=reporter)
         pools = ensure_pools(ensure_mana_assets(reporter=reporter), reporter=reporter)
         from . import faucets
 

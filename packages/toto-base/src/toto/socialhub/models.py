@@ -18,7 +18,7 @@ from toto.core.domain import DomainEntity
 from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
 from toto.core.models import Federation
 from toto.locations.models import Address, Territory
-from toto.people.models import Person  # re-exported for backward compat  # noqa: F401
+from toto.people.models import Person
 from toto.verbena.models import AbstractSection, AbstractTag
 from toto.verbena.utils import unique_slug
 
@@ -108,18 +108,6 @@ class Community(DomainEntity):
     email = models.EmailField(unique=True, blank=True, null=True)
     is_foreign = models.BooleanField(default=False,
                                      help_text="Indicates whether this federation originates outside the local jurisdiction")
-    is_federal_tribe = models.BooleanField(
-        default=False,
-        help_text=(
-            "DEPRECATED as a live flag. It promised 'members are exempt from "
-            "all poll taxes' for years; the poll tax that briefly existed (the "
-            "head tax) has been removed, and what a community now does to what "
-            "its members pay is a discount on a subscription plan — see "
-            "toto.subscriptions.CommunityPlanDiscount. Kept because aurelian's "
-            "mobilization app reads it by name for responder eligibility. "
-            "Retiring it is an aurelian follow-up."
-        ),
-    )
     def __str__(self):
         return self.name
 

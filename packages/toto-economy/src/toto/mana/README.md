@@ -13,7 +13,7 @@ campaign checklist is `/todo.md`.
 | `colours.py` | Pure data: roles, hues, tickers, the metric → role map, seed prices, dials. The only place a metric gets a colour. |
 | `status.py` | Pure rules: fill, band (`empty`/`low`/`ok`), trend, ETA, the encrypt pre-selection. |
 | `models.py` | `ManaPool` (role → asset, PROTECT; the two dials) and `ManaGrant` (the idempotency claim). No balances. |
-| `bootstrap.py` | `ensure_mana`: retire MANA, mint BLUE/RED/GREEN once (short names SECU/COMP/STOR, so their pages are `/assets/assets/SECU/` and so on), bind the pools once. Runs inside `bootstrap_economy`, i.e. before every ingress. |
+| `bootstrap.py` | `ensure_mana`: mint BLUE/RED/GREEN once (short names SECU/COMP/STOR, so their pages are `/assets/assets/SECU/` and so on), bind the pools once. Runs inside `bootstrap_economy`, i.e. before every ingress. |
 | `services.py` | Everything else: bindings, prices, refill (`top_up`, `regenerate_hour`, `fill_pools`), the encrypt reward, the manual grant (`grant_manual`), the read side (`balances_of`, `history`, `series`, `plain_files`) and the refusal sentence. |
 | `faucets.py` | Every increase as a faucet payout (2026-09-26): four `assets.Faucet` rows per pool — `mana-<role>-{hourly,signup,encrypt-reward,manual}` — and `record_payout`, written beside the transfer in the same transaction. |
 | `management/commands/ingress_mana.py` | Seed/repair prices, clamp-then-arm the two levies, fill members who predate the pools. |

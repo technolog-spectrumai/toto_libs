@@ -5,13 +5,13 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
-from toto.assets.models import Asset, Faucet, LedgerTransaction
+from toto.assets.models import Asset, LedgerTransaction
 from toto.assets.services.bootstrap import (CORE_ASSETS, RESERVE_CODE,
                                             bootstrap_economy)
 from toto.assets.services.settlement import settlement_asset
-from toto.assets.testing import TEST_ISSUER_KEY, make_asset
+from toto.assets.testing import TEST_ISSUER_KEY
 from toto.core.models import Platform
-from toto.mana.bootstrap import SUPPLY, retire_legacy_mana
+from toto.mana.bootstrap import SUPPLY
 from toto.mana.models import ManaPool
 
 MASTER = dict(MONETARY_ISSUER_KEY=TEST_ISSUER_KEY, ASSETS_MONETARY_MASTER=True)
@@ -87,35 +87,6 @@ class MintTests(TestCase):
     def test_supply_is_the_drip_sized_one(self):
         asset = Asset.objects.get(unit_name="GREEN")
         self.assertEqual(asset.max_supply_base_units, int(SUPPLY * 10 ** 9))
-
-
-@override_settings(**MASTER)
-class RetirementTests(TestCase):
-    """An existing ledger's MANA is switched off, never deleted."""
-
-    def setUp(self):
-        platform()
-
-    def test_the_seeded_mana_and_its_faucet_are_deactivated(self):
-        mana = make_asset(unit_name="MANA", decimals=9,
-                          metadata={"seeded_by": "ingress"})
-        Faucet.objects.create(slug="default-mana", name="Mana faucet",
-                              asset=mana, active=True)
-        bootstrap_economy()
-        mana.refresh_from_db()
-        self.assertFalse(mana.active)
-        self.assertFalse(Faucet.objects.get(slug="default-mana").active)
-
-    def test_a_hand_minted_mana_is_left_alone(self):
-        mana = make_asset(unit_name="MANA", decimals=9, metadata={})
-        retire_legacy_mana()
-        mana.refresh_from_db()
-        self.assertTrue(mana.active)
-
-    def test_retirement_is_idempotent(self):
-        make_asset(unit_name="MANA", decimals=9, metadata={"seeded_by": "ingress"})
-        self.assertEqual(retire_legacy_mana(), 1)
-        self.assertEqual(retire_legacy_mana(), 0)
 
 
 @override_settings(MONETARY_ISSUER_KEY="", ASSETS_MONETARY_MASTER=False)

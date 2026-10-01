@@ -119,12 +119,11 @@ class ProfileTests(AccountTestCase):
         self.assertEqual(self.person.user_id, self.user.pk)
 
     def test_fields_that_decide_access_do_not_ride_along(self):
-        response = self.post_profile(location_sharing="exact", is_federal_agent="on",
+        response = self.post_profile(location_sharing="exact",
                                      timezone="Asia/Tokyo")
         self.assertEqual(response.status_code, 302)
         self.person.refresh_from_db()
         self.assertEqual(self.person.location_sharing, "off")
-        self.assertFalse(self.person.is_federal_agent)
         self.assertEqual(self.person.timezone, "")
 
     def test_the_get_is_refused_on_the_write_doors(self):

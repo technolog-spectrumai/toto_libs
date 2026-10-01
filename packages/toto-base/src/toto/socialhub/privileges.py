@@ -23,7 +23,8 @@ only; recurring payment is a Faucet, which pays people and grants nothing.
 
 Before this the platform had the idea twice as single booleans —
 ``Community.is_federal_tribe`` (an exemption nothing implemented) and
-``Person.is_federal_agent`` (help text about taxes, code about admin views) —
+``Person.is_federal_agent`` (help text about taxes, code about admin views),
+both removed on 2026-10-01 —
 and three ad-hoc re-implementations of "get from a user to their communities",
 one of which had never worked at all.
 

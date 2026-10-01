@@ -1,12 +1,10 @@
 import json
 from contextlib import contextmanager
-from io import StringIO
 from unittest.mock import patch
 
 from django.apps import apps
 from django.contrib.auth.models import User
 from django.core.exceptions import ImproperlyConfigured, ValidationError
-from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
@@ -546,13 +544,6 @@ class NodeFormViewTests(TestCase):
                                     {"data": '{"title": "X"}'})
         self.assertEqual(resp.status_code, 302)
         mock.assert_called_once_with("u1", {"title": "X"})
-
-
-class MigrationCommandTests(TestCase):
-    def test_dry_run_no_legacy_tables_is_noop(self):
-        out = StringIO()
-        call_command("migrate_bento_to_neo4j", "--dry-run", stdout=out)
-        self.assertIn("nothing to migrate", out.getvalue())
 
 
 # ---------------------------------------------------------------------------

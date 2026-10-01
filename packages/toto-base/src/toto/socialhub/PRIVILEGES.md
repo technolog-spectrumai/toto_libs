@@ -102,17 +102,18 @@ can be given without the other, which was never true before.
   taxes"* while no poll tax existed. One briefly did (the head tax), and
   migration `socialhub/0004` (retired with every other migration on
   2026-10-01) gave every flagged community `head_weight = 0`, the exemption it
-  always meant. Both the tax and the weight have since been removed. The
-  boolean stays, deprecated, because **aurelian** reads it by name for
-  responder eligibility.
+  always meant. Both the tax and the weight have since been removed, and the
+  boolean itself was removed in 37c.14 (2026-10-01).
 - `Person.is_federal_agent` — help text about taxes, code about two admin views.
   Migration `socialhub/0004` (retired with every other migration on
   2026-10-01) turned those two rights into a *Federal Agent* **office**, with
   the flagged person as holder. Offices were removed in 8/2026, so what that
-  migration created no longer exists. The field stays for aurelian's templates.
+  migration created no longer exists. The field was removed in 37c.14
+  (2026-10-01).
 
-Retiring the two flags is an aurelian follow-up
-(`mobilization/models.py:134`, `responder_recruit.html`, `responder_detail.html`).
+aurelian's mobilization app still read both flags by name
+(`mobilization/models.py`, `responder_recruit.html`, `responder_detail.html`);
+it breaks on its next re-vendor until it asks for a community privilege instead.
 
 ## Federation
 

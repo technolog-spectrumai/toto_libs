@@ -50,10 +50,8 @@ FLOR_CODE = "FLOR"
 FLOR_SYMBOL = "ƒ"
 FLOR_REFERENCE = "create-flor"
 
-#: The reserve account's "system" tag. It said "assarion_tpln" until the Florin
-#: replaced TPLN; ingress rewrites that legacy value in place.
+#: The reserve account's "system" tag.
 RESERVE_SYSTEM = "assarion_florin"
-LEGACY_RESERVE_SYSTEM = "assarion_tpln"
 
 assert ASR_SUPPLY == Decimal("6666.666666667"), ASR_SUPPLY
 assert FLOR_SUPPLY == Decimal("76658.70"), FLOR_SUPPLY
@@ -142,8 +140,6 @@ class Command(IngressCommand):
                 acc.active = True
                 fields.append("active")
             meta = dict(acc.metadata or {})
-            if meta.get("system") == LEGACY_RESERVE_SYSTEM:
-                meta["system"] = RESERVE_SYSTEM
             for k, v in {
                 "kind": "currency_reserve",
                 "system": RESERVE_SYSTEM,

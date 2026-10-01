@@ -7,10 +7,6 @@ from django.contrib.auth import get_user_model
 from django_jsonform.models.fields import JSONField
 from toto.core.domain import DomainEntity
 
-# Moved to toto.api — kept for backward compatibility only.
-from toto.api.models import ApiConnector as ApiConnector  # noqa: F401
-from toto.api.models import _reject_secret_like_json as _reject_secret_like_json  # noqa: F401 (existing migrations reference this dotted path)
-
 User = get_user_model()
 
 

@@ -14,14 +14,12 @@ from __future__ import annotations
 
 import re
 import tempfile
-from decimal import Decimal
 from io import StringIO
 
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 
-from toto.company.management.commands.ingress_company import (
-    COMPANY_NAME, LEGACY_CAPITAL_CURRENCY)
+from toto.company.management.commands.ingress_company import COMPANY_NAME
 from toto.company.models import Company
 
 MEDIA = tempfile.mkdtemp(prefix="company-currency-")
@@ -66,26 +64,9 @@ class NoRealCurrencyTests(TestCase):
         self.assertIsNone(REAL_CURRENCY.search(blob), blob)
 
     @override_settings(MEDIA_ROOT=MEDIA, VAULT_ROOT=MEDIA)
-    def test_a_rerun_corrects_a_company_seeded_before_the_florin(self):
-        """`get_or_create` never revisits its defaults, so a demo company
-        seeded while the seed still said PLN would keep saying it on every
-        later deploy unless the seed rewrites its own old value in place."""
-        self.assertEqual(LEGACY_CAPITAL_CURRENCY, "PLN")
-        Company.objects.create(name=COMPANY_NAME, capital_currency="PLN",
-                               share_capital=Decimal("100000.00"))
-
-        out = StringIO()
-        call_command("ingress_company", "--full", stdout=out)
-
-        company = Company.objects.get(name=COMPANY_NAME)
-        self.assertEqual(company.capital_currency, "FLOR")
-        self.assertIn("already present", out.getvalue())
-        self.assertIn("share capital now quoted in FLOR", out.getvalue())
-
-    @override_settings(MEDIA_ROOT=MEDIA, VAULT_ROOT=MEDIA)
     def test_a_rerun_leaves_a_unit_chosen_by_hand_alone(self):
-        """Only the seed's own leftover is rewritten. A unit somebody set on
-        the demo company is a decision, and a deploy must not undo it."""
+        """A unit somebody set on the demo company is a decision, and a
+        deploy must not undo it."""
         Company.objects.create(name=COMPANY_NAME, capital_currency="ASR")
 
         out = StringIO()
@@ -93,4 +74,3 @@ class NoRealCurrencyTests(TestCase):
 
         self.assertEqual(
             Company.objects.get(name=COMPANY_NAME).capital_currency, "ASR")
-        self.assertNotIn("share capital now quoted", out.getvalue())

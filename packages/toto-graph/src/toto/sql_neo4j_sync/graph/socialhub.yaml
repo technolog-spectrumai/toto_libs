@@ -11,7 +11,6 @@ nodes:
       established_year: established_year
       is_autonomous: is_autonomous
       is_foreign: is_foreign
-      is_federal_tribe: is_federal_tribe
 
   - label: Person
     model: toto.people.models.Person

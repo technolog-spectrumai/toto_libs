@@ -75,7 +75,6 @@ class DefaultsTests(TestCase):
     def test_the_language_starts_as_english_and_no_federation_subject(self):
         person = Person.objects.create(display_name="Ada")
         self.assertEqual((person.preferred_language, person.federated_sub), ("en", ""))
-        self.assertFalse(person.is_federal_agent)
 
 
 class LifecycleTests(TestCase):

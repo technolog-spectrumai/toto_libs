@@ -78,7 +78,6 @@ Templates live in SQL; the actual nodes and relationships live in Neo4j.
 - **Neo4j access (`graph_service.py`):** the only bento module that touches Neo4j. It uses the dynamic neomodel classes for typed create/update (schema validation + `uid` generation) and ravioli's `Neo4jClient` for listing/search/pagination, edges, batch delete and lazy extraction. Bento requires ravioli and calls `ravioli.neomodel_conn.ensure_configured()`. When `RAVIOLI_ENABLED` is False, operations raise `GraphUnavailable` and views render a "graph unavailable" page.
 - **Template↔category binding:** a node's category is keyed off its **Neo4j label**, so nodes written by the SQL→Neo4j sync (`:KanbanTask`, `:Person`, …) are recognised. `ingress_bento` derives a `BentoCategory` per graph label and a `BentoEdgeType` per relation from the `sql_neo4j_sync` YAML configs; `--full` additionally seeds demo templates + a sample graph, and `SEED_GRAPH_TYPES` seeds a minimal `concept`/`note`/`references` starter set. (Bento addresses nodes by `uid` while the sync writes `uuid`, so synced node *types* are recognised but per-node editing of synced nodes needs the identifiers aligned.)
 - **UI:** server-rendered (Tailwind + Alpine) with a lazy Cytoscape graph; node/edge lists are paginated, type-filterable (`?category=` / `?edge_type=`), quick-searchable (`?q=`) and support multi-select batch delete. Templates have CRUD screens and are registered in the Django admin. Bento has **no** quota integration.
-- **Legacy migration:** `migrate_bento_to_neo4j` moves content from the removed SQL `IdeaBox`/`IdeaLink` tables into Neo4j (a no-op when absent).
 
 ### ingestor — text → validated graph patch
 
@@ -156,9 +155,6 @@ The apps are Django apps under the `toto.*` namespace. Add the ones you need to 
 ```bash
 # Seed bento templates from the SQL→Neo4j YAML (+ demo graph with --full)
 python manage.py ingress_bento --full
-
-# Migrate legacy SQL IdeaBox/IdeaLink data into Neo4j (no-op if tables absent)
-python manage.py migrate_bento_to_neo4j --dry-run
 
 # Bulk SQL→Neo4j projection / drift repair, and drain the auto-sync outbox
 python manage.py ravioli_rebuild
