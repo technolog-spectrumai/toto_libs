@@ -42,6 +42,8 @@ wait. The cost: everybody behind one address — an office's NAT, a Tor exit —
 shares its count. On an onion service every visitor arrives from the tor
 daemon's address, so there the address rule is one count for everybody: such
 a host sets ``LOGIN_ADDRESS_LOCK_AFTER = 0`` and keeps the per-name rules.
+A Tor host (faros) has to handle that shared-address trade-off itself;
+zenobia has no onion (2026-10-01).
 
 **Nothing about the account.** Counting is by the name as typed, whether or
 not an account has it, and is decided before any backend looks the name up;
