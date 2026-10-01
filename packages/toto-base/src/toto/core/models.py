@@ -301,3 +301,53 @@ class KnownSignIn(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=["user", "fingerprint"],
                                                name="core_knownsignin_unique_pair")]
+
+
+class NoticeDelivery(models.Model):
+    """How the last notice of one kind fared on its way out (2026-10-01).
+
+    One row per kind (``toto.core.notices`` — a member's security notice or
+    an operator's alert), overwritten by every try: NOT an outbox. No message
+    is kept, no subject, no body, no link; the recipient only as a keyed hash
+    (``notices.recipient_hash``: HMAC under SECRET_KEY, so a copy of this
+    table cannot be matched against a list of addresses, while this host can
+    still tell whether the last one went to a given address); the error as
+    its class and SMTP reply code, never the server's own words, which can
+    echo the address or the login. The SMTP password is nowhere near it —
+    it stays in its secret file (toto.jess kept it in the database, and was
+    retired for that).
+
+    ``failures`` counts the sends of this kind that failed for good since a
+    notice of ANY kind last went: a delivery sets every row back to 0, so
+    the sum over the table is how many sends in a row have failed — what
+    the monitoring's Mail check (``toto.monit.record.check_mail``) reads.
+    """
+
+    SENT = "sent"
+    RETRYING = "retrying"
+    FAILED = "failed"
+    STATUS_CHOICES = [
+        (SENT, _("Sent")),
+        (RETRYING, _("Being retried")),
+        (FAILED, _("Failed")),
+    ]
+
+    #: The notice kind (``notices.KINDS``), also its mail's X-Toto-Notice.
+    purpose = models.CharField(max_length=40, unique=True)
+    recipient_hash = models.CharField(max_length=64, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES)
+    #: The tries the last send has had: 1, or up to ``notices.TRIES``.
+    tries = models.PositiveSmallIntegerField(default=1)
+    error = models.CharField(max_length=200, blank=True)
+    failures = models.PositiveIntegerField(default=0)
+    #: When this outcome was recorded.
+    updated_at = models.DateTimeField(default=timezone.now)
+    #: When a notice of this kind last went.
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["purpose"]
+        verbose_name_plural = "notice deliveries"
+
+    def __str__(self):
+        return f"{self.purpose}: {self.status}"
