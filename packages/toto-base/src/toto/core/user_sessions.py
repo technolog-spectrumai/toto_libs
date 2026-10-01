@@ -16,10 +16,13 @@ request before ``login`` (``mark_token_signin``) so the row says which.
 **Ending** deletes the session from the store through the engine's own
 ``delete`` — a cached copy goes with the row, and a Bearer token made from
 that key is refused from its next request — then the row. A password change
-on My account ends every other session this way, and so does "sign out
-everywhere else". A session from before these rows existed has none until it
-is next used (``touch`` writes it); until then only the session hash check
-refuses it after a password change, as it did before.
+on My account ends every other session this way, and so do "sign out
+everywhere else" and an e-mail change; a password reset ends every one, none
+kept (``sso_core.password_reset``, 2026-10-01). Only a session with a row is
+found: since the databases were rebuilt (2026-10-01) every sign-in has one,
+short of a write that failed, which ``touch`` makes good at the session's
+next request — until then only the session hash check refuses it after a
+password change.
 
 **Last seen** is refreshed by ``touch`` at most every ``SEEN_EVERY`` seconds
 per session — a cache marker decides, so an ordinary request writes nothing.
@@ -250,6 +253,7 @@ def end_other_sessions(user, *, keep: str | None = "") -> int:
     """End every live session of ``user`` but ``keep``; the number ended.
 
     Through the engine's own ``delete`` so a cached copy goes with the row.
+    ``keep=None`` keeps none: a password reset ends them all.
     """
     UserSession, _ = _models()
     if not _endable():

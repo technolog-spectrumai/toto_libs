@@ -48,6 +48,15 @@ Two properties carried over from the old module, still load-bearing:
 
 A password set at the end of either flow is ``AUTH.PASSWORD_RESET`` on the
 chain (2026-09-30), with the flow — never the link.
+
+**Every sign-in of the account ends with the reset** (2026-10-01): its
+sessions, browsers and desktop tokens alike, are deleted from the store with
+their ``UserSession`` rows the moment the new password is set
+(``toto.core.user_sessions.end_other_sessions``, none kept), as a password
+change on My account ends the others. Before, the session hash check refused
+each only at its next request, and My account's Sessions list kept its row
+until the list was read. The chain record and the "password changed" notice
+say how many were ended.
 """
 from django.apps import apps as django_apps
 from django.contrib import messages
@@ -150,11 +159,24 @@ def _send_inline(form: PasswordResetForm, request) -> None:
         )
 
 
-def _reset_on_chain(user, request, flow):
+def _end_sessions(user) -> int:
+    """End every session of the account; how many (2026-10-01).
+
+    None is kept: whoever set the new password holds a link, not a session
+    of the account's, and a session of the member's own in this browser was
+    signed in with the old password like the rest.
+    """
+    from toto.core.user_sessions import end_other_sessions
+
+    return end_other_sessions(user, keep=None)
+
+
+def _reset_on_chain(user, request, flow, sessions_ended=0):
     """``AUTH.PASSWORD_RESET`` for a password set through a link (2026-09-30),
     and the "your password was changed" notice to the account's address
     (review, 2026-10-01): a reset is the change a member most needs to hear
-    about when it was not theirs. ``send_notice`` never raises.
+    about when it was not theirs. ``send_notice`` never raises. Both say
+    how many sign-ins ended with it (``_end_sessions``).
 
     Soft edge like ``_email_send_mode``: ``toto.audit`` is optional here, and
     ``on_password_reset`` already swallows a record it cannot write.
@@ -162,12 +184,14 @@ def _reset_on_chain(user, request, flow):
     from toto.core.client_ip import client_ip
     from toto.core.notices import send_notice
 
-    send_notice(user, "password_changed", {"address": client_ip(request)})
+    send_notice(user, "password_changed",
+                {"address": client_ip(request), "sessions_ended": sessions_ended})
     if not django_apps.is_installed("toto.audit"):
         return None
     from toto.audit.identity import on_password_reset
 
-    return on_password_reset(user, flow=flow, request=request)
+    return on_password_reset(user, flow=flow, sessions_ended=sessions_ended,
+                             request=request)
 
 
 def password_reset_view(request):
@@ -268,7 +292,8 @@ def password_reset_confirm_view(request, uidb64, token):
 
     if request.method == "POST" and valid and form.is_valid():
         form.save()
-        _reset_on_chain(user, request, "email")
+        ended = _end_sessions(user)
+        _reset_on_chain(user, request, "email", ended)
         return redirect(reverse("sso:password_reset_complete"))
 
     return render(request, "sso/password_reset_confirm.html",
@@ -304,7 +329,8 @@ def password_reset_recover_view(request, token):
         with transaction.atomic():
             if recovery.mark_used(ticket, request=request):
                 form.save()
-                _reset_on_chain(ticket.user, request, "recovery")
+                ended = _end_sessions(ticket.user)
+                _reset_on_chain(ticket.user, request, "recovery", ended)
                 return redirect(reverse("sso:password_reset_complete"))
         context.update({"form": None, "validlink": False})
 

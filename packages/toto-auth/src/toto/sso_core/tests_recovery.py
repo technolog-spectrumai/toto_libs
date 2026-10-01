@@ -427,7 +427,7 @@ class RedeemTests(RecoveryBase):
         })
         record = AuditRecord.objects.get(action="AUTH.PASSWORD_RESET")
         self.assertEqual(record.object_id, str(self.user.pk))
-        self.assertEqual(record.metadata, {"flow": "recovery"})
+        self.assertEqual(record.metadata, {"flow": "recovery", "sessions_ended": 0})
         self.assertIn("[uuid]", record.request_source["path"])
 
     def test_the_plain_token_never_reaches_the_audit_trail(self):

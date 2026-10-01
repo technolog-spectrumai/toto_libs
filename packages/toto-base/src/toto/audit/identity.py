@@ -19,7 +19,7 @@ membership flow, a management command.
 | `AUTH.EMAIL_CHANGE_REQUESTED` | a member asked from My account to move their account to a new e-mail address and a confirmation link was mailed there (`toto.socialhub.email_change`, 2026-09-30); `new_email` masked (`j***@example.org`) |
 | `AUTH.EMAIL_CHANGED` | the member opened that link, signed in, and the address changed; `old_email` and `new_email`, both masked; `sessions_ended`, their other sign-ins ended with it |
 | `AUTH.KEY_STORE_CREATED` | a member created their own key store from My account (`toto.gervazy.personal`, 2026-10-01); `strongbox_id` only — never the passphrase nor anything derived from it |
-| `AUTH.PASSWORD_RESET` | a password set through a reset link (`sso_core.password_reset`, 2026-09-30); `flow` is `email` (the mailed link) or `recovery` (a patron's one-time link) |
+| `AUTH.PASSWORD_RESET` | a password set through a reset link (`sso_core.password_reset`, 2026-09-30); `flow` is `email` (the mailed link) or `recovery` (a patron's one-time link); `sessions_ended` — every sign-in of the account, ended with it (2026-10-01) |
 | `AUTH.ACCOUNT_CREATED` | a `User` row is created, by whatever door |
 | `AUTH.ACCOUNT_ACTIVATED` / `_DEACTIVATED` | `is_active` changes |
 | `AUTH.STAFF_GRANTED` / `_REVOKED` | `is_staff` changes |
@@ -226,15 +226,16 @@ def on_key_store_created(user, *, strongbox_id, request=None):
                    metadata={"strongbox_id": int(strongbox_id)})
 
 
-def on_password_reset(user, *, flow, request=None):
+def on_password_reset(user, *, flow, sessions_ended=0, request=None):
     """A password set through a reset link (2026-09-30).
 
     ``flow`` is ``email`` or ``recovery``. The actor is the account: whoever
     held the link spoke as it. The link and its token are credentials and are
-    never recorded.
+    never recorded. ``sessions_ended``: every sign-in of the account, ended
+    with the old password (2026-10-01).
     """
     return _record("password_reset", user, actor_user=user, request=request,
-                   metadata={"flow": str(flow)})
+                   metadata={"flow": str(flow), "sessions_ended": int(sessions_ended)})
 
 
 def before_user_saved(sender, instance, update_fields=None, **kwargs):

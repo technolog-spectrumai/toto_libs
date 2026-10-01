@@ -106,7 +106,7 @@ class EmailFlowTests(TestCase):
         record = AuditRecord.objects.get(action="AUTH.PASSWORD_RESET")
         self.assertEqual(record.object_id, str(self.user.pk))
         self.assertEqual(record.actor_user, self.user)
-        self.assertEqual(record.metadata, {"flow": "email"})
+        self.assertEqual(record.metadata, {"flow": "email", "sessions_ended": 0})
         self.assertIn("[token]", record.request_source["path"])
         self.assertNotIn(token, json.dumps([record.request_source, record.metadata]))
         self.assertNotIn("a-much-better-pass-42", json.dumps(record.metadata))
