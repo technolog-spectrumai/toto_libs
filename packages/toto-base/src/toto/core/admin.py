@@ -126,8 +126,28 @@ def erase_command(username: str) -> str:
     return f"python manage.py erase_user {shlex.quote(username)}"
 
 
+#: What the user list shows for making an account when the host names no
+#: wrapper of its own: core's ``bootstrap_users``, which reads the account
+#: as JSON on stdin, so the password is never in argv.
+DEFAULT_CREATE_COMMAND = "python manage.py bootstrap_users"
+
+
+def create_command(username: str = "USERNAME") -> str:
+    """The console command that makes an account (2026-10-01, 37c.32): the
+    host's wrapper where ``ACCOUNT_CREATE_COMMAND`` names one (zenobia's
+    ``tools/create_user.py``; ``{username}`` shell-quoted), core's own
+    ``bootstrap_users`` without it."""
+    import shlex
+
+    from django.conf import settings
+
+    template = getattr(settings, "ACCOUNT_CREATE_COMMAND", "") or DEFAULT_CREATE_COMMAND
+    return template.format(username=shlex.quote(username))
+
+
 class ConsoleErasedUserAdmin(UserAdmin):
-    """Django's user administration without its delete (2026-10-01, 37c.21).
+    """Django's user administration without its delete (2026-10-01, 37c.21)
+    and, since 37c.32 the same day, without its add.
 
     A delete here skipped ``erase_user``: the account went by the bare
     cascade, so the profile picture's file, the version bodies, the forum's
@@ -136,10 +156,19 @@ class ConsoleErasedUserAdmin(UserAdmin):
     erasure request was closed or recorded. The privacy notice says what an
     erase does, so the console is the one way to it: no delete action, no
     delete page, no button — and the pages say where to go instead.
+
+    Making an account is the console's too — the owner's rule is that
+    accounts are created and deleted there only. The add page made one with
+    a password typed into a web form and every flag at hand, so anybody
+    holding an administrator's session could mint a superuser: no add page,
+    no button, and the list names the command (``create_command``).
     """
 
     change_form_template = "admin/toto_core/user_change_form.html"
     change_list_template = "admin/toto_core/user_change_list.html"
+
+    def has_add_permission(self, request):
+        return False
 
     def has_delete_permission(self, request, obj=None):
         return False
@@ -157,7 +186,8 @@ class ConsoleErasedUserAdmin(UserAdmin):
 
     def changelist_view(self, request, extra_context=None):
         return super().changelist_view(request, {
-            **(extra_context or {}), "erase_command": erase_command("USERNAME")})
+            **(extra_context or {}), "erase_command": erase_command("USERNAME"),
+            "create_command": create_command()})
 
 
 _User = get_user_model()

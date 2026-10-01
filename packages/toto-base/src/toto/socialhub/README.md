@@ -287,7 +287,10 @@ creates or deletes an account (console only; a first save creates the
   `toto.core.erasure`; the dialog says it, and that the forum texts stay,
   signed "Former member", and backups until they age out. Django's admin
   deletes no account (`toto.core.admin.ConsoleErasedUserAdmin`): it points
-  to the console command instead.
+  to the console command instead. Nor does it make one (2026-10-01,
+  37c.32): no add page and no button, and the user list names the host's
+  console command for that (`ACCOUNT_CREATE_COMMAND`, `{username}`
+  shell-quoted; core's `bootstrap_users` without it).
 
 Every profile or time-zone change is a `SOCIALHUB.PROFILE_CHANGED` record
 naming the fields (`fields`), never their values; the password, e-mail,

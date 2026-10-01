@@ -1,10 +1,12 @@
 {% extends "admin/change_list.html" %}
 {% load i18n %}
 {% comment %}
-  An account is erased at the console only (2026-10-01, 37c.21):
-  toto.core.admin.ConsoleErasedUserAdmin has no delete, and says where to go.
+  An account is erased at the console only (2026-10-01, 37c.21), and made
+  there only (37c.32): toto.core.admin.ConsoleErasedUserAdmin has no delete
+  and no add, and says where to go.
 {% endcomment %}
 {% block content %}
+<p class="help" data-testid="create-at-console">{% blocktranslate with command=create_command %}Accounts are made at the server's console, never here: <code>{{ command }}</code>. A web page that made them would hand that power, superusers included, to anybody holding an administrator's session.{% endblocktranslate %}</p>
 <p class="help" data-testid="erase-at-console">{% blocktranslate with command=erase_command %}Accounts are erased at the server's console, never here: <code>{{ command }}</code>. Only the erase removes everything that is theirs alone, keeps the audit trail whole and closes their erasure request.{% endblocktranslate %}</p>
 {{ block.super }}
 {% endblock %}
