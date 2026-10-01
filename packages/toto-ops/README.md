@@ -29,11 +29,13 @@ without standing up a separate metrics stack.
   corresponding service is actually configured or installed. A check that can't
   be run reads as "unknown," never as a misleading zero.
 - **Told when something breaks.** The record checks behind the Database
-  page — database, migrations, media store, disk, backups, audit chain and the
-  platform's own TLS certificate — run on a schedule, and the operators in
-  `ALERT_EMAILS` get a mail when one goes bad, a reminder while it keeps
-  failing, and a mail when it recovers. Mail sent by the server cannot report
-  the server itself being down; that needs something outside it.
+  page — database, migrations, media store, disk, backups, audit chain, the
+  platform's own TLS certificate, and whether mail still leaves — run on a
+  schedule, and the operators in `ALERT_EMAILS` get a mail when one goes bad,
+  a reminder while it keeps failing, and a mail when it recovers; a mail the
+  mail server refuses is tried again for about an hour. Mail sent by the
+  server cannot report the server itself being down; that needs something
+  outside it.
 - **Every scheduled task, on time or not.** Each run of a task the beat
   schedule names is recorded — when it started and ended, whether it
   succeeded, a short summary of what it returned — and one of those checks
@@ -164,6 +166,20 @@ Every mail goes through `toto.core.notices.send_notice` (kinds `check_alert`
 and `check_recovered`), one per address in `ALERT_EMAILS`. A mail no address
 took is not counted, so the next run tries again; with no address nothing is
 mailed and the states are still kept.
+
+Where the host runs a worker (`NOTICES_VIA_WORKER`, toto-base), "took" means
+queued: `send_notice` hands each mail to the worker only once the run's
+transaction commits — a run that fails queues nothing — and the worker tries
+it five times over about an hour (`toto.core.tasks.deliver_notice`). The next
+run does not send it again. `record.check_mail` ("Mail", key `mail`) reads
+the outcomes `toto.core` keeps per notice kind (`NoticeDelivery`): WARN when
+the last `MAIL_FAILURES_WARN` (3) notices, of any kind, could not be
+delivered after every try — one is a refused address, several are the mail
+server or its password — and OK again after one delivery. The detail names
+each kind whose last send failed or is being retried, with the error's class
+and SMTP code, and says so when the backend delivers nothing (console,
+dummy). Its own warning goes out by the same mail, so it is the Database
+page's to show first.
 
 **What it cannot do.** The mail is sent by the server. No power, no network, a
 stopped worker or beat, a database that cannot be reached (the states live in
@@ -302,6 +318,8 @@ corresponding panel):
   `ALERT_REMIND_HOURS` (default 6; 0: no reminders) — the scheduled checks.
 - `MONIT_CERT_DOMAIN` (the name whose certificate is checked; unset:
   `PLATFORM_DOMAIN`; empty: not checked).
+- `NOTICES_VIA_WORKER` (toto-base's; on where a Celery worker runs) — the
+  alert mail is queued with retry instead of sent at once.
 - `MONIT_RUN_RETENTION_DAYS` (default 30) — how long the scheduled tasks' run
   records are kept; each task's newest is kept whatever its age.
 - `NOMAD_TOR_CONTROL_HOST` / `NOMAD_TOR_CONTROL_PORT` — for the Tor control-port

@@ -39,6 +39,18 @@ along the same lines of code) at most once every ``REPEAT_SECONDS``, counted
 in the cache all web workers share. A page that breaks for every visitor
 would otherwise send a mail per visit and get the SMTP account the alert mail
 depends on suspended; the log keeps every occurrence.
+
+**Sent at once, not through the worker** (2026-10-01). The notices and the
+alert mail are handed to the Celery worker and tried again for about an hour
+(``toto.core.notices``); this mail is not. A crash can be the broker's or the
+worker's own — Redis down fails every page that queues — and a report queued
+behind them would never leave; a report also carries the request's details,
+which have no business waiting in Redis. So Django's handler sends it from
+the request that crashed, one try, as it always did: a mail server that
+refuses loses that one report (Django sends it ``fail_silently``, so the
+Mail check does not count it either), and the log still has the crash.
+``CrashMailFilter`` keeps what this costs the request to one send per crash
+an hour.
 """
 
 from __future__ import annotations
