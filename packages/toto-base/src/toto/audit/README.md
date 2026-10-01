@@ -10,8 +10,12 @@ action, text) and verify it at `/audit/verify/`.
 person at the keyboard (`AuditContextMiddleware` puts the request in
 `context.py`); `SYSTEM` says "nobody did this, it happened"; metadata goes
 through `sanitize`, which drops anything that looks like a secret.
-`request_source` is the request's method, path (a UUID in it becomes
-`[uuid]`), user agent and address; the address is `toto.core.client_ip`'s,
+`request_source` is the request's method, path, user agent and address. The
+path keeps no secret: what the route captured as one becomes `[token]` — by
+the error mail's rule (`toto.core.error_reports.path_secrets`, 2026-10-01): a
+vault peer's grant id and magic token, and on any route a value captured
+under a name like `token` — and so does a password-reset token; any other
+UUID becomes `[uuid]`. The address is `toto.core.client_ip`'s,
 nginx's `X-Real-IP` from a trusted proxy (2026-09-30). Rows written before
 then name `X-Forwarded-For`'s first entry, which the client could write; they
 stay as they are, because the digest covers them.

@@ -153,7 +153,11 @@ def path_secrets(request) -> list[str]:
     """The secrets ``request``'s URL path carries, longest first: every value
     a route in SECRET_ROUTES captured, and on any route a value captured under
     a name SECRET_PATH_NAMES matches — as the path spells it, and as the
-    request URL percent-encodes it. Nothing for a path no route takes."""
+    request URL percent-encodes it. Nothing for a path no route takes.
+
+    The audit chain cuts the same values out of the path each record keeps
+    (``toto.audit.services._scrub_path``, 2026-10-01, 37c.25): one rule for
+    what leaves in a mail and what stays sealed."""
     if request is None:
         return []
     try:

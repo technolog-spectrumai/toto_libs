@@ -80,7 +80,29 @@ _UUID_SEGMENT = re.compile(
 _RESET_TOKEN_SEGMENT = re.compile(r"(?<=/)[0-9a-z]{1,13}-[0-9a-f]{32}(?=/|$)")
 
 
-def _scrub_path(path):
+def _scrub_path(path, request=None):
+    """``path`` with no secret left in it.
+
+    First every value the request's route captured as a secret, by the rule
+    the error mail stars them with (``toto.core.error_reports.path_secrets``,
+    2026-10-01, 37c.25): all of a vault peer route's — the grant's id and its
+    magic token, the whole of what a peer shows to be let in — and on any
+    route a value captured under a name like ``token``. The peer's token is a
+    ``secrets.token_urlsafe`` string no pattern below would know, so every
+    peer download, upload and delete kept it in clear in a sealed record.
+    Then any UUID and any password-reset token, whatever the route.
+    """
+    if request is not None:
+        from toto.core.error_reports import path_secrets
+
+        try:
+            secrets = path_secrets(request)
+        except Exception:  # noqa: BLE001 - the record is written either way
+            # A route the rule cannot read: the record keeps which part of
+            # the site was asked, never what it could not judge.
+            path, secrets = "/" + path.strip("/").split("/", 1)[0] + "/[withheld]", ()
+        for secret in secrets:
+            path = path.replace(secret, "[token]")
     return _RESET_TOKEN_SEGMENT.sub("[token]", _UUID_SEGMENT.sub("[uuid]", path))
 
 
@@ -93,7 +115,7 @@ def request_source(request):
         return {}
     return sanitize({
         "method": request.method,
-        "path": _scrub_path(request.path)[:1000],
+        "path": _scrub_path(request.path, request)[:1000],
         "ip_address": client_ip(request),
         "user_agent": request.META.get("HTTP_USER_AGENT", "")[:500],
     })
