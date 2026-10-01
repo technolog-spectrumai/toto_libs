@@ -328,13 +328,17 @@
 
 {% comment %} ACE, and the files it cannot fetch for itself.
 
-  `ace.min.js` carries the `textmate` theme and a plain-text mode and nothing
+  `ace.js` carries the `textmate` theme and a plain-text mode and nothing
   else: every other theme and mode is a separate file ACE loads at runtime from
   a base path this page never configures. Asking for one that is not already
   present succeeds silently and leaves the editor on textmate — white, on a dark
   page. So the themes and the Python mode are loaded here as ordinary scripts.
+
+  `ace.js`, the editor's own build, since 2026-10-01 (37c.27): this page alone
+  loaded `ace.min.js`, cdnjs's second minification of the same 1.36.4 release,
+  and the image no longer fetches it.
 {% endcomment %}
-<script src="{% static 'vendor/ace/ace.min.js' %}"></script>
+<script src="{% static 'vendor/ace/ace.js' %}"></script>
 <script src="{% static 'vendor/ace/theme-textmate.min.js' %}"></script>
 <script src="{% static 'vendor/ace/theme-twilight.min.js' %}"></script>
 <script src="{% static 'vendor/ace/mode-python.min.js' %}"></script>

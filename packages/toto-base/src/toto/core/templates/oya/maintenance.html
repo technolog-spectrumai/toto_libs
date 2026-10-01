@@ -9,7 +9,8 @@
   <!-- Tailwind & Alpine -->
   {% load static %}
   <script src="{% static 'oya/tailwind.js' %}"></script>
-  <script defer src="{% static 'vendor/alpinejs/alpine.min.js' %}"></script>
+  {# The Alpine every page loads (2026-10-01): the older 3.14 copy this page named is no longer fetched. #}
+  <script defer src="{% static 'oya/alpine.js' %}"></script>
 
   <style>
     body {

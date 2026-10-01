@@ -102,7 +102,9 @@
     };
   </script>
 
-<script src="{% static 'vendor/htmx/htmx.min.js' %}"></script>
+  {% comment %} No HTMX since 2026-10-01 (37c.27): every page loaded it and its CSRF
+     hook, and no page used it — no hx-* attribute, no htmx call in any app. A
+     page that takes it up loads it itself. {% endcomment %}
   <script defer src="{% static 'oya/functional_zones.js' %}"></script>
   {% block start_script %}{% endblock %}
 </head>
@@ -187,10 +189,5 @@
     {% render_floating_plugins %}
   {% endblock %}
 
-<script>
-  document.body.addEventListener('htmx:configRequest', (event) => {
-    event.detail.headers['X-CSRFToken'] = '{{ csrf_token }}';
-  });
-</script>
 </body>
 </html>
