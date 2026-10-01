@@ -241,6 +241,19 @@ not assume it is live before extending it.
 `quota_data = []`; the old usage call raised on every render for a signed-in
 user. Re-enabling needs a concrete usage/quota pair and a `metrics.py`.
 
+**A name given to the vault is a door too.** The "Save graph as NeoJSON"
+dialog stored the graph under whatever name it was given, and an analysis's
+File Title named its output the same way, so `graph.docx` listed the graph's
+JSON as a Word file — and the API's download named it so. Both ask the
+vault's own rule, `upload_refusal(name, file_type=…)`, and answer with its
+sentence: no Office extension (2026-10-01), nor a type the host refuses. The
+analysis task asks it again, because a run started anywhere other than the
+page never passes the page's door. `tests/test_office_names.py`, run under
+`toto.ravioli.testing.settings` — the app's own harness, since no host in
+the monorepo installs it:
+`manage.py test toto.ravioli.tests.test_office_names --settings=toto.ravioli.testing.settings`
+from a host directory.
+
 **`predefined_tasks` failing is logged, not raised.** `apps.ready()`
 catches, logs an error, and carries on — so a broken task registration
 costs you the workflow nodes rather than the whole site. If workflow nodes

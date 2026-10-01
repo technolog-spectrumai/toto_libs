@@ -71,7 +71,7 @@ def ravioli_save_graph_analysis_output(input_data: dict) -> dict:
     from django.core.files.base import ContentFile
     from django.utils import timezone
 
-    from toto.vault.models import Bucket, VaultDirectory, VaultFile
+    from toto.vault.models import Bucket, VaultDirectory, VaultFile, upload_refusal
     from .graph_analysis import serialize_output
 
     data = input_data.get("data") or {}
@@ -136,6 +136,14 @@ def ravioli_save_graph_analysis_output(input_data: dict) -> dict:
 
         content, mime_type, ext = serialize_output(payload, fmt)
         file_type = VaultFile.detect_type(mime_type)
+
+    # The title is the file's name in the vault and in the API's download, so
+    # it passes the vault's rule like any other name (2026-10-01): a run
+    # started elsewhere than the analysis page, which refuses it first, must
+    # not save "results.xlsx" either.
+    refusal = upload_refusal(str(title), file_type=file_type)
+    if refusal:
+        raise ValueError(refusal)
 
     timestamp = re.sub(r"[^0-9]", "", timezone.now().isoformat()[:19])
     filename = f"graph_analysis_q{query_id or 'x'}_{timestamp}{ext}"

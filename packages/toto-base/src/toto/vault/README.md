@@ -156,7 +156,9 @@ Refused:
   (`toto.repo.sync.import_worktree` leaves them in the worktree and lists them
   under `refused`), a capsule transfer and the Capsule's own ways in — the
   desk's upload, the API's files/put and a job's staged inputs
-  (`toto.anastasia`) — and on zenobia the wiki's image upload and zip import.
+  (`toto.anastasia`), the knowledge graph's "Save graph as NeoJSON" name and
+  an analysis's File Title (`toto.ravioli`: both doors and the analysis task;
+  2026-10-01) — and on zenobia the wiki's image upload and zip import.
   Tests: `tests_office_refusal`.
 * **OpenDocument is not Microsoft** — .odt .ods .odp are unaffected and keep
   today's behaviour.

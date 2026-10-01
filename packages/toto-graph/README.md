@@ -55,6 +55,7 @@ The connection, the read side, search, analysis, and per-object export.
 - **Models:** `CypherQuery` (a saved query: name, slug, description, Cypher text, `parameters_schema`, `is_active`, optional community scope) and `CypherQueryResult` (a cached execution with extracted nodes/edges + timing/provenance). Views provide a query browser, a Cypher console, and search endpoints rendered with Cytoscape.
 - **Search:** `services/search.py` and `vector_search.py` (keyword / fulltext / semantic); `rag.py` adds a GraphRAG retriever (`build_retriever`, `run_graphrag`, `CompositeRetriever`) for embedding-backed retrieval over the graph.
 - **Analysis:** `graph_analysis.py` + `predefined_tasks.py` run NetworkX analyses as workflow tasks, saving results to the vault.
+- **Names into the vault:** the "Save graph as NeoJSON" dialog's file name and an analysis's File Title pass the vault's `upload_refusal` (2026-10-01), so no Office extension (`graph.docx`) is given to what is really JSON — refused with the vault's sentence at both doors and again in the analysis task.
 - **NeoJSON:** `neojson.py` is the canonical NeoJSON (de)serialization format module reused by `neo_editor`.
 - **Per-object export (`graph_export.py`, `GraphExporter`):** the `{% export_to_graph_button obj %}` tag (in `toto.core`) links to a preview page. The exporter computes an object's desired 1-hop slice from SQL (using the YAML mapping owned by `sql_neo4j_sync`), reads the matching slice from Neo4j, diffs them by content **checksum** (`new` / `changed` / `existing`), and applies non-destructively: an unchanged checksum is a no-op; a changed node is updated *and* its previous state is snapshotted into a `:_HISTORICAL` child node (`_prev_uuid`, `_historical=true`, `_archived_at`). Cross-model FK edges (related object not an instance of the declared target model) are skipped so the diff converges. `RAVIOLI_EXPORT_EXCLUDED_APPS` (default `workflows`, `fileservices`, `vault`) are never exported.
 - **Review-then-apply (sync + prune):** both flows build a `GraphProjectionPlan` (sync = full diff; prune = delete-only diff of `:_HISTORICAL` snapshots) and share one apply endpoint (`graph_plan_apply`), one review modal, and one Alpine review factory. A "Staging" option on Sync archives each updated node into history before overwriting. The **History** tab renders kept snapshots as version chains coloured by a keep-depth control; **Prune history** keeps the N newest snapshots per node (default `RAVIOLI_DEFAULT_MAX_HISTORY`).
@@ -189,6 +190,8 @@ cd portal && BUILD_NEO4J=1 python manage.py test toto.ingestor
 cd portal && BUILD_NEO4J=1 BUILD_CONNECTORS=1 python manage.py test toto.connectors toto.ingestor
 cd portal && BUILD_NEO4J=1 BUILD_FORMICA=1 python manage.py test toto.formica
 ```
+
+ravioli's doors into the vault also have a harness of their own, `toto.ravioli.testing.settings` (2026-10-01: the base apps, ravioli and neo_editor, no Neo4j and no worker), because no host in the monorepo installs the app. From a host directory, whose `manage.py` puts the vendored sources first: `manage.py test toto.ravioli.tests.test_office_names --settings=toto.ravioli.testing.settings`.
 
 ---
 

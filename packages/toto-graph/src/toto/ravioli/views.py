@@ -229,11 +229,19 @@ def export_query_neojson_view(request, query_id):
     from django.utils import timezone
     from django.utils.text import slugify
 
-    from toto.vault.models import Bucket, VaultDirectory, VaultFile
+    from toto.vault.models import Bucket, VaultDirectory, VaultFile, upload_refusal
     from . import neojson
     from .graph_analysis import load_query_graph
 
     selected_query = get_object_or_404(CypherQuery, pk=query_id)
+
+    # The name is a door too (2026-10-01): "graph.docx" stored the graph's
+    # JSON under Word's extension, listed so in the vault and named so by the
+    # API's download. The vault's own rule and sentence, before any work.
+    raw_name = (request.POST.get("name") or "").strip()
+    refusal = upload_refusal(raw_name, file_type="neojson")
+    if refusal:
+        return JsonResponse({"error": refusal}, status=400)
 
     # Target bucket: chosen in the dialog; fall back to general → owned → any.
     bucket_id = request.POST.get("bucket_id")
@@ -270,7 +278,6 @@ def export_query_neojson_view(request, query_id):
 
     # Filename from the dialog (defaults to "<query>.json"). Stored as neojson
     # regardless of the extension; the vault key is kept unique in the bucket.
-    raw_name = (request.POST.get("name") or "").strip()
     if not raw_name:
         raw_name = f"{slugify(selected_query.name) or 'query'}.json"
     stem, ext = os.path.splitext(raw_name)
@@ -389,6 +396,14 @@ def start_graph_analysis_view(request):
         errors.append("Select an output bucket.")
     if fmt not in ("json", "yaml", "csv", "neojson"):
         errors.append(f"Invalid format: {fmt!r}.")
+    # The title names the vault file the analysis writes, and the API's
+    # download names it so: "results.xlsx" listed a CSV as Excel's
+    # (2026-10-01). The task refuses it too; here the person reads why at
+    # once. Each format is saved as the vault type of the same name.
+    from toto.vault.models import upload_refusal
+    refusal = upload_refusal(title or "", file_type=fmt)
+    if refusal:
+        errors.append(refusal)
     if errors:
         return JsonResponse({"error": " ".join(errors)}, status=400)
 
