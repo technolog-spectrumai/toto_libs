@@ -56,7 +56,11 @@ class MembershipApplicationForm(forms.ModelForm):
 
     def clean_email(self):
         email = self.cleaned_data["email"]
-        lapsed = MembershipApplication.objects.filter(email=email).first()
+        # Compared without case (2026-10-01): the column is unique only as
+        # typed, so "Ann@…" beside "ann@…" made a second application, and a
+        # second account, for one mailbox.
+        lapsed = (MembershipApplication.objects.filter(email__iexact=email)
+                  .order_by("pk").first())
         if lapsed is not None:
             from toto.socialhub.applications import renewable
 
@@ -68,16 +72,19 @@ class MembershipApplicationForm(forms.ModelForm):
                 # as taken — which left the applicant stuck for good.
                 self.renewing = lapsed
                 self.instance = lapsed
+            elif lapsed.email != email:
+                # The model's own unique check sees only the exact spelling.
+                raise lapsed.unique_error_message(MembershipApplication, ("email",))
         return email
 
     def clean_username(self):
         username = self.cleaned_data["username"].strip()
         taken = User.objects.filter(username__iexact=username)
         if self.renewing is not None:
-            from toto.socialhub.applications import account_to_reuse
+            from toto.socialhub.applications import applicant_account
 
             # The lapsed attempt's own account is the applicant's to name again.
-            reused = account_to_reuse(self.renewing)
+            reused = applicant_account(self.renewing)
             if reused is not None:
                 taken = taken.exclude(pk=reused.pk)
         if taken.exists():

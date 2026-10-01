@@ -103,6 +103,18 @@ class ApplyAgainTests(FlowCase):
         self.assertEqual((self.application.community, self.application.code),
                          (self.guild, "424242"))
 
+    def test_the_address_in_another_case_is_the_same_address(self):
+        # Unique only as typed until 2026-10-01: a second application and a
+        # second account for one mailbox.
+        response = self.client.post(reverse("socialhub:membership_application"), {
+            "username": "newbie2", "email": "NewBie@Example.com", "community": self.other.pk,
+            "privacy_version": 1, "privacy_accept": "on"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("email", response.context["form"].errors)
+        self.assertFalse(User.objects.filter(username="newbie2").exists())
+        self.assertEqual(MembershipApplication.objects.filter(
+            email__iexact="newbie@example.com").count(), 1)
+
     def test_a_new_application_gets_its_own_code_and_a_week(self):
         self.client.post(reverse("socialhub:membership_application"), {
             "username": "fresh", "email": "fresh@example.com", "community": self.guild.pk,
@@ -133,6 +145,35 @@ class ReferenceRequestPageTests(FlowCase):
         self.assertRedirects(response, next_url, fetch_redirect_response=False)
         self.assertEqual(ReferenceRequest.objects.get().referrer, self.referrer)
         self.assertEqual(self.client.get(next_url).status_code, 200)
+
+    def member_with_the_address(self):
+        """A member whose account has the application's address and is older
+        than the applicant's — the first one an exact lookup found."""
+        self.applicant.delete()
+        member = User.objects.create_user("elder", "newbie@example.com", "elder-pw")
+        self.applicant = User.objects.create(username="newbie", email="newbie@example.com",
+                                             is_active=False)
+        return member
+
+    def test_the_password_goes_to_the_waiting_account_never_a_members(self):
+        # (2026-10-01) This page is public, and it set the password of the
+        # first account at the address — a member's.
+        member = self.member_with_the_address()
+        self.client.post(reverse("socialhub:reference_request", args=[self.application.pk]),
+                         {"referrer": self.referrer.pk, "message": "vouch", "password": "chosen-pw-1"})
+        member.refresh_from_db()
+        self.applicant.refresh_from_db()
+        self.assertTrue(member.check_password("elder-pw"))
+        self.assertTrue(self.applicant.check_password("chosen-pw-1"))
+
+    def test_an_admitted_applicants_password_is_not_set_from_here(self):
+        self.applicant.is_active = True
+        self.applicant.set_password("own-pw")
+        self.applicant.save()
+        self.client.post(reverse("socialhub:reference_request", args=[self.application.pk]),
+                         {"referrer": self.referrer.pk, "message": "again", "password": "other-pw-1"})
+        self.applicant.refresh_from_db()
+        self.assertTrue(self.applicant.check_password("own-pw"))
 
     def test_an_unknown_application_is_a_404(self):
         self.assertEqual(self.client.get(reverse("socialhub:reference_request",
@@ -166,6 +207,26 @@ class ReferenceAnswerTests(FlowCase):
         self.assertEqual(sent.reply_to, ["board@cedar.example"])
         self.assertEqual(sent.extra_headers["X-Jess-Purpose"], "socialhub_endorsement")
         self.assertIn("Approved", sent.subject)
+
+    def test_the_applicants_account_is_found_whatever_the_case(self):
+        User.objects.filter(pk=self.applicant.pk).update(email="NewBie@Example.com")
+        self.answer("accept", self.referrer.user)
+        self.applicant.refresh_from_db()
+        self.assertTrue(self.applicant.is_active)
+        self.assertTrue(self.guild.members.filter(user=self.applicant).exists())
+
+    def test_the_waiting_account_is_admitted_not_a_member_with_the_address(self):
+        # (2026-10-01) The first account at the address was activated and
+        # enrolled — a member's — and the applicant's stayed shut.
+        self.applicant.delete()
+        member = User.objects.create_user("elder", "newbie@example.com", "pw")
+        self.applicant = User.objects.create(username="newbie", email="newbie@example.com",
+                                             is_active=False)
+        self.answer("accept", self.referrer.user)
+        self.applicant.refresh_from_db()
+        self.assertTrue(self.applicant.is_active)
+        self.assertTrue(self.guild.members.filter(user=self.applicant).exists())
+        self.assertFalse(self.guild.members.filter(user=member).exists())
 
     def test_declining_keeps_the_applicant_out_and_says_so(self):
         self.answer("reject", self.referrer.user)

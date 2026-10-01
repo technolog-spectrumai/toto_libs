@@ -221,7 +221,11 @@ def reference_request_view(request, application_id):
         # the password-reset flow.
         password = form.cleaned_data.get("password")
         if password:
-            applicant = User.objects.filter(email=application.email).first()
+            # Only the account still waiting for its acceptance (2026-10-01):
+            # this page is public, and the first account at the address used
+            # to be taken — a member's, the applicant's own once admitted, or
+            # anybody's whose address was typed on an application.
+            applicant = applications.applicant_account(application, waiting_only=True)
             if applicant:
                 applicant.set_password(password)
                 applicant.save(update_fields=["password"])

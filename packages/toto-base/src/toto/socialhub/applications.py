@@ -17,7 +17,7 @@ address as taken and the code answered "This code has expired." So:
   pending one would otherwise admit the applicant to whichever community
   they chose this time). The account the lapsed attempt made is reused under
   the username typed now, so the address still has one account and the
-  acceptance (``ReferenceRequest.save``, by address) finds it.
+  acceptance (``ReferenceRequest.save``, :func:`applicant_account`) finds it.
 * **So does one whose every reference was declined** (2026-10-01): the
   decline mail tells the applicant they may apply again, yet the address
   stayed taken for the rest of the week (:func:`declined`).
@@ -82,10 +82,24 @@ def accounts_of(application) -> list:
                 .order_by("pk"))
 
 
-def account_to_reuse(application):
-    """The account a renewal names again: the one the acceptance would
-    activate (``ReferenceRequest.save`` — the first with this exact address)."""
-    return get_user_model().objects.filter(email=application.email).order_by("pk").first()
+def applicant_account(application, *, waiting_only=False):
+    """The account ``application`` made: the one its acceptance activates
+    (``ReferenceRequest.save``), a renewal names again, and the reference
+    step sets the chosen password on.
+
+    The first account with the exact address used to answer (2026-10-01): a
+    case variant missed the applicant's account, and an address a member
+    also has found the MEMBER's — activated and enrolled in their stead, and
+    given the password typed on that public page. So: the accounts at the
+    address in any case, one that has not got in preferred, the exact
+    spelling first, then the oldest. ``waiting_only`` stops there (None when
+    every one got in); else the first of the others answers.
+    """
+    accounts = accounts_of(application)
+    waiting = [account for account in accounts if not got_in(account)]
+    pool = waiting if (waiting or waiting_only) else accounts
+    exact = [account for account in pool if account.email == application.email]
+    return (exact or pool or [None])[0]
 
 
 def got_in(account) -> bool:
@@ -169,7 +183,7 @@ def renew(application, *, username, community, notice):
     or already this account's (``MembershipApplicationForm``).
     """
     User = get_user_model()
-    account = account_to_reuse(application)
+    account = applicant_account(application)
     if account is None:
         User.objects.get_or_create(username=username, defaults={
             "email": application.email, "is_active": False})

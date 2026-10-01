@@ -450,8 +450,12 @@ class ReferenceRequest(models.Model):
             application = self.application
 
             # 1. Activate the user — looked up by their application email (the login
-            #    username is chosen separately, so we must not match on username here).
-            user = User.objects.filter(email=application.email).first()
+            #    username is chosen separately, so we must not match on username here):
+            #    since 2026-10-01 in any case, and the account still waiting rather
+            #    than a member's with the same address (applications.applicant_account).
+            from toto.socialhub.applications import applicant_account
+
+            user = applicant_account(application)
             if user:
                 user.is_active = True
                 user.save(update_fields=["is_active"])
