@@ -423,7 +423,7 @@ the socialhub is where a person first hands the platform their data.
   again (box clear) rather than accepted unseen. With no version published
   the application is closed. The application records `privacy_version` and
   `privacy_accepted_at`, and `PRIVACY.NOTICE_ACCEPTED` (the version, the
-  application, its e-mail and community) goes on the chain. On admission
+  application by its id, and its community) goes on the chain. On admission
   (`ReferenceRequest.save`) the acceptance is carried to the Person as a
   `PrivacyAcceptance` row (person, version, when) — a small table rather
   than fields on Person, because `toto.people` knows nothing of the
@@ -492,6 +492,12 @@ again, and an inactive account nobody would ever use.
   the code does the reference step open. Any other browser gets a sentence
   and the way to apply (403). No page shows the address typed, and the log
   names an application by its id, never its address, username or code.
+  So does the audit chain since 37c.32: every `APPLICATION_*`,
+  `REFERENCE_*` and `PRIVACY.NOTICE_ACCEPTED` record carries the
+  application's id and its community, never the applicant's e-mail address
+  (`audit._application_facts`) — the chain is sealed and outlives the
+  application the housekeeping prunes and the account an erase takes. The
+  sealed records written before keep the address they have.
 - **The nightly housekeeping prunes it** (`applications.prune`, called by
   `toto.core.housekeeping` on the beat) once it lapsed more than
   `SOCIALHUB_EXPIRED_APPLICATION_DAYS` (default 30) days ago — the

@@ -225,12 +225,41 @@ class ApplicationTests(AuditCase):
         self.assertEqual(AuditRecord.objects.filter(
             action__startswith="SOCIALHUB.APPLICATION_").count(), 1)       # the submission
 
-    def test_the_submission_names_the_email_and_the_community(self):
+    def test_the_submission_names_the_application_and_the_community(self):
         record = self.records("APPLICATION_SUBMITTED").get()
         self.assertEqual(record.object_type, "socialhub.membershipapplication")
-        self.assertEqual(record.metadata["email"], "newbie@example.com")
+        self.assertEqual(record.object_id, str(self.application.pk))
+        self.assertEqual(record.metadata["application"], self.application.pk)
+        self.assertEqual(record.metadata["community"], "devs")
+        self.assertEqual(record.object_description, f"application {self.application.pk}")
         self.assertNotIn("is_clearance", record.metadata)
         self.assertIsNone(record.metadata["before"])
+
+    def test_no_application_or_reference_record_holds_the_address(self):
+        """37c.32: the address was the description and ``metadata["email"]``
+        of every one of these records — kept for good on a sealed chain,
+        after the housekeeping pruned the application and after an erase."""
+        import json
+
+        self.application.status = "verified"
+        self.application.save()
+        ref = ReferenceRequest.objects.create(application=self.application, referrer=self.ada)
+        ref.status = "declined"
+        ref.save()
+        audit.notice_accepted(self.application)
+        written = AuditRecord.objects.filter(
+            action__regex=r"^(SOCIALHUB\.(APPLICATION|REFERENCE)_|PRIVACY\.NOTICE_ACCEPTED$)")
+        self.assertEqual(
+            sorted(written.values_list("action", flat=True)),
+            ["PRIVACY.NOTICE_ACCEPTED", "SOCIALHUB.APPLICATION_SUBMITTED",
+             "SOCIALHUB.APPLICATION_VERIFIED", "SOCIALHUB.REFERENCE_DECLINED",
+             "SOCIALHUB.REFERENCE_REQUESTED"])
+        for record in written:
+            with self.subTest(action=record.action):
+                said = record.object_description + json.dumps(record.metadata) + json.dumps(record.changes)
+                self.assertNotIn("newbie", said)
+                self.assertNotIn("@", said)
+                self.assertEqual(record.metadata["application"], self.application.pk)
 
     def test_a_reference_moved_back_to_pending_or_saved_again_records_nothing(self):
         ref = ReferenceRequest.objects.create(application=self.application, referrer=self.ada)

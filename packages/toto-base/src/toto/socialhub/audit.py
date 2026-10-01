@@ -11,12 +11,12 @@ membership flow, the wiki's Clearances page, the ingress, a shell:
 | `SOCIALHUB.CLEARANCE_MEMBER_ADDED` / `_REMOVED` | a person is given or loses a clearance — `Person.clearances`, from either side, a `clear()` included |
 | `SOCIALHUB.SENIOR_ADDED` / `_REMOVED` | a senior member named or dropped |
 | `SOCIALHUB.PRIVILEGE_CHANGED` / `_REMOVED` | a community's grants (`may_*`) set or cleared |
-| `SOCIALHUB.APPLICATION_SUBMITTED` | somebody applies to join a community |
+| `SOCIALHUB.APPLICATION_SUBMITTED` | somebody applies to join a community — every application and reference record names the application by its id and its community, never the applicant's e-mail address (2026-10-01, 37c.32; the sealed records before it keep theirs) |
 | `SOCIALHUB.APPLICATION_<STATUS>` | the application moves: verified, endorsed, invited, rejected |
 | `SOCIALHUB.APPLICATION_RENEWED` | somebody applies again with the address of an application that lapsed before its applicant got in: a new code and a new week, the community chosen now (2026-10-01) |
 | `SOCIALHUB.REFERENCE_REQUESTED` / `_GIVEN` / `_DECLINED` | a reference asked of a member, and their answer (given = the applicant admitted) |
 | `SOCIALHUB.PROFILE_CHANGED` | a member edits their own profile or time zone on My account — the field NAMES in `fields`, never the values (2026-09-30) |
-| `PRIVACY.NOTICE_ACCEPTED` | an applicant ticks the privacy notice on the membership application — the version and the application, the e-mail as every application record has it (2026-10-01) |
+| `PRIVACY.NOTICE_ACCEPTED` | an applicant ticks the privacy notice on the membership application — the version and the application, by its id as every application record names it (2026-10-01) |
 | `PRIVACY.EXPORT_REQUESTED` | a member asks for a copy of their data on My account (2026-10-01) |
 | `PRIVACY.EXPORT_READY` / `_FAILED` | the copy is in their bucket — the rows per table, the files and the vault file's id — or could not be made; the system's, not the member's (2026-10-01) |
 | `PRIVACY.ERASURE_REQUESTED` | a member files a request to have their account erased on My account (2026-10-01) |
@@ -121,7 +121,7 @@ def notice_accepted(application) -> None:
     ``PrivacyAcceptance`` row, not a second record."""
     return _record("notice_accepted", family="privacy",
                    object_type="socialhub.membershipapplication", object_id=application.pk,
-                   description=f"v{application.privacy_version} {application.email}",
+                   description=f"v{application.privacy_version} application {application.pk}",
                    metadata={**_application_facts(application),
                              "version": application.privacy_version})
 
@@ -362,8 +362,20 @@ def _status_before(sender, instance, **kwargs):
 
 
 def _application_facts(application) -> dict:
+    """What an application's records say of it: its id and its community —
+    never the applicant's e-mail address (2026-10-01, 37c.32). The chain is
+    sealed and outlives the application: an address written on it stayed
+    after the housekeeping pruned the lapsed application, and after an erase.
+    The id finds the row while it lives (``records_about`` is handed the
+    member's application ids), and nothing once it is gone. Records written
+    before keep their address: a sealed record is never rewritten."""
     community = application.community
-    return {"email": application.email, "community": community.slug, "name": community.name}
+    return {"application": application.pk, "community": community.slug,
+            "name": community.name}
+
+
+def _application_label(application) -> str:
+    return f"application {application.pk}"
 
 
 def _application_saved(sender, instance, created, **kwargs):
@@ -380,8 +392,9 @@ def _application_saved(sender, instance, created, **kwargs):
     else:
         return
     _record(action, object_type="socialhub.membershipapplication", object_id=instance.pk,
-            description=instance.email, metadata={**_application_facts(instance),
-                                                  "before": before, "status": instance.status})
+            description=_application_label(instance),
+            metadata={**_application_facts(instance), "before": before,
+                      "status": instance.status})
 
 
 def _reference_saved(sender, instance, created, **kwargs):
@@ -395,7 +408,7 @@ def _reference_saved(sender, instance, created, **kwargs):
     else:
         return
     _record(action, object_type="socialhub.referencerequest", object_id=instance.pk,
-            description=instance.application.email,
+            description=_application_label(instance.application),
             metadata={**_application_facts(instance.application),
                       "referrer": instance.referrer.slug,
                       "referrer_name": instance.referrer.display_name,
