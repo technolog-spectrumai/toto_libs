@@ -4,6 +4,7 @@ RODO).
     renewable(application)                              -> bool
     renew(application, *, username, community, notice)  -> application
     prune(*, days=None, now=None)                       -> {"pruned", "accounts_deleted", "kept"}
+    of_member(user)                                     -> the applications at their addresses
 
 An application is good for ``LIFETIME_DAYS`` (a week): the code has to be
 typed within it. One whose week ran out before its applicant got in has
@@ -59,7 +60,8 @@ DEFAULT_EXPIRED_DAYS = 30
 
 #: What the platform makes for EVERY account the moment it exists, by the
 #: economy's sign-up receivers: toto.assets' prepaid ledger account (it stays,
-#: detached, as ``erase_user`` keeps it — the ledger is the money trail) and
+#: detached and renamed without the username, as ``erase_user`` keeps it —
+#: the ledger is the money trail; ``_forget_ledger_name``) and
 #: toto.mana's opening fill, a grant and a faucet payout per pool. Not the
 #: applicant's doing, so not "something else" they own. Labels as
 #: ``erase_user``'s report names them.
@@ -212,6 +214,40 @@ def renew(application, *, username, community, notice):
     return application
 
 
+def of_member(user):
+    """The applications made with ``user``'s addresses — the account's and
+    the profile's, in any case. A member's admitted application and its
+    references were kept for ever: keyed by address, not by account, so no
+    cascade reached them. ``erase_user`` deletes these with the account
+    (2026-10-01, 37c.21); the audit chain keeps the admission itself."""
+    from django.db.models import Q
+
+    from toto.people.models import Person
+    from toto.socialhub.models import MembershipApplication
+
+    addresses = {user.email or ""}
+    addresses |= set(Person.objects.filter(user=user).values_list("email", flat=True))
+    match = Q()
+    for address in addresses:
+        if address:
+            match |= Q(email__iexact=address)
+    if not match:
+        return MembershipApplication.objects.none()
+    return MembershipApplication.objects.filter(match)
+
+
+def _forget_ledger_name(account) -> None:
+    """The prepaid ledger account sign-up gave ``account`` stays (the ledger
+    keeps its entries) — without the username in its name, exactly as an
+    erase leaves it (2026-10-01, 37c.21; ``toto.assets.prepaid.forget_holder``)."""
+    from django.apps import apps
+
+    if apps.is_installed("toto.assets"):
+        from toto.assets.prepaid import forget_holder
+
+        forget_holder(account)
+
+
 def prune(*, days=None, now=None) -> dict:
     """Delete the applications that lapsed more than ``days`` ago (default
     ``SOCIALHUB_EXPIRED_APPLICATION_DAYS``) with the accounts they made.
@@ -242,6 +278,7 @@ def prune(*, days=None, now=None) -> dict:
                     counts["kept"] += 1
                     continue
                 for account in accounts:
+                    _forget_ledger_name(account)
                     account.delete()
                 application.delete()
         except Exception as exc:  # noqa: BLE001 - one application never stops the night

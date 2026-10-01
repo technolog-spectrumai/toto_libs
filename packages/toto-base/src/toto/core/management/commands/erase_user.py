@@ -16,12 +16,20 @@ What "as if they never existed" can and cannot mean here, said plainly:
   wiki revisions — and the wiki pages only they ever wrote — their
   subscriptions, grants, sessions, tokens, and everything else that cascades
   from the account (Django's own collector decides; the report lists it).
+  Since 2026-10-01 (37c.21, ``toto.core.erasure``) also what the cascade
+  left: the profile picture's file, the bodies of their files' saved
+  versions, their home pin and the addresses only they used, their
+  membership application with its references, and the pictures and voice
+  recordings they sent in the forum.
 * **Kept, detached:** rows other people still need keep their place and lose
   the pointer — a workflow they started, a ledger account (its history is
   the platform's money trail), a forum room they opened, and — since
   2026-09-30 — a vault bucket they owned (it may hold other people's files,
   gateways and clearance keeping; it stays, without an owner, until a
-  superuser gives it one or deletes it in Storage → Management).
+  superuser gives it one or deletes it in Storage → Management). Their forum
+  messages keep their text, signed "Former member" without their name or
+  picture, and their personal bucket and prepaid ledger account are renamed
+  "… — deleted account": none keeps their username.
 * **Kept, as written:** the audit chain. Each record is sealed by a hash
   over its content and its predecessor's; removing or rewriting one breaks
   verification of every record after it. Their sign-ins, their changes and
@@ -63,7 +71,11 @@ def _count(value) -> int:
 
 
 def plan(user) -> dict:
-    """What erasing ``user`` does — nothing is written."""
+    """What erasing ``user`` does — nothing is written. ``deleted`` and
+    ``detached`` are the collector's walk (``socialhub.applications`` reads
+    them); ``beyond`` counts what ``toto.core.erasure`` adds to it."""
+    from toto.core import erasure
+
     collector = Collector(using=router.db_for_write(type(user)))
     blockers = []
     try:
@@ -101,13 +113,16 @@ def plan(user) -> dict:
     if deleted.get("gitea.GiteaAccount"):
         notes.append("The forge (Gitea) keeps its own account for them: remove it in Gitea's "
                      "site administration.")
+    beyond, more = erasure.report(user)
+    notes.extend(more)
     notes.append("The audit chain keeps their records, by username, and records this erasure: "
                  "a sealed record cannot be removed without breaking every later one.")
-    notes.append("Backups taken before now still hold them.")
+    notes.append("Backups taken before now still hold them until they age out.")
     return {"username": user.get_username(), "id": user.pk,
             "superuser": bool(user.is_superuser),
             "deleted": dict(sorted(deleted.items())),
             "detached": dict(sorted(detached.items())),
+            "beyond": dict(sorted(beyond.items())),
             "blocked_by": blockers, "notes": notes}
 
 
@@ -160,6 +175,8 @@ class Command(BaseCommand):
         if options["confirm"] != username:
             self.emit({"ok": False, "error": "--confirm must repeat the username exactly"})
             raise SystemExit(1)
+        from toto.core import erasure
+
         pk = user.pk
         closed = []
         with transaction.atomic():
@@ -172,11 +189,16 @@ class Command(BaseCommand):
                 from toto.socialhub.erasure import close_for_erasure
 
                 closed = close_for_erasure(user)
+            # What the cascade leaves (2026-10-01, 37c.21): renamed and
+            # deleted here, the bytes once this commits.
+            left = erasure.gather(user)
             user.delete()
+            erasure.after_delete(left)
             if empty_pages:
                 from wakawaka.models import WikiPage
 
                 WikiPage.objects.filter(pk__in=empty_pages).delete()
+            transaction.on_commit(lambda: erasure.after_commit(left))
         self._record(username, pk, report)
         if closed:
             from toto.socialhub.erasure import record_done
@@ -194,6 +216,7 @@ class Command(BaseCommand):
                 record("auth.account_erased", app_label="auth", object_type="auth.user",
                        object_id=str(pk), description=username, actor_user=SYSTEM,
                        source="console",
-                       metadata={"deleted": report["deleted"], "detached": report["detached"]})
+                       metadata={"deleted": report["deleted"], "detached": report["detached"],
+                                 "beyond": report.get("beyond", {})})
         except Exception:  # noqa: BLE001 - the erase has happened; say so, do not undo it
             self.stderr.write("the erase is done, but the audit record could not be written")

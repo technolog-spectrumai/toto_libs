@@ -537,6 +537,36 @@ def personal_bucket(user):
     raise RuntimeError(f"No free personal bucket slug for {user.username}.")
 
 
+def personal_buckets_of(user):
+    """``user``'s personal buckets, the shape :func:`personal_bucket` makes:
+    owned by them, ``personal-<username>`` or ``personal-<username>-<n>``."""
+    import re
+
+    pattern = rf"^{re.escape(f'personal-{user.username}')}(-[0-9]+)?$"
+    return Bucket.objects.filter(owner=user, slug__regex=pattern)
+
+
+def forget_personal_buckets(user) -> int:
+    """Rename ``user``'s personal buckets so that neither name nor address
+    carries their username (2026-10-01, 37c.21) — ``erase_user`` calls this
+    before the account goes. The buckets stay, ownerless, for the files other
+    people keep in them, until a superuser gives them on or deletes them; they
+    were "Personal — <username>" at ``personal-<username>`` for good.
+    Returns how many were renamed."""
+    renamed = 0
+    for bucket in personal_buckets_of(user):
+        name, slug = f"Personal — deleted account {bucket.pk}", f"deleted-{bucket.pk}"
+        n = 1
+        while (Bucket.objects.filter(name=name).exclude(pk=bucket.pk).exists()
+               or Bucket.objects.filter(slug=slug).exclude(pk=bucket.pk).exists()):
+            n += 1
+            name = f"Personal — deleted account {bucket.pk} ({n})"
+            slug = f"deleted-{bucket.pk}-{n}"
+        Bucket.objects.filter(pk=bucket.pk).update(name=name, slug=slug)
+        renamed += 1
+    return renamed
+
+
 class BucketClosed(RuntimeError):
     """The bucket is being deleted: no file may be added to it or moved into it.
 

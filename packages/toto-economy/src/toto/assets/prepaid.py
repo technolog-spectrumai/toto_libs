@@ -53,6 +53,27 @@ def get_prepaid_account(user):
     return LedgerAccount.objects.filter(code=prepaid_code(user.pk)).first()
 
 
+#: A prepaid account's name once its holder's account is gone (2026-10-01,
+#: 37c.21). The account stays — its entries are the ledger's money trail and
+#: are sealed — but it was named "Prepaid — <username>" for good.
+GONE_HOLDER_NAME = "Prepaid — deleted account"
+
+
+def forget_holder(user) -> int:
+    """Take ``user``'s username out of their prepaid account's name, before
+    the account goes: ``erase_user`` (toto.core.erasure) and the housekeeping
+    that prunes an application nobody finished (toto.socialhub.applications)
+    call this one function, so the two say the same. Returns how many were
+    renamed. The code (``user-prepaid-<id>``) stays: rows are found by it."""
+    from django.utils import timezone
+
+    from toto.assets.models import LedgerAccount
+
+    return (LedgerAccount.objects.filter(code=prepaid_code(user.pk))
+            .exclude(name=GONE_HOLDER_NAME)
+            .update(name=GONE_HOLDER_NAME, updated_at=timezone.now()))
+
+
 def grant_asset():
     """The asset a starting grant is paid in, or None before any is seeded.
 

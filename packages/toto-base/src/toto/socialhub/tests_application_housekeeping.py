@@ -244,9 +244,15 @@ class PruneTests(LapsedCase):
         from toto.assets.models import LedgerAccount
 
         ledger = LedgerAccount.objects.get(user=self.applicant)
+        self.assertEqual(ledger.name, "Prepaid — newbie")
         self.assertEqual(applications.prune()["pruned"], 1)
         ledger.refresh_from_db()
         self.assertIsNone(ledger.user_id)
+        # Without the username, exactly as an erase leaves it (2026-10-01,
+        # 37c.21): it was "Prepaid — <username>" for good.
+        from toto.assets.prepaid import GONE_HOLDER_NAME
+
+        self.assertEqual(ledger.name, GONE_HOLDER_NAME)
 
     def test_a_recently_lapsed_or_live_application_stays(self):
         self.lapse(days=29)
