@@ -1,12 +1,18 @@
 # file_strategies/pdf_strategy.py
 import os
-from PyPDF2 import PdfReader, PdfWriter
 from .base import FileStrategy
 from .forms import EncryptPdfForm, DecryptPdfForm
+
+# pypdf, not PyPDF2 (2026-10-01, 37c.30): PyPDF2 is its retired predecessor,
+# and the hosts already install pypdf. Imported where a PDF is encrypted or
+# opened, never at start: vault.models imports this module, so a module-level
+# import loaded the library into every process for a door few members use.
 
 
 class PdfStrategy(FileStrategy):
     def encrypt(self, file_instance, password: str, owner_password: str = None):
+        from pypdf import PdfReader, PdfWriter
+
         user_password = password
         if not owner_password:
             owner_password = user_password
@@ -31,6 +37,8 @@ class PdfStrategy(FileStrategy):
         file_instance.save()
 
     def decrypt(self, file_instance, password: str):
+        from pypdf import PdfReader, PdfWriter
+
         input_path = file_instance.file.path
         base, ext = os.path.splitext(input_path)
         output_path = f"{base}_decrypted{ext}"
@@ -59,6 +67,9 @@ class PdfStrategy(FileStrategy):
 
     def decrypt_to_bytes(self, file_instance, password: str) -> tuple:
         from io import BytesIO
+
+        from pypdf import PdfReader, PdfWriter
+
         reader = PdfReader(file_instance.file.path)
         if not reader.is_encrypted:
             raise ValueError("PDF is not encrypted.")

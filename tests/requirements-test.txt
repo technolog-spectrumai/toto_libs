@@ -15,7 +15,7 @@ django-markdownx
 django-trix-editor
 Pillow
 PyJWT
-PyPDF2
+pypdf
 cryptography
 PyYAML
 requests

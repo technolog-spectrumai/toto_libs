@@ -7,12 +7,13 @@ the right password gives them back, and the wrong one changes nothing.
 import io
 import os
 import tempfile
+from pathlib import Path
 from unittest import skip
 
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.test import TestCase, override_settings
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 from toto.gervazy.models import UserStrongbox
 from toto.vault.models import VaultFile
@@ -173,3 +174,51 @@ class PdfStrategyTests(_Fixture):
         f.encrypt(password="user-pw")
         f.decrypt(password="user-pw")
         self.assertEqual(self.files_on_disk(), [f.file.path])
+
+
+class _NoPyPDF2:
+    """An import finder that answers for PyPDF2 as an uninstalled package."""
+
+    def find_spec(self, name, path=None, target=None):
+        if name == "PyPDF2" or name.startswith("PyPDF2."):
+            raise ImportError(f"No module named {name!r} (refused by the test)")
+        return None
+
+
+class PypdfTests(_Fixture):
+    """The format's own password through pypdf (2026-10-01, 37c.30), never
+    PyPDF2 — its retired predecessor, which the hosts no longer install — and
+    loaded where a PDF is opened, not when the vault's models load."""
+
+    def test_loading_the_strategy_loads_no_pdf_library(self):
+        import ast
+
+        import toto.vault.strategy.pdf as module
+
+        self.assertNotIn("PdfReader", vars(module))
+        self.assertNotIn("PdfWriter", vars(module))
+        tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
+        imported = {node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
+        imported |= {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import)
+                     for alias in node.names}
+        self.assertNotIn("PyPDF2", imported)
+        self.assertIn("pypdf", imported)
+
+    def test_a_password_comes_and_goes_where_pypdf2_cannot_import(self):
+        import sys
+
+        hidden = {name: sys.modules.pop(name) for name in list(sys.modules)
+                  if name == "PyPDF2" or name.startswith("PyPDF2.")}
+        self.addCleanup(sys.modules.update, hidden)
+        finder = _NoPyPDF2()
+        sys.meta_path.insert(0, finder)
+        self.addCleanup(sys.meta_path.remove, finder)
+        f = self.file(a_pdf(), "doc.pdf", "pdf")
+        f.encrypt(password="user-pw")
+        self.assertTrue(PdfReader(f.file.path).is_encrypted)
+        data, _mime = PdfStrategy().decrypt_to_bytes(f, password="user-pw")
+        self.assertFalse(PdfReader(io.BytesIO(data)).is_encrypted)
+        with self.assertRaisesMessage(ValueError, "Incorrect password."):
+            PdfStrategy().decrypt_to_bytes(f, password="nope")
+        f.decrypt(password="user-pw")
+        self.assertFalse(PdfReader(f.file.path).is_encrypted)
