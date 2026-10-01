@@ -23,12 +23,16 @@ With ALERT_EMAILS empty the states are still kept and nothing is mailed; a
 check still bad when an address is added is mailed then. Every mail leaves
 through ``toto.core.notices.send_notice``, the one seam notices use.
 
-Where a worker takes notices (2026-10-01), "took" means queued: the mail is
-handed to the worker only once this run's transaction commits — a run that
-fails has saved nothing and queued nothing, and the next one decides again —
-and the worker tries it five times over about an hour. One it gave up on is
-not mailed again by the next run; the Mail check (``record.check_mail``)
-turns WARN when sends keep failing, and that shows on the Database page.
+Every mail leaves once the run's transaction COMMITS, whoever sends it
+(2026-10-01; for the mail sent at once too since the review): the run
+writes each state as mailed, and the mail follows the commit — a run that
+fails has saved nothing and mailed nothing, and the next one decides again;
+no SMTP round trip holds the states' locks. A mail no address took then
+puts its state back as it was (unless a later run has written it since).
+Where a worker takes notices, "took" means queued, and the worker tries it
+five times over about an hour. One it gave up on is not mailed again by the
+next run; the Mail check (``record.check_mail``) turns WARN when sends keep
+failing, and that shows on the Database page.
 
 WHAT THIS CANNOT DO, said plainly: the mail is sent BY the server, so it
 cannot report the server itself being down. No power, no network, a stopped
@@ -46,6 +50,7 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
+from functools import partial
 
 from django.conf import settings
 from django.db import transaction
@@ -185,12 +190,9 @@ def status_url() -> str:
     return base + path
 
 
-def _mail(event: str, check, state, to: list[str], hours: int) -> bool:
-    """One notice per address; True when at least one address took it."""
-    from toto.core.notices import send_notice
-
-    kind = "check_recovered" if event == RECOVERED else "check_alert"
-    context = {
+def _context(event: str, check, state, hours: int) -> dict:
+    """What the mail about one event says, as this run saw the check."""
+    return {
         "event": event,
         "check_key": check.key,
         "check_label": str(check.label),
@@ -202,19 +204,41 @@ def _mail(event: str, check, state, to: list[str], hours: int) -> bool:
         "remind_hours": hours if check.status == record.FAIL else 0,
         "status_url": status_url(),
     }
-    taken = sum(1 for address in to
-                if send_notice(None, kind, context, to=address))
-    if not taken:
+
+
+def _post(outbox: list, to: list[str], now, sent: dict) -> None:
+    """Mail what one run decided, once its states are committed: one notice
+    per address. A mail no address took puts its state back as it was
+    before the run — unless a later run has written the row since — so
+    that the next run tries again. Never raises: what is left of the outbox
+    still goes."""
+    from toto.core.notices import send_notice
+
+    from .models import CheckState
+
+    for event, key, context, before in outbox:
+        kind = "check_recovered" if event == RECOVERED else "check_alert"
+        taken = sum(1 for address in to
+                    if send_notice(None, kind, context, to=address))
+        if taken:
+            sent[event] += 1
+            continue
         log.warning("alerts: %s about %s reached no address; the next run "
-                    "tries again", event, check.key)
-    return taken > 0
+                    "tries again", event, key)
+        try:
+            CheckState.objects.filter(key=key, checked_at=now).update(
+                alerted_status=before[0], alerted_at=before[1])
+        except Exception:  # noqa: BLE001 - the next mail must still go
+            log.warning("alerts: the state of %s could not be put back", key,
+                        exc_info=True)
 
 
 def run(*, now=None, checks=None) -> dict:
     """One scheduled pass: check, remember, mail what changed.
 
     ``checks`` replaces ``record.run_checks()`` (tests). Returns, per event,
-    how many checks were mailed about.
+    how many checks were mailed about — counted as the mail leaves, after
+    the commit.
     """
     from .models import CheckState
 
@@ -224,10 +248,11 @@ def run(*, now=None, checks=None) -> dict:
     hours = remind_hours()
     remind_after = timedelta(hours=hours) if hours else None
     sent = {PROBLEM: 0, REMINDER: 0, RECOVERED: 0}
+    outbox = []
 
     # The checks ran above, outside any lock — some read a whole tree. The
-    # rows are locked only while deciding, mailing and saving, so a run that
-    # overlaps the previous one waits for it and then sees what it mailed.
+    # rows are locked only while deciding and saving, so a run that overlaps
+    # the previous one waits for it and then sees what it decided to mail.
     with transaction.atomic():
         rows = {row.key: row for row in CheckState.objects.select_for_update()
                 .filter(key__in=[check.key for check in checks])}
@@ -246,8 +271,11 @@ def run(*, now=None, checks=None) -> dict:
             state.checked_at = now
 
             event = decide(state, check.status, now, remind_after) if to else None
-            if event and _mail(event, check, state, to, hours):
-                sent[event] += 1
+            if event:
+                # Saved as mailed; the mail itself follows the commit (_post),
+                # which puts back what was here if no address takes it.
+                outbox.append((event, check.key, _context(event, check, state, hours),
+                               (state.alerted_status, state.alerted_at)))
                 if event == RECOVERED:
                     state.alerted_status = ""
                 else:
@@ -255,4 +283,6 @@ def run(*, now=None, checks=None) -> dict:
                         state.alerted_status = check.status
                     state.alerted_at = now
             state.save()
+        if outbox:
+            transaction.on_commit(partial(_post, outbox, to, now, sent))
     return sent

@@ -88,12 +88,14 @@ class MailCheckTests(TestCase):
         Platform.objects.create(site_name="Zenobia Test", author="Tests",
                                 publication_year=2026, active=True)
         self.give_up(3)
-        with mock.patch.object(record, "ALL_CHECKS", (record.check_mail,)):
+        with mock.patch.object(record, "ALL_CHECKS", (record.check_mail,)), \
+                self.captureOnCommitCallbacks(execute=True):
             alerts.run()
         [alert] = mail.outbox
         self.assertEqual(alert.subject, "Zenobia Test: Mail needs attention")
         self.assertIn("The last 3 notices could not be delivered.", alert.body)
         # That mail left, so the way out works again, and the next run says so.
-        with mock.patch.object(record, "ALL_CHECKS", (record.check_mail,)):
+        with mock.patch.object(record, "ALL_CHECKS", (record.check_mail,)), \
+                self.captureOnCommitCallbacks(execute=True):
             alerts.run()
         self.assertEqual(mail.outbox[1].extra_headers["X-Toto-Notice"], "check_recovered")

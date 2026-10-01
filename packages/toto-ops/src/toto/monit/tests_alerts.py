@@ -34,8 +34,12 @@ class AlertRunTests(TestCase):
         self.start = timezone.now()
 
     def at(self, minutes, *verdicts):
-        return alerts.run(now=self.start + timedelta(minutes=minutes),
-                          checks=list(verdicts))
+        # The mail follows the run's commit; a test runs inside a
+        # transaction, so the commit is played here.
+        with self.captureOnCommitCallbacks(execute=True):
+            sent = alerts.run(now=self.start + timedelta(minutes=minutes),
+                              checks=list(verdicts))
+        return sent
 
     def subjects(self):
         return [message.subject for message in mail.outbox]
@@ -153,11 +157,9 @@ class AlertRunTests(TestCase):
     @override_settings(NOTICES_VIA_WORKER=True)
     def test_with_a_worker_the_mail_is_queued_once_the_run_commits(self):
         with mock.patch("toto.core.tasks.deliver_notice") as task:
-            with self.captureOnCommitCallbacks() as callbacks:
-                self.at(0, verdict(record.FAIL))
+            with self.captureOnCommitCallbacks(execute=True):
+                alerts.run(now=self.start, checks=[verdict(record.FAIL)])
                 task.delay.assert_not_called()
-            for callback in callbacks:
-                callback()
         [(message,), _kwargs] = task.delay.call_args
         self.assertEqual((message["kind"], message["to"]), ("check_alert", "ops@example.test"))
         self.assertEqual(message["subject"], "Zenobia Test: Backups is failing")
@@ -174,6 +176,29 @@ class AlertRunTests(TestCase):
                     self.at(0, verdict(record.FAIL))
         self.assertEqual(callbacks, [])
         task.delay.assert_not_called()
+
+    def test_sent_at_once_the_mail_still_waits_for_the_commit(self):
+        # Without a worker too (2026-10-01, the review): nothing leaves
+        # while the run's transaction is open.
+        with self.captureOnCommitCallbacks() as callbacks:
+            sent = alerts.run(now=self.start, checks=[verdict(record.FAIL)])
+            self.assertEqual(mail.outbox, [])
+        self.assertEqual(CheckState.objects.get(key="backups").alerted_status, record.FAIL)
+        for callback in callbacks:
+            callback()
+        self.assertEqual(self.subjects(), ["Zenobia Test: Backups is failing"])
+        self.assertEqual(sent[alerts.PROBLEM], 1)
+
+    def test_a_run_that_fails_mails_nothing_at_once_either(self):
+        with mock.patch.object(CheckState, "save", side_effect=DatabaseError("gone")):
+            with self.captureOnCommitCallbacks(execute=True):
+                with self.assertRaises(DatabaseError):
+                    alerts.run(now=self.start, checks=[verdict(record.FAIL)])
+        self.assertEqual(mail.outbox, [])
+        # So the next run, which saves, mails it — once.
+        self.at(5, verdict(record.FAIL))
+        self.at(10, verdict(record.FAIL))
+        self.assertEqual(self.subjects(), ["Zenobia Test: Backups is failing"])
 
     def test_the_state_follows_the_verdict(self):
         self.at(0, verdict(record.OK))
@@ -192,7 +217,8 @@ class AlertRunTests(TestCase):
 class TaskTests(TestCase):
     def test_the_task_runs_the_record_checks_and_mails(self):
         with mock.patch.object(record, "run_checks",
-                               return_value=[verdict(record.FAIL)]) as checks:
+                               return_value=[verdict(record.FAIL)]) as checks, \
+                self.captureOnCommitCallbacks(execute=True):
             tasks.monit_alert_checks()
         checks.assert_called_once_with()
         self.assertEqual([m.to for m in mail.outbox], [["ops@example.test"]],

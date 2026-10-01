@@ -334,7 +334,8 @@ class OverdueTests(TestCase):
                                 publication_year=2026, active=True)
         self.fresh(FIVE, DAILY)
         self.ran(HOURLY, timedelta(hours=5))
-        with mock.patch.object(record, "ALL_CHECKS", (record.check_overdue,)):
+        with mock.patch.object(record, "ALL_CHECKS", (record.check_overdue,)), \
+                self.captureOnCommitCallbacks(execute=True):
             alerts.run()
         [alert] = mail.outbox
         self.assertEqual(alert.subject, "Zenobia Test: Scheduled tasks is failing")
