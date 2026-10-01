@@ -164,8 +164,12 @@ class PlanPageTests(EventCase):
 
     def test_only_an_organiser_may_invite(self):
         self.client.force_login(self.guest_user)
-        self.assertEqual(self.client.post(self.plan_url(),
+        self.assertEqual(self.client.post(self.plan_url(self.open_day),
                                           {"person_ids": [self.guest.pk]}).status_code, 403)
+        self.assertFalse(self.open_day.invites.exists())
+        # A private event the guest is not part of is a missing page (37c.21).
+        self.assertEqual(self.client.post(self.plan_url(),
+                                          {"person_ids": [self.guest.pk]}).status_code, 404)
         self.assertFalse(self.sitting.invites.exists())
         self.sitting.organizers.add(self.guest)
         self.client.post(self.plan_url(), {"person_ids": [self.stranger.pk]})
@@ -189,11 +193,8 @@ class PlanPageTests(EventCase):
         self.assertIn(self.owner, list(context["uninvited"]))
         self.assertTrue(context["user_is_organizer"])
 
-    @skip("suspected bug: event_plan (events/views.py:242) fetches the event with "
-          "get_object_or_404(ScheduledEvent...) and never asks access.visible_events, "
-          "so any signed-in stranger who has the UUID reads a private event's title, "
-          "times, invitees and their answers on its planning page (the detail page 404s)")
     def test_a_stranger_cannot_open_a_private_events_plan(self):
+        # Fixed 2026-10-01 (37c.21): the plan asks access.visible_events.
         EventInvite.objects.create(event=self.sitting, person=self.guest)
         self.client.force_login(self.stranger_user)
         self.assertEqual(self.client.get(self.plan_url()).status_code, 404)
@@ -201,9 +202,11 @@ class PlanPageTests(EventCase):
 
 class AvailabilityTests(EventCase):
     def status(self, who, target=None):
+        # The owner of the sitting plans it: an organiser may read anybody's
+        # availability against it (2026-10-01, AvailabilityPrivacyTests).
         self.client.force_login(self.owner_user)
         return self.client.get(reverse("events:event_availability_api"), {
-            "person_id": who.pk, "event_id": (target or self.open_day).pk}).json()
+            "person_id": who.pk, "event_id": (target or self.sitting).pk}).json()
 
     def test_a_blocking_entry_wins_over_a_soft_one(self):
         Availability.objects.create(person=self.guest, start_time=START,
@@ -259,6 +262,58 @@ class AvailabilityTests(EventCase):
         self.assertEqual(self.client.get(url, {
             "person_id": self.guest.pk,
             "event_id": "00000000-0000-0000-0000-000000000000"}).status_code, 404)
+
+
+class AvailabilityPrivacyTests(EventCase):
+    """Another person's availability, and the reason they typed, is the event's
+    organisers' to see (2026-10-01, 37c.21). Any signed-in member read anybody's
+    against any event, private ones included, from the API and the plan page."""
+
+    def setUp(self):
+        Availability.objects.create(person=self.guest, start_time=START,
+                                    end_time=START + timedelta(hours=1), reason="Chemotherapy",
+                                    availability_type=Availability.AvailabilityType.OUT_OF_OFFICE)
+        EventInvite.objects.create(event=self.open_day, person=self.guest)
+
+    def ask(self, as_user, who, target):
+        self.client.force_login(as_user)
+        return self.client.get(reverse("events:event_availability_api"), {
+            "person_id": who.pk, "event_id": target.pk})
+
+    def test_a_member_who_does_not_organise_it_is_refused(self):
+        response = self.ask(self.stranger_user, self.guest, self.open_day)
+        self.assertEqual(response.status_code, 403)
+        self.assertNotIn("Chemotherapy", response.content.decode())
+
+    def test_the_person_sees_their_own(self):
+        response = self.ask(self.guest_user, self.guest, self.open_day)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["conflict"]["reason"], "Chemotherapy")
+
+    def test_an_organiser_sees_it_with_the_reason(self):
+        self.open_day.organizers.add(self.owner)
+        response = self.ask(self.owner_user, self.guest, self.open_day)
+        self.assertEqual(response.json()["conflict"]["reason"], "Chemotherapy")
+
+    def test_an_event_hidden_from_the_caller_is_a_404(self):
+        # The sitting is private and the guest is not invited to it.
+        self.assertEqual(self.ask(self.guest_user, self.guest, self.sitting).status_code, 404)
+
+    def test_the_plan_shows_others_their_answers_but_not_their_availability(self):
+        EventInvite.objects.create(event=self.open_day, person=self.stranger)
+        self.client.force_login(self.stranger_user)
+        response = self.client.get(reverse("events:event_plan", args=[self.open_day.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Chemotherapy")
+        rows = {row["person"].display_name: row for row in response.context["invite_rows"]}
+        self.assertEqual((rows["Guest"]["avail_status"], rows["Guest"]["conflict"]), (None, None))
+        self.assertEqual(rows["Stranger"]["avail_status"], "unknown")       # their own
+
+    def test_the_plan_shows_an_organiser_the_reason(self):
+        self.open_day.organizers.add(self.owner)
+        self.client.force_login(self.owner_user)
+        response = self.client.get(reverse("events:event_plan", args=[self.open_day.pk]))
+        self.assertContains(response, "Chemotherapy")
 
 
 class InvitePageTests(EventCase):

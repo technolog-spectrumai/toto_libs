@@ -3,7 +3,7 @@ import json
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.serializers.json import DjangoJSONEncoder
-from django.http import HttpResponseForbidden, JsonResponse
+from django.http import Http404, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils.timezone import localtime, now
@@ -193,12 +193,31 @@ def _avail_status(person, event):
     return "unknown", None
 
 
+def _may_see_availability(user, person, event) -> bool:
+    """Whether ``user`` may see ``person``'s availability against ``event``
+    (2026-10-01, 37c.21): the person themself, and the event's organisers
+    (``_is_organizer``) who plan it. Anybody else saw it too — the times and
+    the reason typed, which can say why somebody is away — for any event,
+    private ones included."""
+    own = _current_person(user)
+    return (own is not None and own.pk == person.pk) or _is_organizer(user, event)
+
+
 @login_required
 def event_availability_api(request):
+    from .access import may_read
+
     person_id = request.GET.get("person_id")
     event_id = request.GET.get("event_id")
     person = get_object_or_404(Person, pk=person_id)
     event = get_object_or_404(ScheduledEvent, pk=event_id)
+    # An event hidden from the caller is a missing one; the availability is
+    # the person's and the organisers' only (see _may_see_availability).
+    if not may_read(request.user, event):
+        raise Http404
+    if not _may_see_availability(request.user, person, event):
+        return JsonResponse({"error": str(_("Only the event's organisers see another "
+                                           "person's availability."))}, status=403)
 
     status_key, conflict = _avail_status(person, event)
 
@@ -239,8 +258,12 @@ def event_availability_api(request):
 
 @login_required
 def event_plan(request, pk):
+    from .access import visible_events
+
+    # The plan of an event hidden from the reader is a missing page
+    # (2026-10-01, 37c.21): it listed every invitee's availability.
     event = get_object_or_404(
-        ScheduledEvent.objects.select_related("owner", "address"),
+        visible_events(request.user, ScheduledEvent.objects.select_related("owner", "address")),
         pk=pk,
     )
 
@@ -264,7 +287,13 @@ def event_plan(request, pk):
 
     invite_rows = []
     for invite in invites:
-        status_key, conflict = _avail_status(invite.person, event)
+        # Somebody else's availability, and its reason, is the organisers'
+        # to see (2026-10-01, 37c.21): a member who may read the plan sees
+        # who is invited and their answer, and only their own availability.
+        if _may_see_availability(request.user, invite.person, event):
+            status_key, conflict = _avail_status(invite.person, event)
+        else:
+            status_key, conflict = None, None
         invite_rows.append({
             "invite": invite,
             "person": invite.person,

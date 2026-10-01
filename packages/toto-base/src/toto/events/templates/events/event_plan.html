@@ -208,8 +208,10 @@
       class="rounded-lg border p-4 shadow-sm transition">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
-        <!-- Person + availability -->
+        <!-- Person + availability: somebody else's is the organisers' to see
+             (2026-10-01, 37c.21); the view leaves avail_status empty. -->
         <div class="flex items-center gap-3 min-w-0">
+          {% if row.avail_status %}
           <button
             type="button"
             @click="openAvailability('{{ person.pk }}')"
@@ -218,6 +220,13 @@
             title="{% trans "View availability" %}">
             {{ person.display_name|first|upper }}
           </button>
+          {% else %}
+          <span
+            :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold">
+            {{ person.display_name|first|upper }}
+          </span>
+          {% endif %}
           <div class="min-w-0">
             <p class="truncate font-semibold">{{ person.display_name }}</p>
             <div class="mt-1 flex flex-wrap items-center gap-2 text-xs">
@@ -235,7 +244,7 @@
                   <span class="h-2 w-2 rounded-full bg-amber-500"></span>{% trans "Busy" %}
                   {% if row.conflict %}<span class="opacity-70">— {{ row.conflict.get_availability_type_display }}{% if row.conflict.reason %}: {{ row.conflict.reason }}{% endif %}</span>{% endif %}
                 </span>
-              {% else %}
+              {% elif row.avail_status == "unknown" %}
                 <span class="inline-flex items-center gap-1 text-success-light font-medium">
                   <span class="h-2 w-2 rounded-full bg-success-light opacity-50"></span>{% trans "Free" %}
                 </span>
