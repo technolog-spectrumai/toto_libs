@@ -697,3 +697,54 @@ class DataExport(models.Model):
     @property
     def is_open(self) -> bool:
         return self.status in self.OPEN
+
+
+class ErasureRequest(models.Model):
+    """A member asks for their account to be erased (2026-10-01, RODO art. 17).
+
+    A ticket, not an action: the web only files it and a superuser on the
+    plan reads the list (``views/privacy.py``). The erase itself is the
+    console's — ``erase_user``, reached over SSH by ``tools/delete_user.py`` /
+    ``deploy.py erase-user`` — which marks the member's open request done as
+    it erases them (``toto.socialhub.erasure``). A superuser may decline one,
+    with a note the member reads on My account.
+
+    SET_NULL on the user, with the username copied: the ticket is the record
+    that the request was made and carried out, so it has to outlive the
+    account it names. One open request per member — the database refuses a
+    second.
+    """
+
+    OPEN = "open"
+    DONE = "done"
+    DECLINED = "declined"
+    STATUS_CHOICES = [
+        (OPEN, _("Waiting for an operator")),
+        (DONE, _("Carried out")),
+        (DECLINED, _("Declined")),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                             related_name="erasure_requests")
+    username = models.CharField(max_length=150)
+    created_at = models.DateTimeField(default=timezone.now)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=OPEN)
+    handled_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name="+")
+    handled_at = models.DateTimeField(null=True, blank=True)
+    #: The operator's sentence to the member: why it was declined.
+    note = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        verbose_name = "erasure request"
+        constraints = [models.UniqueConstraint(
+            fields=["user"], condition=models.Q(status="open"),
+            name="socialhub_one_open_erasure_request")]
+
+    def __str__(self):
+        return f"erasure request {self.pk} of {self.username} — {self.status}"
+
+    @property
+    def is_open(self) -> bool:
+        return self.status == self.OPEN

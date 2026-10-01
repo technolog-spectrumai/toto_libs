@@ -18,6 +18,8 @@ membership flow, the wiki's Clearances page, the ingress, a shell:
 | `PRIVACY.NOTICE_ACCEPTED` | an applicant ticks the privacy notice on the membership application — the version and the application, the e-mail as every application record has it (2026-10-01) |
 | `PRIVACY.EXPORT_REQUESTED` | a member asks for a copy of their data on My account (2026-10-01) |
 | `PRIVACY.EXPORT_READY` / `_FAILED` | the copy is in their bucket — the rows per table, the files and the vault file's id — or could not be made; the system's, not the member's (2026-10-01) |
+| `PRIVACY.ERASURE_REQUESTED` | a member files a request to have their account erased on My account (2026-10-01) |
+| `PRIVACY.ERASURE_DONE` / `_DECLINED` | the console's `erase_user` erased them and closed the request (the system's), or a superuser on the plan declined it — with the note's length, not the note (2026-10-01) |
 | `PRIVACY.NOTICE_PUBLISHED` | a new version of the privacy notice is published — its number, the one it replaces and each text's length, never the text (2026-10-01) |
 
 Communities and clearances are orthogonal on purpose (README) and are
@@ -153,6 +155,37 @@ def export_failed(export) -> None:
 
     return _export(export, "export_failed", actor_user=SYSTEM, source="worker", success=False,
                    metadata={"user": export.user_id, "reason": export.error})
+
+
+def _erasure(ticket, action, **kwargs):
+    return _record(action, family="privacy", object_type="socialhub.erasurerequest",
+                   object_id=ticket.pk, description=ticket.username, **kwargs)
+
+
+def erasure_requested(ticket, *, request=None) -> None:
+    """A member asked to be erased (2026-10-01). The username is the
+    description, as on every record of theirs: the chain keeps it after the
+    erase, which is what the request's confirmation tells them."""
+    return _erasure(ticket, "erasure_requested", actor_user=ticket.user, request=request,
+                    metadata={"user": ticket.user_id})
+
+
+def erasure_done(ticket) -> None:
+    """The console erased them and closed the request — the system's record;
+    ``AUTH.ACCOUNT_ERASED`` beside it is the erase itself."""
+    if not installed():
+        return None
+    from toto.audit.services import SYSTEM
+
+    return _erasure(ticket, "erasure_done", actor_user=SYSTEM, source="console",
+                    metadata={"user_was": ticket.username})
+
+
+def erasure_declined(ticket, *, request=None) -> None:
+    """A superuser declined it. The note is for the member and stays on the
+    ticket; the chain has that there was one."""
+    return _erasure(ticket, "erasure_declined", actor_user=ticket.handled_by, request=request,
+                    metadata={"user": ticket.user_id, "note_length": len(ticket.note)})
 
 
 # ---------------------------------------------------------------------------
