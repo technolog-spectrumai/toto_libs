@@ -173,9 +173,13 @@ raw `.x/.y/.geojson` access — so a non-spatial backend is viable. The switch i
   `Address.save()` keeps them and `geometry` in sync. The geometry-bearing models
   survive as **geometry-less stub tables**, so cross-app FKs into them
   (`socialhub.Community.territory`, `kanban` → `Zone`/`Route`) still resolve.
-- **`core/base_admin.py`** — `TotoGeoAdmin` falls back from `OSMGeoAdmin` to a
-  plain `ModelAdmin`, removing the one GIS import that admin autodiscovery drags
-  in at startup on every host.
+- **`core/base_admin.py`** — `TotoGeoAdmin` falls back from its map
+  (`MapWidgetMixin`) to a plain `ModelAdmin`, removing the one GIS import that
+  admin autodiscovery drags in at startup on every host. Since 2026-10-01 the
+  map is GISModelAdmin's: every geometry field, inline rows included, is drawn
+  by `LocalOSMWidget` — Django's OSMWidget with the image's OpenLayers
+  (`vendor/openlayers/`), where OSMGeoAdmin fetched it from cdnjs and the
+  default widget from jsdelivr — over OpenStreetMap's tiles.
 - **Migrations** — a second graph `locations/migrations_nogis/` (selected via
   `MIGRATION_MODULES`) creates the same tables minus geometry. Since the
   2026-10-01 migrations reset it is *derived* from the GIS files: the same file

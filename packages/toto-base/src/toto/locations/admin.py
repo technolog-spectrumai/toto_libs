@@ -1,5 +1,5 @@
 from django.contrib import admin
-from toto.core.base_admin import TotoGeoAdmin, TotoModelAdmin
+from toto.core.base_admin import MapWidgetMixin, TotoGeoAdmin, TotoModelAdmin
 
 from .models import (
     HAS_GIS,
@@ -13,7 +13,9 @@ from .models import (
 )
 
 
-class RouteInline(admin.TabularInline):
+# The inline rows' maps are the platform's too (MapWidgetMixin, 2026-10-01):
+# Django's default widget fetched OpenLayers from cdn.jsdelivr.net.
+class RouteInline(MapWidgetMixin, admin.TabularInline):
     model = Route
     extra = 0
     fields = (("sequence", "name", "start_address", "end_address", "geometry")
@@ -22,7 +24,7 @@ class RouteInline(admin.TabularInline):
     ordering = ("sequence", "name")
 
 
-class MapLayerPolygonInline(admin.TabularInline):
+class MapLayerPolygonInline(MapWidgetMixin, admin.TabularInline):
     model = MapLayerPolygon
     extra = 0
     fields = (("name", "value", "center", "geometry", "properties")
