@@ -1,6 +1,6 @@
 # toto-auth
 
-`toto-auth` is the authentication distribution of the **toto** suite: it owns every way a person signs in to a toto host. It ships the three SSO apps that previously lived in `toto-base` — `toto.sso_core`, `toto.sso_master`, `toto.sso_client` — under the shared `toto.*` PEP 420 namespace, unchanged in import path, app label, url names and migrations. It is one of the lockstep-versioned wheels of the suite and depends on `toto-base`.
+`toto-auth` is the authentication distribution of the **toto** suite: it owns every way a person signs in to a toto host. It ships the three SSO apps that previously lived in `toto-base` — `toto.sso_core`, `toto.sso_master`, `toto.sso_client` — under the shared `toto.*` PEP 420 namespace, unchanged in import path, app label and url names (their migrations were reset to fresh initials on 2026-10-01). It is one of the lockstep-versioned wheels of the suite and depends on `toto-base`.
 
 ## What it does (functional)
 

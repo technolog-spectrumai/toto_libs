@@ -31,7 +31,7 @@ Domain models (`kanban/models.py`) extend `toto.core.domain.DomainEntity`, excep
 - **`Practitioner`** — a professional profile for a `people.Person`, independent of any single project: `role` (`contributor` / `reviewer` / `auditor` / `manager` / `observer`), `is_active`, `work_description`, `metadata`.
 - **`ProjectCommitment`** — the join that actually binds a practitioner to a project: `practitioner`, `project`, `hours_per_day`, `is_active`, date range, `metadata`, with a uniqueness constraint on `(practitioner, project)`.
 - **`Task`** — `mission`, `column`, optional `sprint` (`SET_NULL`), `title`, `description`, `assignee` and `reviewer` (both FK `Practitioner`, `SET_NULL`), `due_date`, `position`, `weight` on a Fibonacci scale (1/2/3/5/8, `FIB_SCALE`), `metadata`, `completed_at`. Its `clean()` enforces that the chosen column and sprint belong to the same project as the task's `mission → campaign → project`.
-- **`DocumentationPage`** — a wiki page. Extends `verbena.AbstractPage` with `project` (the space), a nullable self-FK `parent` (the tree), a nullable `mission`, `order`, `is_manual`, `body_html`, and `vault_file`. `slug` is redeclared to drop the abstract base's global `unique=True` and is scoped by a `(project, slug)` constraint instead — two projects both want a page called "getting-started". `DocumentationSection` is **gone**: a page's prose is one `body_html`, folded out of the section rows by migration `0005`.
+- **`DocumentationPage`** — a wiki page. Extends `verbena.AbstractPage` with `project` (the space), a nullable self-FK `parent` (the tree), a nullable `mission`, `order`, `is_manual`, `body_html`, and `vault_file`. `slug` is redeclared to drop the abstract base's global `unique=True` and is scoped by a `(project, slug)` constraint instead — two projects both want a page called "getting-started". `DocumentationSection` is **gone**: a page's prose is one `body_html`, folded out of the section rows by migration `0005` (before the 2026-10-01 reset).
 
   `body_html` is the read model and every host renders it. `vault_file` points at the `toto.cyprian` document the prose is *written* in, and is **`editable=False` on purpose** — it is the trust anchor `cyprian`'s bridge authorises against, so it must be writable only by `cyprian.bridge.open_document`. Putting it on a form, in admin fields or in a serialiser would let any project member point a page at any document on the instance. See `kanban/plugins/cyprian_bridges.py`.
 
@@ -47,7 +47,7 @@ Domain models (`kanban/models.py`) extend `toto.core.domain.DomainEntity`, excep
 
 memo has **no database models of its own** (`models.py` documents that the former
 `Tag` / `MemoDiagram` / `MemoDeck` / `MemoCard` models were dropped in migration
-`0002_drop_memo_models`). A presentation is one self-contained XML document
+`0002_drop_memo_models`, before the 2026-10-01 reset). A presentation is one self-contained XML document
 stored as a `VaultFile` with `file_type="presentation"` — images embedded as
 base64 `data:` URIs, SVGs inlined verbatim, nothing external to lose.
 
@@ -77,9 +77,10 @@ See `src/toto/memo/README.md` for the full picture. In brief:
   `toto.editor`) they could not have a Play button at all. There is **no content
   sniffing**: decks were once typed `presentation` but named `.xml`, so listings
   read up to 300 files off disk and retyped rows as a side effect of rendering a
-  page. Vault migration `0021_pxml_file_type` retyped the existing ones. The
-  legacy string `presentation` is still read, for the rows that migration could
-  not reach (mirrored stubs, s3/remote buckets, encrypted decks).
+  page. Vault migration `0021_pxml_file_type` retyped the existing ones (before the
+  2026-10-01 reset). The legacy string `presentation` is still read, for the rows
+  that migration could not reach (mirrored stubs, s3/remote buckets, encrypted
+  decks).
 - **URLs** (`urls.py`): `memo:index` (gallery, paginated, real thumbnails),
   `memo:read`, `memo:present`, `memo:export_pdf`. That is all of them.
   The raw-XML source editor is **retired**; its git toolbar moved onto the

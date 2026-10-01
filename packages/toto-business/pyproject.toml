@@ -14,7 +14,8 @@ requires-python = ">=3.10"
 #
 # toto-base is a HARD edge three times over: ForeignKey("vault.VaultFile") and
 # ForeignKey("people.Person") strings in company/models.py, and
-# company/migrations/0001 depending on vault 0022 + people 0004.
+# company/migrations/0001_initial depending on vault, people, locations and
+# events.
 dependencies = [
     "toto-base==1.51",
 ]

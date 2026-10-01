@@ -41,9 +41,9 @@ request.
 
 ### `vod` — in-browser playback
 
-No models: its two migrations create the original `VodCollection` / `VodVideo` /
-`VodAccessGrant` / `VodPlaybackEvent` tables and then drop them again, so the app is
-pure view code. It registers one `VaultPlayPlugin` per playable file type
+No models and no migration files (its old pair, which created the `VodCollection` /
+`VodVideo` / `VodAccessGrant` / `VodPlaybackEvent` tables and dropped them again, went
+at the 2026-10-01 migrations reset), so the app is pure view code. It registers one `VaultPlayPlugin` per playable file type
 (`video`, `audio`) in `plugins/vault_play_plugins.py`; the vault's Play button looks
 that registry up, so an uninstalled vod just renders a disabled button.
 
@@ -70,12 +70,12 @@ Two things about it are load-bearing and easy to undo by accident:
   redirects back to itself on `NoReverseMatch`. Before 1.21 an `if ocr: graph = True`
   closure cost five Neo4j apps and an auto-started neo4j container for a button that
   switches itself off.
-- **Its migrations depend on nothing.** `0001_initial` used to declare
-  `('workflows', '0001_initial')`, because a since-deleted `ImageTransform` had an FK
-  to `workflows.LambdaFunction`. That edge outlived the model and made `BUILD_OCR=1`
-  unmigratable without `BUILD_WORKFLOWS=1` — Django raises `NodeNotFoundError` for a
-  dependency on an uninstalled app. It is squashed into `0001_squashed_0002`, which
-  has no operations and no dependencies at all. Read that file's docstring before
+- **Its migration depends on the vault and the user model only.** Since the
+  2026-10-01 migrations reset ocr has one `0001_initial`. The old
+  `('workflows', '0001_initial')` edge is gone: a since-deleted `ImageTransform` had an
+  FK to `workflows.LambdaFunction`, and that edge outlived the model and made
+  `BUILD_OCR=1` unmigratable without `BUILD_WORKFLOWS=1` (Django raises
+  `NodeNotFoundError` for a dependency on an uninstalled app). Keep it that way when
   adding a model here.
 
 ### The shared Media sub-nav
@@ -112,8 +112,7 @@ apps with `path("vod/", include("toto.vod.urls"))` and
 
 `toto.vod` forces neither `workflows`, channels nor celery, has no tasks, owns
 no tables, and belongs in neither `registry.TASK_MODULES` nor a host's
-`APPS_TO_SYNC`. `migrate` is still required: its pair of migrations has to be
-recorded even though their net effect is nothing.
+`APPS_TO_SYNC`. It has nothing to migrate: no models and no migration files.
 
 **`toto.ocr` stopped being that kind of app in 1.51.** Reading a scan is one
 Celery task PER PAGE plus a nightly retention sweep, so it IS in

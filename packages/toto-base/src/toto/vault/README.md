@@ -439,7 +439,6 @@ and never branch on a provider.
 `VaultFile.bucket` is **PROTECT** (was SET_NULL): a bucket with files cannot be
 deleted except by the purge, and no file ever ends with `bucket=None` — which
 used to drop it out of its bucket's clearance keeping and leave its bytes behind.
-Migration `0028_bucket_management`.
 
 ### Kinds: the adapter interface
 

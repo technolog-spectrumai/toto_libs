@@ -19,7 +19,7 @@ Two integrations stay SOFT (lazy imports behind `apps.is_installed`, the
 seeds a spreadsheet only where **`toto.primula`** is present. A host without
 either installs and runs this wheel fine; exports refuse politely instead.
 
-Moved host → wheel in 1.50 from `zenobia/zenobia/toto/` with app labels and
-migrations preserved — existing deployments keep their tables. The ledger's
+Moved host → wheel in 1.50 from `zenobia/zenobia/toto/` with app labels
+preserved (every migration was reset to a fresh initial on 2026-10-01). The ledger's
 immutability triggers hardcode the table name `ledger_ledgerentry`; the app
 label must therefore stay `ledger` forever.

@@ -176,14 +176,15 @@ raw `.x/.y/.geojson` access — so a non-spatial backend is viable. The switch i
 - **`core/base_admin.py`** — `TotoGeoAdmin` falls back from `OSMGeoAdmin` to a
   plain `ModelAdmin`, removing the one GIS import that admin autodiscovery drags
   in at startup on every host.
-- **Migrations** — a second, hand-maintained graph
-  `locations/migrations_nogis/` (selected via `MIGRATION_MODULES`) creates the
-  same seven tables minus geometry, reusing node names so every cross-app
-  migration dependency (`people`, `events`, `socialhub`, `kanban`, `weather` →
-  `('locations','0001_initial')`) resolves unchanged. The two graphs are kept in
-  lockstep; `tests/test_django_check.py` runs `makemigrations --check` in both
-  modes to catch drift, and proves the GIS-off path boots and migrates with the
-  `contrib.gis` import blocked outright.
+- **Migrations** — a second graph `locations/migrations_nogis/` (selected via
+  `MIGRATION_MODULES`) creates the same tables minus geometry. Since the
+  2026-10-01 migrations reset it is *derived* from the GIS files: the same file
+  and node names (`0001_initial`–`0003_initial`), the same dependencies and
+  operations, with only the geometry fields and the `contrib.gis` import
+  dropped, so every cross-app dependency on `('locations', …)` resolves in both
+  modes. The two graphs are kept in lockstep; `tests/test_django_check.py` runs
+  `makemigrations --check` in both modes to catch drift, and proves the GIS-off
+  path boots and migrates with the `contrib.gis` import blocked outright.
 - **Map-dependent apps require GIS.** `resolve_features` raises if
   `BUILD_WEATHER`/`BUILD_TRAVELS` is set with `BUILD_GEO=0` (they read geometry
   and render map overlays) — an explicit build-time error rather than a silent
@@ -524,6 +525,9 @@ fails loudly with `No installed app with label '<app>'`.
   and `resolve_features` rejects `BUILD_WEATHER`/`BUILD_TRAVELS` under
   `BUILD_GEO=0`. faros ships a `BUILD_GEO=0` light onion profile; zenobia stays
   GIS-on. See "Making GIS optional" above.
+- **2026-10-01 — migrations reset.** Every app's history replaced by fresh
+  initials; four hand-written steps kept (api data_mesh group, ledger triggers,
+  kanban review policies; the host's wiki index); every database rebuilt.
 
 The current split: **zenobia** pins all ten packages and carries
 `zenobia/toto/{notarius,polls,sketch,travels,texlab}`; **faros** pins

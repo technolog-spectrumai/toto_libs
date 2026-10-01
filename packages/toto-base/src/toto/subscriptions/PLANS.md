@@ -198,17 +198,10 @@ that is what it is for.
 
 ## Migrating from the table
 
-There is no data-preserving migration. The four pre-2026-09-02 migrations were
-deleted and one `0001_initial` generated, so a host that ran the old ones must
-drop the subscriptions tables and their `django_migrations` rows before
-migrating. `zenobia/scripts/reset_subscriptions.py` does exactly that, dry-run
-by default.
-
-**The money is not in these tables.** Subscriptions, charges, discounts and
-audiences are destroyed; the journals in `toto.quota` and the balances in
-`toto.assets` are untouched. After migrating, run
-`manage.py ingress_subscriptions` to offer the default plan to every community,
-and re-create the paid offers.
+There is no migration path: every database was rebuilt from scratch at the
+2026-10-01 migrations reset, when every app's history was replaced by a fresh
+`0001_initial`. `zenobia/scripts/reset_subscriptions.py`, which served the
+databases from before 2026-09-02, is therefore obsolete.
 
 
 ## Plans for admins and all-features plans (1.51; 2026-09-26; 2026-09-28)
@@ -236,9 +229,9 @@ an account that is not a superuser — `Subscription.clean()` raises a
 nor a script can bypass `services.subscribe`. Writing such a row down as
 lapsed or cancelled is always allowed, the admin screen included: its form
 checks a plan only for a live row, so the row of an admin who was stepped
-down can be cancelled or lapsed there. Migration `0003` marks the rows that
-exist: it asks the plan registry the host runs, and falls back to the key
-`superuser` if the registry cannot load at migrate time. After a ladder edit
+down can be cancelled or lapsed there. `Subscription.save()` sets
+`for_admins` from the plan, so no migration backfills it (the old `0003` that
+marked existing rows went with the 2026-10-01 reset). After a ladder edit
 (a plan gains or loses the flag, the admin plan is renamed) the stored flag
 is re-read for every row by `services.sync_for_admins()`, which
 `bootstrap_plans` (so every deploy) and the billing sweep run; nothing
