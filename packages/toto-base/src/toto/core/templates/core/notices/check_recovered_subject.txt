@@ -1,0 +1,1 @@
+{% load i18n %}{% if site_name %}{{ site_name }}: {% endif %}{% blocktranslate %}{{ check_label }} is back to normal{% endblocktranslate %}

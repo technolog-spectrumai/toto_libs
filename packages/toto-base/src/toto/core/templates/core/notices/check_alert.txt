@@ -1,0 +1,12 @@
+{% load i18n %}{% autoescape off %}{% if event == "reminder" %}{% blocktranslate %}The check "{{ check_label }}" is still failing.{% endblocktranslate %}{% elif status == "fail" %}{% blocktranslate %}The check "{{ check_label }}" is failing.{% endblocktranslate %}{% elif status == "warn" %}{% blocktranslate %}The check "{{ check_label }}" needs attention.{% endblocktranslate %}{% else %}{% blocktranslate %}The check "{{ check_label }}" could not be run.{% endblocktranslate %}{% endif %}
+
+{{ summary }}{% if detail %}
+{{ detail }}{% endif %}
+{% if since %}
+{% blocktranslate with since=since|date:"Y-m-d H:i T" %}In this state since {{ since }}.{% endblocktranslate %}{% endif %}{% if remind_hours %}
+{% blocktranslate count counter=remind_hours %}While it keeps failing, a reminder follows every hour.{% plural %}While it keeps failing, a reminder follows every {{ counter }} hours.{% endblocktranslate %}{% endif %}{% if status_url %}
+
+{% translate "Every check, measured when the page opens:" %} {{ status_url }}{% endif %}
+
+{% translate "This mail is sent by the server itself, so no mail can tell you that the server is down." %}
+{% endautoescape %}

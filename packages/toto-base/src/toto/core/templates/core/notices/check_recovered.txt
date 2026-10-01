@@ -1,0 +1,8 @@
+{% load i18n %}{% autoescape off %}{% blocktranslate %}The check "{{ check_label }}" reports no problem any more.{% endblocktranslate %}
+
+{{ summary }}
+{% if bad_since %}
+{% blocktranslate with since=bad_since|date:"Y-m-d H:i T" %}It had needed attention since {{ since }}.{% endblocktranslate %}{% endif %}{% if status_url %}
+
+{% translate "Every check, measured when the page opens:" %} {{ status_url }}{% endif %}
+{% endautoescape %}

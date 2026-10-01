@@ -33,6 +33,12 @@ A kind is a pair of templates, ``core/notices/<kind>_subject.txt`` and
 logged refusal rather than a template error in production. The templates see
 the caller's context plus ``user``, ``site_name`` and ``when`` (now); they
 render in the member's language and time zone.
+
+**Operator alerts** leave through here too (2026-10-01): ``check_alert`` and
+``check_recovered``, sent by ``toto.monit.alerts`` when a scheduled check goes
+bad or comes back. They go to the addresses in ``ALERT_EMAILS``, not to an
+account, so the caller passes ``user=None`` and ``to=``; the templates never
+name a user, and render in the platform's language and time zone.
 """
 
 from __future__ import annotations
@@ -52,6 +58,9 @@ KINDS = frozenset({
     "new_sign_in",
     "email_change_confirm",
     "email_changed",
+    # To the operators, about the platform rather than an account.
+    "check_alert",
+    "check_recovered",
 })
 
 #: Carried to SMTP untouched; lets a mail log tell notices from other mail.
