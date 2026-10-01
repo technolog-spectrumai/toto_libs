@@ -12,7 +12,7 @@
           <h2 class="font-bold">{{ card.poll.title }}</h2>
           <span class="text-xs font-semibold {% if card.is_open %}{% else %}opacity-50{% endif %}"
                 {% if card.is_open %}:class="darkMode ? 'text-success-dark' : 'text-success-light'"{% endif %}>
-            {% if card.is_open %}{% trans "Open" %}{% else %}{% trans "Closed" %}{% endif %}
+            {% if card.is_open %}{% trans "Open" context "poll status" %}{% else %}{% trans "Closed" context "poll status" %}{% endif %}
           </span>
         </div>
         {% if card.poll.closes_at %}

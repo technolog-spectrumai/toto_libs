@@ -176,7 +176,7 @@ class ChannelLeaveView(LoginRequiredMixin, View):
                 member.is_active = False
                 member.save(update_fields=["is_active"])
 
-        messages.success(request, f"You left {channel.name}.")
+        messages.success(request, _("You left %(name)s.") % {"name": channel.name})
         return redirect("forum:channel_detail", slug=channel.slug)
 
 

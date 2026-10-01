@@ -71,7 +71,7 @@
                 class="w-full rounded border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
               <fieldset class="flex flex-wrap gap-4">
                 <legend class="mb-1 text-xs font-semibold opacity-70">{% trans "Who may join" %}</legend>
-                <label class="inline-flex items-center gap-1"><input type="radio" name="access" value="open" x-model="access" checked> <i class="fa-solid fa-door-open" aria-hidden="true"></i> {% trans "Open" %}</label>
+                <label class="inline-flex items-center gap-1"><input type="radio" name="access" value="open" x-model="access" checked> <i class="fa-solid fa-door-open" aria-hidden="true"></i> {% trans "Open" context "forum room access" %}</label>
                 <label class="inline-flex items-center gap-1"><input type="radio" name="access" value="password" x-model="access"> <i class="fa-solid fa-key" aria-hidden="true"></i> {% trans "Password" %}</label>
               </fieldset>
               <input x-show="access === 'password'" x-cloak type="password" name="password" minlength="{{ min_password }}" autocomplete="new-password"

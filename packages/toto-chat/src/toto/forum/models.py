@@ -7,7 +7,11 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.core.files.storage import FileSystemStorage
 from django.db import models
 from django.utils import timezone
-from django.utils.translation import gettext as _
+# Lazy (2026-10-01, 37c.11): choices, help texts and verbose names are read
+# at import, in the platform's default language, so a plain gettext froze
+# them in English for a Polish reader.
+from django.utils.translation import gettext_lazy as _
+from django.utils.translation import pgettext_lazy
 
 
 def message_attachment_upload_to(instance, filename):
@@ -109,7 +113,8 @@ class ForumChannel(models.Model):
     #: password yet — their members stay, nobody new joins until the room's
     #: creator or staff set one on the Members tab. A password will do.
     access = models.CharField(max_length=8, choices=[
-        ("open", _("Open")), ("password", _("Password"))], default="open")
+        ("open", pgettext_lazy("forum room access", "Open")), ("password", _("Password"))],
+        default="open")
     #: Messages and attachments stored as AES-256-GCM ciphertext under the
     #: room's key (rooms.py), never as plaintext. Not searchable.
     is_encrypted = models.BooleanField(default=False)
@@ -145,7 +150,10 @@ class ForumChannel(models.Model):
         if self.access == "password":
             out.append({"key": "password", "icon": "fa-key", "label": _("Password")})
         else:
-            out.append({"key": "open", "icon": "fa-door-open", "label": _("Open")})
+            # "Open" the adjective, not the button: Polish says "Otwarty" here
+            # and "Otwórz" on a link (2026-10-01, 37c.11).
+            out.append({"key": "open", "icon": "fa-door-open",
+                        "label": pgettext_lazy("forum room access", "Open")})
         if self.is_encrypted:
             out.append({"key": "encrypted", "icon": "fa-lock", "label": _("Encrypted")})
         if self.is_temporary:
@@ -383,9 +391,10 @@ class ForumMessage(models.Model):
 
 
 class PollStatus(models.TextChoices):
-    OPEN = "open", _("Open")
-    CLOSED = "closed", _("Closed")
-    CANCELLED = "cancelled", _("Cancelled")
+    # A poll's state, said of the poll (Polish: "Otwarta", not "Otwórz").
+    OPEN = "open", pgettext_lazy("poll status", "Open")
+    CLOSED = "closed", pgettext_lazy("poll status", "Closed")
+    CANCELLED = "cancelled", pgettext_lazy("poll status", "Cancelled")
 
 
 class Revisability(models.TextChoices):

@@ -21,7 +21,7 @@ it on the Security tab.{% endcomment %}
         {% for w in writers %}
         <tr class="border-b border-current/5" data-writer="{{ w.username }}">
           <td class="px-3 py-2">{{ w.name }}{% if w.username %} <span class="opacity-60">@{{ w.username }}</span>{% endif %}
-            {% if not w.member %}<span class="ml-1 text-xs opacity-60">({% trans "left" %})</span>{% endif %}</td>
+            {% if not w.member %}<span class="ml-1 text-xs opacity-60">({% trans "left" context "forum member" %})</span>{% endif %}</td>
           <td class="px-3 py-2 text-right tabular-nums">{{ w.messages }}</td>
           <td class="px-3 py-2 text-right tabular-nums">{{ w.files }}</td>
           <td class="px-3 py-2 text-right tabular-nums" title="{{ w.bytes }} B">{{ w.mb }}&nbsp;MB</td>
