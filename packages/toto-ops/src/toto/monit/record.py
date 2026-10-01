@@ -9,7 +9,8 @@ having, can the media store be written to, how long has the certificate got.
 Every check runs when the page is requested, and none is graphed — a broken
 audit chain is not interesting as a chart. Since 2026-10-01 the same checks
 also run on the beat, and a change is mailed (``toto.monit.alerts``); one of
-them asks whether the beat itself keeps time (``check_overdue``).
+them asks whether the beat itself keeps time (``check_overdue``), and one
+whether that mail still leaves (``check_mail``).
 
 Ported from the placidia truth book's ops app, generalised: the paths it
 probes come from settings every host has (`MEDIA_ROOT`) or declares
@@ -53,6 +54,10 @@ CERT_FAIL_DAYS = 7
 #: The handshake runs inside the Database page's request too; it must not
 #: hold the page for long when the name does not answer.
 CERT_TIMEOUT_SECONDS = 5
+#: The Mail check (2026-10-01) warns when this many notices in a row, of any
+#: kind and each after all its tries, could not be delivered: one is a
+#: refused address, several are the mail server or its password.
+MAIL_FAILURES_WARN = 3
 #: Names no certificate authority will vouch for: a local profile's, a lab's.
 PRIVATE_SUFFIXES = (".localhost", ".local", ".localdomain", ".internal", ".lan",
                     ".home.arpa", ".test", ".example", ".invalid")
@@ -437,8 +442,69 @@ def check_overdue():
                  value=str(len(late)))
 
 
+@_guard("mail", gettext_lazy("Mail"))
+def check_mail():
+    """Do the notices and the alert mail still leave (2026-10-01)?
+
+    Read off ``toto.core.models.NoticeDelivery``: the last outcome of each
+    notice kind, and how many sends in a row failed after every try
+    (``toto.core.notices``, on the worker five tries over about an hour).
+    WARN at ``MAIL_FAILURES_WARN``; a delivery of any kind makes it OK
+    again. A backend that delivers nothing (console, dummy) succeeds every
+    time and reaches nobody, so the detail says it.
+    """
+    from django.conf import settings
+    from django.utils import timezone
+
+    from toto.core.email_config import email_delivery_configured
+    from toto.core.models import NoticeDelivery
+
+    label = _("Mail")
+    rows = list(NoticeDelivery.objects.all())
+    failures = sum(row.failures for row in rows)
+    troubled = sorted((row for row in rows if row.status != NoticeDelivery.SENT),
+                      key=lambda row: row.updated_at, reverse=True)
+    notes = []
+    if not email_delivery_configured():
+        # "django.core.mail.backends.console.EmailBackend" is "console".
+        parts = str(getattr(settings, "EMAIL_BACKEND", "")).split(".")
+        backend = parts[-2] if len(parts) > 1 else parts[0]
+        notes.append(_("Nothing reaches anyone: the mail backend is %(backend)s.")
+                     % {"backend": backend})
+    notes += [_("%(kind)s: %(status)s, try %(tries)d, %(error)s, %(when)s") % {
+                  "kind": row.purpose, "status": row.get_status_display(),
+                  "tries": row.tries, "error": row.error or "—",
+                  "when": timezone.localtime(row.updated_at).strftime("%Y-%m-%d %H:%M")}
+              for row in troubled]
+    detail = "; ".join(str(note) for note in notes)
+
+    if failures >= MAIL_FAILURES_WARN:
+        failed = [row for row in troubled if row.status == NoticeDelivery.FAILED]
+        summary = ngettext("The last %(count)d notice could not be delivered.",
+                           "The last %(count)d notices could not be delivered.",
+                           failures) % {"count": failures}
+        if failed and failed[0].error:
+            summary += " " + _("Last error: %(error)s.") % {"error": failed[0].error}
+        return Check("mail", label, WARN, summary, detail=detail, value=str(failures))
+    sent = [row.sent_at for row in rows if row.sent_at]
+    if failures:
+        summary = ngettext(
+            "%(count)d notice in a row could not be delivered (a warning at %(limit)d).",
+            "%(count)d notices in a row could not be delivered (a warning at %(limit)d).",
+            failures) % {"count": failures, "limit": MAIL_FAILURES_WARN}
+    elif sent:
+        summary = _("The last notice was sent %(age)s.") % {
+            "age": _age((timezone.now() - max(sent)).total_seconds())}
+    elif rows:
+        summary = _("No notice has been delivered yet.")
+    else:
+        summary = _("No notice has been sent yet.")
+    return Check("mail", label, OK, summary, detail=detail, value=str(failures))
+
+
 ALL_CHECKS = (check_database, check_migrations, check_media, check_disk,
-              check_backups, check_audit, check_certificate, check_overdue)
+              check_backups, check_audit, check_certificate, check_overdue,
+              check_mail)
 
 
 def run_checks():

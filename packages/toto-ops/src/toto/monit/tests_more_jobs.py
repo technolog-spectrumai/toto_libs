@@ -389,7 +389,7 @@ class RecordCheckTests(TestCase):
             checks = record.run_checks()
         self.assertEqual([c.key for c in checks],
                          ["database", "migrations", "media", "disk", "backups", "audit",
-                          "certificate", "overdue"])
+                          "certificate", "overdue", "mail"])
         disk = next(c for c in checks if c.key == "disk")
         self.assertEqual(disk.status, record.UNKNOWN)
         self.assertIn("OSError", disk.detail)
