@@ -185,8 +185,10 @@ connected in `MonitConfig.ready()`, so no task has to do anything:
   `toto.core.error_reports`) — or the exception's type and message, scrubbed
   the same way, in `error`. `task_failure` closes a run the worker process
   saw fail (a child killed by the hard time limit never reaches its own
-  postrun). A retry reuses its row (one per task id). The receivers never
-  raise; a write that fails is logged and the task runs on.
+  postrun); a run nothing closed — the worker container stopped mid-run — is
+  closed as failed after six hours by the stuck-run sweeper (`sweeps.py`,
+  `toto.quota.sweeps`). A retry reuses its row (one per task id). The
+  receivers never raise; a write that fails is logged and the task runs on.
 - `beat_init` writes a `BeatEntry` per schedule entry: `first_seen`, when beat
   first started with it, and `last_seen`, its latest start.
 - The cadence comes from the schedule itself (`cadence_seconds`): an
