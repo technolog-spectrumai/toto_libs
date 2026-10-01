@@ -4,9 +4,9 @@ writes people's files, so the skips and refusals are pinned.
 """
 
 import tempfile
-from unittest import skip
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.contrib.messages import get_messages
 from django.core.files.base import ContentFile
 from django.test import TestCase, override_settings
@@ -96,17 +96,54 @@ class BulkEncryptTests(_Fixture):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/admin/login/", response["Location"])
 
-    @skip("BUG vault/admin.py:190 get_urls - encrypt/ and decrypt/ are wrapped only in "
-          "admin_site.admin_view (is_staff), never has_change_permission, so a staff account "
-          "with NO vault permission can encrypt any member's public file under a password of "
-          "its choosing (and take it private), or decrypt-and-publish an encrypted one")
+    def staff(self, *codenames):
+        """A staff account holding only the named vault permissions."""
+        staff = User.objects.create_user(f"staff-{'-'.join(codenames) or 'none'}",
+                                         password="pw", is_staff=True)
+        staff.user_permissions.set(Permission.objects.filter(
+            content_type__app_label="vault", codename__in=codenames))
+        return staff
+
     def test_staff_without_the_change_permission_cannot_encrypt_someones_file(self):
-        staff = User.objects.create_user("staff", password="pw", is_staff=True)
+        """Fixed 2026-10-01 (37c.22): both pages were wrapped only in
+        admin_view (is_staff), never has_change_permission, so a staff
+        account with NO vault permission could seal any member's public file
+        under a password of its choosing and take it private."""
         f = self.file("pub.txt")
-        self.client.force_login(staff)
-        self.client.post(self.url("encrypt", f), {"_selected_action": [f.pk], "password": "mine"})
+        for staff in (self.staff(), self.staff("view_vaultfile")):
+            with self.subTest(staff=staff.username):
+                self.client.force_login(staff)
+                self.assertEqual(self.client.get(self.url("encrypt", f)).status_code, 403)
+                response = self.client.post(self.url("encrypt", f),
+                                            {"_selected_action": [f.pk], "password": "mine"})
+                self.assertEqual(response.status_code, 403)
+                f.refresh_from_db()
+                self.assertFalse(f.is_encrypted)
+                self.assertTrue(f.is_public)
+
+    def test_staff_without_the_change_permission_cannot_decrypt_and_publish(self):
+        sealed = self.file("s.txt", public=False)
+        sealed.encrypt(password="pw")
+        self.client.force_login(self.staff("view_vaultfile"))
+        self.assertEqual(self.client.get(self.url("decrypt", sealed)).status_code, 403)
+        response = self.client.post(self.url("decrypt", sealed),
+                                    {"_selected_action": [sealed.pk], "password": "pw"})
+        self.assertEqual(response.status_code, 403)
+        sealed.refresh_from_db()
+        self.assertTrue(sealed.is_encrypted)
+        self.assertFalse(sealed.is_public)
+
+    def test_staff_with_the_change_permission_may_encrypt(self):
+        """The permission is the gate, not being a superuser."""
+        f = self.file("pub.txt")
+        self.client.force_login(self.staff("view_vaultfile", "change_vaultfile"))
+        self.assertEqual(self.client.get(self.url("encrypt", f)).status_code, 200)
+        response = self.client.post(self.url("encrypt", f),
+                                    {"_selected_action": [f.pk], "password": "mine"})
+        self.assertEqual(response.status_code, 302)
         f.refresh_from_db()
-        self.assertFalse(f.is_encrypted)
+        self.assertTrue(f.is_encrypted)
+        self.assertFalse(f.is_public)
 
     def test_an_empty_selection_is_not_a_500(self):
         """Fixed 2026-10-01 (found again by the 37c regression net): with no

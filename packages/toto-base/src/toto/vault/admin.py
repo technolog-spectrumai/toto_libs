@@ -1,4 +1,5 @@
 from django.contrib import admin, messages
+from django.core.exceptions import PermissionDenied
 from django.urls import NoReverseMatch, path, reverse
 from django.shortcuts import render, redirect
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
@@ -244,7 +245,16 @@ class VaultFileAdmin(admin.ModelAdmin):
         empty id and answer 500 (2026-10-01, the 37c regression net)."""
         return [part for part in request.GET.get('ids', '').split(',') if part.isdigit()]
 
+    def _require_change_permission(self, request):
+        """Both pages rewrite somebody's file — sealed under a password the
+        caller picks, or opened and published — so they ask what the change
+        page asks. admin_view alone asks only is_staff, which let a staff
+        account with no vault permission do either (2026-10-01, 37c.22)."""
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+
     def encrypt_view(self, request):
+        self._require_change_permission(request)
         ids = self._selected_ids(request)
         queryset = VaultFile.all_objects.filter(pk__in=ids)
         strategy = queryset.first().get_strategy() if queryset.exists() else None
@@ -274,6 +284,7 @@ class VaultFileAdmin(admin.ModelAdmin):
         return render(request, template, context)
 
     def decrypt_view(self, request):
+        self._require_change_permission(request)
         ids = self._selected_ids(request)
         queryset = VaultFile.all_objects.filter(pk__in=ids)
         strategy = queryset.first().get_strategy() if queryset.exists() else None
