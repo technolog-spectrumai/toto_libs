@@ -51,6 +51,16 @@ class LapsedCase(TestCase):
             "username": username, "email": email, "community": self.other.pk,
             "privacy_version": version, "privacy_accept": "on"})
 
+    def admit_and_move(self):
+        """Admitted through the application, then moved to another address
+        on My account: no account has the application's address any more."""
+        voucher = Person.objects.create(
+            user=User.objects.create_user("voucher", "v@example.com", "pw"), display_name="V")
+        ReferenceRequest.objects.create(application=self.application, referrer=voucher,
+                                        status="accepted")
+        User.objects.filter(pk=self.applicant.pk).update(is_active=True,
+                                                         email="moved@example.com")
+
     def refused(self, response, field="email"):
         self.assertEqual(response.status_code, 200)
         self.assertIn(field, response.context["form"].errors)
@@ -153,6 +163,14 @@ class RenewalTests(LapsedCase):
         User.objects.filter(pk=self.applicant.pk).update(is_active=True)
         self.refused(self.apply(username="newbie2"))
 
+    def test_a_members_old_address_does_not_renew_their_application(self):
+        # (2026-10-01) It read as a leftover once the member's account moved
+        # to another address: anybody typing the old one reset it.
+        self.admit_and_move()
+        self.refused(self.apply(username="someone"))
+        self.assertTrue(ReferenceRequest.objects.filter(application=self.application,
+                                                        status="accepted").exists())
+
     def test_an_account_that_holds_something_is_not_renewed(self):
         Person.objects.create(user=self.applicant, display_name="Newbie")
         self.refused(self.apply(username="newbie2"))
@@ -203,6 +221,14 @@ class PruneTests(LapsedCase):
         User.objects.filter(pk=self.applicant.pk).update(is_active=True)
         self.assertEqual(applications.prune(), {"pruned": 0, "accounts_deleted": 0, "kept": 0})
         self.assertEqual(self.gone(), (False, False))
+
+    def test_a_member_who_changed_their_address_keeps_their_application(self):
+        # (2026-10-01) The accepted reference says who got in through it,
+        # whatever address their account has now.
+        self.admit_and_move()
+        self.assertEqual(applications.prune(), {"pruned": 0, "accounts_deleted": 0, "kept": 0})
+        self.assertTrue(MembershipApplication.objects.filter(pk=self.application.pk).exists())
+        self.assertTrue(ReferenceRequest.objects.filter(application=self.application).exists())
 
     def test_an_account_that_signed_in_or_is_staff_is_somebodys(self):
         for flags in ({"last_login": timezone.now()}, {"is_staff": True}, {"is_superuser": True}):

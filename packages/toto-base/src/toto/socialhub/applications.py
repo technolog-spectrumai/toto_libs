@@ -28,9 +28,11 @@ every account with that e-mail (in any case) was never active, never signed
 in, is not staff, and owns nothing but what sign-up gives every account —
 ``erase_user``'s own walk (Django's deletion collector) is the proof
 (:func:`owns_nothing_else`). The application of a member who was admitted is
-their record, never housekeeping's; one whose account holds anything at all
-— a person, a privacy acceptance, a data export, an erasure request, a file
-— is kept, account and all, and counted.
+their record, never housekeeping's — known by its accepted reference
+(:func:`admitted`), not only by an account at its address, which a member
+who changed their e-mail no longer has; one whose account holds anything at
+all — a person, a privacy acceptance, a data export, an erasure request, a
+file — is kept, account and all, and counted.
 """
 
 from __future__ import annotations
@@ -108,10 +110,22 @@ def owns_nothing_else(account) -> bool:
     return not held - SIGNUP_ROWS
 
 
+def admitted(application) -> bool:
+    """Did somebody get in through ``application`` — a reference accepted?
+    Then it is that member's record (2026-10-01): a member who changed their
+    e-mail on My account has no account at its address any more, and without
+    this their application read as a leftover — pruned, references and all,
+    or renewed by whoever typed the old address."""
+    return application.reference_requests.filter(status="accepted").exists()
+
+
 def leftovers(application):
-    """The accounts ``application`` made, when every account with its address
-    never got in and owns nothing else; ``None`` when any did or does. An
-    empty list is an application whose account is already gone."""
+    """The accounts ``application`` made, when nobody got in through it and
+    every account with its address never got in and owns nothing else;
+    ``None`` when any did or does. An empty list is an application whose
+    account is already gone."""
+    if admitted(application):
+        return None
     accounts = accounts_of(application)
     if any(got_in(account) for account in accounts):
         return None
@@ -186,7 +200,7 @@ def prune(*, days=None, now=None) -> dict:
         try:
             with transaction.atomic():
                 application = MembershipApplication.objects.filter(pk=pk).first()
-                if application is None:
+                if application is None or admitted(application):
                     continue
                 accounts = accounts_of(application)
                 if any(got_in(account) for account in accounts):
