@@ -240,6 +240,22 @@ creates or deletes an account (console only; a first save creates the
   section shows the last export's status and links the zip;
   `PRIVACY.EXPORT_REQUESTED` (the member), `_READY` / `_FAILED` (the system:
   counts and the file's id, never contents).
+- **Erase my account** (`/account/erasure-request/`, 2026-10-01, RODO art.
+  17; `erasure.py`): the member FILES an `ErasureRequest` after a
+  confirmation saying an operator carries it out at the console and what is
+  kept (the audit chain, the ledger, rows others need, backups). Nothing on
+  the web erases: a superuser on the Superuser plan sees the list at
+  `/socialhub/privacy/erasure/` (`socialhub:erasure_requests`, linked from
+  the notice's editor) with the console command for each open request
+  (`SOCIALHUB_ERASURE_COMMAND`, `{username}` shell-quoted; default
+  `python manage.py erase_user {username}`) and may only decline one, with a
+  note the member reads. toto.core's `erase_user --confirm` marks the
+  member's open request done inside its transaction and lists it in
+  `requests_closed`. The ticket's user is SET_NULL with a username snapshot,
+  so it outlives the account; one open request per member (a conditional
+  unique constraint). `PRIVACY.ERASURE_REQUESTED` (the member), `_DECLINED`
+  (the superuser; the note's length, not the note), `_DONE` (the system,
+  from the console).
 
 Every profile or time-zone change is a `SOCIALHUB.PROFILE_CHANGED` record
 naming the fields (`fields`), never their values; the password, e-mail,
@@ -313,7 +329,9 @@ declined; a member's own profile or time zone changed on My account
 (`PROFILE_CHANGED`, the field names only); a privacy notice version published
 (`PRIVACY.NOTICE_PUBLISHED`) and accepted by an applicant
 (`PRIVACY.NOTICE_ACCEPTED`); a copy of a member's data asked for, filed or
-failed (`PRIVACY.EXPORT_REQUESTED` / `_READY` / `_FAILED`). Communities and clearances are recorded apart — the chain is where
+failed (`PRIVACY.EXPORT_REQUESTED` / `_READY` / `_FAILED`); an erasure
+asked for, declined or carried out at the console
+(`PRIVACY.ERASURE_REQUESTED` / `_DECLINED` / `_DONE`). Communities and clearances are recorded apart — the chain is where
 a crossing of the two axes would show. Sign-ins, sign-outs and
 accounts are recorded by `toto.audit.identity`. See `toto/audit/README.md`.
 
