@@ -42,21 +42,30 @@ No vault model may carry a field named `uid` — `backup_engine` selects rows
 for signed, pullable archives purely on that name; `VaultConfig.ready()`
 enforces it structurally.
 
-### Pairing flow (superuser admin, v1)
+### Pairing flow (v1)
 
-The admin path below still works; the guided path is Storage → Management
-("Another Zenobia: share and connect" below), which does all three steps
-from the two Management pages and shows the code as a QR code too.
+The guided path is Storage → Management ("Another Zenobia: share and connect"
+below), which does all three steps from the two Management pages and shows
+the code as a QR code too. The exporting side is there ONLY (2026-10-01): the
+**Bucket grant** admin is a record and mints no code — no add, no "Rotate api
+key" (it showed the code in an admin message, which Django's message storage
+may keep in a cookie). Every field there is read-only but Active; unticking it,
+or the "Revoke the selected shares" action, is Management's Revoke
+(`share_views.revoke_share`, on the audit chain), and a revoked share stays
+revoked. The changelist says where shares are made and links there.
+Tests: `tests_grant_admin`.
 
-1. Exporting host: add a **Bucket grant** → the save message shows a base64
-   **pairing code** ONCE (`{"v":1, grant_uid, magic_token, api_key, bucket,
-   rights}`). Rotate = the "Rotate api key" action, new code shown once.
-2. Mounting host: add a **Bucket peer** → pick the federated host (from SSO
+1. Exporting host: Storage → Management → a bucket's **Share** → the base64
+   **pairing code** shown ONCE (`{"v":1, grant_uid, magic_token, api_key,
+   bucket, rights}`, plus `expires_at` and `host`). Rotate key there too, the
+   new code shown once.
+2. Mounting host: Management's **Connect a bucket from another Zenobia** — or
+   add a **Bucket peer** in the admin → pick the federated host (from SSO
    pairing rows) or type a URL, paste the code. The save probes the manifest
    once and stamps the result.
-3. Mounting host: create a Bucket with backend `remote_toto` and select the
-   peer. `storage_config` stays EMPTY — the peer FK is the whole transport
-   identity, so listings can never leak a URL or a token.
+3. Mounting host, admin path: create a Bucket with backend `remote_toto` and
+   select the peer. `storage_config` stays EMPTY — the peer FK is the whole
+   transport identity, so listings can never leak a URL or a token.
 
 The Remote tab that listed S3 and mounted buckets (and had full-page create
 forms for them) folded into **Storage → Management** (2026-09-30, see "The
@@ -605,7 +614,7 @@ library pytest suite does not collect them): `tests`, `tests_access`,
 `tests_api`, `tests_purge`, `tests_hardening`, `tests_peering`,
 `tests_peer_api`, `tests_mirror`, `tests_transfer`, `tests_remote_ui`,
 `tests_transfers_ui`, `tests_outbound`, `tests_bucket_transition`,
-`tests_remote_page`, `tests_clearances`, `tests_storage_adapters`, `tests_clearance_tab`, `tests_management`, `tests_share_connect`, `tests_trash`, `tests_trash_doors`, `tests_trash_page` — wired in zenobia's gate, core four in placidia's.
+`tests_remote_page`, `tests_clearances`, `tests_storage_adapters`, `tests_clearance_tab`, `tests_management`, `tests_share_connect`, `tests_trash`, `tests_trash_doors`, `tests_trash_page`, `tests_grant_admin` — wired in zenobia's gate, core four in placidia's.
 The two-host harness is a loopback: `peer_client._http` patched into
 Django's test client against the real peer views (one DB, clearing's
 pattern).

@@ -9,19 +9,15 @@ import base64
 import json
 from unittest import mock
 
-from django.contrib import admin as django_admin
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.utils import timezone
 
-from .admin import (
-    BucketGrantAdmin, _decode_pairing_code, _pairing_code_for,
-)
 from .models import Bucket, StorageBackend
 from .peering import (
     BUCKET_RIGHTS, BucketGrant, BucketPeer, PEER_PATH, decode_pairing_code,
-    has_bucket_right,
+    has_bucket_right, pairing_code_for,
 )
 
 User = get_user_model()
@@ -186,8 +182,8 @@ class PairingCodeTests(TestCase):
         grant = BucketGrant.objects.create(
             label="peer", bucket=self.bucket, may_list=True, may_download=True)
         raw = grant.issue_api_key()
-        code = _pairing_code_for(grant, raw)
-        payload = _decode_pairing_code(code)
+        code = pairing_code_for(grant, raw)
+        payload = decode_pairing_code(code)
         self.assertEqual(payload["v"], 1)
         self.assertEqual(payload["grant_uid"], str(grant.grant_uid))
         self.assertEqual(payload["magic_token"], grant.magic_token)
@@ -198,16 +194,16 @@ class PairingCodeTests(TestCase):
     def test_garbage_and_wrong_version_refused_with_a_sentence(self):
         from django import forms
         with self.assertRaises(forms.ValidationError):
-            _decode_pairing_code("not-base64!!")
+            decode_pairing_code("not-base64!!")
         bad_version = base64.b64encode(
             json.dumps({"v": 2, "grant_uid": "g", "magic_token": "m",
                         "api_key": "k"}).encode()).decode()
         with self.assertRaises(forms.ValidationError):
-            _decode_pairing_code(bad_version)
+            decode_pairing_code(bad_version)
         missing = base64.b64encode(
             json.dumps({"v": 1, "grant_uid": "g"}).encode()).decode()
         with self.assertRaises(forms.ValidationError):
-            _decode_pairing_code(missing)
+            decode_pairing_code(missing)
 
     def test_every_decode_sentence_is_in_the_readers_language(self):
         # 2026-10-01 (todo 29.10): the version and missing-parts sentences
@@ -228,35 +224,3 @@ class PairingCodeTests(TestCase):
                         decode_pairing_code(code)
                     self.assertTrue(caught.exception.messages[0].startswith(start),
                                     caught.exception.messages)
-
-    def test_admin_create_shows_code_once_and_stores_no_raw_key(self):
-        grant = BucketGrant(label="peer", bucket=self.bucket, may_list=True)
-        grant_admin = BucketGrantAdmin(BucketGrant, django_admin.site)
-        request = mock.Mock(user=self.owner)
-        with mock.patch.object(grant_admin, "message_user") as message_user:
-            grant_admin.save_model(request, grant, form=None, change=False)
-        message_user.assert_called_once()
-        shown = str(message_user.call_args.args[1])
-        payload = _decode_pairing_code(
-            shown[shown.index("<code"):].split(">", 1)[1].split("<", 1)[0])
-        stored = BucketGrant.objects.get(pk=grant.pk)
-        self.assertTrue(stored.verify_api_key(payload["api_key"]))
-        self.assertNotIn(payload["api_key"], stored.api_key_hash)
-        # Re-saving (a change) shows nothing — the code exists exactly once.
-        with mock.patch.object(grant_admin, "message_user") as message_user:
-            grant_admin.save_model(request, stored, form=None, change=True)
-        message_user.assert_not_called()
-
-    def test_rotate_action_invalidates_old_key(self):
-        grant = BucketGrant.objects.create(label="peer", bucket=self.bucket)
-        old_raw = grant.issue_api_key()
-        grant.save()
-        grant_admin = BucketGrantAdmin(BucketGrant, django_admin.site)
-        request = mock.Mock(user=self.owner)
-        with mock.patch.object(grant_admin, "message_user") as message_user:
-            grant_admin.rotate_api_key(
-                request, BucketGrant.objects.filter(pk=grant.pk))
-        message_user.assert_called_once()
-        stored = BucketGrant.objects.get(pk=grant.pk)
-        self.assertFalse(stored.verify_api_key(old_raw))
-        self.assertIsNotNone(stored.key_rotated_at)

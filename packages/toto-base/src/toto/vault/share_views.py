@@ -495,16 +495,25 @@ def manage_share_rotate(request, grant_pk):
     return _code_response(request, grant, code, rotated=True)
 
 
+def revoke_share(grant, actor) -> bool:
+    """End a share at once — the other Zenobia can no longer use the bucket —
+    and record it; False when it was revoked already. The row stays for the
+    record and is never revived. Revoke here and the admin's revoke
+    (``admin.BucketGrantAdmin``, 2026-10-01) both come through this."""
+    revoked = BucketGrant.objects.filter(pk=grant.pk, is_active=True).update(is_active=False)
+    if revoked:
+        grant.is_active = False
+        _audit_share("share_revoked", grant, actor)
+    return bool(revoked)
+
+
 @superuser_plan_door(json=True)
 @require_POST
 def manage_share_revoke(request, grant_pk):
     grant = BucketGrant.objects.select_related("bucket").filter(pk=grant_pk).first()
     if grant is None:
         return _refuse(_("No such share."), status=404)
-    revoked = BucketGrant.objects.filter(pk=grant.pk, is_active=True).update(is_active=False)
-    if revoked:
-        grant.is_active = False
-        _audit_share("share_revoked", grant, request.user)
+    revoke_share(grant, request.user)
     listing = _listing(grant.bucket)
     listing["message"] = _("The share for %(label)s is revoked: the other Zenobia can no longer "
                            "use this bucket.") % {"label": grant.label}

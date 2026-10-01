@@ -1,15 +1,10 @@
-import base64
-import json
-
-from django import forms
-from django.apps import apps as django_apps
 from django.contrib import admin, messages
-from django.urls import path, reverse
+from django.urls import NoReverseMatch, path, reverse
 from django.shortcuts import render, redirect
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
-from django.utils import timezone
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ngettext
 
 from toto.quota.admin import QuotaPolicyAdminBase, UsageEventAdminBase
 
@@ -24,17 +19,11 @@ from .peering import (
     BucketGrant,
     BucketPeer,
     apply_manifest,
-    decode_pairing_code,
-    federated_host_choices,
-    pairing_code_for,
 )
 
-# The wire format and the SSO host lookup moved to peering.py so a non-admin
-# door can use them. These aliases stay because tests import the private names
-# from this module, and because one wire format means one definition.
-_pairing_code_for = pairing_code_for
-_decode_pairing_code = decode_pairing_code
-_federated_host_choices = federated_host_choices
+# The pairing code's wire format lives in peering.py (``pairing_code_for``,
+# ``decode_pairing_code``). This module mints no code since 2026-10-01: shares
+# are made, and their keys rotated, in Storage → Management (share_views.py).
 from toto.core.batch import BatchAction
 
 
@@ -377,24 +366,42 @@ class VaultDirectoryAdmin(admin.ModelAdmin):
 
 @admin.register(BucketGrant)
 class BucketGrantAdmin(admin.ModelAdmin):
-    """Exports: "that peer may use this bucket". Superuser-only.
+    """Exports: "that peer may use this bucket". Superuser-only, and a record.
+
+    Shares are made, and their keys rotated, in Storage → Management's Share
+    flow (``share_views.py``), the one place a pairing code is ever shown:
+    once, in the page, never stored. This admin minted codes too — on add and
+    on a "Rotate api key" action — and showed them in an admin message, which
+    Django's message storage may keep in a cookie; since 2026-10-01 it mints
+    none (no add, no rotate) and says where shares are made instead.
 
     Deleting a grant is blocked — revoking is ``is_active = False``, which
-    keeps the audit trail (who read what, from where, until when). The pairing
-    code is shown ONCE, in the save message; after that only the hint column
-    knows which key is live.
+    keeps the audit trail (who read what, from where, until when). Unticking
+    Active, or the "Revoke the selected shares" action, is Management's Revoke
+    (``share_views.revoke_share``: at once, on the audit chain); every other
+    field is read-only, and a revoked share stays revoked.
     """
 
     list_display = ("label", "bucket", "rights_display", "is_active",
                     "expires_at", "api_key_hint", "last_read_at", "read_count")
     list_filter = ("is_active", "bucket")
     search_fields = ("label", "bucket__name", "bucket__slug")
-    readonly_fields = ("grant_uid", "magic_token", "api_key_hint",
+    #: Everything but Active: whom a share is for, its bucket, its rights and
+    #: its end date are set when it is made, in Management — a bucket or a
+    #: right changed here would widen a code already handed over.
+    readonly_fields = ("label", "bucket", "expires_at",
+                       "may_list", "may_download", "may_upload", "may_delete",
+                       "grant_uid", "magic_token", "api_key_hint",
                        "key_rotated_at", "created_by", "created_at",
                        "last_read_at", "read_count", "last_peer_ip")
     fieldsets = (
         (None, {
             "fields": ("label", "bucket", "is_active", "expires_at"),
+            "description": _(
+                "Shares are made, and their keys rotated, in Storage → "
+                "Management (a bucket's Share), which shows the pairing code "
+                "once. Here a share can only be revoked: untick Active and "
+                "save. A revoked share stays revoked."),
         }),
         ("Capabilities", {
             "fields": ("may_list", "may_download", "may_upload", "may_delete"),
@@ -416,7 +423,7 @@ class BucketGrantAdmin(admin.ModelAdmin):
             "classes": ("collapse",),
         }),
     )
-    actions = ["rotate_api_key"]
+    actions = ["revoke_shares"]
 
     def rights_display(self, obj):
         granted = [r.removeprefix("may_") for r in BUCKET_RIGHTS
@@ -432,7 +439,9 @@ class BucketGrantAdmin(admin.ModelAdmin):
         return request.user.is_superuser and super().has_view_permission(request, obj)
 
     def has_add_permission(self, request):
-        return request.user.is_superuser and super().has_add_permission(request)
+        # Making a share mints its code: Storage → Management's Share does
+        # that, and shows it once in the page (2026-10-01).
+        return False
 
     def has_change_permission(self, request, obj=None):
         return request.user.is_superuser and super().has_change_permission(request, obj)
@@ -446,37 +455,46 @@ class BucketGrantAdmin(admin.ModelAdmin):
         # Revoke instead: is_active=False keeps the audit trail.
         return False
 
-    def save_model(self, request, obj, form, change):
-        if not change:
-            obj.created_by = request.user
-            raw_key = obj.issue_api_key()
-            super().save_model(request, obj, form, change)
-            self.message_user(
-                request,
-                format_html(
-                    "Pairing code for {} — copy it NOW, it is not stored and "
-                    "cannot be shown again:<br>"
-                    '<code style="user-select:all; word-break:break-all">{}</code>',
-                    obj.label, _pairing_code_for(obj, raw_key)),
-                messages.WARNING)
-        else:
-            super().save_model(request, obj, form, change)
+    def get_readonly_fields(self, request, obj=None):
+        readonly = list(super().get_readonly_fields(request, obj))
+        if obj is not None and not obj.is_active:
+            # Never revived: a share's old code would work again (Management's
+            # rule — make a new share instead).
+            readonly.append("is_active")
+        return readonly
 
-    @admin.action(description="Rotate api key (mints a new pairing code)")
-    def rotate_api_key(self, request, queryset):
-        for grant in queryset:
-            raw_key = grant.issue_api_key()
-            grant.key_rotated_at = timezone.now()
-            grant.save(update_fields=["api_key_hash", "api_key_hint",
-                                      "key_rotated_at"])
-            self.message_user(
-                request,
-                format_html(
-                    "New pairing code for {} — the old key stopped working; "
-                    "copy this NOW, it cannot be shown again:<br>"
-                    '<code style="user-select:all; word-break:break-all">{}</code>',
-                    grant.label, _pairing_code_for(grant, raw_key)),
-                messages.WARNING)
+    def changelist_view(self, request, extra_context=None):
+        # The list says where shares are made, with a link
+        # (admin/vault/bucketgrant/change_list.html).
+        try:
+            manage_url = reverse("vault:manage")
+        except NoReverseMatch:
+            manage_url = ""
+        return super().changelist_view(
+            request, {**(extra_context or {}), "manage_url": manage_url})
+
+    def save_model(self, request, obj, form, change):
+        # Active is the one field the form carries: unticked on a live share,
+        # it is Management's Revoke. Nothing else is ever saved here.
+        if change and not obj.is_active:
+            from .share_views import revoke_share
+
+            revoke_share(obj, request.user)
+
+    @admin.action(description=_("Revoke the selected shares"), permissions=["change"])
+    def revoke_shares(self, request, queryset):
+        from .share_views import revoke_share
+
+        revoked = sum(revoke_share(grant, request.user)
+                      for grant in queryset.select_related("bucket"))
+        if not revoked:
+            self.message_user(request, _("Nothing to revoke: those shares were revoked already."),
+                              messages.INFO)
+            return
+        self.message_user(request, ngettext(
+            "%(count)d share revoked: the other Zenobia can no longer use its bucket.",
+            "%(count)d shares revoked: the other Zenobias can no longer use their buckets.",
+            revoked) % {"count": revoked}, messages.SUCCESS)
 
 
 @admin.register(BucketPeer)

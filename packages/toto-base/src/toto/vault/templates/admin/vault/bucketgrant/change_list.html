@@ -1,0 +1,13 @@
+{% extends "admin/change_list.html" %}
+{% load i18n %}
+{% comment %}The bucket grants are a record here (2026-10-01): shares are made, and
+   their keys rotated, in Storage → Management, the one place a pairing code
+   is shown — once, in the page. This list can only revoke. `manage_url` from
+   BucketGrantAdmin.changelist_view.{% endcomment %}
+{% block object-tools %}
+  <p class="help" data-testid="bucketgrant-made-in-management">
+    {% translate "Shares are made, and their keys rotated, in Storage → Management (a bucket's Share), which shows the pairing code once. Here a share can only be revoked." %}
+    {% if manage_url %}<a href="{{ manage_url }}">{% translate "Open Storage → Management" %}</a>{% endif %}
+  </p>
+  {{ block.super }}
+{% endblock %}
