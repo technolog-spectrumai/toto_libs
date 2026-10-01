@@ -214,8 +214,8 @@ that is what it is for.
 
 There is no migration path: every database was rebuilt from scratch at the
 2026-10-01 migrations reset, when every app's history was replaced by a fresh
-`0001_initial`. `zenobia/scripts/reset_subscriptions.py`, which served the
-databases from before 2026-09-02, is therefore obsolete.
+`0001_initial`. The script that served the databases from before 2026-09-02
+was deleted in 37c.14.
 
 
 ## Plans for admins and all-features plans (1.51; 2026-09-26; 2026-09-28)

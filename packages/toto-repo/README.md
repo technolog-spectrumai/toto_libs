@@ -170,6 +170,7 @@ that. It split here, into `toto-repo`, when the two halves turned out to belong
 to different hosts.
 
 The split renamed the app label, so the `gitvault_*` tables are dropped rather
-than migrated (`zenobia/scripts/drop_departed_tables.py`). That was affordable
+than migrated (by a drop script, deleted in 37c.14 once every database had
+been rebuilt on fresh migrations). That was affordable
 because they held no repositories, no runs and no accounts — only two seeded
 quota-policy rows.

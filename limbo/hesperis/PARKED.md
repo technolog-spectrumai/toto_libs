@@ -57,8 +57,7 @@ on a host with no economy at all.
 
 They hold real contributions, real review outcomes and real published releases,
 and unlike a rename or a split there is nothing here that needs the schema to
-change. **It is not in `zenobia/scripts/drop_departed_tables.py`, and it must
-not be added** — the same call `limbo/polls/PARKED.md` and
+change. **No drop script may name them** — the same call `limbo/polls/PARKED.md` and
 `zenobia/limbo/quizzes/PARKED.md` make, for the same reason. Nothing recreates
 these tables, and nothing else references them.
 

@@ -34,8 +34,7 @@ every host's real `polls.pdf` limits and usage history, and the metric's code
 was never renamed precisely so those limits would survive.
 
 If you *want* the old consultations and votes gone — the poll data specifically,
-not the quizzes — use `zenobia/scripts/drop_departed_tables.py`, which is a dry
-run by default and needs `--i-have-a-dump-at`. Drop only `polls_ballot`,
+not the quizzes — take a dump first, then drop only `polls_ballot`,
 `polls_choice`, `polls_question`, child before parent, and **leave the quiz and
 quota tables alone**.
 
