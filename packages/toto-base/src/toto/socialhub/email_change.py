@@ -140,7 +140,8 @@ def _on_chain(name, user, request, **values):
 
 
 def request_change(user, new_email: str, *, request) -> bool:
-    """Mail the confirmation link to ``new_email``; True when the backend took it.
+    """Mail the confirmation link to ``new_email``; True when it is on its way
+    (``send_notice``: queued for the worker, or taken by the backend).
 
     The caller has validated the address (``AccountEmailForm``). Whatever the
     mail's fate, the request is on the chain and the row waits: a member whose
