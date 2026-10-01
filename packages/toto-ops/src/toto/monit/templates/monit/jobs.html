@@ -38,6 +38,69 @@
       </div>
     {% endif %}
 
+    {% comment %}The schedule's heartbeats (2026-10-01): each beat entry, how
+    often it should run, what it last did and whether it is overdue —
+    toto.monit.heartbeats. The list further down is every run; this is the
+    newest of each.{% endcomment %}
+    {% if schedule %}
+      <section class="space-y-2" aria-labelledby="schedule-title" data-testid="schedule">
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="schedule-title" class="text-lg font-bold">{% trans "Schedule" %}</h2>
+          <p class="text-xs opacity-70">
+            {% if beat_started %}{% blocktranslate with when=beat_started|date:"j M H:i" %}Celery beat last started {{ when }}.{% endblocktranslate %}
+            {% else %}{% trans "No start of celery beat has been recorded." %}{% endif %}</p>
+        </div>
+
+        {# Wide screens: a table. #}
+        <div class="hidden overflow-x-auto rounded-lg border md:block"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <table class="w-full text-left text-sm" data-testid="schedule-table">
+            <thead class="text-xs uppercase opacity-70">
+              <tr>
+                <th scope="col" class="px-3 py-2">{% trans "Entry" %}</th>
+                <th scope="col" class="px-3 py-2">{% trans "Every" %}</th>
+                <th scope="col" class="px-3 py-2">{% trans "Last started" %}</th>
+                <th scope="col" class="px-3 py-2">{% trans "Outcome" %}</th>
+                <th scope="col" class="px-3 py-2">{% trans "On time" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for entry in schedule %}
+                <tr class="border-t align-top" :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'"
+                    data-testid="schedule-row-{{ entry.name }}">
+                  <th scope="row" class="px-3 py-2 font-semibold">{{ entry.name }}
+                    <span class="block break-all font-mono text-xs font-normal opacity-50">{{ entry.task }}</span></th>
+                  <td class="whitespace-nowrap px-3 py-2">{{ entry.cadence_text }}</td>
+                  <td class="whitespace-nowrap px-3 py-2">
+                    {% if entry.last %}{{ entry.last.started_at|date:"j M H:i:s" }}{% else %}<span class="opacity-60">{% trans "Never" %}</span>{% endif %}</td>
+                  <td class="px-3 py-2">{% include "monit/partials/_run_outcome.html" with run=entry.last %}</td>
+                  <td class="whitespace-nowrap px-3 py-2">{% include "monit/partials/_entry_state.html" %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        {# Narrow screens: a card per entry. #}
+        <div class="space-y-3 md:hidden" data-testid="schedule-cards">
+          {% for entry in schedule %}
+            <article class="space-y-2 rounded-lg border p-4 text-sm"
+                     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+              <h3 class="font-semibold">{{ entry.name }}
+                <span class="block break-all font-mono text-xs font-normal opacity-50">{{ entry.task }}</span></h3>
+              <div>{% include "monit/partials/_entry_state.html" %}</div>
+              <dl class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                <dt class="opacity-60">{% trans "Every" %}</dt><dd>{{ entry.cadence_text }}</dd>
+                <dt class="opacity-60">{% trans "Last started" %}</dt>
+                <dd>{% if entry.last %}{{ entry.last.started_at|date:"j M H:i:s" }}{% else %}{% trans "Never" %}{% endif %}</dd>
+              </dl>
+              <div>{% include "monit/partials/_run_outcome.html" with run=entry.last %}</div>
+            </article>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
     <div class="flex flex-wrap items-center gap-2">
       {% for name, count in summary.items %}
         <a href="?{% if active_source %}source={{ active_source }}&amp;{% endif %}{% if active_status != name %}status={{ name }}{% endif %}"
@@ -125,7 +188,8 @@
     <p class="text-xs opacity-60">
       {% comment %}Said on the page, not only in the module docstring: a
       monitor that hides its own blind spot is worse than none.{% endcomment %}
-      {% trans "Read from the apps' own run records, not from Celery — a Redis result backend cannot list tasks. A job that writes no row of its own, or that died before writing one, does not appear here." %}</p>
+      {% trans "Read from the apps' own run records, not from Celery — a Redis result backend cannot list tasks. A job that writes no row of its own, or that died before writing one, does not appear here." %}
+      {% trans "Scheduled tasks are the exception: Celery's own signals record every run of a task the beat names." %}</p>
   </div>
 </main>
 {% endblock %}

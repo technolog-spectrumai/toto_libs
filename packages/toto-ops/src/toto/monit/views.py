@@ -1,4 +1,5 @@
 import json
+import logging
 import math
 from datetime import timedelta
 
@@ -16,6 +17,8 @@ from toto.ui import PageProcessor
 
 from . import collectors
 from .models import Snapshot
+
+log = logging.getLogger(__name__)
 
 # Chart series colors: validated per co-occurring chart set for light AND dark
 # surfaces (dataviz validator); each dataset carries its dark variant and the
@@ -310,7 +313,21 @@ class JobsView(MonitAccessMixin, TemplateView):
 
         rows = jobs_mod.recent_jobs(status=status, source_key=source_key)
 
+        # The schedule's heartbeats (2026-10-01): one line per beat entry —
+        # its cadence, its newest run, whether it is overdue. The list below
+        # is every run; this is what each entry last did. Never a 500 for it.
+        from toto.monit import heartbeats
+
+        try:
+            schedule = heartbeats.entries()
+            beat_started = heartbeats.beat_started()
+        except Exception:  # noqa: BLE001 - the page must render without it
+            log.warning("monit: the schedule could not be read", exc_info=True)
+            schedule, beat_started = None, None
+
         context.update({
+            "schedule": schedule,
+            "beat_started": beat_started,
             "page_title": "Jobs",
             "jobs": rows[:400],
             "summary": jobs_mod.summary(rows),

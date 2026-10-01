@@ -1,0 +1,13 @@
+{% load i18n %}{# params: entry (toto.monit.heartbeats.EntryState) #}
+{% if entry.status == "ok" %}
+  <span :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+    <i class="fa-solid fa-circle-check" aria-hidden="true"></i> {% trans "On time" %}</span>
+{% elif entry.status == "warn" %}
+  <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+    <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> {% trans "Overdue" %}</span>
+{% elif entry.status == "fail" %}
+  <span class="font-bold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+    <i class="fa-solid fa-circle-xmark" aria-hidden="true"></i> {% trans "Long overdue" %}</span>
+{% else %}
+  <span class="opacity-60"><i class="fa-solid fa-circle-minus" aria-hidden="true"></i> {% trans "Not judged" %}</span>
+{% endif %}

@@ -1,0 +1,20 @@
+{% load i18n %}{# params: run (monit.TaskRun or None) #}
+{% if not run %}
+  <span class="opacity-60">—</span>
+{% else %}
+  {% if run.status == "success" %}
+    <span><i class="fa-solid fa-check" aria-hidden="true"></i> {% trans "Succeeded" %}</span>
+  {% elif run.status == "failed" %}
+    <span class="font-bold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+      <i class="fa-solid fa-circle-xmark" aria-hidden="true"></i> {% trans "Failed" %}</span>
+  {% elif run.status == "running" %}
+    <span class="font-semibold"><i class="fa-solid fa-spinner" aria-hidden="true"></i> {% trans "Running" %}</span>
+  {% elif run.status == "retry" %}
+    <span class="opacity-80"><i class="fa-regular fa-clock" aria-hidden="true"></i> {% trans "Retrying" %}</span>
+  {% else %}
+    <span class="opacity-80">{{ run.status }}</span>
+  {% endif %}
+  {% if run.duration_s is not None %}<span class="text-xs opacity-60">· {% blocktranslate with seconds=run.duration_s %}{{ seconds }} s{% endblocktranslate %}</span>{% endif %}
+  {% if run.summary %}<p class="mt-1 break-words text-xs opacity-70">{{ run.summary }}</p>{% endif %}
+  {% if run.error %}<p class="mt-1 break-words text-xs" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ run.error }}</p>{% endif %}
+{% endif %}
