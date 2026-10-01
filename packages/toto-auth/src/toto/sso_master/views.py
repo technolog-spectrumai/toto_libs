@@ -556,12 +556,11 @@ def platform_info(request):
 
 
 def _minted_context(minted):
-    """The QR panel context, matching the admin pair page's `minted` shape."""
-    from toto.sso_core import qr
-
+    """The QR panel context, matching the admin pair page's `minted` shape.
+    No picture in it (2026-10-01, 37c.30): the page draws the QR code in the
+    browser from the ticket, with the vendored qrcodejs."""
     return {
         "ticket": minted.ticket,
-        "qr": qr.render_data_uri(minted.ticket),
         "seconds": minted.invite.seconds_remaining(),
         "host": minted.invite.expected_host,
         "scopes": minted.invite.granted_scopes,

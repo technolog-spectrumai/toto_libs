@@ -1,5 +1,5 @@
 {% extends "admin/base_site.html" %}
-{% load i18n %}
+{% load i18n static %}
 
 {% block title %}{{ title }}{% endblock %}
 
@@ -21,8 +21,16 @@
     </p>
 
     <div style="display:flex;gap:1.5rem;align-items:flex-start;flex-wrap:wrap;">
-      <img src="{{ minted.qr }}" alt="{% trans 'Pairing QR code' %}"
-           style="width:260px;height:260px;background:#fff;padding:8px;border:1px solid #ddd;border-radius:6px;">
+      {% comment %}Drawn in this browser from exactly the code beside it, with the
+         vendored qrcodejs (2026-10-01, 37c.30) — never by a QR service, and no
+         longer by the server, whose QR library (OpenCV) left the image.{% endcomment %}
+      <div style="width:278px;">
+        <div data-pairing-qr-frame style="background:#fff;padding:8px;border:1px solid #ddd;border-radius:6px;">
+          <div id="pairing-qr" data-pairing-qr role="img" aria-label="{% trans 'Pairing QR code' %}"
+               style="width:260px;height:260px;"></div>
+        </div>
+        <p id="pairing-qr-missing" hidden style="margin:.5rem 0 0;color:#555;font-size:.85rem;">{% trans "The QR code could not be drawn in this browser; the code beside it works the same." %}</p>
+      </div>
 
       <div style="flex:1;min-width:260px;">
         <p style="margin:0 0 .35rem;font-weight:600;">{% trans "Or paste this code" %}</p>
@@ -50,7 +58,31 @@
       </a>
     </p>
 
+    <script src="{% static 'vendor/qrcodejs/qrcode.min.js' %}"></script>
     <script>
+      // The QR code of exactly the pairing code, drawn here; qrcodejs refuses
+      // some lengths at one correction level, so a lower one is tried before
+      // saying it could not be drawn.
+      (function () {
+        var holder = document.getElementById("pairing-qr");
+        var code = document.getElementById("pairing-code");
+        var drawn = false;
+        if (holder && code && window.QRCode) {
+          [QRCode.CorrectLevel.M, QRCode.CorrectLevel.L].some(function (level) {
+            try {
+              holder.innerHTML = "";
+              new QRCode(holder, {text: code.textContent.trim(), width: 260, height: 260,
+                                  colorDark: "#000000", colorLight: "#ffffff", correctLevel: level});
+              drawn = true;
+            } catch (e) { drawn = false; }
+            return drawn;
+          });
+        }
+        if (holder && !drawn) {
+          holder.parentNode.hidden = true;
+          document.getElementById("pairing-qr-missing").hidden = false;
+        }
+      })();
       // A live countdown, because the code is short-lived on purpose and an
       // operator carrying it to another machine needs to know how long they have.
       (function () {

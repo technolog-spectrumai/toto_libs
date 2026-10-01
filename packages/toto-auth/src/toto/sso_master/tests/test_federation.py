@@ -107,20 +107,54 @@ class FederationConsoleTests(TestCase):
         self.assertIn("Studio", body)
         self.assertIn("studio.test", body)
 
+    def assert_the_browser_draws_the_qr(self, res):
+        """The QR code is drawn in the browser from the code on the page
+        (2026-10-01, 37c.30): the vendored qrcodejs, its holder and the
+        ticket are there, and no picture made on the server is."""
+        body = res.content.decode()
+        self.assertIn("vendor/qrcodejs/qrcode.min.js", body)
+        self.assertIn('id="pairing-qr"', body)
+        self.assertIn(f'id="pairing-code"', body)
+        self.assertIn(res.context["minted"]["ticket"], body)
+        self.assertNotIn("data:image/png;base64,", body)
+        self.assertNotIn("qr", res.context["minted"])
+
     def test_re_pairing_renders_a_qr(self):
         self.client.force_login(self.staff)
         res = self.client.post(self.url, {"action": "repair", "pk": str(self.party.pk)})
         self.assertEqual(res.status_code, 200)
-        self.assertIn("data:image/png;base64,", res.content.decode())
+        self.assert_the_browser_draws_the_qr(res)
 
     def test_inviting_a_new_platform_renders_a_qr(self):
         self.client.force_login(self.staff)
         res = self.client.post(self.url, {"action": "invite", "expected_host": "delta.test",
                                           "ttl_minutes": "5", "trusted": "on"})
         self.assertEqual(res.status_code, 200)
-        self.assertIn("data:image/png;base64,", res.content.decode())
+        self.assert_the_browser_draws_the_qr(res)
         # A dormant, inactive relying party now exists for delta.test.
         self.assertTrue(SSORelyingParty.objects.filter(name="delta.test", active=False).exists())
+
+    def test_a_code_is_minted_and_shown_where_opencv_cannot_import(self):
+        """OpenCV and numpy left the hosts' images (2026-10-01, 37c.30)."""
+        import sys
+
+        class Refuse:
+            def find_spec(self, name, path=None, target=None):
+                if name.split(".")[0] in ("cv2", "numpy"):
+                    raise ImportError(f"No module named {name!r} (refused by the test)")
+                return None
+
+        hidden = {name: sys.modules.pop(name) for name in list(sys.modules)
+                  if name.split(".")[0] in ("cv2", "numpy")}
+        self.addCleanup(sys.modules.update, hidden)
+        finder = Refuse()
+        sys.meta_path.insert(0, finder)
+        self.addCleanup(sys.meta_path.remove, finder)
+        self.client.force_login(self.staff)
+        res = self.client.post(self.url, {"action": "invite", "expected_host": "echo.test",
+                                          "ttl_minutes": "5"})
+        self.assertEqual(res.status_code, 200)
+        self.assert_the_browser_draws_the_qr(res)
 
     def test_a_non_staff_user_is_refused(self):
         self.client.force_login(self.plain)
@@ -155,7 +189,7 @@ class FederationConsoleTests(TestCase):
         self.client.force_login(self.staff)
         res = self.client.post(self.url, {"action": "repair", "pk": str(self.party.pk)})
         self.assertEqual(res.status_code, 200)
-        self.assertIn("data:image/png;base64,", res.content.decode())
+        self.assert_the_browser_draws_the_qr(res)
 
 
 class InviteFlagTests(TestCase):

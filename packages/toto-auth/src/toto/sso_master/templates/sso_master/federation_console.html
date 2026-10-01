@@ -1,5 +1,5 @@
 {% extends "sso_master/base.html" %}
-{% load i18n %}
+{% load i18n static %}
 
 {% block sso_subtitle %}
       <p class="mt-1 text-sm opacity-70">
@@ -23,8 +23,16 @@
           {% blocktrans with host=minted.host %}Pairing code for <strong>{{ host }}</strong>. Show it to that platform's administrator — their server does the rest.{% endblocktrans %}
         </p>
         <div class="flex flex-wrap items-start gap-6">
-          <img src="{{ minted.qr }}" alt="{% trans 'Pairing QR code' %}"
-               style="width:240px;height:240px;background:#fff;padding:8px;border-radius:8px;">
+          {% comment %}Drawn in this browser from exactly the code beside it, with the
+             vendored qrcodejs (2026-10-01, 37c.30) — never by a QR service, and no
+             longer by the server, whose QR library (OpenCV) left the image.{% endcomment %}
+          <div class="flex flex-col items-center gap-2">
+            <div data-pairing-qr-frame style="background:#fff;padding:8px;border-radius:8px;">
+              <div id="pairing-qr" data-pairing-qr role="img" aria-label="{% trans 'Pairing QR code' %}"
+                   style="width:240px;height:240px;"></div>
+            </div>
+            <p id="pairing-qr-missing" hidden class="max-w-[240px] text-center text-xs opacity-70">{% trans "The QR code could not be drawn in this browser; the code beside it works the same." %}</p>
+          </div>
           <div class="min-w-[240px] flex-1 space-y-2">
             <p class="text-sm font-semibold">{% trans "Or paste this code" %}</p>
             <code id="pairing-code" style="user-select:all;word-break:break-all;"
@@ -47,7 +55,31 @@
           <i class="fa-solid fa-arrow-left"></i> {% trans "Back to the list" %}
         </a>
       </div>
+      <script src="{% static 'vendor/qrcodejs/qrcode.min.js' %}"></script>
       <script>
+        (function () {
+          // The QR code of exactly the pairing code, drawn here; qrcodejs
+          // refuses some lengths at one correction level, so a lower one is
+          // tried before saying it could not be drawn.
+          var holder = document.getElementById("pairing-qr");
+          var code = document.getElementById("pairing-code");
+          var drawn = false;
+          if (holder && code && window.QRCode) {
+            [QRCode.CorrectLevel.M, QRCode.CorrectLevel.L].some(function (level) {
+              try {
+                holder.innerHTML = "";
+                new QRCode(holder, {text: code.textContent.trim(), width: 240, height: 240,
+                                    colorDark: "#000000", colorLight: "#ffffff", correctLevel: level});
+                drawn = true;
+              } catch (e) { drawn = false; }
+              return drawn;
+            });
+          }
+          if (holder && !drawn) {
+            holder.parentNode.hidden = true;
+            document.getElementById("pairing-qr-missing").hidden = false;
+          }
+        })();
         (function () {
           var left = {{ minted.seconds }};
           var el = document.getElementById("pairing-countdown");

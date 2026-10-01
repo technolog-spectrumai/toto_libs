@@ -120,7 +120,13 @@ class PairingPageTests(TestCase):
             "ttl_minutes": "0"})
         minted = response.context["minted"]
         self.assertTrue(minted["ticket"])
-        self.assertTrue(minted["qr"].startswith("data:image/png;base64,"))
+        # Drawn in the browser from the ticket (2026-10-01, 37c.30).
+        self.assertNotIn("qr", minted)
+        body = response.content.decode()
+        self.assertIn("vendor/qrcodejs/qrcode.min.js", body)
+        self.assertIn('id="pairing-qr"', body)
+        self.assertIn(minted["ticket"], body)
+        self.assertNotIn("data:image/png;base64,", body)
         self.assertEqual(minted["scopes"], "openid email profile roles")
         invite = SSOFederationInvite.objects.get()
         self.assertEqual(invite.expected_host, "delta.test")

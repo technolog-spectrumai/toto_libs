@@ -156,8 +156,6 @@ class SSORelyingPartyAdmin(admin.ModelAdmin):
         from datetime import timedelta
         from urllib.parse import urlparse
 
-        from toto.sso_core import qr
-
         from .enrollment import EnrollmentError, mint
         from .services import get_public_base_url
 
@@ -233,9 +231,11 @@ class SSORelyingPartyAdmin(admin.ModelAdmin):
             except EnrollmentError as exc:
                 context["error"] = exc.message
             else:
+                # The page draws the QR code in the browser from the ticket
+                # (2026-10-01, 37c.30): OpenCV, which drew it here, left the
+                # hosts' images.
                 context["minted"] = {
                     "ticket": minted.ticket,
-                    "qr": qr.render_data_uri(minted.ticket),
                     "expires_at": minted.invite.expires_at,
                     "seconds": minted.invite.seconds_remaining(),
                     "host": minted.invite.expected_host,
