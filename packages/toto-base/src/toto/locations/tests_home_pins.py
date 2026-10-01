@@ -6,6 +6,10 @@ pickers and its pages listed every address — a member's home pin among them,
 unnamed, with its exact point and any street looked up — to every member who
 could open Locations, whatever the switch said.
 
+Each person's switch rules their own pin only (37c.32): a household's one
+address shows when one resident shares it exactly. Until then another
+resident's Off hid the pin somebody chose to share.
+
     manage.py test toto.locations.tests_home_pins
 """
 
@@ -65,11 +69,61 @@ class TheRuleTests(HomePinCase):
         self.assertEqual(self.readable(self.viewer), {self.shop, self.home})
         self.assertTrue(access.may_read(self.viewer, self.home))
 
-    def test_a_pin_two_people_share_needs_both_to_share_it(self):
+
+
+class OneHouseholdTests(HomePinCase):
+    """37c.32: Ann and Bob live at one address (one ``Address`` row)."""
+
+    def setUp(self):
+        super().setUp()
+        self.bob_user = User.objects.create_user("bob", password="pw")
+        self.bob = Person.objects.create(user=self.bob_user, display_name="Bob",
+                                         address=self.home)
+
+    def bob_shares(self, how):
+        Person.objects.filter(pk=self.bob.pk).update(location_sharing=how)
+
+    def test_one_residents_exact_share_shows_it_whatever_the_other_chose(self):
         self.share(LocationSharing.EXACT)
-        Person.objects.create(user=User.objects.create_user("bob", password="pw"),
-                              display_name="Bob", address=self.home)
-        self.assertFalse(access.may_read(self.viewer, self.home))
+        for bob in (LocationSharing.OFF, LocationSharing.APPROXIMATE):
+            with self.subTest(bob=bob):
+                self.bob_shares(bob)
+                self.assertEqual(self.readable(self.viewer), {self.shop, self.home})
+                self.assertTrue(access.may_read(self.viewer, self.home))
+
+    def test_either_resident_may_be_the_one_who_shares(self):
+        self.bob_shares(LocationSharing.EXACT)
+        self.assertEqual(self.readable(self.viewer), {self.shop, self.home})
+        self.assertTrue(access.may_read(self.viewer, self.home))
+
+    def test_nobody_sharing_it_keeps_it_from_everybody_but_the_residents(self):
+        self.share(LocationSharing.OFF)
+        self.bob_shares(LocationSharing.APPROXIMATE)
+        for user in (self.viewer, self.root, None):
+            with self.subTest(user=user):
+                self.assertEqual(self.readable(user), {self.shop})
+                self.assertFalse(access.may_read(user, self.home))
+        for resident in (self.ann_user, self.bob_user):
+            with self.subTest(resident=resident):
+                self.assertEqual(self.readable(resident), {self.shop, self.home})
+                self.assertTrue(access.may_read(resident, self.home))
+
+    def test_the_people_map_still_shows_only_who_shares(self):
+        from toto.locations import people_access
+
+        self.share(LocationSharing.EXACT)
+        shown = set(people_access.shared_people(self.viewer).values_list("pk", flat=True))
+        self.assertIn(self.ann.pk, shown)
+        self.assertNotIn(self.bob.pk, shown)
+        self.assertFalse(people_access.may_see_location(self.viewer, self.bob))
+
+    def test_the_map_page_shows_the_shared_pin(self):
+        self.share(LocationSharing.EXACT)
+        self.client.force_login(self.viewer)
+        self.assertContains(self.client.get(reverse("locations:locations_all")), "Hidden Lane")
+        detail = self.client.get(reverse("locations:location_detail",
+                                         kwargs={"kind": "address", "pk": self.home.pk}))
+        self.assertEqual(detail.status_code, 200)
 
 
 class TheDoorsTests(HomePinCase):

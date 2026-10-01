@@ -29,6 +29,14 @@ else; approximate shows it on the People map, coarsened there
 point and street. No superuser, staff or connector is let past: the People
 map's rule, "a person appears because they chose to".
 
+**Each person's switch rules their own pin only** (37c.32): where people
+share one address (a household, one ``Address`` row), it shows when ONE of
+them shares it exactly, or to one of them, and hides when none does. Until
+then a co-resident's Off hid the pin another resident shared — their choice
+overruled by somebody else's. What this map shows is an address, never who
+lives there; each resident still appears on the People map by their own
+switch alone.
+
 Writing is narrower (2026-09-25): an address or a route may have its metadata
 and note changed by whoever created it, or by staff; a row from before
 `created_by` existed has no creator and is staff's alone. Territories, zones
@@ -137,35 +145,47 @@ def readable_addresses(user, queryset=None):
     return without_private_homes(user, _readable(Address, user, queryset))
 
 
-def _private_homes(user):
-    """The people whose home pin ``user`` may not see here: every sharer but
-    an exact one, never ``user``'s own row (module docstring)."""
+def _homes(user):
+    """``(residents, openers)``: everybody whose home is a pin, and those of
+    them whose own switch opens their pin to ``user`` — an exact sharer, or
+    ``user`` themself (module docstring). None where toto.people is not
+    installed: nobody's home is a pin there."""
     from django.apps import apps
 
     if not apps.is_installed("toto.people"):
         return None
+    from django.db.models import Q
+
     from toto.people.models import LocationSharing, Person
 
-    homes = Person.objects.exclude(location_sharing=LocationSharing.EXACT)
+    residents = Person.objects.filter(address__isnull=False)
+    opens = Q(location_sharing=LocationSharing.EXACT)
     if getattr(user, "is_authenticated", False):
-        homes = homes.exclude(user=user)
-    return homes
+        opens |= Q(user=user)
+    return residents, residents.filter(opens)
 
 
 def without_private_homes(user, queryset):
-    """``queryset`` of addresses less the home pins kept from ``user``."""
+    """``queryset`` of addresses less the home pins kept from ``user``: an
+    address somebody lives at that none of its residents opens."""
     from django.db.models import Exists, OuterRef
 
-    homes = _private_homes(user)
+    homes = _homes(user)
     if homes is None:
         return queryset
-    return queryset.filter(~Exists(homes.filter(address=OuterRef("pk"))))
+    residents, openers = homes
+    return queryset.filter(~Exists(residents.filter(address=OuterRef("pk")))
+                           | Exists(openers.filter(address=OuterRef("pk"))))
 
 
 def home_hidden(user, address) -> bool:
     """The per-object twin of :func:`without_private_homes`."""
-    homes = _private_homes(user)
-    return homes is not None and homes.filter(address=address).exists()
+    homes = _homes(user)
+    if homes is None:
+        return False
+    residents, openers = homes
+    return (residents.filter(address=address).exists()
+            and not openers.filter(address=address).exists())
 
 
 def readable_zones(user, queryset=None):
