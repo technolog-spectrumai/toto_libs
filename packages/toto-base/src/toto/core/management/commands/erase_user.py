@@ -81,6 +81,12 @@ def plan(user) -> dict:
     empty_pages = _pages_left_empty(user)
     if empty_pages:
         deleted["wakawaka.WikiPage"] += len(empty_pages)
+    # Only the tables with rows (2026-10-01). The collector hands back a
+    # queryset for EVERY relation to the account, empty or not, so the report
+    # listed every related table — a hundred lines, nearly all at 0 — and the
+    # few the erase would really take were lost among them.
+    deleted = {label: n for label, n in deleted.items() if n}
+    detached = {label: n for label, n in detached.items() if n}
     notes = []
     vault_files = [f for m, objs in collector.data.items() if _label(m) == "vault.VaultFile"
                    for f in objs]

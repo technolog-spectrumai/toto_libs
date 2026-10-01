@@ -71,6 +71,16 @@ class EraseUserTests(TestCase):
         self.assertEqual(deleted["vault.VaultFile"], 1)
         self.assertTrue(User.objects.filter(username="ada").exists())
 
+    def test_the_report_names_only_the_tables_with_rows(self):
+        """It listed every related table, nearly all at 0 (2026-10-01): the
+        collector hands back a queryset for every relation, empty or not."""
+        code, out = run("erase_user", "ada")
+        report = out["report"]
+        self.assertEqual(report["deleted"]["people.Person"], 1)
+        self.assertNotIn(0, report["deleted"].values())
+        self.assertNotIn(0, report["detached"].values())
+        self.assertNotIn("vault.VaultFile", report["deleted"])        # she has none
+
     def test_erasing_takes_everything_theirs_and_the_chain_still_verifies(self):
         import os
 
