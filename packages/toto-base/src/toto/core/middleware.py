@@ -154,10 +154,12 @@ class PlatformMiddleware:
 
 class ContentSecurityPolicyMiddleware:
     """Emit a Content-Security-Policy header when settings.CONTENT_SECURITY_POLICY
-    is set. Opt-in: hosts that leave it unset (e.g. the clearnet platform) get no
-    header and unchanged behavior. The faros onion sets a strict policy that
-    forbids every external origin (map tiles, fonts, CDN scripts) as a hard
-    anti-deanonymization backstop."""
+    is set. Opt-in: hosts that leave it unset get no header and unchanged
+    behavior. The faros onion sets a strict policy that forbids every external
+    origin (map tiles, fonts, CDN scripts) as a hard anti-deanonymization
+    backstop; zenobia an images-only one (2026-10-01), so a picture a member
+    embeds from another website is not fetched by every reader's browser. A
+    response that already carries a policy — a sandboxed document — keeps it."""
 
     def __init__(self, get_response):
         self.get_response = get_response
