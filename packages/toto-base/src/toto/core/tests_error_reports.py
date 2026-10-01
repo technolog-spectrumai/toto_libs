@@ -9,15 +9,40 @@ import logging
 import sys
 from unittest import mock
 
+from django.core import mail
 from django.core.cache import cache
-from django.test import RequestFactory, SimpleTestCase, override_settings
+from django.http import HttpResponse
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
+from django.urls import include, path
 
 from toto.core import error_reports
 from toto.core.error_reports import (SUBSTITUTE, CrashMailFilter,
+                                     PlatformAdminEmailHandler,
                                      PlatformExceptionReporter, crash_signature)
 
 FILTER = "toto.core.error_reports.PlatformExceptionReporterFilter"
 STARS = repr(SUBSTITUTE)
+
+GRANT = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+TOKEN = "peer-magic-token-0020"
+
+
+def _view(request, **kwargs):
+    return HttpResponse("")
+
+
+# The vault's peer routes as the host mounts them (namespace "vault"), and two
+# routes of no app's: one capturing a token, one a file's key.
+_vault = ([
+    path("peer/<uuid:grant_uid>/<str:magic_token>/manifest/", _view, name="peer_manifest"),
+    path("peer/<uuid:grant_uid>/<str:magic_token>/files/<slug:key>/", _view,
+         name="peer_file_detail"),
+], "vault")
+urlpatterns = [
+    path("vault/", include(_vault, namespace="vault")),
+    path("share/<str:share_token>/", _view, name="share"),
+    path("files/<slug:key>/", _view, name="file"),
+]
 
 
 def _report(request, raise_with="the view fell over"):
@@ -131,6 +156,72 @@ class ReportTests(SimpleTestCase):
         text = PlatformExceptionReporter(request, *exc_info, is_email=True).get_traceback_text()
         self.assertIn("bad passphrase", text)
         self.assertNotIn("cause-pw-0018", text)
+
+
+@override_settings(DEFAULT_EXCEPTION_REPORTER_FILTER=FILTER)
+class PathSecretTests(SimpleTestCase):
+    """A URL path that is a credential (2026-10-01, the review): the vault's
+    peer routes carry a grant's id and its magic token."""
+
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def get(self, url, **extra):
+        # This module's routes for this request alone, as a per-host
+        # urlconf would be: the settings in the report still reverse
+        # against the host's own.
+        request = self.factory.get(url, **extra)
+        request.urlconf = __name__
+        return request
+
+    def test_a_peer_route_is_starred_wherever_the_report_shows_the_path(self):
+        request = self.get(f"/vault/peer/{GRANT}/{TOKEN}/files/report-2026/",
+                           REQUEST_URI=f"/vault/peer/{GRANT}/{TOKEN}/files/report-2026/")
+        text = _report(request)
+        self.assertNotIn(TOKEN, text)
+        self.assertNotIn(GRANT, text)
+        self.assertIn(f"/vault/peer/{SUBSTITUTE}/{SUBSTITUTE}/files/", text)
+        self.assertIn("RuntimeError at /vault/peer/", text)
+
+    def test_elsewhere_only_a_value_named_like_a_secret(self):
+        self.assertEqual(error_reports.path_secrets(
+            self.get("/share/share-token-0021/")), ["share-token-0021"])
+        self.assertEqual(error_reports.path_secrets(self.get("/files/annual-report/")), [])
+        self.assertEqual(error_reports.path_secrets(self.get("/no/route/")), [])
+        self.assertEqual(error_reports.path_secrets(None), [])
+
+    def test_the_subject_and_the_line_above_the_report_are_starred(self):
+        request = self.get(f"/vault/peer/{GRANT}/{TOKEN}/manifest/")
+        record = logging.LogRecord("django.request", logging.ERROR, __file__, 1,
+                                   "%s: %s", ("Internal Server Error", request.path),
+                                   _crash())
+        record.request = request
+        with override_settings(ADMINS=[("ops@example.test", "ops@example.test")]):
+            PlatformAdminEmailHandler(include_html=False).emit(record)
+        [message] = mail.outbox
+        for text in (message.subject, message.body):
+            self.assertNotIn(TOKEN, text)
+            self.assertNotIn(GRANT, text)
+        self.assertIn(f"Internal Server Error: /vault/peer/{SUBSTITUTE}/{SUBSTITUTE}/manifest/",
+                      message.subject)
+        # The record itself is untouched: the console log keeps the path.
+        self.assertIn(TOKEN, record.getMessage())
+
+
+@override_settings(ADMINS=[("ops@example.test", "ops@example.test")])
+class ErrorMailCommitTests(TestCase):
+    """Logged inside a transaction, the error mail waits for the commit;
+    outside one it leaves at once (PathSecretTests, with no transaction)."""
+
+    def test_it_leaves_when_the_transaction_commits(self):
+        record = logging.LogRecord("django.request", logging.ERROR, __file__, 1,
+                                   "Internal Server Error: %s", ("/x/",), _crash())
+        with self.captureOnCommitCallbacks() as callbacks:
+            PlatformAdminEmailHandler(include_html=False).emit(record)
+        self.assertEqual(mail.outbox, [])
+        [callback] = callbacks
+        callback()
+        self.assertEqual(len(mail.outbox), 1)
 
 
 def _record(exc_info=None):

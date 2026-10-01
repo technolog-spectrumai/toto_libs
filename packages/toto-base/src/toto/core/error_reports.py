@@ -3,8 +3,9 @@
 When a page crashes, Django mails the operators (``ADMINS``) its plain-text
 report: the traceback, the request — GET, POST, cookies, headers — and every
 setting. That mail leaves the server for somebody's mailbox, so the report is
-filtered before it is written, and a host names the two classes here in its
-settings:
+filtered before it is written, and a host names the classes here in its
+settings — the two below, and ``PlatformAdminEmailHandler`` as its
+``LOGGING`` handler's class:
 
     DEFAULT_EXCEPTION_REPORTER_FILTER = "toto.core.error_reports.PlatformExceptionReporterFilter"
     DEFAULT_EXCEPTION_REPORTER = "toto.core.error_reports.PlatformExceptionReporter"
@@ -27,7 +28,15 @@ settings:
 - a GET parameter is shown unless its name says secret;
 - the exception's own message, its causes and the request URL are scrubbed
   of every value starred above, because an exception may echo what it was
-  handed.
+  handed;
+- a URL PATH that is itself a credential (2026-10-01, the review): every
+  value a route in ``SECRET_ROUTES`` captures — the vault's peer routes
+  carry a grant's id and its magic token — and, on any route, a value
+  captured under a name that says secret (``<str:token>``) is starred
+  wherever the mail shows the path: the subject, the line above the report,
+  the request URL, ``PATH_INFO`` and the like (``path_secrets``). The
+  subject is Django's handler's own, so the host names the handler here too:
+  ``PlatformAdminEmailHandler``.
 
 The HTML report is never mailed (the host's handler says ``include_html``
 False), so a frame's local variables never leave the server.
@@ -39,6 +48,12 @@ along the same lines of code) at most once every ``REPEAT_SECONDS``, counted
 in the cache all web workers share. A page that breaks for every visitor
 would otherwise send a mail per visit and get the SMTP account the alert mail
 depends on suspended; the log keeps every occurrence.
+
+**After the commit** (2026-10-01, the review). A crash logged inside a
+transaction is mailed once that transaction commits — an SMTP round trip
+(up to EMAIL_TIMEOUT) never holds a transaction's locks — and not at all if
+it rolls back. Django logs a crashing request after the view's own
+transaction has ended, so for a page this is "at once", as before.
 
 **Sent at once, not through the worker** (2026-10-01). The notices and the
 alert mail are handed to the Celery worker and tried again for about an hour
@@ -55,12 +70,18 @@ an hour.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import logging
 import re
 import traceback
+from functools import partial
+from urllib.parse import quote
 
 from django.conf import settings
+from django.db import connection, transaction
+from django.utils.encoding import escape_uri_path
+from django.utils.log import AdminEmailHandler
 from django.views.debug import ExceptionReporter, SafeExceptionReporterFilter
 
 #: What a starred value reads as — Django's own stars.
@@ -88,6 +109,21 @@ MIN_SCRUBBED_LENGTH = 6
 #: The same crash is mailed at most once in this many seconds.
 REPEAT_SECONDS = 60 * 60
 
+#: Routes whose URL path is a credential: every value one captures is starred
+#: (2026-10-01, the review). The vault's peer routes carry a grant's id and
+#: its magic token — the whole of what a peer shows to be let in.
+SECRET_ROUTES = frozenset({
+    "vault:peer_manifest",
+    "vault:peer_files",
+    "vault:peer_file_detail",
+    "vault:peer_file_download",
+})
+#: On any other route, a value captured under a name like these is starred.
+#: Narrower than SECRET_NAMES: a file's ``key`` or a plan's ``plan_key`` in a
+#: path names a thing, and the report needs it to say which.
+SECRET_PATH_NAMES = re.compile(r"TOKEN|SECRET|PASSWORD|SIGNATURE|CREDENTIAL",
+                               re.IGNORECASE)
+
 _URL_PASSWORD = re.compile(
     r"(?P<head>\b[a-z][a-z0-9+.\-]*://[^\s:/@]*:)[^\s@/]+@", re.IGNORECASE)
 _PARAMETER = re.compile(
@@ -107,6 +143,40 @@ def hide_secrets_in(text: str, known=()) -> str:
         return match.group(0)
 
     return _PARAMETER.sub(parameter, text)
+
+
+def path_secrets(request) -> list[str]:
+    """The secrets ``request``'s URL path carries, longest first: every value
+    a route in SECRET_ROUTES captured, and on any route a value captured under
+    a name SECRET_PATH_NAMES matches — as the path spells it, and as the
+    request URL percent-encodes it. Nothing for a path no route takes."""
+    if request is None:
+        return []
+    try:
+        match = getattr(request, "resolver_match", None)
+        if match is None:
+            # A crash before the URL was resolved — in a middleware.
+            from django.urls import resolve
+
+            match = resolve(request.path_info, getattr(request, "urlconf", None))
+    except Exception:  # noqa: BLE001 - a path no route takes captures nothing
+        return []
+    whole = match.view_name in SECRET_ROUTES
+    values = [str(value) for name, value in match.kwargs.items()
+              if whole or SECRET_PATH_NAMES.search(name)]
+    if whole:
+        values += [str(value) for value in match.args]
+    found = set()
+    for value in values:
+        if len(value) >= MIN_SCRUBBED_LENGTH:
+            found.update({value, escape_uri_path(value), quote(value, safe="")})
+    return sorted(found, key=len, reverse=True)
+
+
+def _star(text: str, values) -> str:
+    for value in values:
+        text = text.replace(value, SUBSTITUTE)
+    return text
 
 
 def _strings(value):
@@ -185,6 +255,12 @@ class PlatformExceptionReporter(ExceptionReporter):
                 for name, value in self.request.GET.items()]
         return data
 
+    def get_traceback_text(self):
+        # The template reads the path straight off the request ("at
+        # /vault/peer/…"), and META carries it as PATH_INFO and the raw URI:
+        # a path that is a credential is starred in the whole text.
+        return _star(super().get_traceback_text(), path_secrets(self.request))
+
     def secret_values(self) -> list[str]:
         """Every value the report stars, longest first — so that a secret
         which contains another is starred whole."""
@@ -202,6 +278,7 @@ class PlatformExceptionReporter(ExceptionReporter):
             for name, values in request.GET.lists():
                 if SECRET_PARAMS.search(name):
                     found.update(values)
+            found.update(path_secrets(request))
         return sorted((v for v in found if len(v) >= MIN_SCRUBBED_LENGTH),
                       key=len, reverse=True)
 
@@ -235,3 +312,32 @@ class CrashMailFilter(logging.Filter):
             return True
         # django-redis answers None, not False, when Redis is unreachable.
         return first is not False
+
+
+class PlatformAdminEmailHandler(AdminEmailHandler):
+    """Django's error mail, with the secrets of a URL path starred in its
+    subject, and sent after the commit (2026-10-01, the review).
+
+    Django writes the subject and the line above the report from the log
+    message — "Internal Server Error: <path>" — before any reporter sees the
+    request, so ``path_secrets`` are starred here, on a copy of the record:
+    the console log keeps what it always had. The report itself is the
+    reporter's (``PlatformExceptionReporter``). Logged inside a transaction,
+    the mail waits for its commit, and a rollback drops it; outside one —
+    every crashing request, which Django logs once the view's transaction
+    has ended — it leaves at once.
+    """
+
+    def emit(self, record):
+        secrets = path_secrets(getattr(record, "request", None))
+        if secrets:
+            record = copy.copy(record)
+            record.msg, record.args = _star(record.getMessage(), secrets), None
+        super().emit(record)
+
+    def send_mail(self, subject, message, *args, **kwargs):
+        send = partial(super().send_mail, subject, message, *args, **kwargs)
+        if connection.in_atomic_block:
+            transaction.on_commit(send, robust=True)
+        else:
+            send()
