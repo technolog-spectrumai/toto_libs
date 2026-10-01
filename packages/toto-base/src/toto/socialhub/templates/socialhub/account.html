@@ -419,6 +419,11 @@ sessions, sign-ins, e-mail) slot in as further sections.{% endcomment %}
           {% if latest.handled_at %}<dt class="opacity-70">{% translate "Answered" context "erasure request" %}</dt><dd>{{ latest.handled_at|date:"Y-m-d H:i" }}</dd>{% endif %}
         </dl>
         {% if latest.note %}<p class="mt-2 text-xs">{{ latest.note }}</p>{% endif %}
+        {% if latest.status == 'declined' %}
+        <!-- Whatever the note says (2026-10-01, 37c.21): a refusal names the
+             member's remedies, RODO art. 12(4). -->
+        <p class="mt-2 text-xs opacity-80" data-testid="erasure-remedies">{% translate "If you disagree, you may lodge a complaint with the President of the Personal Data Protection Office (Prezes Urzędu Ochrony Danych Osobowych, UODO) or take the matter to court." %}</p>
+        {% endif %}
       </div>
       {% endif %}
 
@@ -447,14 +452,18 @@ sessions, sign-ins, e-mail) slot in as further sections.{% endcomment %}
           <div class="space-y-1">
             <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% translate "What goes" %}</h3>
             <p>{% translate "Your account and profile, your community and clearance memberships, your files, your wiki edits and the pages only you wrote, your subscriptions, sessions and everything else that exists only because of your account." %}</p>
+            <!-- What the erase removes beyond the cascade (2026-10-01, 37c.21;
+                 toto.core.erasure). -->
+            <p>{% translate "Also your profile picture, the saved versions of your files, your map pin and the addresses only you used, your membership application with its references, and the pictures and voice recordings you sent in the forum." %}</p>
           </div>
           <div class="space-y-1">
             <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% translate "What stays" %}</h3>
             <ul class="list-disc space-y-0.5 pl-5">
               <li>{% translate "The audit trail's records of what you did, under your username, and the record of the erase itself: each record is sealed to the one before it and cannot be removed." %}</li>
-              <li>{% translate "The ledger's transactions, sealed the same way; your ledger account stays, detached from you." %}</li>
-              <li>{% translate "What other people still need — a forum room or a workflow you started, a bucket that holds other people's files — without the link to you." %}</li>
-              <li>{% translate "Copies this platform cannot reach: backups already taken, and files exported into other people's buckets." %}</li>
+              <li>{% translate "The text of your forum messages, as the room's record, signed “Former member” instead of your name and without your picture." %}</li>
+              <li>{% translate "The ledger's transactions, sealed the same way; your ledger account stays, detached from you and without your username." %}</li>
+              <li>{% translate "What other people still need — a forum room or a workflow you started, a bucket that holds other people's files — without the link to you or your username." %}</li>
+              <li>{% translate "Backups taken before the erase, until they age out (up to six months), and copies this platform cannot reach: files exported into other people's buckets." %}</li>
             </ul>
             <p class="text-xs opacity-70">{% translate "Want a copy first? Use Download my data above before the request is carried out." %}</p>
           </div>

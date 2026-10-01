@@ -164,6 +164,25 @@ class ListTests(ErasureFixture):
         self.file()
         self.assertEqual(ErasureRequest.objects.filter(status=ErasureRequest.OPEN).count(), 1)
 
+    def test_a_declined_request_names_the_members_remedies(self):
+        """Whatever the note says (2026-10-01, 37c.21): a complaint to the
+        President of UODO, or a court (RODO art. 12(4))."""
+        ticket = erasure.file_request(self.ada)
+        self.client.force_login(self.ada)
+        self.assertNotContains(self.client.get(reverse("account:home")), "erasure-remedies")
+        erasure.decline(ticket, by=self.root, note="You hold the treasury keys.")
+        page = self.client.get(reverse("account:home"))
+        self.assertContains(page, "Prezes Urzędu Ochrony Danych Osobowych")
+        self.assertContains(page, "take the matter to court")
+
+    def test_the_dialog_says_what_the_erase_takes_and_what_stays(self):
+        self.client.force_login(self.ada)
+        page = self.client.get(reverse("account:home"))
+        for words in ("Also your profile picture", "pictures and voice recordings you sent",
+                      "signed “Former member” instead of your name",
+                      "Backups taken before the erase, until they age out"):
+            self.assertContains(page, words)
+
     def test_a_member_cannot_decline(self):
         ticket = erasure.file_request(self.bob)
         self.client.force_login(self.ada)
