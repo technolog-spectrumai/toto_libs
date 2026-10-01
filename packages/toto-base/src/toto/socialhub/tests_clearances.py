@@ -10,8 +10,12 @@ while the others hold.
     DJANGO_SETTINGS_MODULE=zenobia.settings manage.py test toto.socialhub.tests_clearances
 """
 
+import io
+
+from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -50,6 +54,20 @@ class ClearanceTestCase(TestCase):
         cls.senior.clearances.add(cls.internal)
         cls.root = User.objects.create_superuser("root", "root@example.com", "pw")
         Person.objects.create(user=cls.root, display_name="Root")
+
+
+class OnThePlan:
+    """The Clearances tab asks for the Superuser plan as well (2026-10-01,
+    the review of stage 37c): `bootstrap_plans` puts every superuser there is
+    on it. Only the classes that open the tab take it — it makes a community
+    of its own, which the others count."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        if apps.is_installed("toto.subscriptions"):
+            call_command("bootstrap_plans", stdout=io.StringIO())
+            cls.root = User.objects.get(pk=cls.root.pk)
 
 
 class ClearanceKindTests(ClearanceTestCase):
@@ -193,7 +211,7 @@ class ApplicationTests(ClearanceTestCase):
         self.assertFalse(applicant.clearances.exists())            # admitted to nothing else
 
 
-class ClearancesTabTests(ClearanceTestCase):
+class ClearancesTabTests(OnThePlan, ClearanceTestCase):
     """The socialhub's Clearances tab (2026-09-29; a list with two doors since
     2026-09-30): superusers make a clearance — its speeds and its holders
     given at once — and remove one. Holders and speeds are changed in the
@@ -300,7 +318,7 @@ class ClearancesTabTests(ClearanceTestCase):
         self.assertEqual(added.metadata["clearance"], "confidential")
 
 
-class OnlySuperusersMakeClearancesTests(ClearanceTestCase):
+class OnlySuperusersMakeClearancesTests(OnThePlan, ClearanceTestCase):
     """Only a superuser makes a clearance (2026-09-29): the Clearances tab is theirs,
     and the admin's clearance pages refuse staff whatever rights they hold —
     staff make and change communities alone."""

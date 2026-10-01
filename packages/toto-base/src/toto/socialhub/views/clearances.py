@@ -1,5 +1,5 @@
 """The Clearances tab (2026-09-29): where clearances are made and removed, by
-superusers.
+superusers — on the Superuser plan since 2026-10-01 (``may_manage``).
 
 A clearance (``socialhub.Clearance`` — ``internal``, ``confidential``, named
 after what it opens) decides who reads wiki pages (and what else an app
@@ -61,8 +61,29 @@ PEOPLE_LIMIT = 20
 DRAFT_KEY = "socialhub.clearance_draft"
 
 
+def may_manage(user) -> bool:
+    """Who makes and removes clearances and decides what they keep: a real
+    superuser on the Superuser plan (2026-10-01, the review of stage 37c).
+    The superuser bit alone opened every door here, and through it the doors
+    behind, which ask the plan themselves — a bucket's clearances
+    (``vault.clearances.may_manage``, 37c.1), a wiki topic's
+    (``wiki.perms.may_keep``) — since the plugins set those through the
+    apps' own setters. ``contact_access.is_administrator`` is that rule."""
+    from toto.socialhub.contact_access import is_administrator
+
+    return is_administrator(user)
+
+
+def _refusal(user) -> str:
+    """A superuser without the plan is told what is missing; anybody else
+    hears that clearances are the superusers'."""
+    if getattr(user, "is_superuser", False):
+        return _("This needs a superuser on the Superuser plan.")
+    return _("Clearances are managed by superusers.")
+
+
 def _refused(request):
-    return HttpResponseForbidden(_("Clearances are managed by superusers."))
+    return HttpResponseForbidden(_refusal(request.user))
 
 
 def _render(request, template, context):
@@ -177,7 +198,7 @@ def _page(request, *, draft=None):
 @login_required
 @require_safe
 def clearances(request):
-    if not request.user.is_superuser:
+    if not may_manage(request.user):
         return _refused(request)
     return _page(request, draft=request.session.pop(DRAFT_KEY, None))
 
@@ -188,8 +209,8 @@ def clearance_people(request):
     """People to give a clearance to, by a piece of their name, username,
     slug or e-mail — JSON for the New clearance modal. Only people with an
     account: a clearance opens things to somebody who signs in."""
-    if not request.user.is_superuser:
-        return JsonResponse({"error": _("Clearances are managed by superusers.")}, status=403)
+    if not may_manage(request.user):
+        return JsonResponse({"error": _refusal(request.user)}, status=403)
     q = " ".join((request.GET.get("q") or "").split())[:80]
     if not q:
         return JsonResponse({"people": []})
@@ -222,8 +243,8 @@ def clearance_graph(request):
     apps keep things to clearances, found by their PROTECT on the clearance
     (a wiki topic, a map domain, a bucket), never by name — and, when asked
     (``?holders=1``), a node per holder. Superusers only."""
-    if not request.user.is_superuser:
-        return JsonResponse({"error": _("Clearances are managed by superusers.")}, status=403)
+    if not may_manage(request.user):
+        return JsonResponse({"error": _refusal(request.user)}, status=403)
     nodes, edges, kinds = [], [], []
     clearances = list(Clearance.objects.order_by("name")
                       .annotate(holder_count=Count("members", distinct=True)))
@@ -277,8 +298,8 @@ def clearance_targets(request):
     """Things of one kind a new clearance may keep, by a piece of their name —
     JSON for the New clearance modal (``?kind=<key>&q=``). The kinds are the
     apps' ``ClearanceTargetPlugin``s; an unknown kind is a 404."""
-    if not request.user.is_superuser:
-        return JsonResponse({"error": _("Clearances are managed by superusers.")}, status=403)
+    if not may_manage(request.user):
+        return JsonResponse({"error": _refusal(request.user)}, status=403)
     plugin = clearance_plugins.kind(request.GET.get("kind") or "")
     if plugin is None:
         return JsonResponse({"error": _("No such kind of thing.")}, status=404)
@@ -293,7 +314,7 @@ def clearance_targets(request):
 def clearance_add(request):
     """Make a clearance with its speeds, its holders and what it clears, all
     or nothing."""
-    if not request.user.is_superuser:
+    if not may_manage(request.user):
         return _refused(request)
     name = " ".join((request.POST.get("name") or "").split())[:120]
     speeds, error = _read_speeds(request.POST)
@@ -351,7 +372,7 @@ def clearance_delete(request, pk):
     PROTECT), in which case the refusal says so and nothing changes."""
     from django.db.models import ProtectedError
 
-    if not request.user.is_superuser:
+    if not may_manage(request.user):
         return _refused(request)
     clearance = _clearance_or_404(pk)
     name = clearance.name

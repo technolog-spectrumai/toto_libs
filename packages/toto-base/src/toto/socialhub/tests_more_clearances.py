@@ -17,15 +17,18 @@ fake would test past the lookups that make ``gate`` and ``hidden`` agree.
     DJANGO_SETTINGS_MODULE=zenobia.settings manage.py test toto.socialhub.tests_more_clearances
 """
 
+import io
 import re
 from decimal import Decimal
 from unittest import mock
 from urllib.parse import urljoin
 
+from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser, Permission
 from django.contrib.messages import get_messages
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
 from django.db import IntegrityError, connection, transaction
 from django.db.models import Q
 from django.db.models.signals import m2m_changed
@@ -77,6 +80,22 @@ class ClearanceFixture(TestCase):
         cls.bob.clearances.add(cls.confidential)
         cls.cy = person("cy", cls.devs)
         cls.root = User.objects.create_superuser("root", "root@example.com", "pw")
+
+
+class OnThePlan:
+    """The Clearances tab asks for the Superuser plan as well (2026-10-01,
+    the review of stage 37c): `bootstrap_plans` puts `root` on it, and
+    `bare_root`, made after, is a superuser without it. Only the classes that
+    open the tab take it — it makes a community of its own, which the others
+    count."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        if apps.is_installed("toto.subscriptions"):
+            call_command("bootstrap_plans", stdout=io.StringIO())
+            cls.root = User.objects.get(pk=cls.root.pk)
+        cls.bare_root = User.objects.create_superuser("bareroot", "bare@example.com", "pw")
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +319,7 @@ class SetClearancesTests(ClearanceFixture):
 # ---------------------------------------------------------------------------
 
 
-class ClearancesTabRefusalTests(ClearanceFixture):
+class ClearancesTabRefusalTests(OnThePlan, ClearanceFixture):
     """Every remaining door is a superuser's; the doors that edited a
     clearance in place are gone (holders and speeds change in the admin)."""
 
@@ -309,6 +328,8 @@ class ClearancesTabRefusalTests(ClearanceFixture):
         return (
             ("get", reverse("socialhub:clearances"), {}),
             ("get", reverse("socialhub:clearance_people"), {"q": "ada"}),
+            ("get", reverse("socialhub:clearance_graph"), {"holders": "1"}),
+            ("get", reverse("socialhub:clearance_targets"), {"kind": "locations.domain", "q": "a"}),
             ("post", reverse("socialhub:clearance_add"),
              {"name": "restricted", "regen_security": "99", "person": [self.cy.pk]}),
             ("post", reverse("socialhub:clearance_delete", args=[self.internal.pk]), {}),
@@ -336,6 +357,27 @@ class ClearancesTabRefusalTests(ClearanceFixture):
             with self.subTest(url=url):
                 self.assertEqual(getattr(staff, method)(url, data).status_code, 403)
         self.assert_nothing_changed()
+
+    def test_every_door_refuses_a_superuser_without_the_plan_and_changes_nothing(self):
+        """Superuser functionality asks for the Superuser plan too (2026-10-01,
+        the review of stage 37c): a bucket's and a wiki topic's own doors did,
+        and this tab set both through them with the superuser bit alone."""
+        if not apps.is_installed("toto.subscriptions"):
+            self.skipTest("a host that sells no plan: the superuser bit is the rule")
+        bare = client_for(self.bare_root)
+        for method, url, data in self.doors():
+            with self.subTest(url=url):
+                response = getattr(bare, method)(url, data)
+                self.assertEqual(response.status_code, 403)
+                self.assertIn("This needs a superuser on the Superuser plan.",
+                              response.content.decode())
+        self.assert_nothing_changed()
+
+    def test_a_superuser_on_the_plan_opens_every_door(self):
+        root = client_for(self.root)
+        for method, url, data in self.doors()[:4]:
+            with self.subTest(url=url):
+                self.assertEqual(getattr(root, method)(url, data).status_code, 200)
 
     def test_every_door_sends_a_visitor_to_sign_in(self):
         for method, url, data in self.doors():
@@ -385,7 +427,7 @@ class ClearancesTabRefusalTests(ClearanceFixture):
         self.assertEqual(Clearance.objects.count(), 2)
 
 
-class ClearancePeopleTests(ClearanceFixture):
+class ClearancePeopleTests(OnThePlan, ClearanceFixture):
     """``clearance_people``: the New clearance modal's search, JSON."""
 
     def search(self, q=None):
@@ -446,7 +488,7 @@ class ClearancePeopleTests(ClearanceFixture):
             self.assertNotIn("@", str(row))
 
 
-class ClearancesTabPageTests(ClearanceFixture):
+class ClearancesTabPageTests(OnThePlan, ClearanceFixture):
     def page(self, **query):
         response = client_for(self.root).get(reverse("socialhub:clearances"), query)
         self.assertEqual(response.status_code, 200)
@@ -577,7 +619,7 @@ class ClearancesTabPageTests(ClearanceFixture):
         self.assertNotContains(response, 'data-testid="clearance-new"')
 
 
-class ClearanceAddTests(ClearanceFixture):
+class ClearanceAddTests(OnThePlan, ClearanceFixture):
     def add(self, name):
         return client_for(self.root).post(reverse("socialhub:clearance_add"), {"name": name},
                                           follow=True)
@@ -619,7 +661,7 @@ class ClearanceAddTests(ClearanceFixture):
         self.assertLessEqual(len(made.slug), Clearance._meta.get_field("slug").max_length)
 
 
-class ClearanceAddCase(ClearanceFixture):
+class ClearanceAddCase(OnThePlan, ClearanceFixture):
     """Posts to ``clearance_add`` as a superuser, following nothing: a
     refusal is re-drawn (200), a success redirects (302)."""
 
@@ -890,7 +932,7 @@ class ClearanceAddDraftTests(ClearanceAddCase):
         self.assertContains(page, 'data-testid="clearance-restricted"')
 
 
-class ClearanceDeleteTests(ClearanceFixture):
+class ClearanceDeleteTests(OnThePlan, ClearanceFixture):
     def test_a_clearance_that_still_keeps_something_is_not_removed(self):
         """A real PROTECT (a map domain kept to the clearance), not a patched one."""
         domain = MapDomain.objects.create(name="Kept")
@@ -1172,7 +1214,7 @@ class ClearanceTargetRegistryTests(ClearanceFixture):
         self.assertEqual(current, [self.internal, self.confidential])  # the caller's list untouched
 
 
-class ClearanceTargetsPageTests(ClearanceFixture):
+class ClearanceTargetsPageTests(OnThePlan, ClearanceFixture):
     """The page offers exactly the registered kinds in the modal's "What it
     clears", and no such section when there is none."""
 
@@ -1216,7 +1258,7 @@ class ClearanceTargetsPageTests(ClearanceFixture):
         self.assertFalse(response.context["draft"]["open"])
 
 
-class ClearanceTargetSearchTests(ClearanceFixture):
+class ClearanceTargetSearchTests(OnThePlan, ClearanceFixture):
     """``clearance_targets``: the modal's search of one kind, JSON."""
 
     def setUp(self):
