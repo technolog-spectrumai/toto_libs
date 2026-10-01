@@ -20,6 +20,15 @@ Addresses are gated on the LOCATIONS doors only (the owner, 2026-09-30): a
 person's profile, a community or an event shows its own address by its own
 rule.
 
+**A home pin follows its person's sharing switch** (2026-10-01, 37c.21): an
+address that is somebody's home (``Person.address``) is on the Locations map,
+in its JSON, its pickers and its pages only where that person shares it
+EXACTLY — and always for the person themself. Off keeps it from everybody
+else; approximate shows it on the People map, coarsened there
+(``people_access.point_for``), and nowhere here, where the row is the exact
+point and street. No superuser, staff or connector is let past: the People
+map's rule, "a person appears because they chose to".
+
 Writing is narrower (2026-09-25): an address or a route may have its metadata
 and note changed by whoever created it, or by staff; a row from before
 `created_by` existed has no creator and is staff's alone. Territories, zones
@@ -125,7 +134,38 @@ def readable_layers(user, queryset=None):
 def readable_addresses(user, queryset=None):
     from .models import Address
 
-    return _readable(Address, user, queryset)
+    return without_private_homes(user, _readable(Address, user, queryset))
+
+
+def _private_homes(user):
+    """The people whose home pin ``user`` may not see here: every sharer but
+    an exact one, never ``user``'s own row (module docstring)."""
+    from django.apps import apps
+
+    if not apps.is_installed("toto.people"):
+        return None
+    from toto.people.models import LocationSharing, Person
+
+    homes = Person.objects.exclude(location_sharing=LocationSharing.EXACT)
+    if getattr(user, "is_authenticated", False):
+        homes = homes.exclude(user=user)
+    return homes
+
+
+def without_private_homes(user, queryset):
+    """``queryset`` of addresses less the home pins kept from ``user``."""
+    from django.db.models import Exists, OuterRef
+
+    homes = _private_homes(user)
+    if homes is None:
+        return queryset
+    return queryset.filter(~Exists(homes.filter(address=OuterRef("pk"))))
+
+
+def home_hidden(user, address) -> bool:
+    """The per-object twin of :func:`without_private_homes`."""
+    homes = _private_homes(user)
+    return homes is not None and homes.filter(address=address).exists()
 
 
 def readable_zones(user, queryset=None):
@@ -147,6 +187,8 @@ def may_read(user, obj) -> bool:
         return False
     if obj._meta.model_name not in DOMAIN_ROWS:
         return True
+    if obj._meta.model_name == "address" and home_hidden(user, obj):
+        return False
     return not domain_hidden(user, obj)
 
 
