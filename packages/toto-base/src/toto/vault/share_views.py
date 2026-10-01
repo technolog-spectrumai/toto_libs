@@ -129,9 +129,10 @@ def _when(value) -> str:
 
 def _sentences(exc: ValidationError, secrets=()) -> dict:
     """``{field: [sentences]}`` (``__all__`` for the ones naming no field),
-    every sentence scrubbed of what the code carried. A decode sentence comes
-    from ``peering`` untranslated; the adapter marks the same text for
-    translation, so it is looked up here."""
+    every sentence scrubbed of what the code carried. A sentence raised in
+    English is looked up here; one already translated passes through
+    unchanged (``peering``'s decode sentences are translated where they are
+    raised since 2026-10-01)."""
     if hasattr(exc, "error_dict"):
         items = exc.message_dict.items()
     else:

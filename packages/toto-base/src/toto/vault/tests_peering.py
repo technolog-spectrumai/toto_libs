@@ -20,7 +20,8 @@ from .admin import (
 )
 from .models import Bucket, StorageBackend
 from .peering import (
-    BUCKET_RIGHTS, BucketGrant, BucketPeer, PEER_PATH, has_bucket_right,
+    BUCKET_RIGHTS, BucketGrant, BucketPeer, PEER_PATH, decode_pairing_code,
+    has_bucket_right,
 )
 
 User = get_user_model()
@@ -207,6 +208,26 @@ class PairingCodeTests(TestCase):
             json.dumps({"v": 1, "grant_uid": "g"}).encode()).decode()
         with self.assertRaises(forms.ValidationError):
             _decode_pairing_code(missing)
+
+    def test_every_decode_sentence_is_in_the_readers_language(self):
+        # 2026-10-01 (todo 29.10): the version and missing-parts sentences
+        # were English on every page. A marker stands in for the catalog,
+        # which has no Polish for them yet.
+        from django import forms
+
+        bad_version = base64.b64encode(json.dumps({"v": 2}).encode()).decode()
+        missing = base64.b64encode(
+            json.dumps({"v": 1, "grant_uid": "g"}).encode()).decode()
+        cases = (("not-base64!!", "[pl] That does not decode as a pairing code."),
+                 (bad_version, "[pl] Unsupported pairing-code version — mint"),
+                 (missing, "[pl] Pairing code is missing magic_token, api_key — mint"))
+        with mock.patch("toto.vault.peering._", side_effect=lambda text: f"[pl] {text}"):
+            for code, start in cases:
+                with self.subTest(start=start):
+                    with self.assertRaises(forms.ValidationError) as caught:
+                        decode_pairing_code(code)
+                    self.assertTrue(caught.exception.messages[0].startswith(start),
+                                    caught.exception.messages)
 
     def test_admin_create_shows_code_once_and_stores_no_raw_key(self):
         grant = BucketGrant(label="peer", bucket=self.bucket, may_list=True)

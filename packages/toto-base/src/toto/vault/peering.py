@@ -54,6 +54,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
+from django.utils.translation import gettext as _
 
 
 # ---------------------------------------------------------------------------
@@ -313,26 +314,27 @@ def decode_pairing_code(code):
 
     Raises ``ValidationError`` with a sentence an operator can act on — the
     code travels through a chat window and arrives mangled more often than
-    wrong.
+    wrong. Every sentence is in the reader's language (2026-10-01: the two
+    last ones were English on every page).
     """
     from django import forms
 
     try:
         payload = json.loads(base64.b64decode(code.strip().encode()))
     except Exception:
-        raise forms.ValidationError(
+        raise forms.ValidationError(_(
             "That does not decode as a pairing code. Paste the whole code, "
-            "with no surrounding quotes or line breaks.")
+            "with no surrounding quotes or line breaks."))
     if not isinstance(payload, dict) or payload.get("v") != 1:
-        raise forms.ValidationError(
+        raise forms.ValidationError(_(
             "Unsupported pairing-code version — mint a fresh code on the "
-            "exporting host.")
+            "exporting host."))
     missing = [k for k in ("grant_uid", "magic_token", "api_key")
                if not payload.get(k)]
     if missing:
-        raise forms.ValidationError(
-            f"Pairing code is missing {', '.join(missing)} — mint a fresh "
-            "code on the exporting host.")
+        raise forms.ValidationError(_(
+            "Pairing code is missing %(fields)s — mint a fresh code on the "
+            "exporting host.") % {"fields": ", ".join(missing)})
     return payload
 
 
