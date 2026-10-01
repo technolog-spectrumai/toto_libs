@@ -203,7 +203,7 @@ def test_gis_off_migration_graph_is_packaged(owner):
     # MIGRATION_MODULES; it must ride in the toto-base wheel next to the GIS-on one.
     assert owner.get("toto/locations/migrations_nogis/__init__.py") == "toto-base"
     assert owner.get("toto/locations/migrations_nogis/0001_initial.py") == "toto-base"
-    assert owner.get("toto/locations/migrations/0005_address_latlon.py") == "toto-base"
+    assert owner.get("toto/locations/migrations/0001_initial.py") == "toto-base"
 
 
 def test_templates_are_packaged(all_names, owner):
@@ -301,10 +301,10 @@ def test_toto_media_ships_the_light_pair(payloads, owner):
     # hard-depends on toto-ai, so a host wanting OCR alone had no way to install it.
     apps = {n.split("/")[1] for n in payloads["toto-media"] if n.startswith("toto/")}
     assert apps == {"vod", "ocr"}, sorted(apps)
-    assert owner.get("toto/vod/migrations/0002_drop_all_vod_tables.py") == "toto-media"
+    assert owner.get("toto/vod/migrations/__init__.py") == "toto-media"
     assert owner.get("toto/vod/templates/vod/library.html") == "toto-media"
     assert owner.get("toto/ocr/templates/ocr/ocr.html") == "toto-media"
-    assert owner.get("toto/ocr/migrations/0001_squashed_0002.py") == "toto-media"
+    assert owner.get("toto/ocr/migrations/0001_initial.py") == "toto-media"
 
 
 def test_the_processing_tier_ships_in_toto_media_ops(payloads, owner):
@@ -409,13 +409,7 @@ def test_jess_ships_in_toto_base(owner, all_names):
     # The suite's own runnable settings, so a host's clean-env gate can run it.
     assert owner.get("toto/jess/testing/settings.py") == "toto-base"
     assert owner.get("toto/jess/tests.py") == "toto-base"
-    # The destructive absorption travels with the code, or a host that migrates has a
-    # schema the models no longer describe.
-    assert owner.get("toto/api/migrations/0004_delete_emailservice.py") == "toto-base"
-    assert owner.get(
-        "toto/socialhub/migrations/0002_remove_community_email_service.py"
-    ) == "toto-base"
-    # And the model it replaced is gone from the wheel, not merely unreferenced.
+    # The EmailService model is gone from the wheel, not merely unreferenced.
     assert not [n for n in all_names if n.endswith("toto/api/email_service.py")]
 
 
@@ -460,22 +454,20 @@ def test_primula_is_parked_and_ships_in_no_wheel(all_names, owner):
     source sits in limbo.
     """
     assert not [n for n in all_names if n.startswith("toto/primula/")]
-    # The 'sheet' vault file type is NOT parked with it. The choice stays in
-    # toto-base because rows already carry it: dropping the migration would
-    # make every stored sheet an unreadable file_type on the next deploy.
-    assert owner.get("toto/vault/migrations/0010_alter_vaultfile_file_type.py") == "toto-base"
+    # The 'sheet' vault file type is NOT parked with it: the choice stays in
+    # toto-base's vault, in its initial migration.
+    assert owner.get("toto/vault/migrations/0001_initial.py") == "toto-base"
 
 
 def test_the_pxml_deck_class_ships_in_the_right_wheels(owner):
     """The deck file class straddles two packages, and both halves are droppable.
 
-    The 'pxml' choice and its migration live in vault (toto-base); the plugin
-    that gives a deck its Play button lives in memo (toto-works). The migration
-    inlines a frozen copy of memo's deck sniff precisely so toto-base need not
-    import toto-works — placidia installs the vault with no toto-works on disk
-    at all, so an import there is a hard crash at migrate time.
+    The 'pxml' choice lives in vault (toto-base), in its initial migration; the
+    plugin that gives a deck its Play button lives in memo (toto-works).
+    toto-base must not import toto-works — placidia installs the vault with no
+    toto-works on disk at all.
     """
-    assert owner.get("toto/vault/migrations/0021_pxml_file_type.py") == "toto-base"
+    assert owner.get("toto/vault/migrations/0001_initial.py") == "toto-base"
     # A directory with no __init__.py: it ships only because toto-works sets
     # namespaces = true, which is exactly the kind of thing a wheel drops.
     assert owner.get("toto/memo/plugins/vault_play_plugins.py") == "toto-works"
