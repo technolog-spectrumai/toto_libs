@@ -133,6 +133,28 @@ class JpegTests(AvatarCase):
         self.assertNothingTells(data, image)
         self.assertEqual((image.format, image.mode), ("JPEG", "RGB"))
 
+    def test_a_cameras_mpo_is_stored_as_the_jpeg_in_front(self):
+        """Some cameras write MPO, a JPEG with a second picture behind the
+        first, which Pillow names apart: refused as a format off the list
+        until 37c.24. Now an avatar, stored as a plain JPEG of the picture in
+        front, without the camera's metadata."""
+        buffer = io.BytesIO()
+        red_and_blue().save(buffer, format="MPO", save_all=True,
+                            append_images=[Image.new("RGB", (40, 20), BLUE)],
+                            exif=phone_exif(), comment=b"secret comment")
+        original = buffer.getvalue()
+        self.assertEqual(Image.open(io.BytesIO(original)).format, "MPO")
+        response = self.post(upload(original, "DSCF0001.JPG", "image/jpeg"))
+        self.assertEqual(response.status_code, 302)
+        data, image = self.stored()
+        self.assertNothingTells(data, image)
+        self.assertEqual((image.format, image.size), ("JPEG", (40, 20)))
+        self.assertNotIn("mp", image.info)
+        self.assertTrue(self.person.avatar.name.endswith(".jpg"))
+        left = image.convert("RGB").getpixel((5, 10))
+        self.assertGreater(left[0], 150)  # the red half in front, not the blue picture behind
+        self.assertLess(left[2], 100)
+
     def test_pixels_that_cannot_be_read_are_refused(self):
         # The header is whole, so Pillow's first look passes; the pixels are
         # cut short. Drawing it again is what finds out.

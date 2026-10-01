@@ -214,13 +214,20 @@ class CommunityNewsPostForm(forms.ModelForm):
 
 #: What an avatar may be, by what Pillow finds INSIDE the file, and the
 #: extension it is stored under. The member's filename is never kept: a GIF
-#: named ``me.html`` would otherwise be served from /media/ as a page.
-AVATAR_FORMATS = {"JPEG": "jpg", "PNG": "png", "GIF": "gif", "WEBP": "webp"}
+#: named ``me.html`` would otherwise be served from /media/ as a page. A
+#: camera's MPO — a JPEG with a second picture behind the first, which Pillow
+#: names apart — is stored as the JPEG every browser shows (2026-10-01,
+#: 37c.24); it was refused until then, as a format off the list.
+AVATAR_FORMATS = {"JPEG": "jpg", "MPO": "jpg", "PNG": "png", "GIF": "gif", "WEBP": "webp"}
 AVATAR_MAX_PIXELS = 4096
 
 #: The qualities a JPEG or WebP avatar is encoded at, best first; the first
 #: that fits under the size cap is stored (2026-10-01).
 AVATAR_QUALITIES = (90, 80, 70)
+
+#: A format Pillow reads that a picture is drawn again in another one: an
+#: MPO's second picture is not kept, so what is left is a plain JPEG.
+REDRAWN_AS = {"MPO": "JPEG"}
 
 
 def avatar_max_bytes() -> int:
@@ -229,23 +236,27 @@ def avatar_max_bytes() -> int:
     return int(getattr(settings, "SOCIALHUB_AVATAR_MAX_BYTES", 2 * 1024 * 1024))
 
 
-def reencode_avatar(data: bytes, image_format: str) -> bytes | None:
+def redraw_picture(data: bytes, image_format: str, max_bytes: int) -> bytes | None:
     """The picture drawn again from its pixels alone (2026-10-01).
 
     A photo says where it was taken and with what — EXIF with the GPS
     position and the camera, often XMP, an ICC profile, a comment — and
-    stored as uploaded, /media/ handed all of it to anyone shown the avatar.
+    stored as uploaded, /media/ handed all of it to anyone shown the picture.
     So Pillow decodes the first frame, turns it as its EXIF orientation says
     (the picture stands as the member saw it), and encodes a new file in the
-    same format from the pixels: only a palette's transparency comes along.
-    An animated GIF or WebP keeps its first frame.
+    same format from the pixels (an MPO as a JPEG, ``REDRAWN_AS``): only a
+    palette's transparency comes along. An animated GIF or WebP keeps its
+    first frame.
 
-    The size cap holds for what is stored too: a JPEG or WebP is tried at
+    ``max_bytes`` holds for what is stored too: a JPEG or WebP is tried at
     each of ``AVATAR_QUALITIES`` until one fits; None when none does. Raises
-    whatever Pillow raises for pixels it cannot decode.
+    whatever Pillow raises for pixels it cannot decode. Avatars come here
+    through ``reencode_avatar``, and the host's Trix attachments directly
+    (37c.24).
     """
     from PIL import Image, ImageOps
 
+    image_format = REDRAWN_AS.get(image_format, image_format)
     with Image.open(io.BytesIO(data)) as source:
         picture = ImageOps.exif_transpose(source)
     # Everything else in info is metadata, and the encoders write some of it
@@ -258,9 +269,15 @@ def reencode_avatar(data: bytes, image_format: str) -> bytes | None:
         buffer = io.BytesIO()
         picture.save(buffer, format=image_format,
                      **({"quality": quality} if quality else {}))
-        if buffer.tell() <= avatar_max_bytes():
+        if buffer.tell() <= max_bytes:
             return buffer.getvalue()
     return None
+
+
+def reencode_avatar(data: bytes, image_format: str) -> bytes | None:
+    """An avatar drawn again without its metadata (``redraw_picture``), under
+    the avatar's size cap."""
+    return redraw_picture(data, image_format, avatar_max_bytes())
 
 
 def clean_avatar_upload(avatar):
