@@ -85,7 +85,7 @@ with a note the member reads on My account (socialhub/erasure.py).{% endcomment 
           <p class="min-w-0 break-words font-bold">{{ ticket.username }}{% if not ticket.user_id %} <span class="text-xs font-normal opacity-60">({% translate "erased" %})</span>{% endif %}</p>
           <span class="shrink-0 text-xs opacity-70">{{ ticket.get_status_display }}</span>
         </div>
-        <p class="text-xs opacity-70">{% translate "Filed" %} {{ ticket.created_at|date:"Y-m-d H:i" }}{% if ticket.handled_at %} · {% translate "Answered" %} {{ ticket.handled_at|date:"Y-m-d H:i" }}{% endif %}</p>
+        <p class="text-xs opacity-70">{% translate "Filed" %} {{ ticket.created_at|date:"Y-m-d H:i" }}{% if ticket.handled_at %} · {% translate "Answered" context "erasure request" %} {{ ticket.handled_at|date:"Y-m-d H:i" }}{% endif %}</p>
         {% if ticket.note %}<p class="text-xs">{{ ticket.note }}</p>{% endif %}
         {% if ticket.is_open %}
         <code class="block select-all break-all rounded border border-current/20 px-2 py-1 font-mono text-xs">{{ ticket.command }}</code>

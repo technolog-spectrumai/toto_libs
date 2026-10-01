@@ -90,7 +90,7 @@ link, and nothing else is markup.{% endcomment %}
               <td class="px-4 py-3 font-semibold">{{ notice.version }}{% if current and notice.pk == current.pk %} <span class="text-xs font-normal opacity-60">({% translate "current" %})</span>{% endif %}</td>
               <td class="whitespace-nowrap px-4 py-3">{{ notice.published_at|date:"Y-m-d H:i" }}</td>
               <td class="px-4 py-3">{% if notice.published_by %}{{ notice.published_by.get_username }}{% else %}<span class="opacity-50">{% translate "the platform" %}</span>{% endif %}</td>
-              <td class="px-4 py-3 text-right"><a href="{% url 'socialhub:privacy_notice_version' notice.version %}" class="font-semibold underline">{% translate "Read" %}</a></td>
+              <td class="px-4 py-3 text-right"><a href="{% url 'socialhub:privacy_notice_version' notice.version %}" class="font-semibold underline">{% translate "Read" context "privacy notice version" %}</a></td>
             </tr>
           {% endfor %}
           </tbody>
@@ -106,7 +106,7 @@ link, and nothing else is markup.{% endcomment %}
             <p class="font-bold">{% blocktranslate with version=notice.version %}Version {{ version }}{% endblocktranslate %}{% if current and notice.pk == current.pk %} <span class="text-xs font-normal opacity-60">({% translate "current" %})</span>{% endif %}</p>
             <p class="text-xs opacity-70">{{ notice.published_at|date:"Y-m-d H:i" }} · {% if notice.published_by %}{{ notice.published_by.get_username }}{% else %}{% translate "the platform" %}{% endif %}</p>
           </div>
-          <a href="{% url 'socialhub:privacy_notice_version' notice.version %}" class="font-semibold underline">{% translate "Read" %}</a>
+          <a href="{% url 'socialhub:privacy_notice_version' notice.version %}" class="font-semibold underline">{% translate "Read" context "privacy notice version" %}</a>
         </article>
         {% endfor %}
       </div>

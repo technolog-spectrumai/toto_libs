@@ -271,7 +271,13 @@ which is why Recent sign-ins shows them too.
 
 Every string the page, its forms and its messages show is marked for
 translation (`{% translate %}`, `{% blocktranslate %}`, `gettext`); the
-Polish catalogue is filled in separately.
+Polish catalogue is filled in separately. A few short labels carry a
+context (`pgettext`, 2026-10-01), because the same English word means
+something else on other screens: "Answered" beside an erasure request's
+date (`erasure request`), the erasure list's tabs "Open", "Carried out"
+and "Declined" (`erasure requests filter`) and "Read" on the notice's
+versions list (`privacy notice version`). A host's catalogue needs an
+entry with that `msgctxt` for each; without one the label shows in English.
 
 ## Data protection (RODO / GDPR)
 

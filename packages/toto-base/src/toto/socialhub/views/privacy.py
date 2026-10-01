@@ -32,6 +32,7 @@ from django.http import Http404
 from django.shortcuts import redirect, render
 from django.utils import translation
 from django.utils.translation import gettext as _
+from django.utils.translation import pgettext
 from django.views.decorators.http import require_http_methods, require_POST, require_safe
 
 from toto.socialhub import erasure
@@ -160,9 +161,15 @@ def erasure_requests(request):
         "is_paginated": page.has_other_pages(),
         "extra_query": f"&status={shown}",
         "shown": shown,
+        # The tabs name the requests they list, so they carry a context
+        # (2026-10-01): a bare "Open" is a button's verb on other screens,
+        # and "Carried out" and "Declined" are one request's status in the
+        # table below — Polish says each differently.
         "filters": [(key, label) for key, label in (
-            ("open", _("Open")), ("done", _("Carried out")),
-            ("declined", _("Declined")), ("all", _("All")))],
+            ("open", pgettext("erasure requests filter", "Open")),
+            ("done", pgettext("erasure requests filter", "Carried out")),
+            ("declined", pgettext("erasure requests filter", "Declined")),
+            ("all", _("All")))],
         "open_count": ErasureRequest.objects.filter(status=ErasureRequest.OPEN).count(),
     }
     return render(request, "socialhub/erasure_requests.html", PageProcessor().decorate(context, request))
