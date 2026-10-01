@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import CheckState, Snapshot
+from .models import BeatEntry, CheckState, Snapshot, TaskRun
 
 
 @admin.register(Snapshot)
@@ -29,6 +29,42 @@ class CheckStateAdmin(admin.ModelAdmin):
     list_display = ("key", "status", "since", "checked_at", "alerted_status",
                     "alerted_at")
     list_filter = ("status",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(TaskRun)
+class TaskRunAdmin(admin.ModelAdmin):
+    """Read-only: Celery's signals (toto.monit.heartbeats) are the only writer,
+    monit_prune the only one that deletes."""
+
+    date_hierarchy = "started_at"
+    list_display = ("task", "status", "started_at", "finished_at", "summary")
+    list_filter = ("status", "task")
+    search_fields = ("task", "task_id")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(BeatEntry)
+class BeatEntryAdmin(admin.ModelAdmin):
+    """Read-only: written when celery beat starts (toto.monit.heartbeats)."""
+
+    list_display = ("name", "task", "first_seen", "last_seen")
 
     def has_add_permission(self, request):
         return False

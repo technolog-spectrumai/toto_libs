@@ -21,7 +21,9 @@ worse than none: a fire-and-forget task that writes no row of its own is
 invisible here. So is a task that died before it could write one — which is
 exactly the case where the row would have been most useful. `celery_available()`
 on the page covers the other half of that question: whether anything is
-listening at all.
+listening at all. The one exception since 2026-10-01: a task the beat
+schedule names gets a row from Celery's own signals whatever it writes
+(`monit.TaskRun`, see toto.monit.heartbeats).
 
 WHY EACH SOURCE IS AN ADAPTER. There is no shared base run model and no shared
 status vocabulary. Four apps define their own `RunStatus`, and the members do
@@ -52,6 +54,9 @@ CANONICAL = (PENDING, RUNNING, DONE, FAILED, OTHER)
 _STATUS_MAP = {
     "pending": PENDING, "waiting": PENDING, "queued": PENDING,
     "running": RUNNING,
+    # A scheduled task that raised Retry waits for its next attempt
+    # (monit.TaskRun, 2026-10-01).
+    "retry": PENDING,
     "success": DONE, "done": DONE, "completed": DONE, "ingested": DONE,
     "failed": FAILED,
     # Deliberately NOT "failed": a partial OCR read produced text, a refused
@@ -77,6 +82,21 @@ class JobSource:
     error_fields: tuple = ("error",)
     task_id_field: str = ""
     select_related: tuple = ()
+    #: For a table with no status column: a function of the row giving its
+    #: raw status, in the words of _STATUS_MAP. `status_field` is then "".
+    status_from: object = None
+
+
+def _faucet_status(run) -> str:
+    """A FaucetRun keeps counts, not a status (2026-10-01). Unfinished is
+    running; failing everybody it tried is a failure; failing only some is
+    partial — one dry reserve among paying faucets, which the map above
+    refuses to call a failure."""
+    if run.finished_at is None:
+        return "running"
+    if run.failed:
+        return "partial" if (run.paid or run.skipped) else "failed"
+    return "done"
 
 
 SOURCES: tuple = (
@@ -143,6 +163,21 @@ SOURCES: tuple = (
     JobSource(key="capsule_install", label="Capsule installs",
               app_label="toto.anastasia", model="anastasia.InstallRun",
               error_fields=("detail",), select_related=("lease",)),
+    # EVERY RUN OF A SCHEDULED TASK (2026-10-01), written by Celery's own
+    # signals rather than by the task — so the levy, the billing and the
+    # sweeps that keep no table of their own are here too, each with a short
+    # summary of what it returned. toto.monit.heartbeats has the rest; the
+    # page's schedule table shows each entry's newest.
+    JobSource(key="beat", label="Scheduled tasks",
+              app_label="toto.monit", model="monit.TaskRun",
+              created_field="", task_id_field="task_id"),
+    # The hourly faucet payouts and the mana pools' refills, one row per
+    # execution (and per pool). Counts and no status column: `_faucet_status`
+    # reads one off the counts, and the failures' reasons are in `detail`.
+    JobSource(key="faucet", label="Faucet runs",
+              app_label="toto.assets", model="assets.FaucetRun",
+              status_field="", status_from=_faucet_status, created_field="",
+              error_fields=("detail",), select_related=("faucet",)),
 )
 
 
@@ -196,7 +231,10 @@ def _rows_for(source: JobSource, limit: int) -> list:
 
     out = []
     for obj in rows:
-        raw = str(getattr(obj, source.status_field, "") or "")
+        if source.status_from is not None:
+            raw = str(source.status_from(obj) or "")
+        else:
+            raw = str(getattr(obj, source.status_field, "") or "")
         created = getattr(obj, source.created_field, None) if source.created_field else None
         started = getattr(obj, source.started_field, None)
         finished = getattr(obj, source.finished_field, None)

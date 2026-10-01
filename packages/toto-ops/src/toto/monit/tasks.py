@@ -21,7 +21,10 @@ def monit_sample():
 
 @shared_task(name="toto.monit.tasks.monit_prune", ignore_result=True)
 def monit_prune():
-    """Drop snapshots older than MONIT_RETENTION_HOURS (default 48)."""
+    """Drop snapshots older than MONIT_RETENTION_HOURS (default 48), and the
+    scheduled tasks' run records older than MONIT_RUN_RETENTION_DAYS (default
+    30) but each task's newest (toto.monit.heartbeats.prune)."""
+    from . import heartbeats
     from .models import Snapshot
 
     hours = getattr(settings, "MONIT_RETENTION_HOURS", 48)
@@ -29,6 +32,11 @@ def monit_prune():
     deleted, _ = Snapshot.objects.filter(created__lt=cutoff).delete()
     if deleted:
         logger.info("monit: pruned %d snapshots older than %dh", deleted, hours)
+    runs = heartbeats.prune()
+    if runs:
+        logger.info("monit: pruned %d run records", runs)
+    # What the run record of this very task shows on the Jobs page.
+    return {"snapshots": deleted, "runs": runs}
 
 
 @shared_task(name="toto.monit.tasks.monit_alert_checks", ignore_result=True,
@@ -44,3 +52,4 @@ def monit_alert_checks():
     sent = run()
     if any(sent.values()):
         logger.info("monit: alert mail sent %s", sent)
+    return sent

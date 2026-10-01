@@ -91,3 +91,64 @@ class CheckState(models.Model):
 
     def __str__(self):
         return f"{self.key}: {self.status}"
+
+
+class TaskRun(models.Model):
+    """One run of a task the beat schedule names, as the worker saw it.
+
+    Written by Celery's own signals (``toto.monit.heartbeats``, 2026-10-01): a
+    row when the task starts, its outcome when it ends — for every task the
+    beat schedule names, whoever sent it. The newest row of a task is the
+    heartbeat the overdue check (``toto.monit.record``) reads; the Jobs page
+    lists them all. One row per Celery task id, so a retry reuses its row.
+    Pruned by ``monit_prune`` after MONIT_RUN_RETENTION_DAYS, except each
+    task's newest.
+    """
+
+    task = models.CharField(max_length=200)
+    task_id = models.CharField(max_length=255, unique=True)
+    #: running, success, failed, retry — or Celery's own state, lower-cased.
+    status = models.CharField(max_length=20, default="running")
+    started_at = models.DateTimeField(default=timezone.now, db_index=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    #: What the task returned, shortened, with every secret starred.
+    summary = models.CharField(max_length=300, blank=True)
+    #: The exception's type and message, scrubbed the same way.
+    error = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        ordering = ("-started_at", "-pk")
+        get_latest_by = "started_at"
+        indexes = [models.Index(fields=["task", "-started_at"],
+                                name="monit_taskrun_task_started")]
+
+    def __str__(self):
+        return f"{self.task} — {self.summary}" if self.summary else self.task
+
+    @property
+    def duration_s(self):
+        if self.started_at and self.finished_at:
+            return round((self.finished_at - self.started_at).total_seconds(), 1)
+        return None
+
+
+class BeatEntry(models.Model):
+    """An entry of the beat schedule, as celery beat started with it.
+
+    Written each time beat starts (``toto.monit.heartbeats``, 2026-10-01).
+    ``first_seen`` is what an entry that has never run is judged from — a new
+    entry is not overdue the minute it is added, and a beat restarted every
+    day does not keep moving that start. ``last_seen`` is the latest start.
+    """
+
+    name = models.CharField(max_length=200, unique=True)
+    task = models.CharField(max_length=200)
+    first_seen = models.DateTimeField(default=timezone.now)
+    last_seen = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ("name",)
+        verbose_name_plural = "beat entries"
+
+    def __str__(self):
+        return self.name

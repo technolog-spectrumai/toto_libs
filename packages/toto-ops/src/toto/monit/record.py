@@ -8,7 +8,8 @@ verify, when was the last backup taken and is it recent enough to be worth
 having, can the media store be written to, how long has the certificate got.
 Every check runs when the page is requested, and none is graphed — a broken
 audit chain is not interesting as a chart. Since 2026-10-01 the same checks
-also run on the beat, and a change is mailed (``toto.monit.alerts``).
+also run on the beat, and a change is mailed (``toto.monit.alerts``); one of
+them asks whether the beat itself keeps time (``check_overdue``).
 
 Ported from the placidia truth book's ops app, generalised: the paths it
 probes come from settings every host has (`MEDIA_ROOT`) or declares
@@ -379,8 +380,65 @@ def check_certificate():
                  value=str(max(days, 0)))
 
 
+@_guard("overdue", gettext_lazy("Scheduled tasks"))
+def check_overdue():
+    """Has every beat entry started as often as its schedule says
+    (2026-10-01)?
+
+    Each entry's newest run against its cadence (``toto.monit.heartbeats``):
+    not started within twice the cadence plus a grace is WARN, three times
+    FAIL. When nothing scheduled has started in the most frequent entry's
+    window the summary says what that is — beat, or every worker, gone —
+    rather than listing every entry.
+    """
+    from . import heartbeats
+
+    label = _("Scheduled tasks")
+    states = heartbeats.entries()
+    judged = [state for state in states if state.status != OFF]
+    if not judged:
+        return Check("overdue", label, OFF,
+                     _("Nothing is scheduled on this host.") if not states else
+                     _("No schedule here has a cadence that can be judged."))
+    late = [state for state in judged if state.late]
+    status = OK
+    if any(state.status == FAIL for state in late):
+        status = FAIL
+    elif late:
+        status = WARN
+    quiet = heartbeats.quiet_for(judged)
+    names = ", ".join(state.name for state in late[:5]) + (", …" if len(late) > 5 else "")
+    if quiet is not None and len(late) == len(judged):
+        summary = _("Every scheduled task is overdue: celery beat is not running, "
+                    "or no worker takes its tasks.")
+    elif quiet is not None:
+        summary = _("Nothing scheduled has started for %(quiet)s: celery beat is "
+                    "not running, or no worker takes its tasks.") % {
+                        "quiet": heartbeats.span(quiet)}
+    elif late:
+        summary = ngettext(
+            "%(late)d of %(count)d scheduled tasks is overdue: %(names)s.",
+            "%(late)d of %(count)d scheduled tasks are overdue: %(names)s.",
+            len(late)) % {"late": len(late), "count": len(judged), "names": names}
+    else:
+        summary = ngettext("%(count)d scheduled task, none overdue.",
+                           "%(count)d scheduled tasks, none overdue.",
+                           len(judged)) % {"count": len(judged)}
+    detail = "; ".join(heartbeats.lateness(state) for state in late)
+    if quiet is not None:
+        from django.utils import timezone
+
+        started = heartbeats.beat_started()
+        said = (_("Beat last started %(when)s.") % {
+                    "when": timezone.localtime(started).strftime("%Y-%m-%d %H:%M")}
+                if started else _("No start of celery beat has been recorded."))
+        detail = f"{said} {detail}"
+    return Check("overdue", label, status, summary, detail=detail,
+                 value=str(len(late)))
+
+
 ALL_CHECKS = (check_database, check_migrations, check_media, check_disk,
-              check_backups, check_audit, check_certificate)
+              check_backups, check_audit, check_certificate, check_overdue)
 
 
 def run_checks():
