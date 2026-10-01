@@ -80,10 +80,13 @@ class AlertRunTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertNotIn("reminder", mail.outbox[0].body)
 
-    def test_recovery_is_mailed_once(self):
+    def test_recovery_is_mailed_once_it_has_held(self):
         self.at(0, verdict(record.FAIL))
         self.at(5, verdict(record.OK, summary="Newest 2 h ago."))
-        self.at(10, verdict(record.OK, summary="Newest 2 h ago."))
+        self.at(30, verdict(record.OK, summary="Newest 2 h ago."))
+        self.assertEqual(len(mail.outbox), 1, "back for 25 minutes: not yet")
+        self.at(35, verdict(record.OK, summary="Newest 2 h ago."))
+        self.at(40, verdict(record.OK, summary="Newest 2 h ago."))
         self.assertEqual(self.subjects(), ["Zenobia Test: Backups is failing",
                                            "Zenobia Test: Backups is back to normal"])
         recovered = mail.outbox[1]
@@ -95,9 +98,24 @@ class AlertRunTests(TestCase):
     def test_failing_again_after_a_recovery_is_a_new_alert(self):
         self.at(0, verdict(record.FAIL))
         self.at(5, verdict(record.OK))
-        self.at(10, verdict(record.FAIL))
+        self.at(35, verdict(record.OK))
+        self.at(40, verdict(record.FAIL))
         self.assertEqual(len(mail.outbox), 3)
         self.assertEqual(mail.outbox[2].subject, "Zenobia Test: Backups is failing")
+
+    def test_a_flapping_check_is_mailed_once_not_every_run(self):
+        # Failing every other run for two hours (2026-10-01, the review).
+        for minutes in range(0, 120, 5):
+            self.at(minutes, verdict(record.FAIL if minutes % 10 == 0 else record.OK))
+        self.assertEqual(self.subjects(), ["Zenobia Test: Backups is failing"])
+        self.assertEqual(CheckState.objects.get(key="backups").alerted_status, record.FAIL)
+        # Still flapping six hours on: the reminder, as for any failure.
+        self.at(6 * 60, verdict(record.FAIL))
+        self.assertEqual(self.subjects()[1:], ["Zenobia Test: Backups is still failing"])
+        # And once it holds, the recovery.
+        self.at(6 * 60 + 5, verdict(record.OK))
+        self.at(6 * 60 + 35, verdict(record.OK))
+        self.assertEqual(self.subjects()[2:], ["Zenobia Test: Backups is back to normal"])
 
     def test_a_warning_is_said_once_and_never_repeated(self):
         self.at(0, verdict(record.WARN))

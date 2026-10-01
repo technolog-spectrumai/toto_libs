@@ -12,7 +12,10 @@ mails ALERT_EMAILS when a verdict CHANGES:
 - one that gets worse (unknown → warn → fail) is mailed again; one that gets
   better without coming back (fail → warn) is not, and keeps its reminder
   clock;
-- one that comes back (ok, or off) is mailed once more (``check_recovered``).
+- one that comes back (ok, or off) is mailed once more (``check_recovered``)
+  — once it has STAYED back for ``RECOVERY_HOLD`` (2026-10-01, the review):
+  until then a relapse is the same incident, so a check that flaps every few
+  minutes is mailed once, then its reminders, and not on every run.
 
 A check that stays as it was is silence. Bad means FAIL, WARN, and UNKNOWN — a
 probe that could not run is a monitor gone blind, which is worth one mail. OFF
@@ -65,6 +68,12 @@ RANK = {record.OK: 0, record.OFF: 0, record.UNKNOWN: 1, record.WARN: 2,
         record.FAIL: 3}
 
 PROBLEM, REMINDER, RECOVERED = "problem", "reminder", "recovered"
+
+#: How long a check must stay fine before its recovery is mailed. Half an
+#: hour is six runs at the default five minutes, and the second run at the
+#: slowest, hourly. Without it a check failing every other run mailed
+#: "failing" and "back to normal" in turn, every run.
+RECOVERY_HOLD = timedelta(minutes=30)
 
 #: The beat entry's task, as the schedule names it (toto.schedules).
 TASK = "toto.monit.tasks.monit_alert_checks"
@@ -165,7 +174,11 @@ def decide(state, status: str, now, remind_after) -> str | None:
     """
     rank = _rank(status)
     if rank == 0:
-        return RECOVERED if state.alerted_status else None
+        # Back, and told so once it has stayed back (RECOVERY_HOLD): ``since``
+        # is when it came back.
+        if state.alerted_status and now - state.since >= RECOVERY_HOLD:
+            return RECOVERED
+        return None
     if not state.alerted_status or rank > _rank(state.alerted_status):
         return PROBLEM
     if (status == record.FAIL and remind_after is not None

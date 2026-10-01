@@ -11,6 +11,7 @@ from unittest import mock
 
 from django.core import mail
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from toto.core.models import NoticeDelivery, Platform
 from toto.core.tasks import deliver_notice
@@ -94,8 +95,11 @@ class MailCheckTests(TestCase):
         [alert] = mail.outbox
         self.assertEqual(alert.subject, "Zenobia Test: Mail needs attention")
         self.assertIn("The last 3 notices could not be delivered.", alert.body)
-        # That mail left, so the way out works again, and the next run says so.
-        with mock.patch.object(record, "ALL_CHECKS", (record.check_mail,)), \
-                self.captureOnCommitCallbacks(execute=True):
-            alerts.run()
+        # That mail left, so the way out works again, and the runs say so
+        # once it has held (alerts.RECOVERY_HOLD).
+        later = timezone.now()
+        for now in (later, later + alerts.RECOVERY_HOLD):
+            with mock.patch.object(record, "ALL_CHECKS", (record.check_mail,)), \
+                    self.captureOnCommitCallbacks(execute=True):
+                alerts.run(now=now)
         self.assertEqual(mail.outbox[1].extra_headers["X-Toto-Notice"], "check_recovered")
