@@ -117,6 +117,22 @@ class Person(DomainEntity):
     )
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=50, blank=True, null=True)
+    #: Whether other members see the e-mail address and the phone number
+    #: (2026-10-01, 37c.25). Every member saw every other member's address
+    #: and had no way to hide it; now each is the member's own choice, OFF by
+    #: default like `location_sharing`. The member always sees their own and
+    #: an administrator keeps seeing both (`toto.socialhub.contact_access`).
+    #: On Person, beside the values they guard, for `location_sharing`'s
+    #: reason: a choice that did not travel with the person could be ignored
+    #: by a host the person is copied to.
+    show_email = models.BooleanField(
+        default=False,
+        help_text="Whether other members see this person's e-mail address. Off by default.",
+    )
+    show_phone = models.BooleanField(
+        default=False,
+        help_text="Whether other members see this person's phone number. Off by default.",
+    )
     is_federal_agent = models.BooleanField(
         default=False,
         help_text=(

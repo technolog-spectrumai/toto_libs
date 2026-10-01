@@ -127,6 +127,9 @@ class CommunityApiTests(ApiCase):
         self.assertEqual(body["latest_news_title"], "New")
 
     def test_the_org_chart_follows_patrons_and_carries_contacts(self):
+        # Contacts the member shows (2026-10-01, 37c.25: off by default;
+        # toto.socialhub.tests_contact_visibility has the hidden ones).
+        Person.objects.filter(pk=self.elder.pk).update(show_email=True, show_phone=True)
         nodes = self.get(self.junior_user,
                          "/socialhub/api/communities/guild/org-chart/").json()["nodes"]
         by_slug = {node["slug"]: node for node in nodes}

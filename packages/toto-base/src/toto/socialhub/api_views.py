@@ -106,6 +106,12 @@ class CommunityOrgChartApiView(MeshGatedApiView):
         except Community.DoesNotExist:
             return JsonResponse({"error": "Community not found."}, status=404)
         members = Person.objects.filter(communities=community).select_related("patron")
+        # Each member's e-mail address and phone only where they show them
+        # (2026-10-01, 37c.25); every node carried both to any caller. Not
+        # even the caller's own or an administrator's sight of a hidden one:
+        # what this API answers, the desktop client copies on to peers.
+        from toto.socialhub.contact_access import shown_email, shown_phone
+
         nodes = []
         for m in members:
             avatar_url = None
@@ -120,7 +126,7 @@ class CommunityOrgChartApiView(MeshGatedApiView):
                 "slug": m.slug,
                 "pid": str(m.patron_id) if m.patron_id else None,
                 "avatar_url": avatar_url,
-                "email": m.email or "",
-                "phone": m.phone or "",
+                "email": shown_email(request.user, m, passed_on=True),
+                "phone": shown_phone(request.user, m, passed_on=True),
             })
         return JsonResponse({"nodes": nodes})

@@ -125,7 +125,10 @@ creates or deletes an account (console only; a first save creates the
 `Person` row, as the map pin does):
 
 - **Profile** (`/account/profile/`, `AccountProfileForm`): display name, about
-  you, avatar and phone — nothing that decides access rides along. The avatar
+  you, avatar and phone, and whether other members see the phone number and
+  the e-mail address (two switches, off by default — [Data
+  protection](#data-protection-rodo--gdpr)) — nothing that decides access
+  rides along. The avatar
   goes through the platform's upload rules without entering the vault: Pillow
   must read it as JPEG, PNG, GIF or WebP, at most 2 MB
   (`SOCIALHUB_AVATAR_MAX_BYTES`) and 4096 pixels a side, the host's
@@ -308,6 +311,15 @@ platform their data, and the rest in `toto.core`:
   for anybody else.
 - **Erasure** (art. 17) is *filed* on My account and *carried out* only at
   the console, by `toto.core`'s `erase_user` ([Erase my account](#my-account)).
+- **Contact details hidden by default** (2026-10-01, 37c.25): other members
+  see a member's e-mail address and phone number only when the member
+  switched them on (My account, Profile: `Person.show_email`,
+  `Person.show_phone`, both off). The member always sees their own and an
+  administrator — a superuser on the Superuser plan — keeps seeing both; the
+  profile, the roster and the data-mesh org chart all ask
+  `contact_access.py`. The org chart answers with what the member shows and
+  nothing more, the caller's own included: the desktop client copies it on,
+  peer to peer.
 - **Nothing kept longer than needed**: membership applications that lapse
   are renewed when their applicant applies again, and pruned with the
   never-used accounts they made 30 days after they lapsed

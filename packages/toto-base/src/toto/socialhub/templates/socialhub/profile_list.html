@@ -130,9 +130,12 @@
                         {{ member.display_name }}
                       </a>
 
-                      {% if member.email %}
+                      {% comment %}Only where the member shows it (2026-10-01,
+                      37c.25): `shown_email` is set by the view from
+                      `contact_access`, blank when this viewer may not read it.{% endcomment %}
+                      {% if member.shown_email %}
                         <p class="mt-1 truncate text-xs opacity-60">
-                          {{ member.email }}
+                          {{ member.shown_email }}
                         </p>
                       {% endif %}
                     </div>

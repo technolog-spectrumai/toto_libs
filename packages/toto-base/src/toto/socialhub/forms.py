@@ -320,21 +320,29 @@ def clean_avatar_upload(avatar):
 
 
 class AccountProfileForm(forms.ModelForm):
-    """The member's own profile, on My account. Four fields and nothing that
+    """The member's own profile, on My account. Four fields, the two switches
+    saying whether other members see the e-mail address and the phone number
+    (2026-10-01, 37c.25; off by default, `contact_access`), and nothing that
     decides access: communities, clearances, the patron and the map switch
     each have their own door, and none of them may ride along here."""
 
     class Meta:
         model = Person
-        fields = ["display_name", "bio", "avatar", "phone"]
+        fields = ["display_name", "bio", "avatar", "phone", "show_phone", "show_email"]
         labels = {
             "display_name": _("Display name"),
             "bio": _("About you"),
             "avatar": _("Avatar"),
             "phone": _("Phone"),
+            "show_phone": _("Show my phone number to other members"),
+            "show_email": _("Show my e-mail address to other members"),
         }
         help_texts = {
             "avatar": _("A JPEG, PNG, GIF or WebP picture, at most 2 MB."),
+            "show_phone": _("When this is off, only you and the administrators see your "
+                            "phone number."),
+            "show_email": _("When this is off, only you and the administrators see your "
+                            "e-mail address."),
         }
         widgets = {
             "bio": forms.Textarea(attrs={"rows": 4}),

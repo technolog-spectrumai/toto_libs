@@ -135,29 +135,43 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
 
       <!-- Info Grid -->
       <div class="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4 sm:p-6">
-        <article
-          :class="darkMode
-            ? 'border-accent-1 bg-sunken-dark'
-            : 'border-accent-2 bg-sunken-light'"
-          class="rounded-xl border p-4">
-          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-envelope"></i>{% trans "Email" %}</p>
-          <p class="mt-2 break-words text-sm font-semibold">
-            {{ profile.email|default:"—" }}
-          </p>
-        </article>
+        {% comment %}The e-mail address and the phone number only where their
+        owner shows them (My account), or to the owner or an administrator
+        (2026-10-01, 37c.25): `contact_access`, the rule the roster and the
+        org-chart API ask too. Both used to show to every signed-in member.{% endcomment %}
+        {% if may_see_email %}
+          <article
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-xl border p-4">
+            <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+              <i class="fa-solid fa-envelope"></i>{% trans "Email" %}</p>
+            <p class="mt-2 break-words text-sm font-semibold">
+              {{ profile.email|default:"—" }}
+            </p>
+            {% if not profile.show_email %}
+              <p class="mt-1 text-xs opacity-60">{% trans "Hidden from other members." %}</p>
+            {% endif %}
+          </article>
+        {% endif %}
 
-        <article
-          :class="darkMode
-            ? 'border-accent-1 bg-sunken-dark'
-            : 'border-accent-2 bg-sunken-light'"
-          class="rounded-xl border p-4">
-          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-phone"></i>{% trans "Phone" %}</p>
-          <p class="mt-2 break-words text-sm font-semibold">
-            {{ profile.phone|default:"—" }}
-          </p>
-        </article>
+        {% if may_see_phone %}
+          <article
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-xl border p-4">
+            <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+              <i class="fa-solid fa-phone"></i>{% trans "Phone" %}</p>
+            <p class="mt-2 break-words text-sm font-semibold">
+              {{ profile.phone|default:"—" }}
+            </p>
+            {% if not profile.show_phone %}
+              <p class="mt-1 text-xs opacity-60">{% trans "Hidden from other members." %}</p>
+            {% endif %}
+          </article>
+        {% endif %}
 
         {% comment %}The address is shown only to somebody entitled to it.
 

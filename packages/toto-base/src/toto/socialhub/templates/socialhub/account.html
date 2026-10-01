@@ -54,7 +54,7 @@ sessions, sign-ins, e-mail) slot in as further sections.{% endcomment %}
             <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-user text-3xl"></i>
           </div>
         {% endif %}
-        <p class="text-sm opacity-70">{% blocktranslate %}Other members see everything in this section on your profile, your phone number included.{% endblocktranslate %}</p>
+        <p class="text-sm opacity-70">{% blocktranslate %}Other members see your display name, avatar and what you write about yourself on your profile; your phone number and e-mail address only if you switch them on below.{% endblocktranslate %}</p>
       </div>
 
       <form method="post" action="{% url 'account:profile' %}" enctype="multipart/form-data" class="space-y-4">

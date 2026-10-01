@@ -51,6 +51,13 @@ class ProfileListView(LoginRequiredMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        # Each member's e-mail address only where they show it, or to
+        # themselves or an administrator (2026-10-01, 37c.25): the roster
+        # printed everybody's under their name.
+        from toto.socialhub.contact_access import shown_email
+
+        for member in context["profiles"]:
+            member.shown_email = shown_email(self.request.user, member)
         return PageProcessor().decorate(context, self.request)
 
 
@@ -87,6 +94,13 @@ class ProfileDetailView(LoginRequiredMixin, DetailView):
             context["reference_requests"] = None
 
         context["is_own_profile"] = is_own_profile
+        # The e-mail address and the phone number only where their owner
+        # shows them, or to the owner or an administrator (2026-10-01,
+        # 37c.25) — the rule the roster and the org-chart API ask too.
+        from toto.socialhub.contact_access import may_see_email, may_see_phone
+
+        context["may_see_email"] = may_see_email(self.request.user, profile)
+        context["may_see_phone"] = may_see_phone(self.request.user, profile)
         from toto.locations.geocode import (geocoding_enabled,
                                             geocoding_settings)
         context["geocoding_enabled"] = geocoding_enabled(geocoding_settings())
