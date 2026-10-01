@@ -86,15 +86,24 @@ def _read_notebook(vault_file: VaultFile) -> tpy_format.TpyNotebook:
         return tpy_format.new_notebook(title=vault_file.title)
 
 
-def _collect_bucket_files(vault_file: VaultFile) -> dict:
-    """Return {title: abs_path} for sibling files in the same bucket (local storage)."""
+def _collect_bucket_files(vault_file: VaultFile, user) -> dict:
+    """Return {title: abs_path} for the sibling files in the same bucket that
+    ``user`` may read (local storage).
+
+    Only what the member may read (2026-10-01): this handed the kernel every
+    file of the bucket, other members' private files included, and code in
+    the notebook can open any path it is given. ``accessible_files`` is
+    ``access.may_read`` as a queryset — the bucket's clearances first, then
+    their own files, the bucket's if they own it, a shared folder's and the
+    public ones — and it reads the live manager, so the trash stays out.
+    """
     if not vault_file.bucket_id:
         return {}
+    from toto.vault.filetree import accessible_files
+
     result: dict[str, str] = {}
     siblings = (
-        VaultFile.objects
-        .filter(bucket_id=vault_file.bucket_id)
-        .exclude(pk=vault_file.pk)
+        accessible_files(user, bucket=vault_file.bucket, exclude_pk=vault_file.pk)
         .order_by("title")
     )
     for vf in siblings:
@@ -328,7 +337,7 @@ def tpy_start_kernel(request, file_pk):
         "env": {},
         "dependencies": deps,
     }
-    vault_files = _collect_bucket_files(vault_file)
+    vault_files = _collect_bucket_files(vault_file, request.user)
     if vault_files:
         config["vault_files"] = vault_files
 
