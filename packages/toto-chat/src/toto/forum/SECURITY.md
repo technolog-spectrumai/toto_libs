@@ -146,9 +146,19 @@ The desktop's token is the session key `/api/login/` hands out, sent as
 auth backend's `get_user`, which refuses an inactive account, and the session
 hash, which a password change breaks. A refused token is answered as no token
 at all, its session is ended, and `AUTH.TOKEN_REFUSED` goes on the audit chain
-with the door and the reason, never the key. The key still rides in the
-socket's URL, where a proxy's access log can keep it; it dies with the
-account, the password, or a sign-out.
+with the door and the reason, never the key. It dies with the account, the
+password, or a sign-out.
+
+Since 2026-10-01 the key goes in the subprotocol header instead of the URL:
+the client offers `toto.bearer` and then the key (`new WebSocket(url,
+["toto.bearer", key])`), the server answers `toto.bearer` and never the key (a
+browser closes a socket whose answer names none of the subprotocols it
+offered), and the consumer sees the offer without the key. `?token=` still
+works for today's desktop clients, and the header's key wins when both come.
+Because a URL is what logs keep, uvicorn's own lines drop the query string
+(`toto.api.server_logs`) and so does the host's nginx access log; nginx's
+error log still names the request line of a request that fails, which is why
+`?token=` goes once the desktop client has moved.
 
 ## 10. Billing
 
