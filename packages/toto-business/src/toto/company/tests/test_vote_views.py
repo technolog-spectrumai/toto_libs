@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import os
 import tempfile
 from decimal import Decimal
 from unittest import mock, skipUnless
@@ -30,6 +32,14 @@ from toto.voting.models import (
 
 MEDIA = tempfile.mkdtemp(prefix="bc-votes-")
 PDF = skipUnless(render_mod.is_available(), "WeasyPrint is not installed in this build")
+
+#: The host's crest, the letterhead's last logo fallback: aralia refuses a
+#: company document with no logo at all, and these tests upload none.
+CREST = os.path.join(MEDIA, "crest.png")
+with open(CREST, "wb") as _handle:
+    _handle.write(base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmM"
+        "IQAAAABJRU5ErkJggg=="))
 
 
 @override_settings(MEDIA_ROOT=MEDIA)
@@ -245,7 +255,11 @@ class FinalizeFlowTests(VoteViewTestCase):
         self.assertContains(response, "On the chain as block")
 
 
+@override_settings(PLATFORM_LOGO_PATH=CREST)
 class ExportTests(VoteViewTestCase):
+    """An export is filed as a vault page and rendered from it by aralia
+    (toto.documents.services); the run's html is that page on the letterhead."""
+
     def test_the_meeting_record_queues_a_render(self):
         self.open_voting()
         self.cast(self.user, "for")
@@ -288,7 +302,7 @@ class ExportTests(VoteViewTestCase):
         import pypdf
 
         from toto.aralia.runner import execute_run
-        from toto.documents import builders
+        from toto.documents import builders, services
 
         self.open_voting()
         self.cast(self.user, "for")
@@ -298,8 +312,9 @@ class ExportTests(VoteViewTestCase):
                                        self.proposition.uid]))
         self.proposition.refresh_from_db()
 
-        run = dispatch.create_run(html=builders.vote_document(self.proposition),
-                                  user=self.user)
+        with mock.patch.object(dispatch, "dispatch_run", side_effect=lambda run: run):
+            run = services.export(builders.vote_document(self.proposition),
+                                  user=self.user, label="decision")
         finished = execute_run(run.pk)
         self.assertEqual(finished.status, "success")
 

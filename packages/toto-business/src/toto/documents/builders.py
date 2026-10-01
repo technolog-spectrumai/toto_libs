@@ -53,6 +53,13 @@ def document(title: str, body: str, *, css: str = "") -> str:
     )
 
 
+#: Pixels per QR module. Aralia renders an export as a vault page, and the
+#: platform's sanitiser drops the `.qr img` width on the way (2026-10-01), so
+#: the picture prints at its own size, 96 pixels to the inch: 3 a module is
+#: about 50 mm, where the default 8 filled most of the page.
+QR_SCALE = 3
+
+
 def _qr_block(payload: str) -> str:
     """The verification QR, inline, plus its text.
 
@@ -64,7 +71,7 @@ def _qr_block(payload: str) -> str:
     from toto.core.qr import QRError, render_data_uri
 
     try:
-        uri = render_data_uri(payload)
+        uri = render_data_uri(payload, scale=QR_SCALE)
     except QRError:
         # A missing picture must not cost the document. The text alone still
         # verifies — it is the payload, and the image was only transport.
