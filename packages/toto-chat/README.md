@@ -57,7 +57,7 @@ toto-chat contains exactly one app/module: **`toto.forum`** (app label `forum`),
 
 **Key couplings and dependencies.**
 
-- Depends on **`toto-base`** (`toto-base==1.6`) for the `people.Person` model (membership identity), the `toto.api` layer, and `toto.ingress` (management-command base).
+- Depends on **`toto-base`** (`toto-base==2.0`) for the `people.Person` model (membership identity), the `toto.api` layer, and `toto.ingress` (management-command base).
 - Requires a **Redis channel layer** (WebSocket delivery and the membership-revocation control frame) and a **cache** (presence), plus a writable `FORUM_ATTACHMENT_ROOT`.
 - Auth/identity endpoints (`login`, `logout`, `me`, `me/mesh`, `health`, `apps`) are intentionally **not** in this package — they are not chat and live in `toto.api`, mounted by the host at `/api/` (with a legacy `/telegraph/api/` alias for a shipped desktop binary).
 - `ingress_forum` (management command, extends `toto.ingress.IngressCommand`) seeds sample channels (`CandyLand`, `Announcements`) with the `admin` user on the roster and grants that user data-mesh read access; it is gated on the ingress `--full` flag.
@@ -93,10 +93,10 @@ toto-chat is a Django app distributed as a wheel; it is used from inside a toto 
 **Install.** In practice the version is pinned by the host in `requirements.toto.txt` alongside the other lockstep siblings:
 
 ```
-toto-chat==1.6
+toto-chat==2.0
 ```
 
-For local development against a checkout, install the package (editable) from its directory; it pulls `toto-base==1.6` transitively.
+For local development against a checkout, install the package (editable) from its directory; it pulls `toto-base==2.0` transitively.
 
 **Wire it into a host.**
 
@@ -139,6 +139,6 @@ python manage.py test \
 
 ## Build & packaging
 
-toto-chat is one of the 9 lockstep-versioned wheels in the toto suite. All siblings share a single `VERSION` (currently **1.6**) and pin each other exactly; this package depends on **`toto-base==1.6`**. Versions are rewritten only by the repo's release tooling (`scripts/release.py`) — never edit them by hand — and `scripts/check_package_graph.py` enforces that each wheel owns a disjoint slice of the `toto.*` namespace. Packaging is standard setuptools (`src/` layout, namespace packages, with `templates/`, `static/`, and `graph/*.yaml` bundled as package data). Hosts pin the whole set in `requirements.toto.txt`.
+toto-chat is one of the 9 lockstep-versioned wheels in the toto suite. All siblings share a single `VERSION` (currently **2.0**) and pin each other exactly; this package depends on **`toto-base==2.0`**. Versions are rewritten only by the repo's release tooling (`scripts/release.py`) — never edit them by hand — and `scripts/check_package_graph.py` enforces that each wheel owns a disjoint slice of the `toto.*` namespace. Packaging is standard setuptools (`src/` layout, namespace packages, with `templates/`, `static/`, and `graph/*.yaml` bundled as package data). Hosts pin the whole set in `requirements.toto.txt`.
 
 For the full build, versioning, and release manual, see the repository root README.

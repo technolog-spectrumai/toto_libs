@@ -334,11 +334,11 @@ application you run on its own.
 It is pinned alongside its siblings in the host's `requirements.toto.txt`:
 
 ```
-toto-ops==1.6
+toto-ops==2.0
 ```
 
 Because the whole suite is version-locked, install it together with the matching
-`toto-base==1.6` (and any other siblings the host uses).
+`toto-base==2.0` (and any other siblings the host uses).
 
 ### Enable in a host
 
@@ -400,8 +400,8 @@ python manage.py test toto.monit
 ## Build & packaging
 
 `toto-ops` is one wheel in the lockstep-versioned toto suite. All nine
-distributions share a single VERSION (currently **1.6**) and pin their siblings
-exactly; here that is the sole dependency `toto-base==1.6`. Version strings are
+distributions share a single VERSION (currently **2.0**) and pin their siblings
+exactly; here that is the sole dependency `toto-base==2.0`. Version strings are
 rewritten only by `scripts/release.py` and must never be edited by hand.
 `scripts/check_package_graph.py` enforces that each package owns a disjoint
 slice of the `toto.*` namespace (this one owns `toto.monit`). Package data

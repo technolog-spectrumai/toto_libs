@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 # anastasia is the execution subsystem: booked capacity, mounted Gears, and
 # disposable runners. It owns no product data — see portal/anastasia.md.
 name = "toto-anastasia"
-version = "1.51"
+version = "2.0"
 description = "toto compute: reserved capacity, mounted Gears, disposable runners"
 readme = "README.md"
 license = { text = "MIT" }
@@ -19,7 +19,7 @@ requires-python = ">=3.10"
 # half (toto.anastasia.executor) must import with no Django at all, so it may
 # never grow a dependency that pulls Django in. A test asserts that.
 dependencies = [
-    "toto-base==1.51",
+    "toto-base==2.0",
 ]
 
 [project.scripts]

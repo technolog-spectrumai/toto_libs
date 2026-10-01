@@ -276,7 +276,7 @@ a file deleted from `src/` can never keep shipping) and prints the exact install
 line for the target machine:
 
 ```bash
-pip install --no-index --find-links dist toto-base==1.6 toto-flow==1.6
+pip install --no-index --find-links dist toto-base==2.0 toto-flow==2.0
 ```
 
 `--no-index` is how hosts install: pip resolves the exact sibling pins against
@@ -529,9 +529,38 @@ fails loudly with `No installed app with label '<app>'`.
   and `resolve_features` rejects `BUILD_WEATHER`/`BUILD_TRAVELS` under
   `BUILD_GEO=0`. faros ships a `BUILD_GEO=0` light onion profile; zenobia stays
   GIS-on. See "Making GIS optional" above.
-- **2026-10-01 — migrations reset.** Every app's history replaced by fresh
-  initials; four hand-written steps kept (api data_mesh group, ledger triggers,
-  kanban review policies; the host's wiki index); every database rebuilt.
+- **v2.0 — fresh migrations, Django 5.2 (2026-10-02).** A MAJOR release by
+  the rule above, for three reasons a host must act on:
+  - *Fresh 0001 migrations (2026-10-01).* Every app's history was replaced by
+    fresh initials; four hand-written steps kept (api data_mesh group, ledger
+    triggers, kanban review policies; the host's wiki index), and
+    `toto.locations` keeps its hand-derived `migrations_nogis` graph under the
+    same names. There is no upgrade path: every database is built again on
+    the new graph, and **every other host regenerates its own migrations** —
+    theirs name library migrations that no longer exist. Dumps from before
+    the reset cannot be restored into a 2.0 database.
+  - *Django 5.2.* The library declares `Django>=4.2,<6` and runs on 5.2 LTS
+    (zenobia's reference deployment, 5.2.17); what moved between the two
+    versions is written so both run — `datetime.timezone.utc` for the removed
+    `django.utils.timezone.utc`, and `toto.core.django_compat` for
+    `CheckConstraint`'s `condition=` and `URLField`'s scheme. Only 5.2 is
+    gated now — zenobia's gate
+    runs no 4.2 leg — so a host staying on 4.2 tests its own build. Sign-out
+    is a POST with CSRF on 5.2 (a GET is 405): a host template that links to
+    it must become a form.
+  - *The crown campaign's removals* (2026-09/10), each with nothing left in
+    the library or zenobia that used it: `Person.is_federal_agent` and
+    `Community.is_federal_tribe` (migrations drop the columns; ask a community
+    privilege instead); the `toto.core.ingress` and `toto.core.page` shims
+    (`toto.ingress`, `toto.ui.page`) and the two re-exports in
+    `toto.core.models`; ambrosia's `LEGACY_KEY` and the old Capsule settings
+    key `gear` (`capsule` now); `mail_purge_jess_secrets`,
+    `migrate_bento_to_neo4j`, `reset_subscriptions.py` and
+    `drop_departed_tables.py`, which only mended pre-reset databases; the
+    retired plans map (the gitea entitlement lives in `toto.gitea` now);
+    django-reversion, the JSON widget and MarkdownX uninstalled; Microsoft
+    Office files (.docx/.xlsx/.pptx) refused at every vault door. Hosts that
+    used any of these (aurelian, placidia) change on their next re-vendor.
 
 The current split: **zenobia** pins all ten packages and carries
 `zenobia/toto/{notarius,polls,sketch,travels,texlab}`; **faros** pins

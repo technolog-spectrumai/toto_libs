@@ -193,7 +193,7 @@ ravioli's doors into the vault also have a harness of their own, `toto.ravioli.t
 
 ## Build & packaging
 
-toto-graph is one of the nine lockstep-versioned wheels in the toto suite. All nine share a single `VERSION` (currently `1.6`) rewritten only by the repo's release script — never edited by hand — and each pins its siblings at the exact same version. This package depends on three siblings: **toto-base**, **toto-flow**, and **toto-ai** (all `==1.6`).
+toto-graph is one of the nine lockstep-versioned wheels in the toto suite. All nine share a single `VERSION` (currently `2.0`) rewritten only by the repo's release script — never edited by hand — and each pins its siblings at the exact same version. This package depends on three siblings: **toto-base**, **toto-flow**, and **toto-ai** (all `==2.0`).
 
 It builds with setuptools from a `src/` layout using PEP 420 namespace packages; each toto wheel owns exactly the portion of `src/toto/` present in its own tree, and a repo script enforces that the partition stays disjoint. Package data ships templates, static assets, and the `graph/*.yaml` projection configs.
 

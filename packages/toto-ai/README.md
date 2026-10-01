@@ -142,7 +142,7 @@ Owns all local-model access and embedding generation.
 
 ### Key couplings and design decisions
 
-- **Hard dependency:** only `toto-base==1.6` (via `pyproject.toml`). Everything sabbia/steven/vicuna
+- **Hard dependency:** only `toto-base==2.0` (via `pyproject.toml`). Everything sabbia/steven/vicuna
   reach for at runtime — `toto.api` (connectors), `toto.gervazy` (crypto vault), `toto.core`
   (`Platform`, plugins, `plugin_autodiscover`), `toto.ingress`, `toto.conf` — lives in toto-base.
 - **Graph integration is one-way and lazy.** toto-ai never imports the graph package at module load;
@@ -228,8 +228,8 @@ Relevant settings:
 
 toto-ai is one of the nine lockstep-versioned wheels in the toto suite (siblings: `toto-base`,
 `toto-chat`, `toto-flow`, `toto-geo`, `toto-graph`, `toto-media`, `toto-ops`, `toto-works`). Every
-package shares a single version from the repo's `VERSION` file (currently **1.6**) and pins its
-siblings exactly. toto-ai declares just one sibling dependency: **`toto-base==1.6`**; its graph
+package shares a single version from the repo's `VERSION` file (currently **2.0**) and pins its
+siblings exactly. toto-ai declares just one sibling dependency: **`toto-base==2.0`**; its graph
 integration stays a lazy, one-directional coupling so `toto-graph` can depend on toto-ai and not the
 reverse.
 

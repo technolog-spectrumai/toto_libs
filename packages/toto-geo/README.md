@@ -109,6 +109,6 @@ Developing against the source tree: the package lives at `src/toto/weather/` and
 
 ## Build & packaging
 
-`toto-geo` is part of the lockstep-versioned **toto** suite: all nine distributions share one `VERSION` (currently **1.6**) and their cross-dependencies are pinned exactly to that version. This wheel declares sibling pins on **`toto-base`** and **`toto-flow`** (`==1.6`); its other runtime peers (`toto.workflows`, `toto.locations`, `toto.vault`, etc.) are provided transitively by those siblings and are guaranteed to match because the host installs the whole suite at one version.
+`toto-geo` is part of the lockstep-versioned **toto** suite: all nine distributions share one `VERSION` (currently **2.0**) and their cross-dependencies are pinned exactly to that version. This wheel declares sibling pins on **`toto-base`** and **`toto-flow`** (`==2.0`); its other runtime peers (`toto.workflows`, `toto.locations`, `toto.vault`, etc.) are provided transitively by those siblings and are guaranteed to match because the host installs the whole suite at one version.
 
 Packaging is standard setuptools (`setuptools>=69`, `build_meta`) discovering packages under `src/` and including template/static/graph package-data. Versions are rewritten only by the repo's release tooling (`scripts/release.py`) — never edit them by hand — and a package-graph check keeps each wheel's slice of `toto.*` disjoint. Hosts pin this wheel in `requirements.toto.txt`. For the full build, versioning and release manual, see the repository root README.
