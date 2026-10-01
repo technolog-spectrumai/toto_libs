@@ -5,7 +5,13 @@ from django.test import override_settings
 from toto.assets.testing import LedgerTestCase as TestCase
 from toto.assets.testing import TEST_ISSUER_KEY
 
-_SIMPLE_STATIC = "django.contrib.staticfiles.storage.StaticFilesStorage"
+# STORAGES, not STATICFILES_STORAGE (2026-10-01): Django 5.1 removed the old
+# setting, so overriding it left the manifest storage in place. 4.2 reads
+# STORAGES too.
+_SIMPLE_STATIC = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
 
 from .hashing import attach_hash, calculate_transaction_hash, verify_hash_chain
 from .models import (
@@ -320,7 +326,7 @@ class AssetTransferTests(TestCase):
 # Standing alone
 # ---------------------------------------------------------------------------
 
-@override_settings(STATICFILES_STORAGE=_SIMPLE_STATIC)
+@override_settings(STORAGES=_SIMPLE_STATIC)
 class WithoutBourseTests(TestCase):
     """The ledger is its own feature: it must render with no exchange desk.
 
@@ -1098,7 +1104,7 @@ class AssetShortNameTests(TestCase):
         self.assertNotIn(f"/{asset.pk}/", url)
 
 
-@override_settings(STATICFILES_STORAGE=_SIMPLE_STATIC)
+@override_settings(STORAGES=_SIMPLE_STATIC)
 class AssetPageByShortNameTests(TestCase):
     """/assets/assets/FLOR/: the page, the old numeric address, and the
     distribution door, all keyed by the short name."""
@@ -1183,7 +1189,7 @@ class AssetPageByShortNameTests(TestCase):
         self.assertIn(reverse("assets:asset_distribute", args=["FLOR"]), body)
 
 
-@override_settings(STATICFILES_STORAGE=_SIMPLE_STATIC)
+@override_settings(STORAGES=_SIMPLE_STATIC)
 class WalletCurrenciesTests(TestCase):
     """The wallet's currencies are the assets carrying a symbol — not the ones
     carrying a code, which since 2026-09-30 is every asset."""

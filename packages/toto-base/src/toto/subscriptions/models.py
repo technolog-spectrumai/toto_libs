@@ -21,6 +21,7 @@ from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
+from toto.core.django_compat import check_constraint
 from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
 
 #: The metric every subscription charge is written against. One code, one price
@@ -91,8 +92,8 @@ class CommunityDiscount(models.Model):
 
     class Meta:
         constraints = [
-            models.CheckConstraint(check=models.Q(percent__lte=100),
-                                   name="discount_percent_at_most_100"),
+            check_constraint(condition=models.Q(percent__lte=100),
+                             name="discount_percent_at_most_100"),
         ]
         ordering = ["community__name"]
         verbose_name = _("community discount")

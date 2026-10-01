@@ -142,7 +142,7 @@ implementation (`core/auth_views.py`, used by both `core:login` and
 
 ### Dependencies
 
-At the Python-distribution level, toto-base depends only on `Django>=4.2` and `PyYAML>=6.0` — it is the foundation, so it carries **no** sibling `toto-*` pins. The dependency direction runs the other way: the other nine suite packages pin `toto-base`.
+At the Python-distribution level, toto-base depends only on `Django>=4.2,<6` (4.2 and 5.2 LTS both supported) and `PyYAML>=6.0` — it is the foundation, so it carries **no** sibling `toto-*` pins. The dependency direction runs the other way: the other nine suite packages pin `toto-base`.
 
 ---
 

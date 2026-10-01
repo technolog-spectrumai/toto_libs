@@ -445,6 +445,8 @@ def reward_encrypt(vault_file, *, at=None):
 
 
 def _reward_encrypt(vault_file, *, at=None):
+    from datetime import timezone as dt_timezone
+
     from django.db import IntegrityError, transaction
     from django.db.models import Sum
     from django.utils import timezone
@@ -461,7 +463,8 @@ def _reward_encrypt(vault_file, *, at=None):
     if pool is None or owner is None or not _payable(pool):
         return None
 
-    day = (at or timezone.now()).astimezone(timezone.utc).date().isoformat()
+    # datetime's utc: django.utils.timezone.utc is gone in Django 5.0 (2026-10-01).
+    day = (at or timezone.now()).astimezone(dt_timezone.utc).date().isoformat()
     key = f"encrypt:{vault_file.pk}:{day}"
     try:
         with transaction.atomic():
@@ -583,12 +586,13 @@ def label_of(role: str) -> str:
 def next_tick_at(now=None):
     """When the next hourly refill runs (``settings.MANA_REGEN_MINUTE``, UTC)."""
     from datetime import timedelta
+    from datetime import timezone as dt_timezone
 
     from django.conf import settings
     from django.utils import timezone
 
     minute = int(getattr(settings, "MANA_REGEN_MINUTE", 13))
-    now = (now or timezone.now()).astimezone(timezone.utc)
+    now = (now or timezone.now()).astimezone(dt_timezone.utc)
     tick = now.replace(minute=minute, second=0, microsecond=0)
     return tick if tick > now else tick + timedelta(hours=1)
 

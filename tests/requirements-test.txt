@@ -4,7 +4,11 @@
 # requirements.txt), plus what the upper tiers need to load at all so the tier
 # matrix in scripts/clean_env_check.sh actually exercises them.
 pytest
-Django==4.2.23
+# 5.2 since 2026-10-01: zenobia, the host whose gate installs this file over
+# its own requirements (SUITE_TESTS=1), runs 5.2, and an older pin here would
+# downgrade its gate venv. The library still runs on 4.2 (toto-base declares
+# Django>=4.2,<6); no gate leg proves that today.
+Django==5.2.17
 djangorestframework
 django-cors-headers
 django-colorfield

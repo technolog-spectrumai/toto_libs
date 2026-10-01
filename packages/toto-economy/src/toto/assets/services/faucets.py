@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from datetime import timezone as dt_timezone
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -54,7 +55,7 @@ def period_label(at=None) -> str:
     changes timezone — or a host in a zone with a half-hour offset — must not be
     able to produce two labels for one hour.
     """
-    moment = (at or timezone.now()).astimezone(timezone.utc)
+    moment = (at or timezone.now()).astimezone(dt_timezone.utc)
     return f"{PERIOD_PREFIX}:{moment.strftime('%Y-%m-%dT%H')}"
 
 

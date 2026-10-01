@@ -13,6 +13,8 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import pgettext_lazy
 
+from toto.core.django_compat import check_constraint
+
 
 def message_attachment_upload_to(instance, filename):
     """Store attachments under ``<channel-slug>/<message-uuid><ext>``.
@@ -258,8 +260,8 @@ class ForumMember(models.Model):
                 condition=models.Q(person__isnull=False),
                 name="unique_forum_channel_member",
             ),
-            models.CheckConstraint(
-                check=models.Q(person__isnull=False),
+            check_constraint(
+                condition=models.Q(person__isnull=False),
                 name="forum_member_must_have_person",
             ),
         ]

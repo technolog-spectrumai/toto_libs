@@ -65,6 +65,8 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
+from toto.core.django_compat import check_constraint
+
 
 CREDENTIAL_KINDS = (
     ("s3", "S3 access key"),
@@ -125,9 +127,9 @@ class RemoteCredential(models.Model):
     class Meta:
         verbose_name = "remote credential"
         constraints = [
-            models.CheckConstraint(
-                check=(models.Q(bucket__isnull=False, peer__isnull=True)
-                       | models.Q(bucket__isnull=True, peer__isnull=False)),
+            check_constraint(
+                condition=(models.Q(bucket__isnull=False, peer__isnull=True)
+                           | models.Q(bucket__isnull=True, peer__isnull=False)),
                 name="vault_credential_targets_exactly_one"),
         ]
 

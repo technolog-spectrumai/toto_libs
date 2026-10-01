@@ -1,6 +1,8 @@
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
+from toto.core.django_compat import URLFIELD_HTTPS
+
 from .models import Bucket, VaultFile
 from .peering import BucketPeer, decode_pairing_code, federated_host_choices
 
@@ -45,7 +47,8 @@ class BucketPeerPairingForm(forms.ModelForm):
     base_url = forms.URLField(
         required=False, label=_("Other host URL"),
         help_text=_("Only when the host is not in the list, "
-                    "e.g. https://placidia.example.org"))
+                    "e.g. https://placidia.example.org"),
+        **URLFIELD_HTTPS)
     pairing_code = forms.CharField(
         widget=forms.Textarea(attrs={"rows": 3}), label=_("Pairing code"),
         help_text=_("Minted once by a bucket grant on the exporting host."))

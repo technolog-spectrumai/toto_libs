@@ -11,6 +11,7 @@ from django.utils.translation import gettext_lazy as _
 from django.db import models
 from django.utils.text import slugify
 
+from toto.core.django_compat import check_constraint
 from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
 
 
@@ -320,8 +321,8 @@ class Asset(models.Model):
             # kind of asset: an unsigned row is impossible rather than merely
             # discouraged. Landed with engrave_currency/mirror_asset, which
             # are the only two things that produce a hash.
-            models.CheckConstraint(
-                check=~models.Q(currency_hash="") & models.Q(
+            check_constraint(
+                condition=~models.Q(currency_hash="") & models.Q(
                     currency_hash__isnull=False),
                 name="assets_asset_has_genesis_hash"),
         ]
