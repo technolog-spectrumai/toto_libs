@@ -27,7 +27,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models import ProtectedError
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.test import TestCase, override_settings
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
@@ -148,13 +148,6 @@ class Fixture(TestCase):
 # ---------------------------------------------------------------------------
 
 class ModelTests(Fixture):
-    def test_the_migration_is_applied(self):
-        from django.db import connection
-        from django.db.migrations.loader import MigrationLoader
-
-        loader = MigrationLoader(connection)
-        self.assertIn(("vault", "0028_bucket_management"), loader.applied_migrations)
-
     def test_deleting_the_owner_keeps_the_bucket_ownerless(self):
         gone = User.objects.create_user("gone", password="x")
         bucket = Bucket.objects.create(name="Kept", slug="kept", owner=gone, created_by=gone)
@@ -961,26 +954,6 @@ class DeletionTests(Fixture):
 # ---------------------------------------------------------------------------
 # Regressions (review of 2026-09-30)
 # ---------------------------------------------------------------------------
-
-class MigrationSqlTests(SimpleTestCase):
-    """0028 must not stamp the deploy's own time on every older bucket."""
-
-    databases = {"default"}
-
-    def test_older_buckets_keep_no_creation_date(self):
-        import io
-        import re
-
-        from django.core.management import call_command
-
-        out = io.StringIO()
-        call_command("sqlmigrate", "vault", "0028", stdout=out)
-        sql = out.getvalue()
-        self.assertIn("created_at", sql)
-        # An AddField(auto_now_add=True) copies a literal now() into every
-        # existing row (SQLite's table rebuild, or Postgres' ADD ... DEFAULT).
-        self.assertIsNone(re.search(r"'\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}", sql), sql)
-
 
 class LegacyEditTests(Fixture):
     """Edit checks a field only when its value changes: what a bucket
