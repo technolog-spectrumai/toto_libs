@@ -148,7 +148,7 @@ class EventDetailView(LoginRequiredMixin, DetailView):
 @login_required
 def event_create(request):
     if request.method == "POST":
-        form = ScheduledEventForm(request.POST)
+        form = ScheduledEventForm(request.POST, user=request.user)
         if form.is_valid():
             event = form.save(commit=False)
             person = _current_person(request.user)
@@ -158,7 +158,7 @@ def event_create(request):
                 event.organizers.add(person)
             return redirect("events:event_detail", pk=event.pk)
     else:
-        form = ScheduledEventForm()
+        form = ScheduledEventForm(user=request.user)
 
     return events_render(request, "events/event_form.html", {
         "form": form,

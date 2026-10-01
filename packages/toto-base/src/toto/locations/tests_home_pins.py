@@ -86,3 +86,70 @@ class TheDoorsTests(HomePinCase):
     def test_the_owner_still_finds_their_pin_on_the_map(self):
         self.client.force_login(self.ann_user)
         self.assertContains(self.client.get(reverse("locations:locations_all")), "Hidden Lane")
+
+
+class TheEventsPickerTests(HomePinCase):
+    """The events' place picker asks the same rule (2026-10-01, the review of
+    stage 37c): the new-event form and the desktop app's form data listed
+    every address — a home pin shared with nobody among them — and the API
+    put an event at any address it was given."""
+
+    def setUp(self):
+        super().setUp()
+        from django.contrib.auth.models import Group
+
+        self.viewer.groups.add(Group.objects.get_or_create(name="data_mesh")[0])
+        self.client.force_login(self.viewer)
+
+    def test_the_new_event_form_offers_no_hidden_pin(self):
+        page = self.client.get(reverse("events:event_create"))
+        self.assertEqual(page.status_code, 200)
+        self.assertNotContains(page, "Hidden Lane")
+        self.assertContains(page, "Market Square")
+
+    def test_a_hidden_pin_posted_as_the_place_is_refused(self):
+        from toto.events.models import ScheduledEvent
+
+        response = self.client.post(reverse("events:event_create"), {
+            "title": "At Ann's", "description": "",
+            "start_time_0": "2026-11-02", "start_time_1": "10:00",
+            "end_time_0": "2026-11-02", "end_time_1": "12:00",
+            "address": self.home.pk, "public": "on"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("address", response.context["form"].errors)
+        self.assertFalse(ScheduledEvent.objects.filter(title="At Ann's").exists())
+
+    def test_a_readable_place_is_still_taken(self):
+        from toto.events.models import ScheduledEvent
+
+        response = self.client.post(reverse("events:event_create"), {
+            "title": "At the market", "description": "",
+            "start_time_0": "2026-11-02", "start_time_1": "10:00",
+            "end_time_0": "2026-11-02", "end_time_1": "12:00",
+            "address": self.shop.pk, "public": "on"})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(ScheduledEvent.objects.get(title="At the market").address, self.shop)
+
+    def test_the_apps_form_data_keeps_it(self):
+        body = self.client.get(reverse("events:api_form_data")).json()
+        shown = {a["id"] for a in body["addresses"]}
+        self.assertIn(self.shop.pk, shown)
+        self.assertNotIn(self.home.pk, shown)
+
+    def test_the_api_puts_no_event_at_it(self):
+        import json
+
+        from toto.events.models import ScheduledEvent
+
+        response = self.client.post(
+            reverse("events:api_list"), json.dumps({
+                "title": "At Ann's", "start_time": "2026-11-02T10:00:00",
+                "end_time": "2026-11-02T12:00:00", "address_id": self.home.pk}),
+            content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"error": "Address not found."})
+        self.assertFalse(ScheduledEvent.objects.filter(title="At Ann's").exists())
+
+    def test_the_person_may_still_hold_an_event_at_home(self):
+        self.client.force_login(self.ann_user)
+        self.assertContains(self.client.get(reverse("events:event_create")), "Hidden Lane")

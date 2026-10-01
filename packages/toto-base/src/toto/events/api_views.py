@@ -111,9 +111,13 @@ class EventListApiView(MeshGatedApiView):
 
         address = None
         if data.get("address_id"):
+            from toto.locations.access import readable_addresses
             from toto.locations.models import Address
+            # Only a place the caller may read on the map (2026-10-01, the
+            # review of stage 37c): a home pin its person shares with nobody,
+            # or a kept map domain's address, is as missing as no address.
             try:
-                address = Address.objects.get(pk=data["address_id"])
+                address = readable_addresses(request.user).get(pk=data["address_id"])
             except Address.DoesNotExist:
                 return JsonResponse({"error": "Address not found."}, status=400)
 
@@ -233,15 +237,20 @@ class FormDataApiView(MeshGatedApiView):
         if err:
             return err
 
+        from toto.locations.access import readable_addresses
         from toto.locations.models import Address
         from toto.people.models import Person
 
         categories = list(
             EventCategory.objects.values("id", "name").order_by("name")
         )
+        # The places the caller may read on the map (2026-10-01, the review
+        # of stage 37c), as the event form offers them: every address went
+        # out, private home pins and kept map domains' included.
         addresses = [
             {"id": a.id, "display": str(a)}
-            for a in Address.objects.order_by("locality_name", "street")[:200]
+            for a in readable_addresses(
+                request.user, Address.objects.order_by("locality_name", "street"))[:200]
         ]
         people = [
             {"id": p.id, "name": p.display_name}

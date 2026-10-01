@@ -63,8 +63,18 @@ class ScheduledEventForm(forms.ModelForm):
             "capacity": forms.NumberInput(attrs={"placeholder": "Leave blank for unlimited"}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
+        # The places the creator may read on the map, and no other (2026-10-01,
+        # the review of stage 37c). The list was every address: a member's
+        # home pin they share with nobody, and the addresses of a map domain
+        # kept to clearances the creator does not hold — the rule the
+        # Locations map, its pickers and the places form already ask. A place
+        # posted from outside it is "not one of the available choices".
+        from toto.locations.access import readable_addresses
+
+        self.fields["address"].queryset = readable_addresses(
+            user, self.fields["address"].queryset)
         for name, field in self.fields.items():
             if name in SPLIT_FIELDS:
                 for w in field.widget.widgets:
