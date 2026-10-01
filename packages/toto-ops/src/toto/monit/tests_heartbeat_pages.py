@@ -4,12 +4,14 @@ Database page — through the full middleware stack."""
 
 from __future__ import annotations
 
+import io
 from datetime import timedelta
 from unittest import mock
 
 from celery.schedules import crontab
 from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -34,7 +36,12 @@ class HeartbeatPagesTests(TestCase):
     def setUp(self):
         Platform.objects.create(site_name="T", author="T", publication_year=2026,
                                 active=True)
-        self.client.force_login(User.objects.create_superuser("root", "r@x.test", "pw"))
+        root = User.objects.create_superuser("root", "r@x.test", "pw")
+        # The pages need the Superuser plan too (2026-10-01); bootstrap_plans
+        # puts every superuser on it.
+        if django_apps.is_installed("toto.subscriptions"):
+            call_command("bootstrap_plans", stdout=io.StringIO())
+        self.client.force_login(User.objects.get(pk=root.pk))
         patcher = mock.patch("toto.celery_utils.celery_available", return_value=True)
         patcher.start()
         self.addCleanup(patcher.stop)

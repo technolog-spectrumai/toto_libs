@@ -9,8 +9,9 @@ toto.audit (toto-base) — so no one app can own it.
 The tabs themselves are built in the view (core.monitoring.monitoring_tabs),
 not guarded here, and that builder does one thing Office's does not: it filters
 by the VIEWER's role, because the tabs' own gates differ — monit's pages are
-superuser-only, audit's are staff. A staff-not-superuser therefore sees a
-one-tab strip rather than three refusals, which is the forum's
+for a superuser on the Superuser plan (2026-10-01), audit's are staff. A
+staff-not-superuser, or a superuser without the plan, therefore sees a
+one-tab strip rather than four refusals, which is the forum's
 hide-don't-refuse convention.
 
 Each page passes its own `monitoring_tabs` from monitoring_tabs(user, active=…);

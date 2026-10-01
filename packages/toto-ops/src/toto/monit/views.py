@@ -12,7 +12,7 @@ from django.utils import timezone
 from django.views import View
 from django.views.generic import TemplateView
 
-from toto.core.monitoring import monitoring_tabs
+from toto.core.monitoring import monitoring_tabs, superuser_on_plan
 from toto.ui import PageProcessor
 
 from . import collectors
@@ -37,12 +37,17 @@ MAX_POINTS = 180
 
 
 class MonitAccessMixin:
-    """Superuser-only gate (same contract as nomad's _SuperuserView)."""
+    """A superuser on the Superuser plan, 403 for anybody else.
+
+    It was the superuser bit alone (nomad's _SuperuserView contract) until
+    2026-10-01, when the plan became the rule for every superuser function
+    here too (36.R2). `toto.core.monitoring.superuser_on_plan` is the one
+    question, asked by the tab strip as well, so no tab leads to this 403.
+    """
 
     def dispatch(self, request, *args, **kwargs):
-        user = request.user
-        if not (user.is_authenticated and user.is_superuser):
-            raise PermissionDenied
+        if not superuser_on_plan(request.user):
+            raise PermissionDenied("This needs a superuser on the Superuser plan.")
         return super().dispatch(request, *args, **kwargs)
 
 

@@ -5,11 +5,14 @@ Ported with the feature from the placidia truth book's ops app.
 
 from __future__ import annotations
 
+import io
 import tempfile
 import time
 from pathlib import Path
 
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -96,7 +99,11 @@ class StatusPageTests(TestCase):
 
     def test_the_verdict_leads_the_page(self):
         root = User.objects.create_superuser("root", "r@x.com", "x")
-        self.client.force_login(root)
+        # The page needs the Superuser plan too (2026-10-01); bootstrap_plans
+        # puts every superuser on it.
+        if django_apps.is_installed("toto.subscriptions"):
+            call_command("bootstrap_plans", stdout=io.StringIO())
+        self.client.force_login(User.objects.get(pk=root.pk))
         with tempfile.TemporaryDirectory() as scratch, \
              override_settings(MEDIA_ROOT=scratch, MONIT_BACKUP_DIRS=[]):
             response = self.client.get(reverse("monit:status"))

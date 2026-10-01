@@ -7,6 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_safe
 import logging
 from toto.core import auth_views
+from toto.core.monitoring import superuser_on_plan
 import os
 from django.conf import settings
 from django.urls import reverse, NoReverseMatch
@@ -266,13 +267,17 @@ def monitoring_view(request):
     `_resolve_dashboard_item`) — and not `staff_member_required`, because
     Django's is_superuser does not imply is_staff and a superuser minted
     without the staff bit must not be refused their own monitoring page.
+
+    Since 2026-10-01 monit asks for the Superuser plan as well
+    (`core.monitoring.superuser_on_plan`), so a superuser who has not taken
+    it goes where the staff go: Monitoring would answer them 403.
     """
     user = request.user
     if not (user.is_staff or user.is_superuser):
         raise PermissionDenied
-    if user.is_superuser:
+    if superuser_on_plan(user):
         return redirect("monit:overview")
-    # Staff, not superuser: Audit is the one tab they may open.
+    # Staff, or a superuser without the plan: Audit is the one tab they may open.
     return redirect("audit:index")
 
 

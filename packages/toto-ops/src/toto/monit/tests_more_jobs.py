@@ -6,6 +6,7 @@ rows come from toto.workflows, which every host that installs monit here also
 installs; the other sources are asserted through the adapter alone.
 """
 
+import io
 import os
 import tempfile
 import time
@@ -15,7 +16,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.db import connection
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
@@ -28,6 +31,16 @@ from .models import Snapshot
 
 User = get_user_model()
 DiskUsage = namedtuple("DiskUsage", "total used free")
+
+
+def _root_on_the_plan():
+    """A superuser on the Superuser plan, which monit's pages ask for since
+    2026-10-01: `bootstrap_plans` puts every superuser on it — re-fetched, as
+    it changes the rows under them."""
+    root = User.objects.create_superuser("root", "r@x.test", "pw")
+    if django_apps.is_installed("toto.subscriptions"):
+        call_command("bootstrap_plans", stdout=io.StringIO())
+    return User.objects.get(pk=root.pk)
 
 
 def make_runs():
@@ -135,7 +148,7 @@ class JobsPageTests(TestCase):
     def setUp(self):
         Platform.objects.create(site_name="T", author="T", publication_year=2026,
                                 active=True)
-        self.root = User.objects.create_superuser("root", "r@x.test", "pw")
+        self.root = _root_on_the_plan()
         self.client.force_login(self.root)
         make_runs()
         patcher = mock.patch("toto.celery_utils.celery_available", return_value=False)
@@ -223,7 +236,7 @@ class MonitPagesTests(TestCase):
     def setUp(self):
         Platform.objects.create(site_name="T", author="T", publication_year=2026,
                                 active=True)
-        self.client.force_login(User.objects.create_superuser("root", "r@x.test", "pw"))
+        self.client.force_login(_root_on_the_plan())
 
     def test_health_says_error_when_the_database_does_not_answer(self):
         import json

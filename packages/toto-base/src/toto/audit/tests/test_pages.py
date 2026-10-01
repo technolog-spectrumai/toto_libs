@@ -88,11 +88,20 @@ class MonitoringStripTests(AuditPageTestCase):
         as well as from the builder's own test, because this is the one that
         proves the strip a reader actually receives — a tab present in
         `monitoring_tabs()` but missing from the rendered context would pass
-        `core.tests_monitoring` and fail here."""
+        `core.tests_monitoring` and fail here.
+
+        On the Superuser plan, which monit's tabs ask for since 2026-10-01:
+        `bootstrap_plans` puts every superuser on it."""
+        from io import StringIO
+
+        from django.apps import apps
         from django.contrib.auth import get_user_model
+        from django.core.management import call_command
 
         root = get_user_model().objects.create_superuser("root2", password="x")
-        self.client.force_login(root)
+        if apps.is_installed("toto.subscriptions"):
+            call_command("bootstrap_plans", stdout=StringIO())
+        self.client.force_login(get_user_model().objects.get(pk=root.pk))
         response = self.client.get(reverse("audit:index"))
         self.assertEqual([t["slug"] for t in response.context["monitoring_tabs"]],
                          ["monitoring", "database", "audit", "jobs", "history"])

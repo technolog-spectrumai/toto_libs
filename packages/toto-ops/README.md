@@ -4,9 +4,9 @@
 monitoring dashboard (`toto.monit`) that gives operators a lightweight,
 self-hosted alternative to Grafana. It periodically samples the health of the
 running deployment — system resources, backing services, and web-tier traffic —
-stores the samples in the app's own database, and renders a superuser-only
-overview page with live readings and 48-hour trend charts, plus a public
-health-check endpoint. It ships as one of nine lockstep-versioned wheels that
+stores the samples in the app's own database, and renders an overview page
+for a superuser on the Superuser plan with live readings and 48-hour trend
+charts, plus a public health-check endpoint. It ships as one of nine lockstep-versioned wheels that
 share the `toto.*` PEP 420 namespace and is pinned by host projects in
 `requirements.toto.txt`.
 
@@ -16,7 +16,7 @@ share the `toto.*` PEP 420 namespace and is pinned by host projects in
 answer "how is the server doing right now, and how has it been doing lately?"
 without standing up a separate metrics stack.
 
-- **At-a-glance health.** A superuser-only overview page shows a live panel
+- **At-a-glance health.** An overview page for superusers shows a live panel
   measured on the spot (CPU, memory, disk, database and Redis reachability and
   latency, Celery worker count, Tor/onion publication state, connected device
   counts) alongside trend charts covering the last 48 hours.
@@ -266,8 +266,12 @@ comes back mails the entries still overdue.
 `monit.urls` (`app_name = "monit"`) exposes two routes:
 
 - `""` → `OverviewView` (`monit:overview`) — a `TemplateView` gated by
-  `MonitAccessMixin`, which raises `PermissionDenied` for anyone who is not an
-  authenticated superuser. It builds the live panel by calling the collectors
+  `MonitAccessMixin`, which raises `PermissionDenied` for anyone who is not a
+  superuser on the Superuser plan — both, never one
+  (`toto.core.monitoring.superuser_on_plan`, since 2026-10-01; on a host
+  without `toto.subscriptions` the superuser bit is enough). Every monit page
+  wears it, and the Monitoring tab strip asks the same question, so no tab
+  leads to the refusal. It builds the live panel by calling the collectors
   in-process for the current request, then loads up to 48 hours of snapshots,
   downsamples them to at most 180 points, and emits Chart.js line-chart JSON for
   each metric. Web request/5xx rates are computed as per-minute deltas between
@@ -358,8 +362,9 @@ corresponding panel):
 
 ### Use
 
-Once enabled, superusers reach the dashboard at `monit/` and any monitor can hit
-`monit/health/`. Import points follow the namespace, e.g.:
+Once enabled, superusers on the Superuser plan reach the dashboard at `monit/`
+(a test puts its superuser on the plan with `call_command("bootstrap_plans")`
+and fetches the user again) and any monitor can hit `monit/health/`. Import points follow the namespace, e.g.:
 
 ```python
 from toto.monit.collectors import collect_all_for_snapshot

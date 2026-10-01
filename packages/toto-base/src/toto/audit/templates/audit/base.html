@@ -20,8 +20,9 @@ puts a back-link on the result page).
 
 The strip itself is `oya/_monitoring_tabs.html`, built by
 `core.monitoring.monitoring_tabs`, and it filters by ROLE: audit is staff-gated
-while monit's three tabs are superuser-only, so a staff-not-superuser opening
-this page sees a one-tab strip rather than three tabs that would refuse them. events/base.html is the shape followed here: a title beside a row
+while monit's tabs need a superuser on the Superuser plan (2026-10-01), so a
+staff-not-superuser opening this page sees a one-tab strip rather than tabs
+that would refuse them. events/base.html is the shape followed here: a title beside a row
 of action buttons.
 {% endcomment %}
 {% load i18n %}

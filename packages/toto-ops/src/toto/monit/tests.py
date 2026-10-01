@@ -1,8 +1,11 @@
 """Tests for toto.monit (run from a host: manage.py test toto.monit)."""
 
+import io
 from datetime import timedelta
 
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -19,6 +22,15 @@ def _make_platform():
         site_name="Test", author="test", publication_year=2026, active=True)
 
 
+def _on_the_plan(user):
+    """monit's pages need a superuser on the Superuser plan (2026-10-01):
+    `bootstrap_plans` puts every superuser on it — re-fetched, as it changes
+    the rows under them."""
+    if django_apps.is_installed("toto.subscriptions"):
+        call_command("bootstrap_plans", stdout=io.StringIO())
+    return type(user).objects.get(pk=user.pk)
+
+
 class HealthViewTests(TestCase):
     def test_health_is_public_and_ok(self):
         response = self.client.get(reverse("monit:health"))
@@ -31,8 +43,8 @@ class OverviewViewTests(TestCase):
     def setUp(self):
         _make_platform()
         user_model = get_user_model()
-        self.superuser = user_model.objects.create_superuser(
-            "monit-admin", "monit@example.com", "pw")
+        self.superuser = _on_the_plan(user_model.objects.create_superuser(
+            "monit-admin", "monit@example.com", "pw"))
         self.plain = user_model.objects.create_user(
             "monit-user", "user@example.com", "pw")
 

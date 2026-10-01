@@ -7,13 +7,19 @@ ones that would rot silently:
   that role can actually open — a superuser to Monitoring, a staff-not-
   superuser to Audit. A tile that lands its own audience on a 403 is the
   tile-matches-gate failure with one hop added.
-* The STRIP must hide what the viewer cannot open. monit's tabs are
-  superuser-only and audit's is staff, and "staff" means is_staff OR
-  is_superuser — the dashboard's reading, not staff_member_required's.
+* The STRIP must hide what the viewer cannot open. monit's tabs are for a
+  superuser on the Superuser plan (2026-10-01) and audit's is staff, and
+  "staff" means is_staff OR is_superuser — the dashboard's reading, not
+  staff_member_required's.
 """
 from __future__ import annotations
 
+from io import StringIO
+from unittest import mock, skipUnless
+
+from django.apps import apps
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase
 from django.urls import NoReverseMatch, reverse
 
@@ -32,6 +38,14 @@ class MonitoringTestCase(TestCase):
         cls.staff = User.objects.create_user("clerk", password="x",
                                              is_staff=True)
         cls.member = User.objects.create_user("member", password="x")
+        # monit's tabs need the Superuser plan too (2026-10-01):
+        # bootstrap_plans puts every superuser on it — re-fetched, as it
+        # changes the rows under them.
+        if apps.is_installed("toto.subscriptions"):
+            call_command("bootstrap_plans", stdout=StringIO())
+        cls.superuser = User.objects.get(pk=cls.superuser.pk)
+        # Made after the bootstrap: a superuser who never took the plan.
+        cls.bare_root = User.objects.create_superuser("bare-root", password="x")
 
 
 class DispatcherTests(MonitoringTestCase):
@@ -48,6 +62,15 @@ class DispatcherTests(MonitoringTestCase):
         """The one tab a staff-not-superuser may open. Sending them to
         monit:overview would land the tile's own audience on a 403."""
         self.client.force_login(self.staff)
+        response = self.client.get(self.url())
+        self.assertRedirects(response, reverse("audit:index"),
+                             fetch_redirect_response=False)
+
+    @skipUnless(apps.is_installed("toto.subscriptions"), "no plan sold here")
+    def test_a_superuser_without_the_plan_lands_on_the_audit_tab(self):
+        """Monitoring answers them 403 since 2026-10-01; Audit, a staff tab,
+        is theirs — the superuser bit counts as staff there."""
+        self.client.force_login(self.bare_root)
         response = self.client.get(self.url())
         self.assertRedirects(response, reverse("audit:index"),
                              fetch_redirect_response=False)
@@ -89,6 +112,40 @@ class StripTests(MonitoringTestCase):
 
     def test_a_member_sees_nothing(self):
         self.assertEqual(monitoring.monitoring_tabs(self.member), [])
+
+    @skipUnless(apps.is_installed("toto.subscriptions"), "no plan sold here")
+    def test_a_superuser_without_the_plan_sees_only_the_audit_tab(self):
+        """monit's four tabs would refuse them (2026-10-01); the strip hides
+        what its doors refuse."""
+        self.assertEqual([t["slug"] for t in monitoring.monitoring_tabs(self.bare_root)],
+                         ["audit"])
+
+
+class SuperuserOnPlanTests(MonitoringTestCase):
+    """monit's one question (2026-10-01): a superuser on the Superuser plan —
+    both, never one."""
+
+    def test_only_a_superuser_on_the_plan(self):
+        from django.contrib.auth.models import AnonymousUser
+
+        self.assertTrue(monitoring.superuser_on_plan(self.superuser))
+        for user in (AnonymousUser(), self.member, self.staff):
+            with self.subTest(user=str(user)):
+                self.assertFalse(monitoring.superuser_on_plan(user))
+
+    @skipUnless(apps.is_installed("toto.subscriptions"), "no plan sold here")
+    def test_the_superuser_bit_alone_is_not_enough(self):
+        self.assertFalse(monitoring.superuser_on_plan(self.bare_root))
+
+    def test_a_host_that_sells_no_plan_asks_for_the_bit_alone(self):
+        real = apps.is_installed
+
+        def without_plans(label):
+            return False if label == "toto.subscriptions" else real(label)
+
+        with mock.patch.object(apps, "is_installed", side_effect=without_plans):
+            self.assertTrue(monitoring.superuser_on_plan(self.bare_root))
+            self.assertFalse(monitoring.superuser_on_plan(self.staff))
 
     def test_exactly_one_tab_is_active(self):
         tabs = monitoring.monitoring_tabs(self.superuser, active="database")

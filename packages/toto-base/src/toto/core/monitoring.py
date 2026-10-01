@@ -13,14 +13,16 @@ toto-base may not import toto-ops. toto.monit imports THIS, which is the way
 that arrow already points.
 
 THE GATES ARE PER TAB, and that is the one thing this strip does that the
-Tools strip does not. monit's pages are superuser-only (MonitAccessMixin raises 403);
+Tools strip does not. monit's pages are for a superuser on the Superuser plan
+(MonitAccessMixin raises 403 — `superuser_on_plan` below, since 2026-10-01);
 audit's are staff (staff_member_required redirects). The strip shows each
 viewer only the tabs their role can open — the forum's hide-don't-refuse
-convention — so a staff-not-superuser sees a one-tab strip rather than three
-refusals. "staff" here means is_staff OR is_superuser, exactly as the
-dashboard's visibility rule reads it (core/views.py `_resolve_dashboard_item`);
-Django's is_superuser does not imply is_staff, and a superuser without the
-staff bit must not lose the Audit tab.
+convention — so a staff-not-superuser, or a superuser who has not taken the
+plan, sees a one-tab strip rather than four refusals. "staff" here means
+is_staff OR is_superuser, exactly as the dashboard's visibility rule reads it
+(core/views.py `_resolve_dashboard_item`); Django's is_superuser does not
+imply is_staff, and a superuser without the staff bit must not lose the Audit
+tab.
 """
 from dataclasses import dataclass
 
@@ -69,11 +71,34 @@ TABS: tuple = (
 )
 
 
+def superuser_on_plan(user) -> bool:
+    """Who may open monit's pages: a superuser on the Superuser plan — both,
+    never one (`toto.subscriptions.models.superuser_plan_active`).
+
+    The privilege alone opened them until 2026-10-01, the one superuser
+    function left that did not ask for the plan (36.R2). MonitAccessMixin and
+    the strip's "superuser" tabs both ask this, so a tab is never shown to
+    someone its page would refuse. A host without toto.subscriptions sells no
+    plan, and there being a superuser is enough — the dashboard's rule
+    (`core.views._superuser_with_plan`), without its open door on an error:
+    this one is a gate, not a tile.
+    """
+    if not getattr(user, "is_authenticated", False) or not getattr(user, "is_superuser", False):
+        return False
+    from django.apps import apps as django_apps
+
+    if not django_apps.is_installed("toto.subscriptions"):
+        return True
+    from toto.subscriptions.models import superuser_plan_active
+
+    return superuser_plan_active(user)
+
+
 def _may_open(user, gate: str) -> bool:
     if not getattr(user, "is_authenticated", False):
         return False
     if gate == "superuser":
-        return bool(user.is_superuser)
+        return superuser_on_plan(user)
     # "staff" is the dashboard's reading: is_staff OR is_superuser.
     return bool(user.is_staff or user.is_superuser)
 
@@ -89,9 +114,12 @@ def monitoring_tabs(user, active: str = "") -> list:
     from django.apps import apps as django_apps
     from django.urls import NoReverseMatch, reverse
 
+    # Asked once per gate, not per tab: the "superuser" gate reads the
+    # viewer's plan from the database, and four tabs share it.
+    may_open = {gate: _may_open(user, gate) for gate in {tab.gate for tab in TABS}}
     out = []
     for tab in TABS:
-        if not _may_open(user, tab.gate):
+        if not may_open[tab.gate]:
             continue
         if not django_apps.is_installed(tab.app_label):
             continue
