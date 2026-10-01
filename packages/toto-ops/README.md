@@ -28,6 +28,12 @@ without standing up a separate metrics stack.
   Redis, Celery, Tor/onion, device, and web-scrape panels appear only when the
   corresponding service is actually configured or installed. A check that can't
   be run reads as "unknown," never as a misleading zero.
+- **Told when something breaks.** The record checks behind the Database
+  page — database, migrations, media store, disk, backups, audit chain and the
+  platform's own TLS certificate — run on a schedule, and the operators in
+  `ALERT_EMAILS` get a mail when one goes bad, a reminder while it keeps
+  failing, and a mail when it recovers. Mail sent by the server cannot report
+  the server itself being down; that needs something outside it.
 - **Public health check.** A minimal, detail-free `health/` endpoint returns
   `{"status": "ok"}` (HTTP 200) or an error (HTTP 503) after a database probe —
   safe to expose (including over Tor) for uptime monitors and container health
@@ -48,7 +54,8 @@ zenobia's data-tier profiles).
 
 ### Data model — `Snapshot`
 
-`monit.models.Snapshot` is the app's only model: one row per periodic
+`monit.models.Snapshot` is the history model (the other, `CheckState`, keeps
+the scheduled checks' last verdicts — see below): one row per periodic
 measurement of the running deployment, ordered newest-first (`get_latest_by =
 "created"`, `created` is `db_index`ed). Every value field is nullable, and
 **NULL means "unknown/skipped," never zero.** Fields are grouped by *where* they
@@ -103,18 +110,58 @@ dependencies of its own beyond `toto-base`.
 
 ### Scheduled tasks
 
-`monit.tasks` defines two Celery `shared_task`s:
+`monit.tasks` defines three Celery `shared_task`s:
 
 - `monit_sample` (`soft_time_limit=55`, `time_limit=90`) — creates one
   `Snapshot` from `collect_all_for_snapshot()`. Runs in the worker container.
 - `monit_prune` — deletes snapshots older than `MONIT_RETENTION_HOURS` (default
   48).
+- `monit_alert_checks` (`soft_time_limit=240`, `time_limit=280`) — the
+  scheduled checks and their mail; see the next section.
 
 These are *not* scheduled by the package. The beat entries are owned by
 `toto.schedules.beat_schedule(monit=..., monit_minutes=...)` in `toto-base`,
 which registers `monit-sample` every `MONIT_SAMPLE_MINUTES` (default 2) and
-`monit-prune` hourly at minute 17. Only the dedicated beat container reads the
+`monit-prune` hourly at minute 17, and with `alerts=True` `monit-alert-checks`
+every `alerts_minutes` (default 5). Only the dedicated beat container reads the
 schedule.
+
+### Scheduled checks and alert mail (2026-10-01)
+
+`monit.record` holds the record checks the Database page (`monit:status`)
+runs on request; each returns a `Check` (OK, WARN, FAIL, UNKNOWN when the probe
+itself failed, OFF when this host does not run it) and never raises.
+`check_certificate` is one of them: a TLS handshake with the platform's own
+public name — `MONIT_CERT_DOMAIN` when the host defines it (an empty value
+means "not checked"), else `PLATFORM_DOMAIN` — reading the certificate's
+notAfter: WARN under 21 days left, FAIL under 7. The handshake does not verify,
+so a self-signed or an expired certificate is read too; `cryptography` is
+imported lazily, and without it the check is OFF. Localhost, an address
+or a local-only name is no public domain, and the check is OFF ("Not checked").
+
+`monit.tasks.monit_alert_checks`, every `ALERT_CHECK_MINUTES` (beat entry
+`monit-alert-checks` from `toto.schedules.beat_schedule(alerts=True,
+alerts_minutes=...)`), runs the same checks in the worker and keeps each one's
+last verdict in `CheckState` (one row per check: status and since when, when
+it last went bad, what was mailed and when). `monit.alerts` decides what a run
+owes the operators:
+
+- a check that goes bad (WARN, FAIL or UNKNOWN) is mailed once;
+- one that stays FAILING is mailed again every `ALERT_REMIND_HOURS` (0: never);
+  a warning is said once;
+- one that gets worse is mailed again, one that gets better without coming
+  back is not;
+- one that comes back (OK or OFF) is mailed once more, as recovered.
+
+Every mail goes through `toto.core.notices.send_notice` (kinds `check_alert`
+and `check_recovered`), one per address in `ALERT_EMAILS`. A mail no address
+took is not counted, so the next run tries again; with no address nothing is
+mailed and the states are still kept.
+
+**What it cannot do.** The mail is sent by the server. No power, no network, a
+stopped worker or beat, a database that cannot be reached (the states live in
+it): each ends in silence, not in a mail — only something outside the server
+can notice those.
 
 ### Views, access control, and rendering
 
@@ -197,6 +244,11 @@ corresponding panel):
   `django_redis`.
 - `MONIT_RETENTION_HOURS` (default 48), `MONIT_SAMPLE_MINUTES` (default 2),
   `MONIT_ASTER_FRESH_HOURS` (default 24).
+- `ALERT_EMAILS` (a list, or one comma-separated string; empty: no mail),
+  `ALERT_CHECK_MINUTES` (default 5, read by the host's beat schedule),
+  `ALERT_REMIND_HOURS` (default 6; 0: no reminders) — the scheduled checks.
+- `MONIT_CERT_DOMAIN` (the name whose certificate is checked; unset:
+  `PLATFORM_DOMAIN`; empty: not checked).
 - `NOMAD_TOR_CONTROL_HOST` / `NOMAD_TOR_CONTROL_PORT` — for the Tor control-port
   probe when `toto.nomad` is present.
 
