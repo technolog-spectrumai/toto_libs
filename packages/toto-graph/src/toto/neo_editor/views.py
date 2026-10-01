@@ -13,19 +13,28 @@ from django.views.decorators.csrf import csrf_exempt
 
 from toto.ravioli import neojson
 from toto.ui import PageProcessor
+from toto.vault import access
 from toto.vault.models import VaultFile
+
+
+def _own_file(user, file_pk) -> VaultFile:
+    """A file of this user's, or 404 — its bucket's clearances first.
+
+    The owner filter alone let an owner who lacks their bucket's clearance
+    open, save and load here, against "no owner bypass" (2026-10-01; the ACE
+    editor, cyprian and sketch closed the same hole on 2026-09-30).
+    `access.gate_by_bucket` is the queryset the vault's own doors and those
+    editors ask, so a file hidden by its bucket is missing here too.
+    """
+    files = VaultFile.objects.select_related("bucket", "directory", "owner")
+    return get_object_or_404(access.gate_by_bucket(user, files), pk=file_pk, owner=user)
 
 
 @login_required
 def neojson_editor_view(request, file_pk):
-    vault_file = get_object_or_404(
-        VaultFile.objects.select_related("bucket", "directory", "owner"),
-        pk=file_pk,
-        owner=request.user,
-    )
+    vault_file = _own_file(request.user, file_pk)
     if vault_file.is_encrypted:
-        from toto.vault.access import encrypted_lock_response
-        return encrypted_lock_response(request, vault_file)
+        return access.encrypted_lock_response(request, vault_file)
 
     try:
         content = vault_file.file.read().decode("utf-8")
@@ -58,7 +67,7 @@ def neojson_save_view(request, file_pk):
     if request.method != "POST":
         return JsonResponse({"error": "POST required"}, status=400)
 
-    vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+    vault_file = _own_file(request.user, file_pk)
     if vault_file.is_encrypted:
         return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
     content = request.POST.get("content", "")
@@ -88,8 +97,9 @@ def neojson_load_view(request, file_pk):
     if request.method != "POST":
         return JsonResponse({"error": "POST required"}, status=400)
 
-    # Ownership check (the file_pk scopes the request to the user's own file).
-    get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+    # The file_pk scopes the request to the user's own file, and a file its
+    # bucket hides from them scopes it to nothing.
+    _own_file(request.user, file_pk)
 
     # The SQL→Neo4j sync engine is an optional, retirable app. Degrade gracefully
     # (the editor still saves/edits) if it isn't installed.
