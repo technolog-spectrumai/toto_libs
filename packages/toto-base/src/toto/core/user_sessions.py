@@ -29,7 +29,10 @@ The cookie door calls it from ``UserSessionMiddleware``, the token doors from
 **Rows outlive sessions**: one that expired, was cleared by housekeeping or
 was re-keyed keeps its row until something looks. ``sessions_for`` asks the
 store which keys are still alive and deletes the rows of the dead ones, so
-the list never shows a sign-in that no longer works.
+the list never shows a sign-in that no longer works; ``prune_dead`` does the
+same for every member at once, from the nightly housekeeping
+(``toto.core.housekeeping``, 2026-10-01) — an address and a browser are not
+kept for a sign-in nobody can use any more.
 
 **A new sign-in** — a (user agent, address) pair this member has not signed
 in from in ``KNOWN_FOR_DAYS`` days — mails them the ``new_sign_in`` notice.
@@ -162,6 +165,28 @@ def sessions_for(user) -> list:
 def session_keys_for(user) -> list[str]:
     """The keys of every live session signing ``user`` in."""
     return [row.session_key for row in sessions_for(user)]
+
+
+def prune_dead(*, batch: int = 500) -> int:
+    """Delete every member's rows whose session is gone; how many went.
+
+    ``sessions_for`` for the whole table, ``batch`` rows at a time — the
+    nightly housekeeping's (2026-10-01). A store that cannot answer keeps its
+    rows, and a signed-cookie session has nothing stored to ask. Deleted by
+    key, so a row re-keyed meanwhile (``rekey``) stays.
+    """
+    UserSession, _ = _models()
+    dropped, after = 0, 0
+    while True:
+        rows = list(UserSession.objects.filter(pk__gt=after).order_by("pk")
+                    .values_list("pk", "session_key")[:batch])
+        if not rows:
+            return dropped
+        after = rows[-1][0]
+        alive = _alive([key for _pk, key in rows])
+        dead = [key for _pk, key in rows if key not in alive]
+        if dead:
+            dropped += UserSession.objects.filter(session_key__in=dead).delete()[0]
 
 
 # ── Ending ─────────────────────────────────────────────────────────────────

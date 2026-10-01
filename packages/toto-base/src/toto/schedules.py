@@ -42,6 +42,9 @@ def beat_schedule(
     vault_trash=False,
     vault_trash_hour=3,
     vault_trash_minute=50,
+    housekeeping=False,
+    housekeeping_hour=3,
+    housekeeping_minute=5,
 ):
     """Build the CELERY_BEAT_SCHEDULE dict for the enabled features."""
     schedule = {}
@@ -168,6 +171,19 @@ def beat_schedule(
         schedule["vault-trash-purge"] = {
             "task": "toto.vault.tasks.purge_expired_trash",
             "schedule": crontab(hour=vault_trash_hour, minute=vault_trash_minute),
+        }
+
+    if housekeeping:
+        from celery.schedules import crontab
+
+        # 03:05, the first of the night's jobs (2026-10-01, RODO): Django's
+        # clearsessions, the sign-in rows of sessions that are gone, and the
+        # membership applications that lapsed long enough ago with the
+        # never-used accounts they made (toto.core.housekeeping). Idempotent
+        # — a second fire finds nothing due — and one audit record per run.
+        schedule["core-nightly-housekeeping"] = {
+            "task": "toto.core.tasks.nightly_housekeeping",
+            "schedule": crontab(hour=housekeeping_hour, minute=housekeeping_minute),
         }
 
     if tax:

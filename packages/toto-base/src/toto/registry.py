@@ -203,6 +203,11 @@ TASK_MODULES = [
     # My account. Queued on demand, never on beat — but a task the worker
     # does not know is the same KeyError either way.
     "toto.socialhub",
+    # toto.core's nightly_housekeeping (2026-10-01, RODO): expired sessions,
+    # dead sign-in rows, lapsed membership applications. Scheduled by
+    # schedules.beat_schedule(housekeeping=...), so without this line the
+    # worker answers KeyError every night and nothing is ever pruned.
+    "toto.core",
 ]
 
 
