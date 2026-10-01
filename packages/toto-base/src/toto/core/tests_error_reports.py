@@ -17,6 +17,7 @@ from django.urls import include, path
 
 from toto.core import error_reports
 from toto.core.error_reports import (SUBSTITUTE, CrashMailFilter,
+                                     PathSecretsLogFilter,
                                      PlatformAdminEmailHandler,
                                      PlatformExceptionReporter, crash_signature)
 
@@ -204,8 +205,55 @@ class PathSecretTests(SimpleTestCase):
             self.assertNotIn(GRANT, text)
         self.assertIn(f"Internal Server Error: /vault/peer/{SUBSTITUTE}/{SUBSTITUTE}/manifest/",
                       message.subject)
-        # The record itself is untouched: the console log keeps the path.
+        # The handler leaves the record as it is: what the console writes is
+        # the logger's filter's business (PathSecretsLogFilter, 37c.24).
         self.assertIn(TOKEN, record.getMessage())
+
+
+@override_settings(ROOT_URLCONF=__name__)
+class LogFilterTests(SimpleTestCase):
+    """The console's lines keep no path secret either (2026-10-01, 37c.24):
+    Django's ``django.request`` names the path of every page that answers 4xx
+    or 5xx, uvicorn's access logger the path of every request."""
+
+    def setUp(self):
+        self.filter = PathSecretsLogFilter()
+
+    def line(self, msg, args, request=None, name="django.request"):
+        record = logging.LogRecord(name, logging.WARNING, __file__, 1, msg, args, None)
+        if request is not None:
+            record.request = request
+        self.assertIs(self.filter.filter(record), True)
+        return record.getMessage()
+
+    def test_a_django_request_line_on_a_peer_route_keeps_no_grant_or_token(self):
+        request = RequestFactory().get(f"/vault/peer/{GRANT}/{TOKEN}/files/report-2026/")
+        message = self.line("%s: %s", ("Forbidden", request.path), request)
+        self.assertEqual(message, "Forbidden: /vault/peer/[token]/[token]/files/[token]/")
+
+    def test_a_uvicorn_access_line_is_resolved_from_its_path(self):
+        message = self.line('%s - "%s %s HTTP/%s" %d',
+                            ("10.0.0.4:51234", "GET", f"/vault/peer/{GRANT}/{TOKEN}/manifest/?x=1",
+                             "1.1", 200), name="uvicorn.access")
+        self.assertEqual(message,
+                         '10.0.0.4:51234 - "GET /vault/peer/[token]/[token]/manifest/?x=1 HTTP/1.1" 200')
+
+    def test_a_value_captured_as_a_token_is_cut_on_any_route(self):
+        self.assertEqual(self.line("Not Found: %s", ("/share/share-token-0021/",)),
+                         "Not Found: /share/[token]/")
+
+    def test_other_paths_and_other_arguments_are_left_alone(self):
+        self.assertEqual(self.line("Not Found: %s", ("/files/annual-report/",)),
+                         "Not Found: /files/annual-report/")
+        self.assertEqual(self.line("Not Found: %s", ("/no/route/here/",)),
+                         "Not Found: /no/route/here/")
+        self.assertEqual(self.line("%s took %d ms", (TOKEN, 12)), f"{TOKEN} took 12 ms")
+        self.assertEqual(self.line("no arguments at all", ()), "no arguments at all")
+
+    def test_a_path_the_rule_cannot_read_keeps_its_first_segment(self):
+        with mock.patch.object(error_reports, "path_secrets", side_effect=RuntimeError("odd")):
+            message = self.line("Not Found: %s", (f"/vault/peer/{GRANT}/{TOKEN}/manifest/",))
+        self.assertEqual(message, "Not Found: /vault/[withheld]")
 
 
 @override_settings(ADMINS=[("ops@example.test", "ops@example.test")])

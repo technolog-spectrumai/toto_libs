@@ -69,6 +69,12 @@ refuses loses that one report (Django sends it ``fail_silently``, so the
 Mail check does not count it either), and the log still has the crash.
 ``CrashMailFilter`` keeps what this costs the request to one send per crash
 an hour.
+
+**The console's lines too** (2026-10-01, 37c.24). The same path secrets are
+cut, as ``[token]``, from the lines that name a request's path on the console
+— Django's ``django.request`` and uvicorn's access logger — by
+``PathSecretsLogFilter``, which a host names on ``django.request`` in its
+LOGGING and ``toto.api.server_logs`` puts on uvicorn's loggers.
 """
 
 from __future__ import annotations
@@ -179,6 +185,63 @@ def path_secrets(request) -> list[str]:
         if len(value) >= MIN_SCRUBBED_LENGTH:
             found.update({value, escape_uri_path(value), quote(value, safe="")})
     return sorted(found, key=len, reverse=True)
+
+
+#: What a path secret reads as in a log line (2026-10-01, 37c.24): the audit
+#: chain's word for it (``toto.audit.services._scrub_path``), not the stars.
+LOGGED_SECRET = "[token]"
+
+
+def secrets_in_path(path: str, urlconf=None) -> list[str]:
+    """``path_secrets`` for a bare path — a log line names one without its
+    request (uvicorn's access line): the path, its query cut off and its
+    percent-escapes decoded, resolved here as Django resolved the request."""
+    from types import SimpleNamespace
+    from urllib.parse import unquote
+
+    return path_secrets(SimpleNamespace(
+        resolver_match=None, path_info=unquote(path.split("?", 1)[0]), urlconf=urlconf))
+
+
+class PathSecretsLogFilter(logging.Filter):
+    """A log line's path with every path secret written as ``[token]``
+    (2026-10-01, 37c.24).
+
+    Two loggers name a request's path on the console — the web container's
+    log, which promtail ships to Loki: Django's ``django.request`` for every
+    page that answers 4xx or 5xx ("Forbidden: /vault/peer/<grant>/<token>/
+    files/"), and uvicorn's access logger for every request. The vault's peer
+    routes carry a grant's id and its magic token in the path, the whole of
+    what a peer shows to be let in; 37c.25 cut them from the audit chain and
+    this mail, and the same rule (``path_secrets``) cuts them from those lines.
+    A django.request record carries its request; uvicorn's names the path
+    alone, which is resolved here (``secrets_in_path``).
+
+    Each argument of the record that is a path — a string starting with "/" —
+    is cut; the message and the other arguments are left as they are. A host
+    names the filter on ``django.request`` in its LOGGING; uvicorn's loggers
+    get it from ``toto.api.server_logs``. A path the rule cannot read keeps
+    its first segment only, as the audit chain's does: a filter that raised
+    would fail the logging call, the request's own answer included.
+    """
+
+    def filter(self, record):
+        if isinstance(record.args, tuple) and record.args:
+            request = getattr(record, "request", None)
+            record.args = tuple(_cut_path_secrets(arg, request) for arg in record.args)
+        return True
+
+
+def _cut_path_secrets(arg, request):
+    if not (isinstance(arg, str) and arg.startswith("/")):
+        return arg
+    try:
+        found = path_secrets(request) if request is not None else secrets_in_path(arg)
+    except Exception:  # noqa: BLE001 - the line is written either way
+        return "/" + arg.strip("/").split("/", 1)[0] + "/[withheld]"
+    for value in found:
+        arg = arg.replace(value, LOGGED_SECRET)
+    return arg
 
 
 def _star(text: str, values) -> str:

@@ -17,6 +17,15 @@ uvicorn's lines, which carry the path as one argument of the record.
 
 ``TokenAuthMiddleware`` puts the filter on when a host builds its socket
 stack, so every process that serves the token door has it.
+
+**Nor a path that is a credential** (2026-10-01, 37c.24). The vault's peer
+routes carry a grant's id and its magic token in the path itself, and uvicorn's
+access line named it for every request a peer made. The same middleware puts
+``toto.core.error_reports.PathSecretsLogFilter`` on these loggers too, which
+writes ``[token]`` for every value the error mail would star
+(``path_secrets``); nginx's access log cuts the same segments (deploy.py's
+``toto_log_safe_path``), and Django's ``django.request`` lines are cut by the
+host's LOGGING.
 """
 
 import logging
@@ -48,3 +57,13 @@ def keep_no_query_string():
         logger = logging.getLogger(name)
         if not any(isinstance(f, NoQueryString) for f in logger.filters):
             logger.addFilter(NoQueryString())
+
+
+def keep_no_path_secrets():
+    """Put the path-secret filter on uvicorn's loggers, once per process."""
+    from toto.core.error_reports import PathSecretsLogFilter
+
+    for name in UVICORN_LOGGERS:
+        logger = logging.getLogger(name)
+        if not any(isinstance(f, PathSecretsLogFilter) for f in logger.filters):
+            logger.addFilter(PathSecretsLogFilter())

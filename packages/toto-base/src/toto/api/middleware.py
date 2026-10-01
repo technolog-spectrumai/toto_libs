@@ -103,8 +103,11 @@ class TokenAuthMiddleware:
     def __init__(self, inner):
         self.inner = inner
         # uvicorn names every socket's path in its log WITH the query string,
-        # ?token= included; its lines keep the path alone (2026-10-01).
+        # ?token= included; its lines keep the path alone (2026-10-01). And
+        # its access line names every request's path, a vault peer's grant
+        # and token with it: those are cut as [token] (37c.24).
         server_logs.keep_no_query_string()
+        server_logs.keep_no_path_secrets()
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") == "websocket":

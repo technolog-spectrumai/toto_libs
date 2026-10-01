@@ -257,3 +257,15 @@ class ServerLogTests(SimpleTestCase):
                 filters = [f for f in logging.getLogger(name).filters
                            if isinstance(f, NoQueryString)]
                 self.assertEqual(len(filters), 1)
+
+    def test_the_path_secret_filter_is_put_on_once_too(self):
+        """A vault peer's path is its credential (37c.24): uvicorn's access
+        line is cut by the error mail's rule (toto.core.error_reports)."""
+        from toto.core.error_reports import PathSecretsLogFilter
+
+        TokenAuthMiddleware(lambda *args: None)
+        for name in UVICORN_LOGGERS:
+            with self.subTest(logger=name):
+                filters = [f for f in logging.getLogger(name).filters
+                           if isinstance(f, PathSecretsLogFilter)]
+                self.assertEqual(len(filters), 1)
