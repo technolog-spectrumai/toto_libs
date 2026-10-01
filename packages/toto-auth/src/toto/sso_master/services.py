@@ -153,6 +153,52 @@ def get_subject_for_user(user) -> str:
     return str(subject.subject)
 
 
+def user_roles(user) -> list[str]:
+    """The `roles` claim: what somebody is on THIS platform.
+
+    One function, because two places must agree on it: the claim a relying
+    party reads, and the allow-list `/authorize` checks before it issues a
+    code (`may_sign_in_to`)."""
+    if user.is_superuser:
+        return ["admin", "staff"]
+    if user.is_staff:
+        return ["staff"]
+    return ["viewer"]
+
+
+#: Relying parties only some accounts may sign in to, by client_id, and the
+#: role an account needs (any one of those listed). Overridden whole by the
+#: SSO_CLIENT_REQUIRED_ROLES setting.
+#:
+#: Gitea is staff-only, and until 2026-10-01 only Gitea's side said so (its
+#: OAuth source requires `roles=staff`): this provider signed anybody in and
+#: handed Gitea a code for an account Gitea would then refuse — after the
+#: redirect, so the account's claims had already left. With Gitea moved to a
+#: machine of its own (zenobia's nabu) the refusal belongs here too, before
+#: any redirect: a forge on another machine is a relying party this provider
+#: should not have to trust to refuse.
+DEFAULT_CLIENT_REQUIRED_ROLES = {"gitea": ("staff",)}
+
+
+def client_required_roles(client_id: str) -> tuple[str, ...]:
+    """The roles one of which an account needs to sign in to this client;
+    empty when anybody may."""
+    from django.conf import settings
+
+    table = getattr(settings, "SSO_CLIENT_REQUIRED_ROLES", None)
+    if table is None:
+        table = DEFAULT_CLIENT_REQUIRED_ROLES
+    return tuple(table.get(client_id) or ())
+
+
+def may_sign_in_to(user, client_id: str) -> bool:
+    """Whether this account may be issued a code for this relying party."""
+    required = client_required_roles(client_id)
+    if not required:
+        return True
+    return bool(set(required) & set(user_roles(user)))
+
+
 def get_user_claims(user, scopes) -> dict:
     scopes = set(scopes)
     claims = {"sub": get_subject_for_user(user)}
@@ -179,12 +225,7 @@ def get_user_claims(user, scopes) -> dict:
     #   - Gitea requires `staff` in roles to log in at all (staff + superusers)
     #     and maps `admin` → instance admin (see provision_oauth.sh).
     if "roles" in scopes:
-        if user.is_superuser:
-            claims["roles"] = ["admin", "staff"]
-        elif user.is_staff:
-            claims["roles"] = ["staff"]
-        else:
-            claims["roles"] = ["viewer"]
+        claims["roles"] = user_roles(user)
         claims["is_superuser"] = bool(user.is_superuser)
         # A federated toto host mirrors this onto its own account, so that
         # disabling someone here disables them there. It is effectively always

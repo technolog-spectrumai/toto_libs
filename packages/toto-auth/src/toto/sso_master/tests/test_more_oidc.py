@@ -222,6 +222,59 @@ class AuthorizeRefusalTests(TestCase):
 
 
 @FAST_HASHING
+class ClientAllowListTests(TestCase):
+    """The per-relying-party allow-list (2026-10-01): Gitea, on a machine of
+    its own since then, is staff-only, and this provider refuses a code to an
+    account without the `staff` role before any redirect — consent screen
+    included — rather than trusting the forge to refuse it afterwards."""
+
+    def setUp(self):
+        _platform()
+        self.gitea = _party("gitea", trusted=True)
+        _party("rp", trusted=True)
+
+    def _get(self, user, client_id="gitea"):
+        self.client.force_login(user)
+        return self.client.get(reverse("sso:authorize"), {
+            "response_type": "code", "client_id": client_id,
+            "redirect_uri": REDIRECT, "scope": "openid email profile roles",
+            "state": "s"})
+
+    def test_a_member_without_the_staff_role_gets_no_code_and_no_redirect(self):
+        member = User.objects.create_user("member", "m@example.org", "pw")
+        response = self._get(member)
+        self.assertEqual(response.status_code, 403)
+        self.assertNotIn("Location", response)
+        self.assertIn("staff", response.content.decode())
+        self.assertFalse(SSOAuthorizationCode.objects.exists())
+
+    def test_an_untrusted_forge_shows_no_consent_screen_to_a_member_either(self):
+        self.gitea.trusted = False
+        self.gitea.save()
+        member = User.objects.create_user("member", "m@example.org", "pw")
+        self.assertEqual(self._get(member).status_code, 403)
+
+    def test_staff_and_superusers_are_let_through(self):
+        staff = User.objects.create_user("staff", "s@example.org", "pw", is_staff=True)
+        root = User.objects.create_superuser("root", "r@example.org", "pw")
+        for user in (staff, root):
+            with self.subTest(user=user.username):
+                response = self._get(user)
+                self.assertEqual(response.status_code, 302)
+                self.assertTrue(response["Location"].startswith(REDIRECT + "?code="))
+
+    def test_other_clients_stay_open_to_everybody(self):
+        member = User.objects.create_user("member", "m@example.org", "pw")
+        self.assertEqual(self._get(member, client_id="rp").status_code, 302)
+
+    def test_the_table_is_a_setting(self):
+        member = User.objects.create_user("member", "m@example.org", "pw")
+        with override_settings(SSO_CLIENT_REQUIRED_ROLES={"rp": ["admin"]}):
+            self.assertEqual(self._get(member, client_id="rp").status_code, 403)
+            self.assertEqual(self._get(member).status_code, 302)
+
+
+@FAST_HASHING
 class ConsentTests(TestCase):
     def setUp(self):
         _platform()

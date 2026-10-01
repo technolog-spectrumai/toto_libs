@@ -213,30 +213,48 @@ class Command(IngressCommand):
 
     def _provision_gitea(self):
         """Register Gitea as a trusted OIDC relying party so it can SSO against the
-        portal. Idempotent like the Grafana one above. Staff-only access is enforced
-        on the Gitea side: its OAuth source requires `staff` in the `roles` claim and
-        maps `admin` → instance admin (see portal/deploy/gitea/provision_oauth.sh).
-        The redirect URI embeds the Gitea auth-source name — GITEA_OIDC_SOURCE_NAME
-        must match what that script creates (both default to "portal-sso")."""
-        if not getattr(settings, "GITEA_ENABLED", False):
+        portal. Idempotent like the Grafana one above.
+
+        Two places Gitea can be. A Gitea on ANOTHER machine (zenobia's nabu,
+        since 2026-10-01) is named by GITEA_OIDC_REDIRECT_URI — its callback,
+        `https://<forge>/user/oauth2/<source>/callback` — and needs no
+        GITEA_ENABLED. A Gitea in this host's own stack (GITEA_ENABLED) gets
+        `<base>/gitea/user/oauth2/<GITEA_OIDC_SOURCE_NAME>/callback`, where the
+        source name must match what the forge's provision_oauth.sh creates
+        (both default to "portal-sso").
+
+        Staff-only either way, on both sides: this provider refuses a code to
+        an account without the `staff` role (services.may_sign_in_to), and the
+        forge's OAuth source requires `staff` in the `roles` claim and maps
+        `admin` → instance admin. The secret is the host's to mint and to hand
+        to the forge (GITEA_OIDC_CLIENT_SECRET)."""
+        redirect_uri = (getattr(settings, "GITEA_OIDC_REDIRECT_URI", "") or "").strip()
+        if not redirect_uri and not getattr(settings, "GITEA_ENABLED", False):
+            return
+        if redirect_uri and not redirect_uri.startswith("https://"):
+            # A code travels to it in the query string, across a network.
+            self.stdout.write(self.style.WARNING(
+                f"GITEA_OIDC_REDIRECT_URI {redirect_uri!r} is not https:// — "
+                "skipping Gitea relying-party provisioning."
+            ))
             return
         secret = getattr(settings, "GITEA_OIDC_CLIENT_SECRET", "") or ""
         if not secret:
             self.stdout.write(self.style.WARNING(
-                "GITEA_ENABLED but GITEA_OIDC_CLIENT_SECRET is empty — "
+                "Gitea is configured but GITEA_OIDC_CLIENT_SECRET is empty — "
                 "skipping Gitea relying-party provisioning."
             ))
             return
 
-        base = get_public_base_url()
-        if not base:
-            self.stdout.write(self.style.WARNING(
-                "PLATFORM_DOMAIN is empty — cannot build Gitea redirect URI; skipping."
-            ))
-            return
-
-        source = getattr(settings, "GITEA_OIDC_SOURCE_NAME", "portal-sso")
-        redirect_uri = f"{base}/gitea/user/oauth2/{source}/callback"
+        if not redirect_uri:
+            base = get_public_base_url()
+            if not base:
+                self.stdout.write(self.style.WARNING(
+                    "PLATFORM_DOMAIN is empty — cannot build Gitea redirect URI; skipping."
+                ))
+                return
+            source = getattr(settings, "GITEA_OIDC_SOURCE_NAME", "portal-sso")
+            redirect_uri = f"{base}/gitea/user/oauth2/{source}/callback"
         create_relying_party(
             name="Gitea",
             client_id="gitea",

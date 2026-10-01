@@ -6,7 +6,7 @@
 
 A toto host picks one authentication posture:
 
-- **Provider** (the historical default) — the host is its own identity authority. Users sign in with username/password on the host, and the host doubles as an OIDC 1.0 provider that other services (Grafana, Gitea, sibling platforms) can federate against.
+- **Provider** (the historical default) — the host is its own identity authority. Users sign in with username/password on the host, and the host doubles as an OIDC 1.0 provider that other services (Grafana, Gitea, sibling platforms) can federate against. A relying party may be closed to some accounts: `/authorize` refuses, before any redirect, an account without a role the client needs — `SSO_CLIENT_REQUIRED_ROLES`, `{"gitea": ("staff",)}` by default (2026-10-01). A Gitea on another machine is registered by `GITEA_OIDC_REDIRECT_URI` (its callback) and `GITEA_OIDC_CLIENT_SECRET`.
 - **Consumer** — the host delegates sign-in to another toto platform: the login link forwards to the provider's authorize endpoint and the callback provisions/links the local user.
 - **Local** — plain username/password sessions with no OIDC surface at all.
 

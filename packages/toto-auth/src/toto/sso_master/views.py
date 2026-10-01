@@ -16,11 +16,13 @@ from toto.core.client_ip import client_ip
 from .models import SSOAccessToken, SSOAuthorizationCode, SSORelyingParty
 from .services import (
     build_id_token,
+    client_required_roles,
     get_issuer,
     get_jwks,
     get_public_base_url,
     get_subject_for_user,
     get_user_claims,
+    may_sign_in_to,
     verify_pkce,
 )
 
@@ -122,6 +124,14 @@ def authorize(request):
         client = SSORelyingParty.objects.get(client_id=client_id, active=True)
     except SSORelyingParty.DoesNotExist:
         return HttpResponseBadRequest("Invalid client_id.")
+
+    # The per-relying-party allow-list (2026-10-01): an account a client is
+    # closed to gets no code and no redirect, consent screen included — the
+    # relying party never hears of it (services.DEFAULT_CLIENT_REQUIRED_ROLES).
+    if not may_sign_in_to(request.user, client.client_id):
+        return HttpResponseForbidden(
+            f"Your account may not sign in to {client.name}: it is open only "
+            f"to {' or '.join(client_required_roles(client.client_id))} accounts.")
 
     admin_test_uri = request.build_absolute_uri(reverse("sso:admin_test_callback"))
     is_admin_test = (redirect_uri == admin_test_uri and request.user.is_staff)

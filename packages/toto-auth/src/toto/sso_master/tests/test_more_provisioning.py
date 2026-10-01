@@ -169,6 +169,7 @@ class ServiceGuardTests(TestCase):
 @FAST_HASHING
 @override_settings(SSO_VAULT_PASSWORD="", GRAFANA_ENABLED=True,
                    GRAFANA_OIDC_CLIENT_SECRET="g-secret", GITEA_ENABLED=False,
+                   GITEA_OIDC_REDIRECT_URI="",
                    WEKAN_ENABLED=False)
 class IngressGuardTests(TestCase):
     def setUp(self):

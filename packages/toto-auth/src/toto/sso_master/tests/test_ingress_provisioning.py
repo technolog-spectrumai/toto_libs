@@ -24,6 +24,7 @@ def _platform():
     PLATFORM_DOMAIN="portal.example.com",
     GRAFANA_ENABLED=False,
     GITEA_ENABLED=False,
+    GITEA_OIDC_REDIRECT_URI="",
     WEKAN_ENABLED=False,
     SSO_VAULT_PASSWORD="",  # keep these tests signing-key-free (see class below)
 )
@@ -65,6 +66,30 @@ class IngressProvisioningTests(TestCase):
     @override_settings(GITEA_ENABLED=True, GITEA_OIDC_CLIENT_SECRET="s3",
                        PLATFORM_DOMAIN="")
     def test_gitea_skipped_without_platform_domain(self):
+        call_command("ingress_sso_master")
+        self.assertFalse(SSORelyingParty.objects.filter(client_id="gitea").exists())
+
+    @override_settings(GITEA_ENABLED=False, GITEA_OIDC_CLIENT_SECRET="s3cret-nabu",
+                       GITEA_OIDC_REDIRECT_URI="https://nabu.example.net/user/oauth2/portal-sso/callback")
+    def test_a_gitea_on_another_machine_is_named_by_its_callback(self):
+        """zenobia's forge left the stack for nabu (2026-10-01): the relying
+        party stays here, its callback is the one configured, and no
+        GITEA_ENABLED is needed for it."""
+        call_command("ingress_sso_master")
+        rp = SSORelyingParty.objects.get(client_id="gitea")
+        self.assertEqual(rp.redirect_uris,
+                         "https://nabu.example.net/user/oauth2/portal-sso/callback")
+        self.assertTrue(rp.verify_client_secret("s3cret-nabu"))
+
+    @override_settings(GITEA_OIDC_CLIENT_SECRET="s3",
+                       GITEA_OIDC_REDIRECT_URI="http://nabu.example.net/user/oauth2/portal-sso/callback")
+    def test_a_remote_callback_must_be_https(self):
+        call_command("ingress_sso_master")
+        self.assertFalse(SSORelyingParty.objects.filter(client_id="gitea").exists())
+
+    @override_settings(GITEA_OIDC_CLIENT_SECRET="",
+                       GITEA_OIDC_REDIRECT_URI="https://nabu.example.net/user/oauth2/portal-sso/callback")
+    def test_a_remote_gitea_without_a_secret_is_skipped(self):
         call_command("ingress_sso_master")
         self.assertFalse(SSORelyingParty.objects.filter(client_id="gitea").exists())
 
@@ -220,6 +245,7 @@ class IngressProvisioningTests(TestCase):
     PLATFORM_DOMAIN="portal.example.com",
     GRAFANA_ENABLED=False,
     GITEA_ENABLED=False,
+    GITEA_OIDC_REDIRECT_URI="",
     SSO_VAULT_PASSWORD="test-vault-pass",
 )
 class SigningKeyEnsureTests(TestCase):
