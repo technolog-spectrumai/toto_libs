@@ -14,8 +14,8 @@ from django.urls import reverse
 from toto.core.models import Platform
 
 from .models import PrivacyNotice
-from .privacy import (PLACEHOLDER_EN, PLACEHOLDER_MARK_EN, PLACEHOLDER_MARK_PL, PLACEHOLDER_PL,
-                      publish, seed_placeholder)
+from .privacy import (MAX_TEXT, PLACEHOLDER_EN, PLACEHOLDER_MARK_EN, PLACEHOLDER_MARK_PL,
+                      PLACEHOLDER_PL, publish, seed_placeholder)
 
 User = get_user_model()
 
@@ -60,6 +60,16 @@ class VersionTests(PrivacyFixture):
         self.assertEqual(notice.text_for("de"), "In English")
         notice.text_en = ""
         self.assertEqual(notice.text_for("en"), "Po polsku")
+
+    def test_a_text_may_be_a_hundred_thousand_characters_and_no_more(self):
+        # A guard against a pasted book (2026-10-01, 37c.16): a real notice
+        # is about 50,000, which the old cap of exactly that refused.
+        self.assertEqual(MAX_TEXT, 100_000)
+        notice = publish(text_pl="ą" * MAX_TEXT, text_en="a" * 50_001)
+        self.assertEqual((len(notice.text_pl), len(notice.text_en)), (MAX_TEXT, 50_001))
+        with self.assertRaises(ValueError):
+            publish(text_pl="Krótka", text_en="a" * (MAX_TEXT + 1))
+        self.assertEqual(PrivacyNotice.objects.count(), 1)
 
     def test_a_version_needs_both_languages(self):
         with self.assertRaises(ValueError):
@@ -193,6 +203,20 @@ class EditorTests(PrivacyFixture):
         self.assertEqual((notice.version, notice.text_pl, notice.text_en), (2, "Druga", "Second"))
         self.assertEqual(notice.published_by, self.root)
         self.assertEqual(PrivacyNotice.objects.get(version=1).text_en, "First")
+
+    def test_the_editor_takes_a_text_longer_than_the_old_cap(self):
+        publish(text_pl="Pierwsza", text_en="First")
+        self.client.force_login(self.root)
+        self.assertContains(self.client.get(self.url()), f'maxlength="{MAX_TEXT}"')
+        long_pl = "Długi tekst. " * 4_000             # 52,000 characters
+        response = self.client.post(self.url(), {"text_pl": long_pl, "text_en": "Second"})
+        self.assertRedirects(response, reverse("socialhub:privacy_notice_version", args=[2]),
+                             fetch_redirect_response=False)
+        self.assertEqual(PrivacyNotice.current().text_pl, long_pl.strip())
+        too_long = {"text_pl": "x" * (MAX_TEXT + 1), "text_en": "Third"}
+        self.assertRedirects(self.client.post(self.url(), too_long), self.url(),
+                             fetch_redirect_response=False)
+        self.assertEqual(PrivacyNotice.objects.count(), 2)
 
     def test_a_refusal_publishes_nothing_and_keeps_what_was_typed(self):
         publish(text_pl="Pierwsza", text_en="First")

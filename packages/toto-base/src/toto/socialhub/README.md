@@ -372,7 +372,9 @@ the socialhub is where a person first hands the platform their data.
   plan (just a superuser where no such plan is sold) edits both texts,
   pre-filled with the current version, and publishing saves a NEW version —
   no version is ever edited (`privacy.publish`). Both texts are required, at
-  most 50,000 characters each, and an unchanged text is refused; a refusal
+  most 100,000 characters each (`MAX_TEXT`: a guard against a pasted book,
+  50,000 until 2026-10-01, when a real notice came out at about 50,200), and
+  an unchanged text is refused; a refusal
   is Post/Redirect/Get with the typed text kept. Every version is listed
   with its date and publisher.
 - **Plain text**, drawn escaped through `urlize` and `linebreaks` (the

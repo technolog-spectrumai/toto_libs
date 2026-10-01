@@ -20,8 +20,10 @@ from django.db import IntegrityError, transaction
 from django.db.models import Max
 
 #: The longest text a version may carry, per language. A notice is a few
-#: pages; this is a guard against a pasted book, not an editorial rule.
-MAX_TEXT = 50_000
+#: pages; this is a guard against a pasted book, not an editorial rule. It was
+#: 50,000 until 2026-10-01 (37c.16), when a real notice — zenobia's Polish,
+#: written from what the platform does — came out at about 50,200.
+MAX_TEXT = 100_000
 
 PLACEHOLDER_MARK_EN = "PLACEHOLDER — replace with your organisation's privacy notice"
 PLACEHOLDER_MARK_PL = "PLACEHOLDER — zastąp tę treść polityką prywatności swojej organizacji"
