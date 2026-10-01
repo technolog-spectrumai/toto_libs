@@ -226,6 +226,20 @@ creates or deletes an account (console only; a first save creates the
   box's id only; gervazy's `CryptoAuditLog` gets a
   `create_personal_strongbox` row naming the box. The section shows the
   form, "exists but has no keys yet", or "ready", with a link to My keys.
+- **Your data** (`/account/data-export/`, 2026-10-01, RODO art. 15 and 20;
+  `data_export.py`): *Download my data* queues a copy of everything the
+  platform holds about the member — the zip `toto.core.personal_data`
+  builds, the same one the console's `export_user` writes — into their own
+  personal bucket. A `DataExport` row is written first (status, the vault
+  file, counts), then `tasks.build_data_export` runs on a worker; with no
+  worker listening the button refuses and writes nothing (never inline). One
+  open export per member (a conditional unique constraint), one a day — a
+  failed one does not count — and an open row older than six hours is closed
+  as failed when the member next looks, so a killed worker never blocks
+  them. A redelivered job takes the file its export already filed. The
+  section shows the last export's status and links the zip;
+  `PRIVACY.EXPORT_REQUESTED` (the member), `_READY` / `_FAILED` (the system:
+  counts and the file's id, never contents).
 
 Every profile or time-zone change is a `SOCIALHUB.PROFILE_CHANGED` record
 naming the fields (`fields`), never their values; the password, e-mail,
@@ -298,7 +312,8 @@ each of its steps; a reference asked for, given (the applicant admitted) or
 declined; a member's own profile or time zone changed on My account
 (`PROFILE_CHANGED`, the field names only); a privacy notice version published
 (`PRIVACY.NOTICE_PUBLISHED`) and accepted by an applicant
-(`PRIVACY.NOTICE_ACCEPTED`). Communities and clearances are recorded apart — the chain is where
+(`PRIVACY.NOTICE_ACCEPTED`); a copy of a member's data asked for, filed or
+failed (`PRIVACY.EXPORT_REQUESTED` / `_READY` / `_FAILED`). Communities and clearances are recorded apart — the chain is where
 a crossing of the two axes would show. Sign-ins, sign-outs and
 accounts are recorded by `toto.audit.identity`. See `toto/audit/README.md`.
 
