@@ -49,6 +49,14 @@ class AssetAdmin(admin.ModelAdmin):
         return f"{obj.max_supply_display} {obj.unit_name}"
     max_supply_display.short_description = _("Total supply")
 
+    def has_add_permission(self, request):
+        # An asset is engraved by the monetary master, which signs its genesis
+        # (the mint's doors); a row typed here could never carry the hash the
+        # database insists on. The add page was a 500 besides — the supply
+        # display divides by a scale a blank asset does not have (2026-10-01,
+        # the 37c regression net).
+        return False
+
 
 @admin.register(LedgerAccount)
 class LedgerAccountAdmin(admin.ModelAdmin):
