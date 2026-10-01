@@ -4,6 +4,7 @@ import random
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
+from toto.kanban import work
 from toto.kanban.models import (
     TaskStatus,
     Campaign, DocumentationPage,
@@ -18,6 +19,9 @@ class Command(IngressCommand):
     help = "Creates a demo kanban setup with practitioners, campaigns, missions, sprints, and tasks"
 
     def process(self):
+        # Reference data, in every mode: the review policies a mission picks
+        # from. The migration seeds them too; this restores any that went.
+        work.seed_canonical_policies()
         if not self.full:
             return
 

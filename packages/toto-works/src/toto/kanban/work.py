@@ -42,7 +42,8 @@ from .models import (
     visible_missions_for,
 )
 
-#: The canonical shapes, seeded by migration and by ingress. Names are the
+#: The canonical shapes, seeded by migration `0002_seed_consensus_policies`
+#: and by `ingress_kanban` (`seed_canonical_policies`). Names are the
 #: readable form because they are what an operator picks from a dropdown.
 #: (name, required_reviews, required_accepts, reject_threshold, is_default)
 CANONICAL_POLICIES = (
@@ -50,6 +51,21 @@ CANONICAL_POLICIES = (
     ("2 of 3", 3, 2, 2, False),
     ("3 of 5", 5, 3, 3, False),
 )
+
+
+def seed_canonical_policies() -> None:
+    """Create any missing canonical policy (idempotent; existing rows are kept
+    as an operator shaped them)."""
+    for name, reviews, accepts, rejects, is_default in CANONICAL_POLICIES:
+        ConsensusPolicy.objects.get_or_create(
+            name=name,
+            defaults={
+                "required_reviews": reviews,
+                "required_accepts": accepts,
+                "reject_threshold": rejects,
+                "is_default": is_default,
+            },
+        )
 
 
 # ── Assignment ───────────────────────────────────────────────────────────────
