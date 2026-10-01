@@ -1,0 +1,225 @@
+"""What an error mail may carry (2026-10-01).
+
+When a page crashes, Django mails the operators (``ADMINS``) its plain-text
+report: the traceback, the request — GET, POST, cookies, headers — and every
+setting. That mail leaves the server for somebody's mailbox, so the report is
+filtered before it is written, and a host names the two classes here in its
+settings:
+
+    DEFAULT_EXCEPTION_REPORTER_FILTER = "toto.core.error_reports.PlatformExceptionReporterFilter"
+    DEFAULT_EXCEPTION_REPORTER = "toto.core.error_reports.PlatformExceptionReporter"
+
+- a setting, header or cookie whose NAME says secret is starred, at any depth
+  (``DATABASES``' ``PASSWORD``): Django's own list — API, TOKEN, KEY, SECRET,
+  PASS, SIGNATURE — and the platform's: AUTHORIZATION (a bearer token
+  header), COOKIE (``CSRF_COOKIE`` in the headers is the CSRF secret),
+  CREDENTIAL, PRIVATE, SALT, DSN. ``FIELD_ENCRYPTION_KEY``, ``*_SECRET``,
+  ``*_PASSWORD``, ``*_KEY`` and ``*_TOKEN`` are all caught by name;
+- a password inside a URL (``redis://:pw@redis``, ``postgres://u:pw@db``) is
+  starred wherever a setting or a header carries one, and so is a URL
+  parameter whose name says secret (``?token=``, ``?code=``, ``?sig=``);
+- EVERY cookie value is starred, whatever its name: the session cookie signs
+  in as the member, and no other cookie is a mailbox's business;
+- EVERY POSTed value is starred and only the field names are kept. Django
+  stars just what a view's ``@sensitive_post_parameters`` names, and a form
+  can carry a password under any name — besides, what a member typed into a
+  form is theirs;
+- a GET parameter is shown unless its name says secret;
+- the exception's own message, its causes and the request URL are scrubbed
+  of every value starred above, because an exception may echo what it was
+  handed.
+
+The HTML report is never mailed (the host's handler says ``include_html``
+False), so a frame's local variables never leave the server.
+
+``CrashMailFilter`` decides which records are mailed at all: a crash — a
+record carrying an exception; a page that answers 503 on purpose because a
+service it needs is off is not one — and the same crash (its exception type
+along the same lines of code) at most once every ``REPEAT_SECONDS``, counted
+in the cache all web workers share. A page that breaks for every visitor
+would otherwise send a mail per visit and get the SMTP account the alert mail
+depends on suspended; the log keeps every occurrence.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+import re
+import traceback
+
+from django.conf import settings
+from django.views.debug import ExceptionReporter, SafeExceptionReporterFilter
+
+#: What a starred value reads as — Django's own stars.
+SUBSTITUTE = SafeExceptionReporterFilter.cleansed_substitute
+
+#: A setting, header or cookie whose name says it holds a secret.
+SECRET_NAMES = re.compile(
+    r"API|TOKEN|KEY|SECRET|PASS|SIGNATURE|COOKIE|AUTHORIZATION|CREDENTIAL"
+    r"|PRIVATE|SALT|DSN",
+    re.IGNORECASE)
+
+#: A URL or form parameter whose name says it carries a secret. Wider than
+#: SECRET_NAMES — an OAuth ``code``, a signed link's ``sig``, a ``session`` —
+#: because starring a harmless parameter costs one line of the report, and
+#: the settings dump would lose too much to the same list.
+SECRET_PARAMS = re.compile(
+    r"API|TOKEN|KEY|SECRET|PASS|SIGNATURE|SIG|COOKIE|AUTH|CREDENTIAL|PRIVATE"
+    r"|SALT|SESSION|CSRF|CODE|OTP|PIN",
+    re.IGNORECASE)
+
+#: Values shorter than this are starred where they stand but not hunted for
+#: in the exception's text: "on" or "1" would star half the message.
+MIN_SCRUBBED_LENGTH = 6
+
+#: The same crash is mailed at most once in this many seconds.
+REPEAT_SECONDS = 60 * 60
+
+_URL_PASSWORD = re.compile(
+    r"(?P<head>\b[a-z][a-z0-9+.\-]*://[^\s:/@]*:)[^\s@/]+@", re.IGNORECASE)
+_PARAMETER = re.compile(
+    r"(?P<head>(?:^|[?&;])(?P<name>[^=&;#?\s]+)=)[^&;#\s]*")
+
+
+def hide_secrets_in(text: str, known=()) -> str:
+    """``text`` with each of the ``known`` values, the password of a URL and
+    the value of a parameter whose name says secret starred."""
+    for value in known:
+        text = text.replace(value, SUBSTITUTE)
+    text = _URL_PASSWORD.sub(lambda m: f"{m.group('head')}{SUBSTITUTE}@", text)
+
+    def parameter(match):
+        if SECRET_PARAMS.search(match.group("name")):
+            return match.group("head") + SUBSTITUTE
+        return match.group(0)
+
+    return _PARAMETER.sub(parameter, text)
+
+
+def _strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _strings(item)
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        for item in value:
+            yield from _strings(item)
+
+
+def _secret_strings(key, value):
+    """The strings the filter stars inside one setting or header: all of a
+    secret one's, and those under a secret key at any depth."""
+    if isinstance(key, str) and SECRET_NAMES.search(key):
+        yield from _strings(value)
+    elif isinstance(value, dict):
+        for inner_key, inner in value.items():
+            yield from _secret_strings(inner_key, inner)
+    elif isinstance(value, (list, tuple)):
+        for inner in value:
+            yield from _secret_strings("", inner)
+
+
+class PlatformExceptionReporterFilter(SafeExceptionReporterFilter):
+    """Django's filter, with the platform's secret names, URL passwords, and
+    every cookie and POST value starred (the module docstring has the rules)."""
+
+    hidden_settings = SECRET_NAMES
+
+    def cleanse_setting(self, key, value):
+        cleansed = super().cleanse_setting(key, value)
+        if isinstance(cleansed, str) and cleansed != self.cleansed_substitute:
+            return hide_secrets_in(cleansed)
+        return cleansed
+
+    def get_safe_cookies(self, request):
+        if not hasattr(request, "COOKIES"):
+            return {}
+        return {name: self.cleansed_substitute for name in request.COOKIES}
+
+    def get_post_parameters(self, request):
+        # DEBUG shows the developer what was posted, as Django always has;
+        # this filter guards what leaves the server, and a mail only ever
+        # leaves with DEBUG off.
+        if request is None or not self.is_active(request):
+            return super().get_post_parameters(request)
+        cleansed = request.POST.copy()
+        for name in cleansed:
+            cleansed[name] = self.cleansed_substitute
+        return cleansed
+
+
+class PlatformExceptionReporter(ExceptionReporter):
+    """Django's report, with secret GET parameters starred and the exception's
+    text and the request URL scrubbed of every value the filter stars."""
+
+    def get_traceback_data(self):
+        data = super().get_traceback_data()
+        known = self.secret_values()
+
+        def scrub(text):
+            return hide_secrets_in(str(text), known)
+
+        for key in ("exception_value", "exception_notes", "request_insecure_uri"):
+            if data.get(key):
+                data[key] = scrub(data[key])
+        for frame in data.get("frames") or ():
+            if frame.get("exc_cause") is not None:
+                frame["exc_cause"] = scrub(frame["exc_cause"])
+        if self.request is not None:
+            data["request_GET_items"] = [
+                (name, SUBSTITUTE if SECRET_PARAMS.search(name) else value)
+                for name, value in self.request.GET.items()]
+        return data
+
+    def secret_values(self) -> list[str]:
+        """Every value the report stars, longest first — so that a secret
+        which contains another is starred whole."""
+        found = set()
+        for name in dir(settings):
+            if name.isupper():
+                found.update(_secret_strings(name, getattr(settings, name, None)))
+        request = self.request
+        if request is not None:
+            for name, value in getattr(request, "META", {}).items():
+                found.update(_secret_strings(name, value))
+            found.update(getattr(request, "COOKIES", {}).values())
+            for _name, values in request.POST.lists():
+                found.update(v for v in values if isinstance(v, str))
+            for name, values in request.GET.lists():
+                if SECRET_PARAMS.search(name):
+                    found.update(values)
+        return sorted((v for v in found if len(v) >= MIN_SCRUBBED_LENGTH),
+                      key=len, reverse=True)
+
+
+def crash_signature(exc_info) -> str:
+    """The exception's type and the lines of code it was raised along: one
+    bug met by many visitors on the same path is one crash."""
+    exc_type, _value, tb = exc_info
+    where = [f"{frame.filename}:{frame.lineno}" for frame in traceback.extract_tb(tb)]
+    text = "|".join([f"{exc_type.__module__}.{exc_type.__qualname__}", *where])
+    return hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:32]
+
+
+class CrashMailFilter(logging.Filter):
+    """Pass a django.request record on to the error mail only when it is a
+    crash nobody was mailed about in the last REPEAT_SECONDS."""
+
+    def filter(self, record):
+        exc_info = record.exc_info
+        if not exc_info or exc_info[0] is None:
+            return False
+        # Nobody to mail: building the report would be for nothing.
+        if not getattr(settings, "ADMINS", None):
+            return False
+        try:
+            from django.core.cache import cache
+
+            first = cache.add(f"toto:crash-mail:{crash_signature(exc_info)}", 1,
+                              timeout=REPEAT_SECONDS)
+        except Exception:  # noqa: BLE001 - a broken cache never silences a crash
+            return True
+        # django-redis answers None, not False, when Redis is unreachable.
+        return first is not False
