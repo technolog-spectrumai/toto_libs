@@ -679,8 +679,12 @@ class AdminPageTests(TestCase):
         self.assertEqual(invite.expected_host, CONSUMER_HOST)
         # roles was not ticked, so it must not have been granted.
         self.assertNotIn("roles", invite.granted_scopes)
-        # The QR and the copyable code are both on the page.
-        self.assertIn("data:image/png;base64,", body)
+        # The QR and the copyable code are both on the page. The QR is drawn
+        # in the browser from the code since 37c.30 (vendored qrcodejs), so
+        # the page carries its frame and the script, not a server-made PNG.
+        self.assertIn('id="pairing-qr"', body)
+        self.assertIn("vendor/qrcodejs/qrcode.min.js", body)
+        self.assertNotIn("data:image/png;base64,", body)
         self.assertIn(invite.ticket_prefix, body)
 
     def test_the_invite_form_defaults_to_the_advertised_five_minutes(self):
