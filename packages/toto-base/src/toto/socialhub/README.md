@@ -278,7 +278,16 @@ creates or deletes an account (console only; a first save creates the
   so it outlives the account; one open request per member (a conditional
   unique constraint). `PRIVACY.ERASURE_REQUESTED` (the member), `_DECLINED`
   (the superuser; the note's length, not the note), `_DONE` (the system,
-  from the console).
+  from the console). A declined request shows the member, under the note,
+  that they may complain to the President of UODO or go to court, whatever
+  the note says (2026-10-01, 37c.21). What the erase takes beyond the
+  cascade — the avatar's file, version bodies, the home pin, the
+  application and its references (`applications.of_member`), the forum's
+  pictures and recordings — and the names it takes off what stays is
+  `toto.core.erasure`; the dialog says it, and that the forum texts stay,
+  signed "Former member", and backups until they age out. Django's admin
+  deletes no account (`toto.core.admin.ConsoleErasedUserAdmin`): it points
+  to the console command instead.
 
 Every profile or time-zone change is a `SOCIALHUB.PROFILE_CHANGED` record
 naming the fields (`fields`), never their values; the password, e-mail,

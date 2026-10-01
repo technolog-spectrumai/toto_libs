@@ -1,4 +1,7 @@
 from django.contrib import admin
+from django.contrib.admin.utils import unquote
+from django.contrib.auth import get_user_model
+from django.contrib.auth.admin import UserAdmin
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
@@ -107,3 +110,57 @@ class PlatformAdmin(TotoModelAdmin):
     def get_theme_name(self, obj):
         return obj.theme.name if obj.theme else '-'
     get_theme_name.short_description = 'Theme'
+
+
+def erase_command(username: str) -> str:
+    """The console command that erases ``username`` (socialhub's, which a host
+    sets in ``SOCIALHUB_ERASURE_COMMAND``; toto.core's own command without it)."""
+    from django.apps import apps
+
+    if apps.is_installed("toto.socialhub"):
+        from toto.socialhub.erasure import command_for
+
+        return command_for(username)
+    import shlex
+
+    return f"python manage.py erase_user {shlex.quote(username)}"
+
+
+class ConsoleErasedUserAdmin(UserAdmin):
+    """Django's user administration without its delete (2026-10-01, 37c.21).
+
+    A delete here skipped ``erase_user``: the account went by the bare
+    cascade, so the profile picture's file, the version bodies, the forum's
+    pictures and recordings, the membership application and the home pin
+    stayed, the name stayed on messages, bucket and ledger account, and no
+    erasure request was closed or recorded. The privacy notice says what an
+    erase does, so the console is the one way to it: no delete action, no
+    delete page, no button — and the pages say where to go instead.
+    """
+
+    change_form_template = "admin/toto_core/user_change_form.html"
+    change_list_template = "admin/toto_core/user_change_list.html"
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        actions.pop("delete_selected", None)
+        return actions
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        obj = self.get_object(request, unquote(object_id))
+        username = obj.get_username() if obj is not None else "USERNAME"
+        return super().change_view(request, object_id, form_url, {
+            **(extra_context or {}), "erase_command": erase_command(username)})
+
+    def changelist_view(self, request, extra_context=None):
+        return super().changelist_view(request, {
+            **(extra_context or {}), "erase_command": erase_command("USERNAME")})
+
+
+_User = get_user_model()
+if admin.site.is_registered(_User) and type(admin.site._registry[_User]) is UserAdmin:
+    admin.site.unregister(_User)
+    admin.site.register(_User, ConsoleErasedUserAdmin)

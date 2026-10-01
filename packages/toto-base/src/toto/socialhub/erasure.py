@@ -40,8 +40,14 @@ class Refused(Exception):
 
 
 def console_command(ticket) -> str:
+    return command_for(ticket.username)
+
+
+def command_for(username: str) -> str:
+    """The console command that erases ``username`` — the list's, and the
+    user admin's pointer to it (toto.core.admin, 2026-10-01)."""
     template = getattr(settings, "SOCIALHUB_ERASURE_COMMAND", "") or DEFAULT_COMMAND
-    return template.format(username=shlex.quote(ticket.username))
+    return template.format(username=shlex.quote(username))
 
 
 def latest_for(user):
