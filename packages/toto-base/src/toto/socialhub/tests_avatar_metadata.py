@@ -285,3 +285,63 @@ class AdminTests(AvatarCase):
         self.assertIn("avatar", response.context["adminform"].form.errors)
         self.person.refresh_from_db()
         self.assertFalse(self.person.avatar)
+
+    # No earlier picture is left in /media/ (the review of stage 37c,
+    # 2026-10-01): My account deleted it, the admin kept every one.
+
+    def first_avatar(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self.post(upload(phone_jpeg(), "a.jpg", "image/jpeg")).status_code, 302)
+        self.person.refresh_from_db()
+        name = self.person.avatar.name
+        self.assertTrue(self.storage.exists(name))
+        return name
+
+    @property
+    def storage(self):
+        return Person._meta.get_field("avatar").storage
+
+    def test_an_avatar_replaced_in_the_admin_leaves_no_earlier_file(self):
+        first = self.first_avatar()
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self.post(upload(phone_jpeg(), "b.jpg", "image/jpeg")).status_code, 302)
+        self.person.refresh_from_db()
+        self.assertNotEqual(self.person.avatar.name, first)
+        self.assertTrue(self.storage.exists(self.person.avatar.name))
+        self.assertFalse(self.storage.exists(first))
+
+    def test_an_avatar_taken_off_in_the_admin_leaves_no_file(self):
+        first = self.first_avatar()
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                reverse("admin:people_person_change", args=[self.person.pk]), {
+                    "user": self.user.pk, "display_name": "Ada", "slug": self.person.slug,
+                    "joined_date_0": "2026-09-28", "joined_date_1": "10:00:00",
+                    "location_sharing": "off", "preferred_language": "en",
+                    "avatar-clear": "on"})
+        self.assertEqual(response.status_code, 302)
+        self.person.refresh_from_db()
+        self.assertFalse(self.person.avatar)
+        self.assertFalse(self.storage.exists(first))
+
+    def test_a_change_that_keeps_the_avatar_keeps_its_file(self):
+        first = self.first_avatar()
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                reverse("admin:people_person_change", args=[self.person.pk]), {
+                    "user": self.user.pk, "display_name": "Ada L.", "slug": self.person.slug,
+                    "joined_date_0": "2026-09-28", "joined_date_1": "10:00:00",
+                    "location_sharing": "off", "preferred_language": "en"})
+        self.assertEqual(response.status_code, 302)
+        self.person.refresh_from_db()
+        self.assertEqual(self.person.avatar.name, first)
+        self.assertTrue(self.storage.exists(first))
+
+    def test_a_person_deleted_in_the_admin_leaves_no_avatar_file(self):
+        first = self.first_avatar()
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                reverse("admin:people_person_delete", args=[self.person.pk]), {"post": "yes"})
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Person.objects.filter(pk=self.person.pk).exists())
+        self.assertFalse(self.storage.exists(first))
