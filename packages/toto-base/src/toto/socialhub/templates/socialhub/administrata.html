@@ -104,6 +104,8 @@
 {% endblock %}
 
 {% block end_script %}
+{# The image's own Cytoscape, as on every other graph page (2026-10-01, 37c.20): the chain graph fetched it from cdnjs.cloudflare.com, which so learnt each administrator's address. #}
+<script src="{% static 'vendor/cytoscape/cytoscape.min.js' %}"></script>
 <script src="{% static 'socialhub/community_chain_graph.js' %}"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function () {

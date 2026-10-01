@@ -246,16 +246,14 @@
       });
   }
 
-  function loadCytoscape(cb) {
-    if (window.cytoscape) { cb(); return; }
-    var s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.29.2/cytoscape.min.js";
-    s.onload = cb;
-    document.head.appendChild(s);
-  }
-
+  // Cytoscape is the page's own script tag, the image's copy under
+  // vendor/cytoscape/ (2026-10-01, 37c.20). This fetched it from
+  // cdnjs.cloudflare.com when it was missing, which told Cloudflare the
+  // address of every administrator who opened the page. Without it now the
+  // call to cytoscape() throws inside the fetch's promise, and its catch
+  // says the chain could not load: no request leaves the platform.
   function renderCommunityChainSafe(containerId, url, options) {
-    loadCytoscape(function () { renderCommunityChain(containerId, url, options); });
+    renderCommunityChain(containerId, url, options);
   }
 
   global.renderCommunityChain = renderCommunityChainSafe;
