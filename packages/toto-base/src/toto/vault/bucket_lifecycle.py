@@ -46,7 +46,11 @@ sealed secret go with it), and, for a mount, the pairing when no other bucket
 uses it. A file another app still holds (a PROTECT foreign key), or bytes that
 would not go, stop the purge before the bucket goes: the bucket stays marked,
 ``deletion_error`` says why, and Delete may be confirmed again once the cause
-is gone. No file ever ends with ``bucket=None`` — ``VaultFile.bucket`` is
+is gone. Something ELSE that holds the bucket itself through a PROTECT
+foreign key — a wiki topic keeping its pages' files here (2026-10-01) —
+refuses Delete before anything is marked, and stops a purge before its first
+file (``holders``): the purge would take every file and then fail on the
+bucket. No file ever ends with ``bucket=None`` — ``VaultFile.bucket`` is
 PROTECT — so no file ever falls out of its bucket's clearance keeping.
 
 A purge never dies silently. The worker's soft time limit is never swallowed
@@ -225,6 +229,33 @@ def update_bucket(bucket, actor, **changes):
 # Delete
 # ---------------------------------------------------------------------------
 
+def holders(bucket) -> list:
+    """What holds ``bucket`` besides its files (2026-10-01): for each other
+    model whose foreign key to it is PROTECT and has rows naming it, its
+    plural name and up to five of the rows (``"wiki topics: Payroll, Board"``).
+    A wiki topic keeps its pages' files in a bucket this way. Files are the
+    purge's own to take; these it cannot, so Delete refuses while any is left
+    rather than taking every file and then failing on the bucket."""
+    from django.db.models import PROTECT
+
+    out = []
+    for relation in Bucket._meta.related_objects:
+        if relation.on_delete is not PROTECT or relation.related_model is VaultFile:
+            continue
+        model = relation.related_model
+        rows = list(model._base_manager.filter(**{relation.field.name: bucket})[:6])
+        if rows:
+            names = ", ".join(str(row) for row in rows[:5]) + ("…" if len(rows) > 5 else "")
+            out.append(f"{model._meta.verbose_name_plural}: {names}")
+    return out
+
+
+def holders_sentence(held) -> str:
+    return _("Other parts of Zenobia still keep their files in this bucket (%(holders)s). "
+             "Give them another bucket first, then delete this one.") % {
+        "holders": "; ".join(held)}
+
+
 def request_deletion(bucket, actor, *, confirm_name: str):
     """Confirm Delete: check the typed name, mark the bucket, audit, and hand
     the purge to a worker once this transaction commits. Returns the bucket.
@@ -238,6 +269,9 @@ def request_deletion(bucket, actor, *, confirm_name: str):
     bucket = Bucket.objects.get(pk=bucket.pk)
     if str(confirm_name or "").strip() != bucket.name:
         raise ValidationError({"confirm_name": _("Type the bucket's name exactly to confirm.")})
+    held = holders(bucket)
+    if held:
+        raise ValidationError(holders_sentence(held))
     adapter = StorageAdapter.for_bucket(bucket)
     plan = adapter.destroy_plan(bucket) if adapter else {"files": 0, "bytes": 0}
     with transaction.atomic():
@@ -335,6 +369,11 @@ def purge_bucket(bucket_pk: int, *, actor_pk=None, budget: float | None = None) 
 
     # Who confirmed Delete — the records of the job are theirs.
     actor = get_user_model().objects.filter(pk=actor_pk).first() if actor_pk else None
+    held = holders(bucket)
+    if held:
+        # Before the first file: something that came to hold the bucket since
+        # Delete was confirmed keeps every file, and the mark says why.
+        return _stop(bucket, actor, holders_sentence(held))
 
     remote = bucket.storage_backend == StorageBackend.REMOTE_TOTO
     driver = None
