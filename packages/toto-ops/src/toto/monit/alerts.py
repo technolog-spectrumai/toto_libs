@@ -23,6 +23,13 @@ With ALERT_EMAILS empty the states are still kept and nothing is mailed; a
 check still bad when an address is added is mailed then. Every mail leaves
 through ``toto.core.notices.send_notice``, the one seam notices use.
 
+Where a worker takes notices (2026-10-01), "took" means queued: the mail is
+handed to the worker only once this run's transaction commits — a run that
+fails has saved nothing and queued nothing, and the next one decides again —
+and the worker tries it five times over about an hour. One it gave up on is
+not mailed again by the next run; the Mail check (``record.check_mail``)
+turns WARN when sends keep failing, and that shows on the Database page.
+
 WHAT THIS CANNOT DO, said plainly: the mail is sent BY the server, so it
 cannot report the server itself being down. No power, no network, a stopped
 worker or beat, a database that cannot be reached (the states live in it) —

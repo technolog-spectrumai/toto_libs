@@ -10,6 +10,7 @@ from datetime import timedelta
 from unittest import mock
 
 from django.core import mail
+from django.db import DatabaseError
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -148,6 +149,31 @@ class AlertRunTests(TestCase):
         self.assertEqual(CheckState.objects.get(key="backups").alerted_status, "")
         self.at(5, verdict(record.FAIL))
         self.assertEqual(self.subjects(), ["Zenobia Test: Backups is failing"])
+
+    @override_settings(NOTICES_VIA_WORKER=True)
+    def test_with_a_worker_the_mail_is_queued_once_the_run_commits(self):
+        with mock.patch("toto.core.tasks.deliver_notice") as task:
+            with self.captureOnCommitCallbacks() as callbacks:
+                self.at(0, verdict(record.FAIL))
+                task.delay.assert_not_called()
+            for callback in callbacks:
+                callback()
+        [(message,), _kwargs] = task.delay.call_args
+        self.assertEqual((message["kind"], message["to"]), ("check_alert", "ops@example.test"))
+        self.assertEqual(message["subject"], "Zenobia Test: Backups is failing")
+        self.assertEqual(mail.outbox, [])
+        # Queued is mailed: the worker retries it, the next run does not.
+        self.assertEqual(CheckState.objects.get(key="backups").alerted_status, record.FAIL)
+
+    @override_settings(NOTICES_VIA_WORKER=True)
+    def test_a_run_that_fails_queues_nothing(self):
+        with mock.patch("toto.core.tasks.deliver_notice") as task, \
+                mock.patch.object(CheckState, "save", side_effect=DatabaseError("gone")):
+            with self.captureOnCommitCallbacks(execute=True) as callbacks:
+                with self.assertRaises(DatabaseError):
+                    self.at(0, verdict(record.FAIL))
+        self.assertEqual(callbacks, [])
+        task.delay.assert_not_called()
 
     def test_the_state_follows_the_verdict(self):
         self.at(0, verdict(record.OK))
