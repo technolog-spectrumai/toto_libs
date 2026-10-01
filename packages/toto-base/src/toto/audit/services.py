@@ -17,6 +17,7 @@ from uuid import UUID
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.utils import timezone
+from django.utils.translation import gettext as _
 
 from toto.audit.canonical import payload_hash
 from toto.audit.context import current_context, is_suppressed
@@ -297,8 +298,8 @@ def verify_chain(chain=None, *, after=None):
                 .values_list("record_hash", flat=True).first())
         if kept != record_hash:
             return AuditVerification(False, 0, sequence,
-                                     "A record verified before is gone or no longer "
-                                     "carries its hash — the chain was rewritten.")
+                                     _("A record verified before is gone or no longer "
+                                       "carries its hash — the chain was rewritten."))
         previous_hash, checked = record_hash, sequence
         records = records.filter(sequence__gt=sequence)
     for item in records:

@@ -196,7 +196,7 @@ def check_media(*, scheduled=False):
         return Check("media", "Media store", FAIL,
                      "Not writable by this process.", detail=str(root))
     if scheduled:
-        return Check("media", "Media store", OK, "Writable.", detail=str(root))
+        return Check("media", "Media store", OK, _("Writable."), detail=str(root))
 
     files = [p for p in root.rglob("*") if p.is_file()]
     total = sum(p.stat().st_size for p in files)
