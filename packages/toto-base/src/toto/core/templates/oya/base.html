@@ -11,8 +11,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}{{ config.site_name }}{% endblock %}</title>
 
-  <!-- Google Fonts (external; omitted when USE_EXTERNAL_FONTS is off, e.g. the Tor onion) -->
-  {% if font.cdn_link and use_external_fonts %}<link href="{{ font.cdn_link }}" rel="stylesheet" />{% endif %}
+  {% comment %} The theme font (2026-10-01, 37c.20). With USE_EXTERNAL_FONTS on,
+     its stylesheet comes from wherever the Font row points — Google Fonts for
+     every seeded font, which so learns each visitor's address and browser.
+     Off (zenobia, a Tor onion), the platform's own copy is drawn instead when
+     it ships one (toto.ui.page.LOCAL_FONTS); a font without one falls back to
+     its style family. {% endcomment %}
+  {% if use_external_fonts %}
+    {% if font.cdn_link %}<link href="{{ font.cdn_link }}" rel="stylesheet" />{% endif %}
+  {% elif local_font %}
+  <style>
+    @font-face {
+      font-family: '{{ font.name }}';
+      font-style: normal;
+      font-weight: {{ local_font.weight }};
+      font-display: swap;
+      src: url("{{ local_font.url }}") format("woff2");
+    }
+  </style>
+  {% endif %}
 
   <!-- Tailwind & Alpine -->
   <script src="{% static 'oya/tailwind.js' %}"></script>

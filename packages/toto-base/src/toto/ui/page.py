@@ -1,9 +1,32 @@
 from django.conf import settings
 from django.http import Http404
+from django.templatetags.static import static
 from django.urls import NoReverseMatch, reverse
 
 from toto.core.models import Platform
 from toto.core.serializers import PlatformSerializer
+
+#: Theme fonts the platform serves itself, by the Font row's name: the woff2
+#: file under this library's static/ and the weights it covers (2026-10-01,
+#: 37c.20). With USE_EXTERNAL_FONTS off, oya/base.html draws an @font-face
+#: from here instead of linking the font's stylesheet: every seeded font is a
+#: Google Fonts link, and Google then learns each visitor's address and
+#: browser before any page has said a word. Orbitron is the seeded theme's
+#: ("Amazing Moon"): the very file Google served (fonts.gstatic.com v35, the
+#: latin subset — Orbitron has no other — one variable font for 400 to 900),
+#: beside its SIL Open Font License. A font with no entry falls back to its
+#: style family.
+LOCAL_FONTS = {
+    "Orbitron": {"file": "oya/fonts/orbitron/orbitron-latin.woff2", "weight": "400 900"},
+}
+
+
+def local_font(name):
+    """The platform's own copy of a theme font, as {url, weight}, or None."""
+    entry = LOCAL_FONTS.get(name or "")
+    if entry is None:
+        return None
+    return {"url": static(entry["file"]), "weight": entry["weight"]}
 
 
 class PageProcessor:
@@ -44,12 +67,13 @@ class PageProcessor:
 
         if self.config is None:
             context.update({**base, "platform": None, "font": {}, "theme": {},
-                            "logo": None, "federation": None,
+                            "local_font": None, "logo": None, "federation": None,
                             "brand": self._brand(None, None)})
             return context
 
         platform_data = PlatformSerializer(self.config).data
         theme_data = platform_data.get("theme") or {}
+        font = theme_data.get("font") or {}
         federation = (
             {
                 "name": self.config.federation.name,
@@ -65,6 +89,9 @@ class PageProcessor:
             **base,
             "platform": platform_data,
             "font": theme_data.get("font", {}),
+            # Asked only when the stylesheet link is off: one or the other.
+            "local_font": (None if base["use_external_fonts"]
+                           else local_font(font.get("name"))),
             "theme": theme_data,
             "logo": self.config.logo.url if self.config.logo else None,
             # The platform's federation, for hosts that brand with it (the
