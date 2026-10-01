@@ -247,6 +247,8 @@ def _other_crash():
 class CrashMailFilterTests(SimpleTestCase):
     def setUp(self):
         cache.clear()
+        error_reports._mailed_here.clear()
+        self.addCleanup(error_reports._mailed_here.clear)
         self.filter = CrashMailFilter()
 
     def test_a_record_without_an_exception_is_not_a_crash(self):
@@ -280,4 +282,21 @@ class CrashMailFilterTests(SimpleTestCase):
             self.assertTrue(self.filter.filter(_record(_crash())))
         # django-redis with IGNORE_EXCEPTIONS answers None instead of raising.
         with mock.patch("django.core.cache.cache.add", return_value=None):
-            self.assertTrue(self.filter.filter(_record(_crash())))
+            self.assertTrue(self.filter.filter(_record(_other_crash())))
+
+    def test_a_cache_that_cannot_answer_does_not_mail_every_visit(self):
+        # Redis down: every page that queues crashes, and the cache that
+        # counts the crashes is that same Redis (2026-10-01, the review).
+        with mock.patch("django.core.cache.cache.add", return_value=None):
+            self.assertTrue(self.filter.filter(_record(_crash("first visitor"))))
+            for _ in range(20):
+                self.assertFalse(self.filter.filter(_record(_crash("next visitor"))))
+            self.assertTrue(self.filter.filter(_record(_other_crash())))
+        with mock.patch("django.core.cache.cache.add", side_effect=ConnectionError("down")):
+            self.assertFalse(self.filter.filter(_record(_crash("raising now"))))
+        # An hour on, this process mails it again.
+        with mock.patch("django.core.cache.cache.add", return_value=None), \
+                mock.patch.object(error_reports.time, "monotonic",
+                                  return_value=error_reports.time.monotonic()
+                                  + error_reports.REPEAT_SECONDS):
+            self.assertTrue(self.filter.filter(_record(_crash("an hour later"))))

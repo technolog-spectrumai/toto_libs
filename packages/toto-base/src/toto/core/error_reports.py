@@ -47,7 +47,10 @@ service it needs is off is not one — and the same crash (its exception type
 along the same lines of code) at most once every ``REPEAT_SECONDS``, counted
 in the cache all web workers share. A page that breaks for every visitor
 would otherwise send a mail per visit and get the SMTP account the alert mail
-depends on suspended; the log keeps every occurrence.
+depends on suspended; the log keeps every occurrence. When the cache cannot
+answer — Redis down, which is exactly when every page that queues crashes —
+each process counts for itself (2026-10-01, the review): the first crash is
+still mailed, its repeats in that process are not.
 
 **After the commit** (2026-10-01, the review). A crash logged inside a
 transaction is mailed once that transaction commits — an SMTP round trip
@@ -74,6 +77,7 @@ import copy
 import hashlib
 import logging
 import re
+import time
 import traceback
 from functools import partial
 from urllib.parse import quote
@@ -292,6 +296,26 @@ def crash_signature(exc_info) -> str:
     return hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:32]
 
 
+#: What this process mailed while the shared cache could not answer:
+#: signature -> when (time.monotonic). Bounded by MAILED_HERE_LIMIT.
+_mailed_here: dict[str, float] = {}
+MAILED_HERE_LIMIT = 1000
+
+
+def _first_here(signature: str) -> bool:
+    """Is ``signature`` new to this process within REPEAT_SECONDS? Noted if so."""
+    now = time.monotonic()
+    for known, when in list(_mailed_here.items()):
+        if now - when >= REPEAT_SECONDS:
+            _mailed_here.pop(known, None)
+    if signature in _mailed_here:
+        return False
+    if len(_mailed_here) >= MAILED_HERE_LIMIT:
+        _mailed_here.clear()
+    _mailed_here[signature] = now
+    return True
+
+
 class CrashMailFilter(logging.Filter):
     """Pass a django.request record on to the error mail only when it is a
     crash nobody was mailed about in the last REPEAT_SECONDS."""
@@ -303,14 +327,18 @@ class CrashMailFilter(logging.Filter):
         # Nobody to mail: building the report would be for nothing.
         if not getattr(settings, "ADMINS", None):
             return False
+        signature = crash_signature(exc_info)
         try:
             from django.core.cache import cache
 
-            first = cache.add(f"toto:crash-mail:{crash_signature(exc_info)}", 1,
-                              timeout=REPEAT_SECONDS)
+            first = cache.add(f"toto:crash-mail:{signature}", 1, timeout=REPEAT_SECONDS)
         except Exception:  # noqa: BLE001 - a broken cache never silences a crash
-            return True
-        # django-redis answers None, not False, when Redis is unreachable.
+            first = None
+        # django-redis answers None, not False, when Redis is unreachable. A
+        # broken cache never silences a crash, and never lets one mail per
+        # visit either: this process remembers what it mailed (2026-10-01).
+        if first is None:
+            return _first_here(signature)
         return first is not False
 
 
