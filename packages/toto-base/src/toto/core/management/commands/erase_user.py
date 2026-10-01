@@ -33,6 +33,10 @@ What "as if they never existed" can and cannot mean here, said plainly:
 
 The report and the result are one JSON line on stdout (the last line).
 Refused: an unknown account, and the last active superuser.
+
+A member's open erasure request (filed on My account — the web files it,
+only this carries it out) is marked done by the erase; ``requests_closed``
+in the result lists them, and ``PRIVACY.ERASURE_DONE`` records each.
 """
 
 from __future__ import annotations
@@ -151,15 +155,28 @@ class Command(BaseCommand):
             self.emit({"ok": False, "error": "--confirm must repeat the username exactly"})
             raise SystemExit(1)
         pk = user.pk
+        closed = []
         with transaction.atomic():
             empty_pages = _pages_left_empty(user)
+            # Their erasure request, filed on My account, is carried out by
+            # this run: done before the account goes, while it still points at
+            # them, and undone with everything else if the erase fails
+            # (2026-10-01).
+            if apps.is_installed("toto.socialhub"):
+                from toto.socialhub.erasure import close_for_erasure
+
+                closed = close_for_erasure(user)
             user.delete()
             if empty_pages:
                 from wakawaka.models import WikiPage
 
                 WikiPage.objects.filter(pk__in=empty_pages).delete()
         self._record(username, pk, report)
-        self.emit({"ok": True, "erased": True, "report": report})
+        if closed:
+            from toto.socialhub.erasure import record_done
+
+            record_done(closed)
+        self.emit({"ok": True, "erased": True, "report": report, "requests_closed": closed})
 
     def _record(self, username, pk, report) -> None:
         if not apps.is_installed("toto.audit"):
