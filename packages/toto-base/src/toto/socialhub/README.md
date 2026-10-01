@@ -313,7 +313,8 @@ platform their data, and the rest in `toto.core`:
 - **A privacy notice**, versioned, public, edited by a superuser on the
   Superuser plan — [below](#privacy-notice). Its text ships as a clearly
   marked **placeholder** in Polish and English; the real text is the
-  organisation's to write and publish.
+  organisation's to write and publish — through the editor, or as two files
+  the host names (`PRIVACY_NOTICE_TEXTS`), which the ingress publishes.
 - **Accepted by new applicants only**, recorded with its version on the
   application and carried to the person as a `PrivacyAcceptance` on
   admission — [below](#privacy-notice). Members from before are not asked.
@@ -381,10 +382,26 @@ the socialhub is where a person first hands the platform their data.
   wiki's own chain): a blank line starts a paragraph and a web or e-mail
   address becomes a link. Nothing from the database reaches the page as HTML.
 - **Seeded**: `ingress_socialhub` publishes version 1 in the realistic and
-  full modes when there is none — a clearly marked placeholder in both
-  languages (`PLACEHOLDER — replace with your organisation's privacy notice`
-  as the first line), with every fact the platform cannot know in
-  [brackets]. The real text is the organisation's.
+  full modes when there is none (`privacy.seed_notice`; `seed_placeholder`
+  is its old name, kept for hosts that call it). A host that names no text
+  gets a clearly marked placeholder in both languages (`PLACEHOLDER — replace
+  with your organisation's privacy notice` as the first line), with every
+  fact the platform cannot know in [brackets]. The real text is the
+  organisation's.
+- **A host's own text** (2026-10-01): `PRIVACY_NOTICE_TEXTS = {"pl": path,
+  "en": path}` names two UTF-8 plain-text files — the host's, kept with its
+  code. The ingress publishes them as version 1 on a fresh database, and as
+  the NEXT version where the current one is still the placeholder (its first
+  line in either language is the mark), so a platform seeded before its host
+  had a text moves off it by itself, through `publish` like any version.
+  Once the current version is anything else — the host's text or somebody's
+  own — the ingress leaves it alone: a later change to the files reaches a
+  running platform through the editor. A file named but missing or
+  unreadable is `ImproperlyConfigured`, not a quiet placeholder. What a text
+  still leaves its owner to fill in is marked `[[UZUPEŁNIJ: …]]` /
+  `[[FILL IN: …]]` (`privacy.markers` lists them by name), and the ingress
+  names each one, per language, when it publishes the text — the notice is
+  public from that moment. `tests_privacy_seed`.
 - **Audited**: `PRIVACY.NOTICE_PUBLISHED`, with the version, the one it
   replaces and each text's length — never the text.
 - **Accepted on the membership application** (2026-10-01): the form links

@@ -179,12 +179,28 @@ class Command(IngressCommand):
     def ensure_privacy_notice(self):
         """Version 1 of the privacy notice, in realistic and full alike
         (2026-10-01): the application links to it, so a platform without one
-        would ask people to accept nothing. A marked PLACEHOLDER in Polish and
-        English (``toto.socialhub.privacy``); never replaces a version."""
-        from toto.socialhub.privacy import seed_placeholder
+        would ask people to accept nothing. The host's own text where its
+        settings name one (``PRIVACY_NOTICE_TEXTS``, 37c.16), else a marked
+        PLACEHOLDER in Polish and English; a platform still on the
+        placeholder gets the host's text as its next version. Never edits a
+        version, never replaces somebody's text (``toto.socialhub.privacy``).
+        What the text it publishes leaves to fill in is named, loudly: the
+        notice is public the moment it is seeded."""
+        from toto.socialhub.privacy import is_placeholder, markers, seed_notice
 
-        if seed_placeholder() is not None:
-            self.stdout.write(self.style.SUCCESS("✔ Privacy notice v1 (placeholder) published."))
+        notice = seed_notice()
+        if notice is None:
+            return
+        what = "placeholder" if is_placeholder(notice) else "the host's text"
+        self.stdout.write(self.style.SUCCESS(f"✔ Privacy notice v{notice.version} ({what}) published."))
+        left = [(language, name) for language, text in (("pl", notice.text_pl), ("en", notice.text_en))
+                for name in markers(text)]
+        if left:
+            self.stdout.write(self.style.WARNING(
+                f"⚠ Privacy notice v{notice.version} still leaves {len(left)} place(s) to fill in "
+                "— fill them in its texts and publish a new version:"))
+            for language, name in left:
+                self.stdout.write(self.style.WARNING(f"    {language}: [[{name}]]"))
 
     def ensure_default_community(self):
         """

@@ -8,7 +8,7 @@ import io
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from toto.core.models import Platform
@@ -90,6 +90,9 @@ class VersionTests(PrivacyFixture):
         self.assertEqual(last.metadata["length_en"], len("Second version"))
         self.assertNotIn("Second version", repr(last.metadata) + last.object_description)
 
+    # A host that names no texts of its own (PRIVACY_NOTICE_TEXTS, 37c.16):
+    # zenobia names its own, so these say so. tests_privacy_seed has the rest.
+    @override_settings(PRIVACY_NOTICE_TEXTS=None)
     def test_the_placeholder_is_seeded_once_and_marked_in_both_languages(self):
         notice = seed_placeholder()
         self.assertEqual(notice.version, 1)
@@ -99,6 +102,7 @@ class VersionTests(PrivacyFixture):
         self.assertIsNone(seed_placeholder())
         self.assertEqual(PrivacyNotice.objects.count(), 1)
 
+    @override_settings(PRIVACY_NOTICE_TEXTS=None)
     def test_the_ingress_seeds_version_one_in_realistic_and_full(self):
         for mode in ("realistic", "full"):
             with self.subTest(mode=mode):

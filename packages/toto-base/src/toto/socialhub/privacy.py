@@ -1,5 +1,5 @@
-"""The privacy notice (2026-10-01, RODO / GDPR): publishing a version, and
-the placeholder text version 1 ships with.
+"""The privacy notice (2026-10-01, RODO / GDPR): publishing a version, the
+placeholder text version 1 ships with, and a host's own text.
 
 ``publish`` is the one writer. It never edits a version: it adds the next
 number, so whatever an applicant accepted stays readable at its own address
@@ -12,10 +12,22 @@ usually takes, so the pages and the application have something real-sized to
 show, with every fact the platform cannot know left in brackets. The
 organisation's own text replaces it through the editor
 (``socialhub:privacy_notice_edit``) — the owner's, not the code's.
+
+A host may ship its own text instead (2026-10-01, 37c.16):
+``PRIVACY_NOTICE_TEXTS = {"pl": path, "en": path}`` names two plain-text
+files, and ``seed_notice`` — the ingress's — publishes them as version 1 on a
+fresh database, and as the next version where the current one is still the
+placeholder. What such a text leaves for its owner to fill in is marked
+``[[…]]`` (``markers``), and the ingress names it when it seeds.
 """
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
+from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.db import IntegrityError, transaction
 from django.db.models import Max
 
@@ -24,6 +36,10 @@ from django.db.models import Max
 #: 50,000 until 2026-10-01 (37c.16), when a real notice — zenobia's Polish,
 #: written from what the platform does — came out at about 50,200.
 MAX_TEXT = 100_000
+
+#: A place a host's text leaves for its owner to fill in: ``[[UZUPEŁNIJ: …]]``
+#: or ``[[FILL IN: …]]``. Never in the placeholder, whose brackets are single.
+MARKER = re.compile(r"\[\[(.+?)\]\]", re.S)
 
 PLACEHOLDER_MARK_EN = "PLACEHOLDER — replace with your organisation's privacy notice"
 PLACEHOLDER_MARK_PL = "PLACEHOLDER — zastąp tę treść polityką prywatności swojej organizacji"
@@ -147,12 +163,68 @@ def publish(*, text_pl: str, text_en: str, user=None):
     return notice
 
 
-def seed_placeholder():
-    """Version 1, the placeholder, when there is no version at all — the
-    ingress's (``ingress_socialhub``, every mode but none). Returns the
-    notice made, or None when one exists."""
+def markers(text) -> list[str]:
+    """What ``text`` still leaves to fill in, by name (what stands between
+    ``[[`` and ``]]``), each once, in the order they first appear."""
+    names = []
+    for match in MARKER.finditer(text or ""):
+        name = " ".join(match.group(1).split())
+        if name not in names:
+            names.append(name)
+    return names
+
+
+def is_placeholder(notice) -> bool:
+    """Whether ``notice`` still shows the placeholder this module ships — in
+    either language, because a version half replaced still shows it."""
+    return notice is not None and (
+        clean_text(notice.text_pl).startswith(PLACEHOLDER_MARK_PL)
+        or clean_text(notice.text_en).startswith(PLACEHOLDER_MARK_EN))
+
+
+def host_texts():
+    """The host's own notice as ``(text_pl, text_en)``, or None when its
+    settings name none (``PRIVACY_NOTICE_TEXTS``). Named but missing or
+    unreadable is a misconfiguration, and said as one: a platform must not
+    quietly come up on the placeholder its host meant to replace."""
+    paths = getattr(settings, "PRIVACY_NOTICE_TEXTS", None)
+    if not paths:
+        return None
+    texts = []
+    for language in ("pl", "en"):
+        path = paths.get(language) if isinstance(paths, dict) else None
+        if not path:
+            raise ImproperlyConfigured(f"PRIVACY_NOTICE_TEXTS names no {language!r} text.")
+        try:
+            texts.append(Path(path).read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ImproperlyConfigured(
+                f"PRIVACY_NOTICE_TEXTS[{language!r}] cannot be read ({path}): {exc}") from exc
+    return texts[0], texts[1]
+
+
+def seed_notice():
+    """What the ingress publishes (``ingress_socialhub``, every mode but none):
+    version 1 when there is no version at all — the host's own text where its
+    settings name one, the placeholder otherwise — and, since 2026-10-01
+    (37c.16), the host's text as the NEXT version where the current one is
+    still the placeholder, so a platform seeded before its host had a text
+    moves off it by itself. Through ``publish``: a new version, audited, never
+    an edit. A current version that is not the placeholder — somebody's
+    text — is left alone. Returns the notice published, or None."""
     from .models import PrivacyNotice
 
-    if PrivacyNotice.objects.exists():
+    texts = host_texts()
+    current = PrivacyNotice.current()
+    if current is None:
+        text_pl, text_en = texts or (PLACEHOLDER_PL, PLACEHOLDER_EN)
+    elif texts is not None and is_placeholder(current):
+        text_pl, text_en = texts
+    else:
         return None
-    return publish(text_pl=PLACEHOLDER_PL, text_en=PLACEHOLDER_EN, user=None)
+    return publish(text_pl=text_pl, text_en=text_en, user=None)
+
+
+#: The name from when the ingress could seed only the placeholder. Other
+#: hosts call it; on a host that names no texts it does exactly that still.
+seed_placeholder = seed_notice
