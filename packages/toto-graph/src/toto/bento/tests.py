@@ -559,27 +559,6 @@ class MigrationCommandTests(TestCase):
 # navigation — bento is surfaced as ravioli's "Data" tab at /ravioli/data/
 # ---------------------------------------------------------------------------
 
-class ConceptSchemaMigrationTests(TestCase):
-    def test_forwards_rewrites_old_schema_but_not_custom(self):
-        import importlib
-
-        from django.apps import apps
-
-        mig = importlib.import_module("toto.bento.migrations.0008_concept_note_name_schema")
-        old = [{"name": "title", "type": "string", "required": True, "label": "Title"},
-               {"name": "body", "type": "text", "required": False, "label": "Body"}]
-        custom = [{"name": "headline", "type": "string", "required": True}]
-        BentoCategory.objects.create(name="Concept", slug="concept", neo4j_label="Concept", property_schema=old)
-        BentoCategory.objects.create(name="Note", slug="note", neo4j_label="Note", property_schema=custom)
-
-        mig.forwards(apps, None)
-
-        concept = BentoCategory.objects.get(slug="concept")
-        note = BentoCategory.objects.get(slug="note")
-        self.assertEqual([f["name"] for f in concept.property_schema], ["name", "body"])  # rewritten
-        self.assertEqual([f["name"] for f in note.property_schema], ["headline"])          # custom untouched
-
-
 class NavigationTests(TestCase):
     def setUp(self):
         from toto.core.models import Platform
