@@ -72,3 +72,10 @@ quota tables alone**.
 **If you revive it for the quizzes only**, note that the polls half now
 duplicates `forum.RoomPoll`. Two poll engines on one host is not a state anybody
 wants; take the quiz modules out into their own app first, or take Delta's.
+
+## The 2026-10-01 migrations reset
+
+Every library and host migration was then reset to a fresh initial and every
+database rebuilt, so the tables above are gone from rebuilt databases and step
+6 of a revival creates them instead. Its migrations name a pre-reset node
+(`people` 0004); a revival regenerates them against the fresh graph.

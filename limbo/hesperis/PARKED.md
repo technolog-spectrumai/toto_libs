@@ -98,3 +98,11 @@ The reverse of the commit that parked it:
    stanza that runs its own harness.
 8. `vendor/toto_libs/tests/test_packaging.py`: bump the apps-with-migrations
    count back up by one.
+
+## The 2026-10-01 migrations reset
+
+Every library and host migration was then reset to a fresh initial and every
+database rebuilt, so the tables above are gone from rebuilt databases. Its
+migration names pre-reset nodes (`people` 0004, `locations` 0005, `assets`
+0005, `kanban` 0010, `vault` 0001); a revival regenerates it against the
+fresh graph.

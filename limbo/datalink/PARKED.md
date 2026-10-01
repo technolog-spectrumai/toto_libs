@@ -31,3 +31,7 @@ were not lost: `toto.vault.peering` copies them, with attribution, for
 
 If row replication is ever wanted again, this directory is the starting
 point, not a template to rewrite. It stays parked.
+
+Its one migration names no library node, only the user model, so the
+2026-10-01 migrations reset (every library and host migration replaced by a
+fresh initial, every database rebuilt) leaves it valid as it is.
