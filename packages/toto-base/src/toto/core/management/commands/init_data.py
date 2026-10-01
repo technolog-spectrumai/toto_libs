@@ -105,6 +105,12 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Superuser created."))
 
         self._create_admin_person(admin_username)
+        # The data-mesh read gate's group: api's migration seeds it, and so
+        # does this, so a database that lost it gets it back.
+        from toto.api.cors import ensure_data_mesh_group
+
+        ensure_data_mesh_group()
+        self.stdout.write(self.style.SUCCESS("data_mesh group present."))
         # The admin is a superuser with the admin panel; on a host that sells
         # plans it must also HOLD the Superuser plan (every superuser may, no
         # Community offer needed since 2026-09-28) — bootstrap_plans makes the

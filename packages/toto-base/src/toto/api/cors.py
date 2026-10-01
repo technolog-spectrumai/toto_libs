@@ -109,6 +109,17 @@ class CorsApiView(View):
 
 DATA_MESH_GROUP = "data_mesh"
 
+
+def ensure_data_mesh_group():
+    """The `data_mesh` group, created if missing (idempotent).
+
+    api's migration 0002_data_mesh_group seeds it on every fresh database;
+    init_data calls this too, so the seed does not live only in a migration.
+    """
+    from django.contrib.auth.models import Group
+
+    return Group.objects.get_or_create(name=DATA_MESH_GROUP)[0]
+
 # The domains behind the gate (informational; all share the one group).
 MESH_DOMAINS = ["missions", "tasks", "locations", "events", "people"]
 
