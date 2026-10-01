@@ -126,6 +126,21 @@ class RenewalTests(LapsedCase):
         self.assertEqual(self.applicant.username, "newbie2")
         self.assertEqual(User.objects.filter(email__iexact=EMAIL).count(), 1)
 
+    def test_the_address_in_another_case_renews_the_same_application(self):
+        # Compared without case since 2026-10-01: one application, one
+        # account, one spelling — the one typed now.
+        response = self.apply(email=EMAIL.upper())
+        self.assertRedirects(response, reverse("socialhub:application_success",
+                                               args=[EMAIL.upper()]),
+                             fetch_redirect_response=False)
+        self.assertEqual(MembershipApplication.objects.count(), 1)
+        self.application.refresh_from_db()
+        self.applicant.refresh_from_db()
+        self.assertNotEqual(self.application.code, "424242")
+        self.assertEqual((self.application.email, self.applicant.email),
+                         (EMAIL.upper(), EMAIL.upper()))
+        self.assertEqual(list(User.objects.filter(email__iexact=EMAIL)), [self.applicant])
+
     def test_with_no_account_left_one_is_made(self):
         self.applicant.delete()
         self.apply(username="again")

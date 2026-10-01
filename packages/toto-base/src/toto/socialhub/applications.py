@@ -187,9 +187,16 @@ def renew(application, *, username, community, notice):
     if account is None:
         User.objects.get_or_create(username=username, defaults={
             "email": application.email, "is_active": False})
-    elif account.username != username:
-        account.username = username
-        account.save(update_fields=["username"])
+    else:
+        # The address as typed now goes on the account too (2026-10-01): a
+        # renewal may spell it in another case, and the acceptance mail and
+        # the verification page look it up as spelled.
+        changed = [name for name, value in (("username", username),
+                                            ("email", application.email))
+                   if getattr(account, name) != value]
+        if changed:
+            account.username, account.email = username, application.email
+            account.save(update_fields=changed)
     application.reference_requests.all().delete()
     now = timezone.now()
     application.community = community
