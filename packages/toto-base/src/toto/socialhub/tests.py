@@ -175,14 +175,16 @@ class ReferenceRequestPasswordTests(TestCase):
             email="applicant@example.com",
             community=self.community,
             code="111222",
-            verified_at=timezone.now(),
-            status="verified",
             expires_at=timezone.now() + timezone.timedelta(days=7),
         )
         # An existing member who can endorse.
         ref_user = User.objects.create_user(username="member", password="x")
         self.referrer = Person.objects.create(user=ref_user, display_name="Member")
         self.referrer.communities.add(self.community)
+        # The applicant types the code first: the step is that browser's
+        # (2026-10-01, tests_reference_session).
+        self.client.post(reverse("socialhub:membership_verification",
+                                 args=["applicant@example.com"]), {"code": "111222"})
 
     def _url(self):
         return reverse("socialhub:reference_request", args=[self.application.id])

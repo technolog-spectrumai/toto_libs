@@ -127,6 +127,12 @@ class ApplyAgainTests(FlowCase):
 
 
 class ReferenceRequestPageTests(FlowCase):
+    def setUp(self):
+        super().setUp()
+        # The step is the browser's that typed the code (2026-10-01,
+        # tests_reference_session), as the applicant's own is.
+        self.verify("424242")
+
     def test_only_members_of_the_community_applied_to_may_be_named(self):
         form = self.client.get(reverse("socialhub:reference_request",
                                        args=[self.application.pk])).context["form"]
@@ -175,9 +181,13 @@ class ReferenceRequestPageTests(FlowCase):
         self.applicant.refresh_from_db()
         self.assertTrue(self.applicant.check_password("own-pw"))
 
-    def test_an_unknown_application_is_a_404(self):
+    def test_an_application_gone_since_it_was_verified_here_is_a_404(self):
+        # One this browser never verified is refused before it is looked up
+        # (tests_reference_session); one it did, and that is gone since, is a 404.
+        pk = self.application.pk
+        self.application.delete()
         self.assertEqual(self.client.get(reverse("socialhub:reference_request",
-                                                 args=[999999])).status_code, 404)
+                                                 args=[pk])).status_code, 404)
 
 
 class ReferenceAnswerTests(FlowCase):

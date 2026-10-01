@@ -21,6 +21,7 @@ import logging
 from django.core.exceptions import PermissionDenied
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
+from django.utils.dateparse import parse_datetime
 from django.utils.translation import gettext as _
 
 
@@ -30,6 +31,50 @@ User = get_user_model()
 # The purpose tag toto.jess reads off the message and pops. On a host without jess the
 # header is simply carried through to SMTP, so this costs nothing there.
 _JESS_PURPOSE_HEADER = "X-Jess-Purpose"
+
+#: The applications this browser verified, by id, each with the moment it was
+#: verified (2026-10-01, the review of stage 35). The reference step — the
+#: referrer, the message and the password — opens only for them: before,
+#: anybody holding an application's id, a number counted up from 1, could set
+#: the password of a pending applicant's account and read their address.
+VERIFIED_SESSION_KEY = "socialhub_verified_applications"
+
+
+def _remember_verified(request, application):
+    verified = dict(request.session.get(VERIFIED_SESSION_KEY) or {})
+    verified[str(application.pk)] = application.verified_at.isoformat()
+    request.session[VERIFIED_SESSION_KEY] = verified
+
+
+def _verified_here(request, application_id):
+    """The application, when this browser's session verified it; else None.
+
+    The session is asked first, so an id this browser never verified gets
+    the same answer whether or not it exists. The moment must still be the
+    application's own: a renewal (``applications.renew``) clears
+    ``verified_at``, so the browser that verified an earlier round — maybe
+    not the applicant's — no longer counts once the address applied again.
+    """
+    stamp = (request.session.get(VERIFIED_SESSION_KEY) or {}).get(str(application_id))
+    when = parse_datetime(stamp) if isinstance(stamp, str) else None
+    if when is None:
+        return None
+    application = get_object_or_404(MembershipApplication, pk=application_id)
+    return application if application.verified_at == when else None
+
+
+def _not_this_browser(request, processor, application_id):
+    """The reference step's refusal: a sentence, no form, no address, nothing set."""
+    logger.warning(f"Reference step refused for application ID '{application_id}': "
+                   f"not verified in this browser.")
+    context = {
+        "page_title": "Endorse Application",
+        "refusal": _("Only the browser in which this application's code was typed can "
+                     "ask for its references. If that is no longer possible, apply again "
+                     "with the same e-mail address once the application has lapsed."),
+    }
+    return render(request, "socialhub/reference_request.html",
+                  processor.decorate(context, request), status=403)
 
 
 def _send_endorsement_mail(subject, body, *, to, community):
@@ -176,6 +221,8 @@ def verify_application_view(request, username):
                 app.verified_at = timezone.now()
                 app.status = "verified"
                 app.save()
+                # The reference step is this browser's from now on (2026-10-01).
+                _remember_verified(request, app)
                 if captcha_mode:
                     clear_captcha_retry_cooldown(request)
                 logger.info(f"Verification successful for '{username}'.")
@@ -199,7 +246,11 @@ def verification_success_view(request):
 
 def reference_request_view(request, application_id):
     processor = PageProcessor()
-    application = get_object_or_404(MembershipApplication, pk=application_id)
+    # Only the browser that verified the code (2026-10-01): the page shows
+    # the applicant's address and sets their account's password.
+    application = _verified_here(request, application_id)
+    if application is None:
+        return _not_this_browser(request, processor, application_id)
     form = ReferenceRequestForm(request.POST or None, application=application)
 
     context = {
@@ -238,7 +289,10 @@ def reference_request_view(request, application_id):
 
 def reference_next(request, application_id):
     processor = PageProcessor()
-    application = get_object_or_404(MembershipApplication, pk=application_id)
+    # The thank-you page names the applicant's address too (2026-10-01).
+    application = _verified_here(request, application_id)
+    if application is None:
+        return _not_this_browser(request, processor, application_id)
     context = {
         "application": application,
         "page_title": "Thank You for Your Endorsement",

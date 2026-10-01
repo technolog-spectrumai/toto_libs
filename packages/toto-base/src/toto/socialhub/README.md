@@ -393,6 +393,18 @@ again, and an inactive account nobody would ever use.
   one that has not got in first. Before, the first account with the exact
   address was taken, so an address a member also had found the member's —
   activated and enrolled instead, and its password set from that public page.
+- **The reference step is the browser's that typed the code** (the review,
+  2026-10-01): verifying puts the application's id, with the moment it was
+  verified, in that browser's session (`views/application.py`,
+  `VERIFIED_SESSION_KEY`), and the step — the referrer, the message, the
+  password — and its thank-you page answer only there. Anywhere else they
+  answer 403 with a sentence: no form, no address, nothing set, and alike for
+  an id that does not exist. Before, anybody holding an application's id (a
+  number counted up from 1) could set a pending applicant's password and read
+  their address. Typing the code again elsewhere only says "already
+  verified", and a renewal clears `verified_at`, so the browser that verified
+  a lapsed round no longer counts. An applicant who lost that browser applies
+  again once the application has lapsed, as the sentence says.
 - **The nightly housekeeping prunes it** (`applications.prune`, called by
   `toto.core.housekeeping` on the beat) once it lapsed more than
   `SOCIALHUB_EXPIRED_APPLICATION_DAYS` (default 30) days ago — the
