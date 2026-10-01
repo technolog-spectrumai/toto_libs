@@ -11,6 +11,11 @@
   (``toto.socialhub.privacy.publish``, ``PRIVACY.NOTICE_PUBLISHED``). A
   refusal is Post/Redirect/Get, what was typed waiting in the session.
 
+* ``erasure_requests`` — for the same superuser (2026-10-01): the members'
+  requests to be erased, open first, each with the console command that
+  carries it out. The page never erases; it can only decline, with a note
+  (``toto.socialhub.erasure``).
+
 The text is plain text, drawn escaped through ``urlize`` and ``linebreaks``
 (the chain the wiki uses) — nothing from the database reaches the page as
 HTML.
@@ -27,9 +32,10 @@ from django.http import Http404
 from django.shortcuts import redirect, render
 from django.utils import translation
 from django.utils.translation import gettext as _
-from django.views.decorators.http import require_http_methods, require_safe
+from django.views.decorators.http import require_http_methods, require_POST, require_safe
 
-from toto.socialhub.models import PrivacyNotice
+from toto.socialhub import erasure
+from toto.socialhub.models import ErasureRequest, PrivacyNotice
 from toto.socialhub.privacy import MAX_TEXT, clean_text, publish
 from toto.ui import PageProcessor
 
@@ -129,3 +135,52 @@ def _publish(request):
     messages.success(request, _("Version %(version)d of the privacy notice is published.")
                      % {"version": notice.version})
     return redirect("socialhub:privacy_notice_version", version=notice.version)
+
+
+#: The list's filters, in the order the tabs show them.
+ERASURE_FILTERS = ("open", "done", "declined", "all")
+
+
+@login_required
+@require_safe
+def erasure_requests(request):
+    if not may_publish(request.user):
+        raise PermissionDenied(_("Erasure requests are handled by a superuser on the Superuser plan."))
+    shown = request.GET.get("status") or "open"
+    if shown not in ERASURE_FILTERS:
+        shown = "open"
+    tickets = ErasureRequest.objects.select_related("handled_by").order_by("-created_at", "-pk")
+    if shown != "all":
+        tickets = tickets.filter(status=shown)
+    page = Paginator(tickets, PER_PAGE).get_page(request.GET.get("page"))
+    for ticket in page:
+        ticket.command = erasure.console_command(ticket)
+    context = {
+        "page_obj": page,
+        "is_paginated": page.has_other_pages(),
+        "extra_query": f"&status={shown}",
+        "shown": shown,
+        "filters": [(key, label) for key, label in (
+            ("open", _("Open")), ("done", _("Carried out")),
+            ("declined", _("Declined")), ("all", _("All")))],
+        "open_count": ErasureRequest.objects.filter(status=ErasureRequest.OPEN).count(),
+    }
+    return render(request, "socialhub/erasure_requests.html", PageProcessor().decorate(context, request))
+
+
+@login_required
+@require_POST
+def erasure_request_decline(request, pk):
+    if not may_publish(request.user):
+        raise PermissionDenied(_("Erasure requests are handled by a superuser on the Superuser plan."))
+    ticket = ErasureRequest.objects.filter(pk=pk).first()
+    if ticket is None:
+        raise Http404(_("There is no such erasure request."))
+    try:
+        erasure.decline(ticket, by=request.user, note=request.POST.get("note", ""), request=request)
+    except erasure.Refused as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, _("The request of %(username)s is declined.")
+                         % {"username": ticket.username})
+    return redirect("socialhub:erasure_requests")

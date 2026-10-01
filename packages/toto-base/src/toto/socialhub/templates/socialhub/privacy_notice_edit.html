@@ -33,6 +33,12 @@ link, and nothing else is markup.{% endcomment %}
              : 'border-accent-2 bg-sunken-light text-text-main-light'"
            class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-eye"></i>{% translate "View the notice" %}</a>
+        <a href="{% url 'socialhub:erasure_requests' %}"
+           :class="darkMode
+             ? 'border-accent-1 bg-sunken-dark text-text-main-dark'
+             : 'border-accent-2 bg-sunken-light text-text-main-light'"
+           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-user-xmark"></i>{% translate "Erasure requests" %}</a>
       </nav>
     </header>
 

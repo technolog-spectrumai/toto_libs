@@ -392,6 +392,90 @@ sessions, sign-ins, e-mail) slot in as further sections.{% endcomment %}
       {% endif %}
     </section>
 
+    <!-- Erase my account (2026-10-01, RODO): a request, filed here and
+         carried out only at the console (socialhub/erasure.py). Nothing on
+         this page erases anything. -->
+    <section id="erasure" x-data="{ confirming: false }" @keydown.escape.window="confirming = false"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm sm:p-6">
+      <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-user-xmark"></i>{% translate "Erase my account" %}</h2>
+        {% if erasure.may_handle %}
+        <a href="{% url 'socialhub:erasure_requests' %}" class="text-sm font-semibold underline">{% translate "Erasure requests" %}</a>
+        {% endif %}
+      </div>
+      <p class="mb-4 text-sm opacity-70">{% translate "You can ask for your account and the data that is only yours to be erased. You file the request here; an operator carries it out at the server's console, and the account works as before until then." %}</p>
+
+      {% with latest=erasure.latest %}
+      {% if latest %}
+      <div :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+           class="mb-4 rounded-xl border p-4 text-sm shadow-sm" data-testid="erasure-latest">
+        <div class="flex items-center gap-2 font-semibold">
+          <i class="fa-solid {% if latest.status == 'declined' %}fa-circle-xmark{% else %}fa-hourglass-half{% endif %}"></i>{{ latest.get_status_display }}
+        </div>
+        <dl class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+          <dt class="opacity-70">{% translate "Filed" %}</dt><dd>{{ latest.created_at|date:"Y-m-d H:i" }}</dd>
+          {% if latest.handled_at %}<dt class="opacity-70">{% translate "Answered" %}</dt><dd>{{ latest.handled_at|date:"Y-m-d H:i" }}</dd>{% endif %}
+        </dl>
+        {% if latest.note %}<p class="mt-2 text-xs">{{ latest.note }}</p>{% endif %}
+      </div>
+      {% endif %}
+
+      {% if not latest or not latest.is_open %}
+      <button type="button" @click="confirming = true"
+              class="inline-flex items-center gap-2 rounded-lg border border-red-500/60 px-4 py-2 text-sm font-semibold text-red-600 shadow-sm transition hover:opacity-90 dark:text-red-400">
+        <i class="fa-solid fa-user-xmark"></i>{% translate "Ask to erase my account" %}</button>
+
+      <div x-show="confirming" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+           role="dialog" aria-modal="true" aria-labelledby="erasure-confirm-title">
+        <div class="absolute inset-0 bg-black/60" @click="confirming = false"></div>
+        <form method="post" action="{% url 'account:erasure_request' %}" data-testid="erasure-confirm"
+              :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+              class="relative max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-xl border p-5 text-sm shadow-xl">
+          {% csrf_token %}
+          <div class="flex items-center justify-between gap-2">
+            <h2 id="erasure-confirm-title" class="text-lg font-bold text-red-600 dark:text-red-400">
+              <i class="fa-solid fa-user-xmark mr-1" aria-hidden="true"></i>{% translate "Ask to erase my account" %}</h2>
+            <button type="button" @click="confirming = false" class="opacity-70 hover:opacity-100" aria-label="{% translate 'Close' %}">
+              <i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+          </div>
+          <div class="space-y-1">
+            <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% translate "Who carries it out" %}</h3>
+            <p>{% translate "Nothing is erased when you press the button. An operator of the platform reads the request and erases the account at the server's console; an erase cannot be undone. If they decline it, the reason appears here." %}</p>
+          </div>
+          <div class="space-y-1">
+            <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% translate "What goes" %}</h3>
+            <p>{% translate "Your account and profile, your community and clearance memberships, your files, your wiki edits and the pages only you wrote, your subscriptions, sessions and everything else that exists only because of your account." %}</p>
+          </div>
+          <div class="space-y-1">
+            <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% translate "What stays" %}</h3>
+            <ul class="list-disc space-y-0.5 pl-5">
+              <li>{% translate "The audit trail's records of what you did, under your username, and the record of the erase itself: each record is sealed to the one before it and cannot be removed." %}</li>
+              <li>{% translate "The ledger's transactions, sealed the same way; your ledger account stays, detached from you." %}</li>
+              <li>{% translate "What other people still need — a forum room or a workflow you started, a bucket that holds other people's files — without the link to you." %}</li>
+              <li>{% translate "Copies this platform cannot reach: backups already taken, and files exported into other people's buckets." %}</li>
+            </ul>
+            <p class="text-xs opacity-70">{% translate "Want a copy first? Use Download my data above before the request is carried out." %}</p>
+          </div>
+          <label class="flex items-start gap-2">
+            <input type="checkbox" name="confirm" value="yes" required class="mt-1">
+            <span>{% translate "I have read this and want my account erased." %}</span>
+          </label>
+          <div class="flex justify-end gap-2">
+            <button type="button" @click="confirming = false"
+                    :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                    class="rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">{% translate "Cancel" %}</button>
+            <button type="submit"
+                    class="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-90">
+              <i class="fa-solid fa-paper-plane"></i>{% translate "File the request" %}</button>
+          </div>
+        </form>
+      </div>
+      {% endif %}
+      {% endwith %}
+    </section>
+
   </div>
 </section>
 {% endblock %}

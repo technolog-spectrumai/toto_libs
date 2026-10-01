@@ -40,6 +40,11 @@ Your data (2026-10-01, RODO): *Download my data* queues a copy of everything
 the platform holds about the member into their own personal bucket
 (``toto.socialhub.data_export``, the console's ``export_user`` builder), one
 at a time and once a day, and the section shows how the last one went.
+
+Erase my account (2026-10-01, RODO): the member FILES a request
+(``toto.socialhub.erasure``), after a confirmation saying an operator carries
+it out at the console and what is kept. Nothing here erases anything — the
+account goes only by ``erase_user`` at the console, which closes the request.
 """
 
 from __future__ import annotations
@@ -208,6 +213,16 @@ def _data_export(request):
             "interval_hours": int(data_export.INTERVAL.total_seconds() // 3600)}
 
 
+def _erasure(request):
+    """The Erase my account section's context: the member's own latest
+    request, and whether they may see the operators' list."""
+    from toto.socialhub import erasure
+    from toto.socialhub.views.privacy import may_publish
+
+    return {"latest": erasure.latest_for(request.user),
+            "may_handle": may_publish(request.user)}
+
+
 def _page(request, *, profile_form=None, timezone_form=None, password_form=None,
           email_form=None, key_store_form=None, status=200):
     person = own_person(request.user)
@@ -247,6 +262,7 @@ def _page(request, *, profile_form=None, timezone_form=None, password_form=None,
         "avatar_max_mb": avatar_max_bytes() // (1024 * 1024),
         "key_store": _key_store(request, key_store_form),
         "data_export": _data_export(request),
+        "erasure": _erasure(request),
     }
     context = PageProcessor().decorate(context, request)
     return render(request, "socialhub/account.html", context, status=status)
@@ -564,3 +580,25 @@ def account_data_export(request):
         messages.success(request, _("Your data is being prepared. The copy will be in your "
                                     "personal bucket, and linked here, when it is ready."))
     return redirect(f"{reverse('account:home')}#data")
+
+
+@require_POST
+@login_required
+def account_erasure_request(request):
+    """File a request to erase one's own account (2026-10-01, RODO); see
+    ``toto.socialhub.erasure``. Files a ticket for ``request.user`` only and
+    erases nothing: the erase is the console's."""
+    from toto.socialhub import erasure
+
+    if request.POST.get("confirm") != "yes":
+        messages.error(request, _("Confirm that you have read what the request does."))
+        return redirect(f"{reverse('account:home')}#erasure")
+    try:
+        erasure.file_request(request.user, request=request)
+    except erasure.Refused as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, _("Your request is filed. An operator carries it out at the "
+                                    "server's console; until then your account works as "
+                                    "before."))
+    return redirect(f"{reverse('account:home')}#erasure")

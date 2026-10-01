@@ -23,7 +23,8 @@ from toto.socialhub.views.community_news import (
 )
 from toto.socialhub.views.clearances import (clearance_add, clearance_delete, clearance_graph,
                                              clearance_people, clearance_targets, clearances)
-from toto.socialhub.views.privacy import privacy_notice, privacy_notice_edit, privacy_notice_version
+from toto.socialhub.views.privacy import (erasure_request_decline, erasure_requests, privacy_notice,
+                                          privacy_notice_edit, privacy_notice_version)
 from toto.socialhub.views.application import membership_application_view, application_success_view, \
     verification_success_view, reference_request_view, reference_next, verify_application_view, reference_accept, \
     reference_reject
@@ -71,6 +72,11 @@ urlpatterns = [
     path("privacy/", privacy_notice, name="privacy_notice"),
     path("privacy/v<int:version>/", privacy_notice_version, name="privacy_notice_version"),
     path("privacy/edit/", privacy_notice_edit, name="privacy_notice_edit"),
+    # Erasure requests (2026-10-01): the list for a superuser on the plan;
+    # declining is the only thing it does — the erase is the console's.
+    path("privacy/erasure/", erasure_requests, name="erasure_requests"),
+    path("privacy/erasure/<int:pk>/decline/", erasure_request_decline,
+         name="erasure_request_decline"),
 
     path("apply/membership/", membership_application_view, name="membership_application"),
     path("apply/success/<str:username>/", application_success_view, name="application_success"),

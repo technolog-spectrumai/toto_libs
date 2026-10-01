@@ -1,0 +1,141 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Erasure requests" %}{% endblock %}
+
+{% block content %}
+{% comment %}Erasure requests (2026-10-01, RODO), for a superuser on the
+Superuser plan (views/privacy.py). The members' requests to be erased, each
+with the console command that carries it out — the erase is the console's
+and closes the request itself. The only thing this page does is decline one,
+with a note the member reads on My account (socialhub/erasure.py).{% endcomment %}
+<section x-data="{ decline: null }" @keydown.escape.window="decline = null"
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-5xl space-y-6">
+
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div>
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs font-semibold uppercase tracking-wide">
+          {% blocktranslate count counter=open_count %}{{ counter }} open request{% plural %}{{ counter }} open requests{% endblocktranslate %}</p>
+        <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+          <i class="fa-solid fa-user-xmark"></i>{% translate "Erasure requests" %}</h1>
+        <p class="mt-1 text-sm opacity-70">{% translate "Members who asked for their account to be erased. Nothing here erases anyone: run the command shown at the server's console — it reports first, asks for the username, erases, and marks the request done. Take a backup first." %}</p>
+      </div>
+      <nav class="flex flex-wrap gap-2">
+        {% for key, label in filters %}
+        <a href="?status={{ key }}"
+           {% if key == shown %}aria-current="page"{% endif %}
+           :class="{% if key == shown %}darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'{% else %}darkMode ? 'border-accent-1 bg-sunken-dark text-text-main-dark' : 'border-accent-2 bg-sunken-light text-text-main-light'{% endif %}"
+           class="inline-flex items-center rounded-lg border px-3 py-1.5 text-sm font-semibold shadow-sm transition hover:opacity-90">{{ label }}</a>
+        {% endfor %}
+      </nav>
+    </header>
+
+    {% if page_obj.object_list %}
+    {# Wide screens: a table. #}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="hidden overflow-x-auto rounded-2xl border shadow-sm md:block">
+      <table class="min-w-full text-left text-sm">
+        <thead :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-xs uppercase tracking-wide opacity-70">
+          <tr>
+            <th scope="col" class="px-4 py-3">{% translate "Member" %}</th>
+            <th scope="col" class="px-4 py-3">{% translate "Filed" %}</th>
+            <th scope="col" class="px-4 py-3">{% translate "Status" %}</th>
+            <th scope="col" class="px-4 py-3">{% translate "At the console" %}</th>
+            <th scope="col" class="px-4 py-3 text-right"><span class="sr-only">{% translate "Actions" %}</span></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for ticket in page_obj %}
+          <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b align-top last:border-b-0">
+            <td class="px-4 py-3 font-semibold">{{ ticket.username }}{% if not ticket.user_id %} <span class="text-xs font-normal opacity-60">({% translate "erased" %})</span>{% endif %}</td>
+            <td class="whitespace-nowrap px-4 py-3">{{ ticket.created_at|date:"Y-m-d H:i" }}</td>
+            <td class="px-4 py-3">
+              {{ ticket.get_status_display }}
+              {% if ticket.handled_at %}<div class="text-xs opacity-70">{{ ticket.handled_at|date:"Y-m-d H:i" }}{% if ticket.handled_by %} · {{ ticket.handled_by.get_username }}{% elif ticket.status == 'done' %} · {% translate "the console" %}{% endif %}</div>{% endif %}
+              {% if ticket.note %}<div class="mt-1 text-xs">{{ ticket.note }}</div>{% endif %}
+            </td>
+            <td class="px-4 py-3">{% if ticket.is_open %}<code class="select-all break-all font-mono text-xs" data-testid="erasure-command">{{ ticket.command }}</code>{% else %}<span class="opacity-50">—</span>{% endif %}</td>
+            <td class="px-4 py-3 text-right">
+              {% if ticket.is_open %}
+              <button type="button" data-url="{% url 'socialhub:erasure_request_decline' ticket.pk %}" data-username="{{ ticket.username }}"
+                      @click="decline = { url: $el.dataset.url, username: $el.dataset.username }"
+                      :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                      class="inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-xs font-semibold shadow-sm transition hover:opacity-90">
+                <i class="fa-solid fa-ban"></i>{% translate "Decline" %}</button>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {# Narrow screens: a card per request. #}
+    <div class="space-y-3 md:hidden">
+      {% for ticket in page_obj %}
+      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="space-y-2 rounded-2xl border p-4 text-sm shadow-sm">
+        <div class="flex items-center justify-between gap-2">
+          <p class="min-w-0 break-words font-bold">{{ ticket.username }}{% if not ticket.user_id %} <span class="text-xs font-normal opacity-60">({% translate "erased" %})</span>{% endif %}</p>
+          <span class="shrink-0 text-xs opacity-70">{{ ticket.get_status_display }}</span>
+        </div>
+        <p class="text-xs opacity-70">{% translate "Filed" %} {{ ticket.created_at|date:"Y-m-d H:i" }}{% if ticket.handled_at %} · {% translate "Answered" %} {{ ticket.handled_at|date:"Y-m-d H:i" }}{% endif %}</p>
+        {% if ticket.note %}<p class="text-xs">{{ ticket.note }}</p>{% endif %}
+        {% if ticket.is_open %}
+        <code class="block select-all break-all rounded border border-current/20 px-2 py-1 font-mono text-xs">{{ ticket.command }}</code>
+        <button type="button" data-url="{% url 'socialhub:erasure_request_decline' ticket.pk %}" data-username="{{ ticket.username }}"
+                @click="decline = { url: $el.dataset.url, username: $el.dataset.username }"
+                :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                class="inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-xs font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-ban"></i>{% translate "Decline" %}</button>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+
+    {% include "oya/partials/_server_pagination.html" %}
+    {% else %}
+    <p class="rounded border border-dashed p-4 text-sm opacity-70">{% translate "No request here." %}</p>
+    {% endif %}
+
+  </div>
+
+  <div x-show="decline" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+       role="dialog" aria-modal="true" aria-labelledby="erasure-decline-title">
+    <div class="absolute inset-0 bg-black/60" @click="decline = null"></div>
+    <form method="post" :action="decline ? decline.url : ''"
+          :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+          class="relative w-full max-w-lg space-y-4 rounded-xl border p-5 text-sm shadow-xl">
+      {% csrf_token %}
+      <div class="flex items-center justify-between gap-2">
+        <h2 id="erasure-decline-title" class="min-w-0 text-lg font-bold">
+          <i class="fa-solid fa-ban mr-1" aria-hidden="true"></i>{% translate "Decline the request" %}
+          <span class="block break-words text-sm font-normal" x-text="decline ? decline.username : ''"></span></h2>
+        <button type="button" @click="decline = null" class="opacity-70 hover:opacity-100" aria-label="{% translate 'Close' %}">
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      </div>
+      <label class="block space-y-1">
+        <span class="text-xs font-semibold opacity-70">{% translate "Why — the member reads this on My account" %}</span>
+        <textarea name="note" rows="4" required maxlength="500"
+          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+          class="w-full rounded-lg border px-3 py-2 text-sm"></textarea>
+      </label>
+      <div class="flex justify-end gap-2">
+        <button type="button" @click="decline = null"
+                :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                class="rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">{% translate "Cancel" %}</button>
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-ban"></i>{% translate "Decline" %}</button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}
