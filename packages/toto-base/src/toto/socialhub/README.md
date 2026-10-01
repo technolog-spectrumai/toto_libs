@@ -266,6 +266,37 @@ Every string the page, its forms and its messages show is marked for
 translation (`{% translate %}`, `{% blocktranslate %}`, `gettext`); the
 Polish catalogue is filled in separately.
 
+## Data protection (RODO / GDPR)
+
+What the platform does about the personal data it holds, since 2026-10-01 —
+most of it here, because the socialhub is where a person first hands the
+platform their data, and the rest in `toto.core`:
+
+- **A privacy notice**, versioned, public, edited by a superuser on the
+  Superuser plan — [below](#privacy-notice). Its text ships as a clearly
+  marked **placeholder** in Polish and English; the real text is the
+  organisation's to write and publish.
+- **Accepted by new applicants only**, recorded with its version on the
+  application and carried to the person as a `PrivacyAcceptance` on
+  admission — [below](#privacy-notice). Members from before are not asked.
+- **A copy of one's data** (art. 15 and 20): *Download my data* on My
+  account queues it into the member's own bucket ([Your data](#my-account));
+  the console's `export_user` (`toto.core.personal_data`) writes the same zip
+  for anybody else.
+- **Erasure** (art. 17) is *filed* on My account and *carried out* only at
+  the console, by `toto.core`'s `erase_user` ([Erase my account](#my-account)).
+- **Nothing kept longer than needed**: membership applications that lapse
+  are renewed when their applicant applies again, and pruned with the
+  never-used accounts they made 30 days after they lapsed
+  ([below](#applications-that-lapse)); the nightly housekeeping that prunes
+  them also clears expired sessions and the sign-in rows of sessions that are
+  gone (`toto.core.housekeeping`).
+
+Not done, and said so: the audit chain keeps usernames and addresses for
+good (each record is sealed into the next; reshaping it so they can age out
+is a later stage), backups keep whatever they took, and nothing on the web
+erases an account.
+
 ## Privacy notice
 
 Since 2026-10-01 (RODO / GDPR) the platform has a versioned privacy notice,
@@ -315,6 +346,51 @@ the socialhub is where a person first hands the platform their data.
   acceptances; the referrer's reference panel on their profile shows
   "Privacy notice vN accepted", linked to that version.
 
+## Applications that lapse
+
+An application is good for a week (`applications.LIFETIME_DAYS`): the code
+on the verification page has to be typed within it. One whose week ran out
+before its applicant got in has **lapsed** (`applications.py`, 2026-10-01).
+Until then it stayed lapsed for ever: the form refused its address as taken
+("Membership application with this Email already exists") and the code
+answered "This code has expired." — an e-mail address that could never apply
+again, and an inactive account nobody would ever use.
+
+- **Applying again renews it.** The form finds the lapsed application by its
+  address and checks against that row instead of refusing it
+  (`MembershipApplicationForm.clean_email`); the view's `applications.renew`
+  gives the SAME row a new code and a new week, the community and the
+  privacy notice chosen now, and starts it over — pending, not verified, and
+  without the references asked for the lapsed attempt (a pending one would
+  otherwise admit the applicant to whichever community they chose this
+  time). The account the lapsed attempt made is reused under the username
+  typed now — its old name is the applicant's to type again — so the address
+  keeps one account and the acceptance (`ReferenceRequest.save`, by address)
+  finds it; with none left, one is made as for a new application. An expired
+  code now says to apply again with the same address.
+  `SOCIALHUB.APPLICATION_RENEWED` and a fresh `PRIVACY.NOTICE_ACCEPTED` go on
+  the chain.
+- **The nightly housekeeping prunes it** (`applications.prune`, called by
+  `toto.core.housekeeping` on the beat) once it lapsed more than
+  `SOCIALHUB_EXPIRED_APPLICATION_DAYS` (default 30) days ago — the
+  application, its references and the accounts it made, in one transaction.
+
+Either only while the application is nobody's: every account with its
+address, in any case, was never active, never signed in, is not staff, and
+**owns nothing else** — `erase_user`'s own report (`plan`, Django's deletion
+collector) finds nothing to delete, detach or be blocked by beyond the
+account and what sign-up gives every account (`SIGNUP_ROWS`: the prepaid
+ledger account, which stays detached, and the mana pools' opening fill). A
+person, a privacy acceptance, a data export, an erasure request, a file or
+a bucket keeps the application and its account, counted as `kept`; an
+application whose applicant got in is the member's record and not
+housekeeping's at all. Applications whose account is already gone (erased)
+are pruned alone. Counts only reach the chain — one `PRIVACY.HOUSEKEEPING`
+record a night (`toto.core.housekeeping`), never an address.
+
+Tests: `tests_application_housekeeping.py` (renewal through the form, the
+pruning rules), `toto/core/tests_housekeeping.py` (the night).
+
 ## On the audit chain
 
 Since 2026-09-28 every community and clearance operation is a record on the
@@ -324,14 +400,16 @@ clearance made, changed (the fields, before and after) or removed; a person
 added to or taken out of a community (`MEMBER_ADDED`/`_REMOVED`) or given or
 losing a clearance (`CLEARANCE_MEMBER_ADDED`/`_REMOVED`), from either side of
 the relation and through a `clear()`; senior members; privileges; an application submitted and
-each of its steps; a reference asked for, given (the applicant admitted) or
+each of its steps, and renewed after it lapsed (`APPLICATION_RENEWED`); a reference asked for, given (the applicant admitted) or
 declined; a member's own profile or time zone changed on My account
 (`PROFILE_CHANGED`, the field names only); a privacy notice version published
 (`PRIVACY.NOTICE_PUBLISHED`) and accepted by an applicant
 (`PRIVACY.NOTICE_ACCEPTED`); a copy of a member's data asked for, filed or
 failed (`PRIVACY.EXPORT_REQUESTED` / `_READY` / `_FAILED`); an erasure
 asked for, declined or carried out at the console
-(`PRIVACY.ERASURE_REQUESTED` / `_DECLINED` / `_DONE`). Communities and clearances are recorded apart — the chain is where
+(`PRIVACY.ERASURE_REQUESTED` / `_DECLINED` / `_DONE`); and, written by
+`toto.core.housekeeping`, each night's housekeeping, counts only
+(`PRIVACY.HOUSEKEEPING`). Communities and clearances are recorded apart — the chain is where
 a crossing of the two axes would show. Sign-ins, sign-outs and
 accounts are recorded by `toto.audit.identity`. See `toto/audit/README.md`.
 
