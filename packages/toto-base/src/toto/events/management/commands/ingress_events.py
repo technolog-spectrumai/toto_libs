@@ -2,7 +2,6 @@ from datetime import timedelta
 import random
 
 from django.utils.timezone import now
-from faker import Faker
 
 from toto.ingress import IngressCommand
 from toto.events.models import EventCategory, ScheduledEvent
@@ -10,7 +9,19 @@ from toto.locations.models import Address
 from toto.people.models import Person
 
 
-fake = Faker()
+# NO Faker since 2026-10-01: it invented four company names and a paragraph
+# per event, and was imported — its generator built — whenever this module
+# loaded, which ingress_all does on every first start, demonstration or not.
+# A realistic seed never reaches the code below, so fixed names do the same
+# job and the package left zenobia's image.
+COMPANIES = ("Northwind Traders", "Blue Harbor Logistics",
+             "Granite Peak Works", "Silver Birch Studio")
+DESCRIPTIONS = (
+    "A working session, with time for questions at the end.",
+    "Short talks first, then an open discussion over coffee.",
+    "Hands-on from the start: bring a laptop and your own questions.",
+    "An overview for newcomers, then the details for those who stay.",
+)
 
 
 class Command(IngressCommand):
@@ -48,7 +59,7 @@ class Command(IngressCommand):
         if not addresses:
             self.stdout.write(self.style.WARNING("⚠ No addresses found. Events will have no address."))
 
-        companies = [fake.company() for _ in range(4)]
+        companies = list(COMPANIES)
         event_templates = [
             ("Summit", "Conference"),
             ("Bootcamp", "Workshop"),
@@ -76,7 +87,7 @@ class Command(IngressCommand):
                 organizer = random.choice(members)
                 event = ScheduledEvent.objects.create(
                     title=f"{company} {suffix}",
-                    description=fake.paragraph(nb_sentences=3),
+                    description=random.choice(DESCRIPTIONS),
                     start_time=start,
                     end_time=end,
                     owner=organizer,
