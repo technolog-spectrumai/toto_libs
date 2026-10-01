@@ -789,7 +789,9 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
                 "tasks__sprint",
                 "tasks__assignee__person",
                 "tasks__reviewer__person",
-                "attachments__vault_file",
+                # The bucket too: the readability check and the link both
+                # read it, once per attachment.
+                "attachments__vault_file__bucket",
                 # prefetch, not select_related: a mission has MANY wiki pages
                 # since the one-to-one became a foreign key, and select_related
                 # on a reverse FK is a FieldError at queryset construction — it
@@ -820,12 +822,20 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
             from toto.vault.filetree import build_file_tree
             file_tree = build_file_tree(self.request.user)
 
+        # Only the files the viewer may still read (2026-10-01). The foreign
+        # key finds a trashed file — the vault's base manager sees the trash —
+        # so the list showed its title with a dead link, and it never asked
+        # whether a file attached in March is still readable in April.
+        # `attach.visible` asks the vault's live question for each row.
+        from toto.vault.attach import visible
+        attachments = visible(self.request.user, mission.attachments.all())
+
         context.update({
             "project": project,
             "tasks": tasks,
             "wiki_pages": wiki_pages,
             "can_manage": can_manage,
-            "attachments": list(mission.attachments.all()),
+            "attachments": attachments,
             "file_tree": file_tree,
             "linkable_events": _linkable_events(mission),
             "event_create_form": LinkedEventCreateForm(),
