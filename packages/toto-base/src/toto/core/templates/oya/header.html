@@ -61,12 +61,16 @@
         <span>{% trans "My account" %}</span>
       </a>
       {% endif %}
-      <!-- Logout Button -->
-      <a href="{% url 'sso:logout' %}"
-         class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
-        <i class="fas fa-sign-out-alt text-base"></i>
-        <span>{% trans "Logout" %}</span>
-      </a>
+      <!-- Logout Button: a POST form with the CSRF token, never a link
+           (2026-10-01, Django 5.2) - the sign-out door answers GET with 405. -->
+      <form action="{% url 'sso:logout' %}" method="post" class="m-0">
+        {% csrf_token %}
+        <button type="submit" id="header-logout"
+                class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90 cursor-pointer">
+          <i class="fas fa-sign-out-alt text-base"></i>
+          <span>{% trans "Logout" %}</span>
+        </button>
+      </form>
       {% else %}
       <!-- Login Button -->
       <a href="{% url 'sso:login' %}"
@@ -134,12 +138,15 @@
         <span>{% trans "My account" %}</span>
       </a>
       {% endif %}
-      <!-- Logout Button (Mobile) -->
-      <a href="{% url 'sso:logout' %}"
-         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
-        <i class="fas fa-sign-out-alt text-base"></i>
-        <span>{% trans "Logout" %}</span>
-      </a>
+      <!-- Logout Button (Mobile): a POST form, as above -->
+      <form action="{% url 'sso:logout' %}" method="post" class="m-0">
+        {% csrf_token %}
+        <button type="submit"
+                class="w-full flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90 cursor-pointer">
+          <i class="fas fa-sign-out-alt text-base"></i>
+          <span>{% trans "Logout" %}</span>
+        </button>
+      </form>
       {% else %}
       <!-- Login Button (Mobile) -->
       <a href="{% url 'sso:login' %}"

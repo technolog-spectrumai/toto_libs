@@ -197,7 +197,7 @@ class UnlockPageTests(TestCase):
             build.return_value.open.return_value = True
             self.client.post(self.url, {"password": "hunter2"})
         self.assertIsNotNone(credentials.credential())
-        self.client.get(reverse("sso:logout"))
+        self.client.post(reverse("sso:logout"))
         self.assertIsNone(credentials.credential())
 
     def test_nothing_lands_in_the_django_session_or_the_database(self):

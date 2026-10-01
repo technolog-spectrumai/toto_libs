@@ -11,6 +11,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseBadRequest
 from django.shortcuts import redirect
 from django.urls import NoReverseMatch, reverse
+from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
@@ -100,10 +101,13 @@ def _endpoint(cfg, key, portal, fallback_path):
     return (cfg.get(key) or "").strip() or f"{portal}{fallback_path}"
 
 
+# POST only, like the password door's sign-out (2026-10-01, Django 5.2).
+@require_POST
 def oidc_logout(request):
     logout(request)
     # Only a place on this site (2026-09-30), like the password doors.
-    return redirect(safe_next(request, request.GET.get("next"), reverse("core:welcome")))
+    next_url = request.POST.get("next") or request.GET.get("next")
+    return redirect(safe_next(request, next_url, reverse("core:welcome")))
 
 
 def _federation_configured(cfg) -> bool:

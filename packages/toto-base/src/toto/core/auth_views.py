@@ -9,6 +9,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.shortcuts import redirect, render
 from django.urls import NoReverseMatch, reverse
+from django.views.decorators.http import require_POST
 
 from toto.core.auth_cooldown import (
     clear_login_retry_cooldown,
@@ -117,9 +118,14 @@ def _social_login_providers(request):
     return login_page_providers(request)
 
 
+# POST only, with the CSRF token (2026-10-01, Django 5.2): a GET sign-out is
+# one any page could make a member's browser take — an <img> is enough —
+# and Django's own LogoutView stopped accepting GET in 5.0 for that reason.
+# The header's Logout is a form now; a GET is answered 405.
+@require_POST
 def password_logout_view(request):
     if request.user.is_authenticated:
         logger.info("Account %s signed out.", request.user.pk)
     logout(request)
-    next_url = safe_next(request, request.GET.get("next"))
+    next_url = safe_next(request, request.POST.get("next") or request.GET.get("next"))
     return redirect(next_url or reverse("core:dashboard"))

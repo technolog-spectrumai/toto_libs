@@ -112,7 +112,7 @@ class LoginDoorTests(TestCase):
         request = _request("post", {"username": "ada", "password": "Correct-horse-9",
                                     "next": "https://evil.example.com/phish"})
         self.assertFalse(_door(request)["Location"].startswith("https://evil."))
-        out = password_logout_view(_request(data={"next": "https://evil.example.com/"},
+        out = password_logout_view(_request("post", {"next": "https://evil.example.com/"},
                                             user=self.ada))
         self.assertFalse(out["Location"].startswith("https://evil."))
 
@@ -120,15 +120,24 @@ class LoginDoorTests(TestCase):
 class LogoutDoorTests(TestCase):
     def test_signing_out_ends_the_session_and_lands_on_the_dashboard(self):
         ada = User.objects.create_user("ada", password="pw")
-        request = _request(session={SESSION_KEY: str(ada.pk)}, user=ada)
+        request = _request("post", session={SESSION_KEY: str(ada.pk)}, user=ada)
         response = password_logout_view(request)
         self.assertEqual(response["Location"], reverse("core:dashboard"))
         self.assertNotIn(SESSION_KEY, request.session)
         self.assertFalse(request.user.is_authenticated)
 
     def test_signing_out_follows_a_local_next(self):
-        response = password_logout_view(_request(data={"next": "/welcome/"}))
+        response = password_logout_view(_request("post", {"next": "/welcome/"}))
         self.assertEqual(response["Location"], "/welcome/")
+
+    def test_a_get_does_not_sign_out(self):
+        """POST only since Django 5.2 (2026-10-01): a GET sign-out is one any
+        page could make a member's browser take."""
+        ada = User.objects.create_user("ada", password="pw")
+        request = _request(session={SESSION_KEY: str(ada.pk)}, user=ada)
+        response = password_logout_view(request)
+        self.assertEqual(response.status_code, 405)
+        self.assertEqual(request.session[SESSION_KEY], str(ada.pk))
 
 
 class CooldownArithmeticTests(SimpleTestCase):

@@ -107,9 +107,9 @@ class PasswordDoorsStayHereTests(TestCase):
         self.assertContains(response, 'value="/wiki/"')
 
     def test_signing_out_with_an_off_site_next_lands_on_the_dashboard(self):
-        response = password_logout_view(_request(data={"next": EVIL}, user=self.ada))
+        response = password_logout_view(_request("post", {"next": EVIL}, user=self.ada))
         self.assertEqual(response["Location"], reverse("core:dashboard"))
 
     def test_signing_out_keeps_an_absolute_next_on_this_host(self):
-        response = password_logout_view(_request(data={"next": "http://testserver/welcome/"}))
+        response = password_logout_view(_request("post", {"next": "http://testserver/welcome/"}))
         self.assertEqual(response["Location"], "http://testserver/welcome/")

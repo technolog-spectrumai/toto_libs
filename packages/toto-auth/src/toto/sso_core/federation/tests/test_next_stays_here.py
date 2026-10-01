@@ -55,9 +55,9 @@ class FederatedNextTests(TestCase):
 
 class ConsumerSignOutTests(TestCase):
     def test_an_off_site_next_lands_on_the_welcome_page(self):
-        response = self.client.get(reverse("sso:logout"), {"next": EVIL})
+        response = self.client.post(reverse("sso:logout"), {"next": EVIL})
         self.assertEqual(response["Location"], reverse("core:welcome"))
 
     def test_a_local_next_is_followed(self):
-        response = self.client.get(reverse("sso:logout"), {"next": "/core/login/"})
+        response = self.client.post(reverse("sso:logout"), {"next": "/core/login/"})
         self.assertEqual(response["Location"], "/core/login/")
