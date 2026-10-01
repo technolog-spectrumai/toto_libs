@@ -117,6 +117,8 @@ A small, **stateless** OCR sub-tab in the Ravioli tab bar (`BUILD_NEO4J=1`; need
 
 Hosted as its own app so both the vault (via a `VaultEditorPlugin` "Edit" button, key `neojson`, for `.neojson` files) and ravioli (the query → NeoJSON export "Open in editor" link) can reuse it. No models. `neojson_editor_view` renders an Ace JSON editor (editable) beside a read-only Cytoscape preview; `neojson_save_view` validates the document with `ravioli.neojson.loads`/`validate` before overwriting the vault file; `neojson_load_view` loads the graph into Neo4j in `merge` or `replace` mode via `sql_neo4j_sync.graphsync.load_neojson` (degrading gracefully if that optional app is absent, and refusing when `RAVIOLI_ENABLED` is False). The NeoJSON format itself lives in `toto.ravioli.neojson`.
 
+All three doors are the owner's, and the bucket's clearances come first (2026-10-01): `_own_file` fetches through `vault.access.gate_by_bucket` before `owner=`, as the ACE editor, cyprian and sketch do, so a file whose kept bucket the owner holds no clearance of is 404 to them too (`toto.neo_editor.tests_clearance` — direct view calls, so it runs on a host that neither installs nor routes the app).
+
 ### Notable design decisions
 
 - **One driver, one boundary.** Only ravioli opens Neo4j; every other app reaches the graph through `Neo4jClient` or `bento.graph_service`. This keeps connection config, disable-handling and the content checksum in one place.

@@ -182,7 +182,9 @@ attachments and every picker follow it with no rule of their own. So do the
 editors' own owner-only doors (2026-09-30): the ACE editor's open, save and
 delete and its sync socket, the writer (cyprian), memo, primula and sketch ask
 `gate_by_bucket` before `owner=` — an owner without the clearance gets 404
-there too (`toto.editor.tests_clearance`, `toto.cyprian.tests.test_clearance`):
+there too (`toto.editor.tests_clearance`, `toto.cyprian.tests.test_clearance`),
+and since 2026-10-01 so does the NeoJSON editor's open, save and load into
+Neo4j (`toto.neo_editor.tests_clearance`):
 
 * a file in a bucket with **no clearance** is what it always was — owner,
   public, bucket owner, a folder's ACL;
