@@ -59,7 +59,9 @@ class VerificationTests(FlowCase):
         MembershipApplication.objects.filter(pk=self.application.pk).update(
             expires_at=timezone.now() - timedelta(minutes=1))
         response = self.verify("424242")
-        self.assertEqual(response.context["error"], "This code has expired.")
+        # Applying again renews it since 2026-10-01 (tests_application_housekeeping).
+        self.assertEqual(response.context["error"], "This code has expired. Apply again with "
+                         "the same e-mail address to get a new one.")
         self.application.refresh_from_db()
         self.assertEqual(self.application.status, "pending")
 

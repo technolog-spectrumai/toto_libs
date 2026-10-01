@@ -13,6 +13,7 @@ membership flow, the wiki's Clearances page, the ingress, a shell:
 | `SOCIALHUB.PRIVILEGE_CHANGED` / `_REMOVED` | a community's grants (`may_*`) set or cleared |
 | `SOCIALHUB.APPLICATION_SUBMITTED` | somebody applies to join a community |
 | `SOCIALHUB.APPLICATION_<STATUS>` | the application moves: verified, endorsed, invited, rejected |
+| `SOCIALHUB.APPLICATION_RENEWED` | somebody applies again with the address of an application that lapsed before its applicant got in: a new code and a new week, the community chosen now (2026-10-01) |
 | `SOCIALHUB.REFERENCE_REQUESTED` / `_GIVEN` / `_DECLINED` | a reference asked of a member, and their answer (given = the applicant admitted) |
 | `SOCIALHUB.PROFILE_CHANGED` | a member edits their own profile or time zone on My account — the field NAMES in `fields`, never the values (2026-09-30) |
 | `PRIVACY.NOTICE_ACCEPTED` | an applicant ticks the privacy notice on the membership application — the version and the application, the e-mail as every application record has it (2026-10-01) |
@@ -367,6 +368,11 @@ def _application_saved(sender, instance, created, **kwargs):
     before = getattr(instance, "_audit_status", None)
     if created:
         action = "application_submitted"
+    elif getattr(instance, "_audit_renewed", False):
+        # Applied again after it lapsed (applications.renew, 2026-10-01): one
+        # record saying so, not a move back to "pending".
+        instance._audit_renewed = False
+        action = "application_renewed"
     elif before is not None and before != instance.status:
         action = f"application_{instance.status}"
     else:

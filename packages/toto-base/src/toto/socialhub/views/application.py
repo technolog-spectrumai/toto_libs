@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from toto.core.models import Platform
 from django.shortcuts import render, redirect, get_object_or_404
 from toto.people.models import Person
+from toto.socialhub import applications
 from toto.socialhub.models import (Community, MembershipApplication,
                                    ReferenceRequest, generate_code)
 from toto.ui import PageProcessor
@@ -66,6 +67,21 @@ def membership_application_view(request):
         email = form.cleaned_data["email"]
         community = form.cleaned_data["community"]
         username = form.cleaned_data["username"]
+        notice = form.privacy_notice
+
+        if form.renewing is not None:
+            # An earlier application with this address lapsed before its
+            # applicant got in (2026-10-01): it starts over — a new code, a
+            # new week, the account it made named as typed now — instead of
+            # the address being refused and the old code answering "expired"
+            # for ever. See toto.socialhub.applications.
+            application = applications.renew(form.renewing, username=username,
+                                              community=community, notice=notice)
+            from toto.socialhub import audit
+
+            audit.notice_accepted(application)
+            logger.info(f"Lapsed application renewed for '{email}' (username '{username}').")
+            return redirect("socialhub:application_success", username=email)
 
         # The login username is chosen by the applicant (validated unique in the
         # form); the email stays the stable key for the application + verification
@@ -73,12 +89,11 @@ def membership_application_view(request):
         user, _ = User.objects.get_or_create(
             username=username, defaults={"email": email, "is_active": False}
         )
-        notice = form.privacy_notice
         application, created = MembershipApplication.objects.get_or_create(
             email=email,
             defaults={
                 "community": community,
-                "expires_at": timezone.now() + timezone.timedelta(days=7),
+                "expires_at": timezone.now() + timezone.timedelta(days=applications.LIFETIME_DAYS),
                 "status": "pending",
                 # The notice the form showed and the applicant ticked
                 # (2026-10-01); carried to the Person on admission.
@@ -148,7 +163,10 @@ def verify_application_view(request, username):
         try:
             app = MembershipApplication.objects.get(code=code, email=username)
             if app.is_expired():
-                context["error"] = "This code has expired."
+                # Since 2026-10-01 applying again renews a lapsed application
+                # (applications.renew), so the answer says how.
+                context["error"] = _("This code has expired. Apply again with the same "
+                                     "e-mail address to get a new one.")
                 logger.warning(f"Verification failed: code expired for '{username}'.")
             elif app.is_verified:
                 context["message"] = "This application is already verified."

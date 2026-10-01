@@ -51,10 +51,36 @@ class MembershipApplicationForm(forms.ModelForm):
         self.privacy_notice = PrivacyNotice.current()
         if self.privacy_notice is not None:
             self.fields["privacy_version"].initial = self.privacy_notice.version
+        # The lapsed application this one renews, if any (clean_email).
+        self.renewing = None
+
+    def clean_email(self):
+        email = self.cleaned_data["email"]
+        lapsed = MembershipApplication.objects.filter(email=email).first()
+        if lapsed is not None:
+            from toto.socialhub.applications import renewable
+
+            if renewable(lapsed):
+                # (2026-10-01) An application whose week ran out before its
+                # applicant got in no longer holds its address: applying
+                # again renews that row (the view, applications.renew), so the
+                # form is checked against it rather than refusing the address
+                # as taken — which left the applicant stuck for good.
+                self.renewing = lapsed
+                self.instance = lapsed
+        return email
 
     def clean_username(self):
         username = self.cleaned_data["username"].strip()
-        if User.objects.filter(username__iexact=username).exists():
+        taken = User.objects.filter(username__iexact=username)
+        if self.renewing is not None:
+            from toto.socialhub.applications import account_to_reuse
+
+            # The lapsed attempt's own account is the applicant's to name again.
+            reused = account_to_reuse(self.renewing)
+            if reused is not None:
+                taken = taken.exclude(pk=reused.pk)
+        if taken.exists():
             raise forms.ValidationError(_("This username is already taken."))
         return username
 
