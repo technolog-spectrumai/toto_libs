@@ -34,6 +34,11 @@ without standing up a separate metrics stack.
   `ALERT_EMAILS` get a mail when one goes bad, a reminder while it keeps
   failing, and a mail when it recovers. Mail sent by the server cannot report
   the server itself being down; that needs something outside it.
+- **Every scheduled task, on time or not.** Each run of a task the beat
+  schedule names is recorded — when it started and ended, whether it
+  succeeded, a short summary of what it returned — and one of those checks
+  flags an entry that has not run for twice its cadence, and a beat that has
+  stopped altogether. The Jobs page shows each entry's last run.
 - **Public health check.** A minimal, detail-free `health/` endpoint returns
   `{"status": "ok"}` (HTTP 200) or an error (HTTP 503) after a database probe —
   safe to expose (including over Tor) for uptime monitors and container health
@@ -54,8 +59,9 @@ zenobia's data-tier profiles).
 
 ### Data model — `Snapshot`
 
-`monit.models.Snapshot` is the history model (the other, `CheckState`, keeps
-the scheduled checks' last verdicts — see below): one row per periodic
+`monit.models.Snapshot` is the history model (`CheckState` keeps the
+scheduled checks' last verdicts, `TaskRun` and `BeatEntry` the scheduled
+tasks' heartbeats — see below): one row per periodic
 measurement of the running deployment, ordered newest-first (`get_latest_by =
 "created"`, `created` is `db_index`ed). Every value field is nullable, and
 **NULL means "unknown/skipped," never zero.** Fields are grouped by *where* they
@@ -115,7 +121,8 @@ dependencies of its own beyond `toto-base`.
 - `monit_sample` (`soft_time_limit=55`, `time_limit=90`) — creates one
   `Snapshot` from `collect_all_for_snapshot()`. Runs in the worker container.
 - `monit_prune` — deletes snapshots older than `MONIT_RETENTION_HOURS` (default
-  48).
+  48), and run records older than `MONIT_RUN_RETENTION_DAYS` (default 30) but
+  each task's newest.
 - `monit_alert_checks` (`soft_time_limit=240`, `time_limit=280`) — the
   scheduled checks and their mail; see the next section.
 
@@ -162,6 +169,50 @@ mailed and the states are still kept.
 stopped worker or beat, a database that cannot be reached (the states live in
 it): each ends in silence, not in a mail — only something outside the server
 can notice those.
+
+### Heartbeats and run records (2026-10-01)
+
+`monit.heartbeats` records every run of a task the beat schedule
+(`CELERY_BEAT_SCHEDULE`) names, whoever sent it, from Celery's own signals —
+connected in `MonitConfig.ready()`, so no task has to do anything:
+
+- `task_prerun` writes a `TaskRun` (task name, Celery task id, `running`,
+  `started_at`); `task_postrun` its outcome (`success`, `failed`, `retry`, or
+  Celery's own state) and `finished_at`, with a `summary` of the return value
+  — one line of at most 300 characters, empty values left out, a value under
+  a key that names a secret starred, and so is every secret setting's value,
+  a URL's password and a secret URL parameter (the rules of
+  `toto.core.error_reports`) — or the exception's type and message, scrubbed
+  the same way, in `error`. `task_failure` closes a run the worker process
+  saw fail (a child killed by the hard time limit never reaches its own
+  postrun). A retry reuses its row (one per task id). The receivers never
+  raise; a write that fails is logged and the task runs on.
+- `beat_init` writes a `BeatEntry` per schedule entry: `first_seen`, when beat
+  first started with it, and `last_seen`, its latest start.
+- The cadence comes from the schedule itself (`cadence_seconds`): an
+  interval is its length, a crontab the widest gap between two firings
+  (`*/7` is seven minutes; `hour="9-17"` the sixteen hours overnight;
+  weekdays only, the weekend).
+- `record.check_overdue` ("Scheduled tasks", key `overdue`, so the scheduled
+  checks and their mail pick it up): an entry not started within twice its
+  cadence plus ten minutes is WARN, three times FAIL. A failed run still
+  counts as a heartbeat — the run happened. An entry that never ran is
+  counted from its `first_seen` (a run from before it was scheduled does not
+  count against it), else from when this host began recording (the
+  migration `monit/0003`). When nothing scheduled has started within the
+  most frequent entry's window, the summary says beat is not running or no
+  worker takes its tasks, and names beat's last start. Two entries naming
+  one task share its heartbeat.
+- The Jobs page shows a table of the entries — cadence, last start, outcome
+  and summary, on time or overdue — and lists the runs (source "Scheduled
+  tasks") and the faucet payouts' and mana refills' `assets.FaucetRun` rows
+  (source "Faucet runs", a status read off their counts).
+
+So the daily levy and the billing, which keep no run table of their own,
+have one now. **The blind spot** is the alert mail's: the alert run is itself
+a beat entry on the same worker, so a dead beat or worker stops it too. The
+Database page shows it to whoever looks, and the first alert run after beat
+comes back mails the entries still overdue.
 
 ### Views, access control, and rendering
 
@@ -249,6 +300,8 @@ corresponding panel):
   `ALERT_REMIND_HOURS` (default 6; 0: no reminders) — the scheduled checks.
 - `MONIT_CERT_DOMAIN` (the name whose certificate is checked; unset:
   `PLATFORM_DOMAIN`; empty: not checked).
+- `MONIT_RUN_RETENTION_DAYS` (default 30) — how long the scheduled tasks' run
+  records are kept; each task's newest is kept whatever its age.
 - `NOMAD_TOR_CONTROL_HOST` / `NOMAD_TOR_CONTROL_PORT` — for the Tor control-port
   probe when `toto.nomad` is present.
 
