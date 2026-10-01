@@ -642,3 +642,58 @@ class PrivacyAcceptance(models.Model):
 
     def __str__(self):
         return f"{self.person} accepted privacy notice v{self.version}"
+
+
+class DataExport(models.Model):
+    """One *Download my data* request and how it went (2026-10-01, RODO).
+
+    The row is written before the job is queued, so My account has a status
+    to show from the first second; the worker builds the zip with
+    ``toto.core.personal_data`` and files it in the member's personal bucket
+    (``data_export.build``). One open export per member at a time — the
+    database refuses a second (the constraint below), so two quick presses
+    cannot queue two — and one a day (``data_export.INTERVAL``).
+
+    ``output`` is SET_NULL: the member may delete the zip from their bucket,
+    and the record that an export was made outlives it. CASCADE on the user:
+    it is theirs, and goes when the account is erased.
+    """
+
+    PENDING = "pending"
+    RUNNING = "running"
+    READY = "ready"
+    FAILED = "failed"
+    STATUS_CHOICES = [
+        (PENDING, _("Queued")),
+        (RUNNING, _("Being prepared")),
+        (READY, _("Ready")),
+        (FAILED, _("Failed")),
+    ]
+    OPEN = (PENDING, RUNNING)
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="data_exports")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
+    output = models.ForeignKey("vault.VaultFile", on_delete=models.SET_NULL, null=True,
+                               blank=True, related_name="+")
+    #: Rows per table and files included — what the README counts, for the page.
+    summary = models.JSONField(default=dict, blank=True)
+    #: One sentence for the member; the trace goes to the log, never here.
+    error = models.CharField(max_length=300, blank=True)
+    task_id = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        verbose_name = "data export"
+        constraints = [models.UniqueConstraint(
+            fields=["user"], condition=models.Q(status__in=["pending", "running"]),
+            name="socialhub_one_open_data_export")]
+
+    def __str__(self):
+        return f"data export {self.pk} of {self.user_id} — {self.status}"
+
+    @property
+    def is_open(self) -> bool:
+        return self.status in self.OPEN

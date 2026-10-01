@@ -199,6 +199,10 @@ TASK_MODULES = [
     # not installed. No toto.gitea entry: that half has no celery task at all,
     # which is the same line that keeps it off the workflows closure.
     "toto.repo",
+    # toto.socialhub's build_data_export (2026-10-01): *Download my data* on
+    # My account. Queued on demand, never on beat — but a task the worker
+    # does not know is the same KeyError either way.
+    "toto.socialhub",
 ]
 
 

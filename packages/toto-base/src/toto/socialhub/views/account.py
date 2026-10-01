@@ -35,6 +35,11 @@ Key store (2026-10-01): the member creates their own personal key store —
 a gervazy strongbox with its first keys, under a passphrase they choose —
 through ``toto.gervazy.personal``, which refuses when it already exists and
 never overwrites. ``AUTH.KEY_STORE_CREATED`` names the box only.
+
+Your data (2026-10-01, RODO): *Download my data* queues a copy of everything
+the platform holds about the member into their own personal bucket
+(``toto.socialhub.data_export``, the console's ``export_user`` builder), one
+at a time and once a day, and the section shows how the last one went.
 """
 
 from __future__ import annotations
@@ -188,6 +193,21 @@ def _key_store(request, form=None):
     }
 
 
+def _data_export(request):
+    """The Your data section's context: the latest export and when the next
+    may be asked for (``toto.socialhub.data_export``)."""
+    from toto.socialhub import data_export
+
+    data_export.close_stale(request.user)
+    latest = data_export.latest_for(request.user)
+    download_url = ""
+    if latest is not None and latest.status == latest.READY and latest.output_id:
+        download_url = latest.output.get_public_url() or ""
+    return {"latest": latest, "download_url": download_url,
+            "next_allowed_at": data_export.next_allowed_at(request.user),
+            "interval_hours": int(data_export.INTERVAL.total_seconds() // 3600)}
+
+
 def _page(request, *, profile_form=None, timezone_form=None, password_form=None,
           email_form=None, key_store_form=None, status=200):
     person = own_person(request.user)
@@ -226,6 +246,7 @@ def _page(request, *, profile_form=None, timezone_form=None, password_form=None,
         "platform_time_zone": settings.TIME_ZONE,
         "avatar_max_mb": avatar_max_bytes() // (1024 * 1024),
         "key_store": _key_store(request, key_store_form),
+        "data_export": _data_export(request),
     }
     context = PageProcessor().decorate(context, request)
     return render(request, "socialhub/account.html", context, status=status)
@@ -524,3 +545,22 @@ def account_key_store(request):
     messages.success(request, _("Your key store is ready. Keep the passphrase somewhere "
                                 "safe: it is stored nowhere and cannot be recovered."))
     return redirect(f"{reverse('account:home')}#keystore")
+
+
+@require_POST
+@login_required
+def account_data_export(request):
+    """Ask for a copy of one's own data (2026-10-01, RODO); see
+    ``toto.socialhub.data_export``. Own account only: the export is made for
+    ``request.user`` whatever the form carries, and lands in their own
+    personal bucket."""
+    from toto.socialhub import data_export
+
+    try:
+        data_export.request_export(request.user, request=request)
+    except data_export.Refused as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, _("Your data is being prepared. The copy will be in your "
+                                    "personal bucket, and linked here, when it is ready."))
+    return redirect(f"{reverse('account:home')}#data")

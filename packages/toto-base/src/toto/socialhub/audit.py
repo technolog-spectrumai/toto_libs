@@ -16,6 +16,8 @@ membership flow, the wiki's Clearances page, the ingress, a shell:
 | `SOCIALHUB.REFERENCE_REQUESTED` / `_GIVEN` / `_DECLINED` | a reference asked of a member, and their answer (given = the applicant admitted) |
 | `SOCIALHUB.PROFILE_CHANGED` | a member edits their own profile or time zone on My account — the field NAMES in `fields`, never the values (2026-09-30) |
 | `PRIVACY.NOTICE_ACCEPTED` | an applicant ticks the privacy notice on the membership application — the version and the application, the e-mail as every application record has it (2026-10-01) |
+| `PRIVACY.EXPORT_REQUESTED` | a member asks for a copy of their data on My account (2026-10-01) |
+| `PRIVACY.EXPORT_READY` / `_FAILED` | the copy is in their bucket — the rows per table, the files and the vault file's id — or could not be made; the system's, not the member's (2026-10-01) |
 | `PRIVACY.NOTICE_PUBLISHED` | a new version of the privacy notice is published — its number, the one it replaces and each text's length, never the text (2026-10-01) |
 
 Communities and clearances are orthogonal on purpose (README) and are
@@ -117,6 +119,40 @@ def notice_accepted(application) -> None:
                    description=f"v{application.privacy_version} {application.email}",
                    metadata={**_application_facts(application),
                              "version": application.privacy_version})
+
+
+def _export(export, action, **kwargs):
+    user = export.user
+    return _record(action, family="privacy", object_type="socialhub.dataexport",
+                   object_id=export.pk, description=user.get_username(), **kwargs)
+
+
+def export_requested(export, *, request=None) -> None:
+    """A member asked for a copy of their data (2026-10-01)."""
+    return _export(export, "export_requested", actor_user=export.user, request=request,
+                   metadata={"user": export.user_id})
+
+
+def export_ready(export, *, source="worker") -> None:
+    """The copy is filed in the member's bucket. Counts and the file's id —
+    what the zip holds is the member's, not the chain's."""
+    if not installed():
+        return None
+    from toto.audit.services import SYSTEM
+
+    return _export(export, "export_ready", actor_user=SYSTEM, source=source,
+                   metadata={"user": export.user_id, "vault_file": export.output_id,
+                             "tables": export.summary.get("tables", {}),
+                             "files": export.summary.get("files", 0)})
+
+
+def export_failed(export) -> None:
+    if not installed():
+        return None
+    from toto.audit.services import SYSTEM
+
+    return _export(export, "export_failed", actor_user=SYSTEM, source="worker", success=False,
+                   metadata={"user": export.user_id, "reason": export.error})
 
 
 # ---------------------------------------------------------------------------
