@@ -5,9 +5,10 @@ about the MACHINE: CPU, memory, disk pressure, service liveness, as trends.
 This module answers questions about the PLATFORM's own record, none of which
 are trends: are there unapplied migrations, does the audit chain still
 verify, when was the last backup taken and is it recent enough to be worth
-having, can the media store be written to. Every check runs when the page is
-requested, and none is graphed — a broken audit chain is not interesting as
-a chart.
+having, can the media store be written to, how long has the certificate got.
+Every check runs when the page is requested, and none is graphed — a broken
+audit chain is not interesting as a chart. Since 2026-10-01 the same checks
+also run on the beat, and a change is mailed (``toto.monit.alerts``).
 
 Ported from the placidia truth book's ops app, generalised: the paths it
 probes come from settings every host has (`MEDIA_ROOT`) or declares
@@ -21,10 +22,14 @@ that is unavailable exactly when it is needed.
 
 from __future__ import annotations
 
+import ipaddress
 import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy, ngettext
 
 OK = "ok"
 WARN = "warn"
@@ -38,6 +43,18 @@ BACKUP_STALE_HOURS = 48
 #: Below this, the disk is the next outage.
 DISK_WARN_PERCENT = 85
 DISK_FAIL_PERCENT = 95
+#: The platform's own certificate (2026-10-01). Three weeks left is a renewal
+#: that has stopped happening, found with time to mend it; one week left is an
+#: outage already booked. Let's Encrypt renews at thirty days, so a working
+#: renewal never comes near either line.
+CERT_WARN_DAYS = 21
+CERT_FAIL_DAYS = 7
+#: The handshake runs inside the Database page's request too; it must not
+#: hold the page for long when the name does not answer.
+CERT_TIMEOUT_SECONDS = 5
+#: Names no certificate authority will vouch for: a local profile's, a lab's.
+PRIVATE_SUFFIXES = (".localhost", ".local", ".localdomain", ".internal", ".lan",
+                    ".home.arpa", ".test", ".example", ".invalid")
 
 
 @dataclass(frozen=True)
@@ -243,8 +260,127 @@ def check_audit():
                  detail=result.detail, value="broken")
 
 
+def _is_public_name(host: str) -> bool:
+    """A name a public certificate can be issued for — not localhost, not an
+    address, not a name only a local network resolves."""
+    if not host or host == "localhost" or "." not in host:
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return False
+    except ValueError:
+        pass
+    return not host.endswith(PRIVATE_SUFFIXES)
+
+
+def cert_target():
+    """``(host, port)`` whose certificate the check reads, or None.
+
+    ``MONIT_CERT_DOMAIN`` when the host defines it — zenobia's deploy.py writes
+    the profile's ``ssl.domain`` there, and an EMPTY value where nginx serves
+    no certificate (``ssl.mode: none``), which means "not checked" — else
+    ``PLATFORM_DOMAIN``. A scheme and a path are ignored, a port is kept, and
+    an explicit ``http://`` means the platform is served in the clear: there is
+    no certificate to read.
+    """
+    from django.conf import settings
+
+    raw = getattr(settings, "MONIT_CERT_DOMAIN", None)
+    if raw is None:
+        raw = getattr(settings, "PLATFORM_DOMAIN", "")
+    raw = str(raw or "").strip()
+    if raw.lower().startswith("http://"):
+        return None
+    raw = raw.split("://", 1)[-1].split("/", 1)[0]
+    host, port = raw, 443
+    if raw.count(":") == 1 and raw.rsplit(":", 1)[1].isdigit():
+        host, port = raw.rsplit(":", 1)[0], int(raw.rsplit(":", 1)[1])
+    host = host.strip("[]").rstrip(".").lower()
+    return (host, port) if _is_public_name(host) else None
+
+
+def peer_certificate(host: str, port: int) -> bytes:
+    """The DER certificate ``host:port`` presents for ``host``.
+
+    UNVERIFIED, on purpose: the question is when it expires, and a self-signed
+    certificate (``ssl.mode: gervazy``) or an expired one has to be read too —
+    a verifying handshake refuses exactly the certificate this check is for.
+    Nothing is sent over the connection.
+    """
+    import socket
+    import ssl
+
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    with socket.create_connection((host, port), timeout=CERT_TIMEOUT_SECONDS) as raw:
+        with context.wrap_socket(raw, server_hostname=host) as tls:
+            der = tls.getpeercert(binary_form=True)
+    if not der:
+        raise ValueError("the server presented no certificate")
+    return der
+
+
+def not_after(der: bytes):
+    """A DER certificate's notAfter, as an aware UTC datetime."""
+    from datetime import timezone as dt_timezone
+
+    from cryptography import x509
+
+    cert = x509.load_der_x509_certificate(der)
+    expires = getattr(cert, "not_valid_after_utc", None)
+    if expires is None:                    # cryptography older than 42
+        expires = cert.not_valid_after.replace(tzinfo=dt_timezone.utc)
+    return expires
+
+
+@_guard("certificate", gettext_lazy("Certificate"))
+def check_certificate():
+    """How long the platform's own certificate has left, read in a TLS
+    handshake with its public name (2026-10-01).
+
+    A local profile has no public name — localhost, an address — and is
+    reported OFF, "not checked", rather than judged. A name that does not
+    answer is UNKNOWN through the guard, with the reason in the detail.
+    """
+    from django.utils import timezone
+
+    label = _("Certificate")
+    target = cert_target()
+    if target is None:
+        return Check("certificate", label, OFF,
+                     _("Not checked: this platform has no public domain."),
+                     detail=_("Set PLATFORM_DOMAIN (or the profile's ssl.domain) "
+                              "to a public name to check its certificate."))
+    try:
+        import cryptography  # noqa: F401 - lazily, like every third party here
+    except ImportError:
+        return Check("certificate", label, OFF,
+                     _("Not checked: the cryptography package is not installed."))
+
+    host, port = target
+    expires = not_after(peer_certificate(host, port))
+    left = (expires - timezone.now()).total_seconds()
+    days = int(left // 86400)
+    on = expires.strftime("%Y-%m-%d")
+    if left <= 0:
+        summary = _("Expired on %(date)s.") % {"date": on}
+    else:
+        summary = ngettext("Expires on %(date)s, in %(days)d day.",
+                           "Expires on %(date)s, in %(days)d days.",
+                           days) % {"date": on, "days": days}
+    status = OK
+    if left < CERT_FAIL_DAYS * 86400:
+        status = FAIL
+    elif left < CERT_WARN_DAYS * 86400:
+        status = WARN
+    return Check("certificate", label, status, summary,
+                 detail=host if port == 443 else f"{host}:{port}",
+                 value=str(max(days, 0)))
+
+
 ALL_CHECKS = (check_database, check_migrations, check_media, check_disk,
-              check_backups, check_audit)
+              check_backups, check_audit, check_certificate)
 
 
 def run_checks():
