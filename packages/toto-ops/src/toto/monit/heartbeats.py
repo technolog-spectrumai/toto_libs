@@ -75,7 +75,7 @@ ERROR_LENGTH = 500
 SUMMARY_ITEMS = 12
 SUMMARY_DEPTH = 3
 #: The migration that made these tables: when this host began recording.
-RECORDING_MIGRATION = ("monit", "0003_taskrun_beatentry")
+RECORDING_MIGRATION = ("monit", "0001_initial")
 
 RUNNING, SUCCESS, FAILED, RETRY = "running", "success", "failed", "retry"
 #: Celery's states in this table's words; any other is kept, lower-cased.

@@ -246,7 +246,7 @@ connected in `MonitConfig.ready()`, so no task has to do anything:
   counts as a heartbeat — the run happened. An entry that never ran is
   counted from its `first_seen` (a run from before it was scheduled does not
   count against it), else from when this host began recording (the
-  migration `monit/0003`). When nothing scheduled has started within the
+  migration `monit/0001_initial`). When nothing scheduled has started within the
   most frequent entry's window, the summary says beat is not running or no
   worker takes its tasks, and names beat's last start. Two entries naming
   one task share its heartbeat.
