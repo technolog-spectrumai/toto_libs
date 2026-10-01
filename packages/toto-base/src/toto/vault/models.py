@@ -944,7 +944,8 @@ class BucketClearance(models.Model):
     ``socialhub.clearance_access``). A file in a bucket with none — or in no
     bucket — is what it always was. The clearance is PROTECTED: a clearance
     still keeping a bucket cannot be deleted, which would open its files.
-    Only superusers set a bucket's clearances (``clearances.bucket_clearances``).
+    Only a superuser on the Superuser plan sets a bucket's clearances
+    (``clearances.bucket_clearances``).
     """
 
     bucket = models.ForeignKey(Bucket, on_delete=models.CASCADE, related_name="clearance_rows")

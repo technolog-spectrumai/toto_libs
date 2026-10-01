@@ -2,13 +2,15 @@
 and by holders of one of the bucket's clearances, and by nobody else — not
 their owner, not through the public flag, not through a folder's ACL, not
 through the bucket's owner. A file in a bucket with none (or in no bucket) is
-the vault as it was. Only superusers set a bucket's clearances, on the bucket's
-page; every vault door asks the one rule."""
+the vault as it was. Only a superuser on the Superuser plan sets a bucket's
+clearances, on the bucket's page; every vault door asks the one rule."""
 
+import io
 import tempfile
 
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
+from django.core.management import call_command
 from django.db.models import ProtectedError
 from django.http import Http404
 from django.test import RequestFactory, TestCase, override_settings
@@ -44,6 +46,10 @@ class BucketClearanceTestCase(TestCase):
         Person.objects.create(user=cls.stranger, display_name="Stranger").communities.add(cls.devs)
         cls.staff = User.objects.create_user("staff", password="pw", is_staff=True)
         cls.root = User.objects.create_superuser("root", "r@e.com", "pw")
+        # Setting clearances needs the Superuser plan (2026-10-01):
+        # `bootstrap_plans` puts `root` on it.
+        call_command("bootstrap_plans", stdout=io.StringIO())
+        cls.root = User.objects.get(pk=cls.root.pk)
         cls.bucket = Bucket.objects.create(name="Kept", slug="kept", owner=cls.owner)
         BucketClearance.objects.create(bucket=cls.bucket, clearance=cls.internal)
         cls.open_bucket = Bucket.objects.create(name="Open", slug="open", owner=cls.owner)
@@ -241,9 +247,13 @@ class BucketSectionTests(BucketClearanceTestCase):
     def test_ids_are_ascii_digits_only(self):
         self.assertEqual(clearances._ids(["12", "abc", " 3", "-4", "1" * 19, "١", "²"]), {12})
 
-    def test_may_manage_is_superusers_only(self):
+    def test_may_manage_is_a_superuser_on_the_plan(self):
         from django.contrib.auth.models import AnonymousUser
+        from toto.subscriptions.plans import admin_plan
 
         self.assertTrue(clearances.may_manage(self.root))
-        for user in (None, AnonymousUser(), self.owner, self.staff, self.member):
+        others = [None, AnonymousUser(), self.owner, self.staff, self.member]
+        if admin_plan() is not None:          # a ladder with a plan for admins
+            others.append(User.objects.create_superuser("bare", "b@e.com", "pw"))
+        for user in others:
             self.assertFalse(clearances.may_manage(user), user)

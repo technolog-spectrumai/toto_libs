@@ -98,8 +98,9 @@
     </div>
 
     {% comment %}Clearances (2026-09-30): who reads this bucket's files. Everyone
-       who may see this page sees them; only a superuser changes them
-       (clearances.bucket_clearances re-checks every POST).{% endcomment %}
+       who may see this page sees them; only a superuser on the Superuser plan
+       changes them (2026-10-01; clearances.bucket_clearances re-checks every
+       POST).{% endcomment %}
     <section id="clearances" data-testid="bucket-clearances"
              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
              class="rounded-xl border p-5 shadow-sm">

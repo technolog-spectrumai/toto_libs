@@ -184,10 +184,14 @@ there too (`toto.editor.tests_clearance`, `toto.cyprian.tests.test_clearance`):
 * a hidden file is a missing file (404, absent from lists and counts — the
   bucket's own page included), and its history and lock with it.
 
-Changing them: only **superusers**, in the "Clearances" section of the
-bucket's page (`metrics/<slug>/`), which posts to `clearances.bucket_clearances`
+Changing them: only a **superuser on the Superuser plan** (2026-10-01,
+`plan_gate.superuser_plan_holder` — the account alone is refused, as by the
+wiki's `may_keep`), in the "Clearances" section of the bucket's page
+(`metrics/<slug>/`), which posts to `clearances.bucket_clearances`
 (`buckets/<slug>/clearances/`); whoever may see the bucket's page sees its
-clearances, read-only. Every change is on the audit chain
+clearances, read-only (its owner and a superuser without the plan are told
+"This needs a superuser on the Superuser plan.", 403; anybody else gets the
+page's 404). Every change is on the audit chain
 (`VAULT.BUCKET.CLEARANCES_CHANGED`: before, after, `open`, the bucket). A
 clearance that still keeps a bucket cannot be deleted (PROTECT). There is no
 per-file door any more. Tests: `tests_clearances`, `tests_more_clearances`.

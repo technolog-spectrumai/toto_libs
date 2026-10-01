@@ -1,14 +1,17 @@
 """The bucket-clearances door (``buckets/<slug>/clearances/``) and its helpers,
 past what tests_clearances pins: what a forged form can and cannot tick, the
 section as each viewer sees it, the one audit record a change leaves, and the
-rows themselves (2026-09-30).
+rows themselves (2026-09-30); a superuser without the Superuser plan sees
+them and may not set them (2026-10-01).
 """
 
+import io
 import tempfile
 
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
 from django.core.files.base import ContentFile
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -25,6 +28,12 @@ User = get_user_model()
 ACTION = "VAULT.BUCKET.CLEARANCES_CHANGED"
 
 
+def _admin_plan_exists() -> bool:
+    from toto.subscriptions.plans import admin_plan
+
+    return admin_plan() is not None
+
+
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="vault-more-clearances-"))
 class _Fixture(TestCase):
     @classmethod
@@ -39,6 +48,11 @@ class _Fixture(TestCase):
         Person.objects.create(user=cls.member, display_name="Member").clearances.add(cls.internal)
         cls.stranger = User.objects.create_user("stranger", password="pw")
         cls.root = User.objects.create_superuser("root", "r@e.com", "pw")
+        # The Superuser plan: `bootstrap_plans` puts `root` on it; `bare_root`,
+        # made after, is a superuser without it.
+        call_command("bootstrap_plans", stdout=io.StringIO())
+        cls.root = User.objects.get(pk=cls.root.pk)
+        cls.bare_root = User.objects.create_superuser("bareroot", "b@e.com", "pw")
         cls.bucket = Bucket.objects.create(name="Owned", slug="owned", owner=cls.owner)
 
     _n = 0
@@ -88,6 +102,20 @@ class DoorTests(_Fixture):
                          403)
         self.assertEqual(clearances.clearances_of(self.bucket), [])
 
+    def test_a_superuser_without_the_plan_may_not_set_them(self):
+        # 2026-10-01 (todo 29.10): the door asked is_superuser only.
+        if not _admin_plan_exists():
+            self.skipTest("this host's ladder has no plan for admins")
+        self.keep(self.internal)
+        self.client.force_login(self.bare_root)
+        response = self.client.post(self.url(), {"clearance": [self.confidential.pk]})
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("This needs a superuser on the Superuser plan.", response.content.decode())
+        self.assertEqual(clearances.clearances_of(self.bucket), [self.internal])
+        self.assertFalse(AuditRecord.objects.filter(action=ACTION).exists())
+        self.assertFalse(clearances.may_manage(self.bare_root))
+        self.assertTrue(clearances.may_manage(self.root))
+
     def test_an_unknown_bucket_is_a_404(self):
         self.client.force_login(self.root)
         response = self.client.post(reverse("vault:bucket_clearances", args=["nope"]), {})
@@ -114,6 +142,18 @@ class SectionTests(_Fixture):
         self.assertEqual(response.context["bucket_clearance_choices"], [])
         self.assertEqual(response.context["bucket_clearances_url"], "")
         self.assertContains(response, "confidential, internal")
+        self.assertNotContains(response, self.url())
+
+    def test_a_superuser_without_the_plan_sees_the_names_and_no_form(self):
+        if not _admin_plan_exists():
+            self.skipTest("this host's ladder has no plan for admins")
+        self.keep(self.internal)
+        response = self.page(self.bare_root)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["bucket_clearance_choices"], [])
+        self.assertEqual(response.context["bucket_clearances_url"], "")
+        self.assertContains(response, 'data-testid="bucket-clearance-list"')
+        self.assertNotContains(response, 'data-testid="bucket-clearance"')
         self.assertNotContains(response, self.url())
 
     def test_an_open_bucket_says_the_usual_rule_applies(self):
