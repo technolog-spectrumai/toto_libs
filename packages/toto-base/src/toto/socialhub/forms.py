@@ -1,3 +1,4 @@
+import io
 import uuid
 
 from django import forms
@@ -216,11 +217,106 @@ class CommunityNewsPostForm(forms.ModelForm):
 AVATAR_FORMATS = {"JPEG": "jpg", "PNG": "png", "GIF": "gif", "WEBP": "webp"}
 AVATAR_MAX_PIXELS = 4096
 
+#: The qualities a JPEG or WebP avatar is encoded at, best first; the first
+#: that fits under the size cap is stored (2026-10-01).
+AVATAR_QUALITIES = (90, 80, 70)
+
 
 def avatar_max_bytes() -> int:
     from django.conf import settings
 
     return int(getattr(settings, "SOCIALHUB_AVATAR_MAX_BYTES", 2 * 1024 * 1024))
+
+
+def reencode_avatar(data: bytes, image_format: str) -> bytes | None:
+    """The picture drawn again from its pixels alone (2026-10-01).
+
+    A photo says where it was taken and with what — EXIF with the GPS
+    position and the camera, often XMP, an ICC profile, a comment — and
+    stored as uploaded, /media/ handed all of it to anyone shown the avatar.
+    So Pillow decodes the first frame, turns it as its EXIF orientation says
+    (the picture stands as the member saw it), and encodes a new file in the
+    same format from the pixels: only a palette's transparency comes along.
+    An animated GIF or WebP keeps its first frame.
+
+    The size cap holds for what is stored too: a JPEG or WebP is tried at
+    each of ``AVATAR_QUALITIES`` until one fits; None when none does. Raises
+    whatever Pillow raises for pixels it cannot decode.
+    """
+    from PIL import Image, ImageOps
+
+    with Image.open(io.BytesIO(data)) as source:
+        picture = ImageOps.exif_transpose(source)
+    # Everything else in info is metadata, and the encoders write some of it
+    # back on their own (a JPEG's comment, a GIF's, a PNG's ICC profile).
+    picture.info = {key: picture.info[key] for key in ("transparency",) if key in picture.info}
+    if image_format == "JPEG" and picture.mode not in ("L", "RGB"):
+        picture = picture.convert("RGB")  # a CMYK print scan
+    qualities = AVATAR_QUALITIES if image_format in ("JPEG", "WEBP") else (None,)
+    for quality in qualities:
+        buffer = io.BytesIO()
+        picture.save(buffer, format=image_format,
+                     **({"quality": quality} if quality else {}))
+        if buffer.tell() <= avatar_max_bytes():
+            return buffer.getvalue()
+    return None
+
+
+def clean_avatar_upload(avatar):
+    """The platform's upload rules, applied to a picture that never enters
+    the vault: the size cap, the host's refused types, and the antivirus
+    door (`toto.vault.scanning`) — which today answers "not scanned" for
+    a raster image, since there is no image scanner, and will screen it the
+    day there is one without this changing. What is stored is the picture
+    drawn again without its metadata (``reencode_avatar``), under a name of
+    ours. My account's profile form and the admin's Person form both clean
+    an avatar here."""
+    from django.core.files.uploadedfile import SimpleUploadedFile, UploadedFile
+
+    if not isinstance(avatar, UploadedFile):
+        return avatar  # unchanged, or False for "clear"
+    if avatar.size > avatar_max_bytes():
+        raise forms.ValidationError(
+            _("The picture is larger than %(mb)s MB.")
+            % {"mb": avatar_max_bytes() // (1024 * 1024)})
+    image = getattr(avatar, "image", None)  # set by forms.ImageField
+    extension = AVATAR_FORMATS.get(getattr(image, "format", "") or "")
+    if extension is None:
+        raise forms.ValidationError(
+            _("Only JPEG, PNG, GIF or WebP pictures can be an avatar."))
+    width, height = image.size
+    if width > AVATAR_MAX_PIXELS or height > AVATAR_MAX_PIXELS:
+        raise forms.ValidationError(
+            _("The picture is larger than %(px)s pixels on a side.")
+            % {"px": AVATAR_MAX_PIXELS})
+
+    from toto.vault import scanning
+    from toto.vault.models import VaultFile, refused_file_types
+
+    stored_name = f"{uuid.uuid4().hex}.{extension}"
+    file_type = VaultFile.detect_type(avatar.content_type or "", stored_name)
+    if file_type in refused_file_types():
+        raise forms.ValidationError(
+            _("This host does not accept %(type)s files.") % {"type": file_type})
+    avatar.seek(0)
+    data = avatar.read()
+    verdict = scanning.scan(data, file_type=file_type, filename=stored_name)
+    if not verdict.ok:
+        raise forms.ValidationError(
+            _("The picture was refused: %(detail)s")
+            % {"detail": verdict.detail or verdict.reason})
+    try:
+        data = reencode_avatar(data, image.format)
+    except Exception as exc:  # noqa: BLE001 - Pillow's decoders share no base error
+        # The header read well enough for ImageField; the pixels did not (a
+        # file cut short, say).
+        raise forms.ValidationError(forms.ImageField.default_error_messages["invalid_image"],
+                                    code="invalid_image") from exc
+    if data is None:
+        raise forms.ValidationError(
+            _("The picture is larger than %(mb)s MB.")
+            % {"mb": avatar_max_bytes() // (1024 * 1024)})
+    return SimpleUploadedFile(stored_name, data, content_type=avatar.content_type)
 
 
 class AccountProfileForm(forms.ModelForm):
@@ -253,48 +349,7 @@ class AccountProfileForm(forms.ModelForm):
         return name
 
     def clean_avatar(self):
-        """The platform's upload rules, applied to a picture that never enters
-        the vault: the size cap, the host's refused types, and the antivirus
-        door (`toto.vault.scanning`) — which today answers "not scanned" for
-        a raster image, since there is no image scanner, and will screen it the
-        day there is one without this form changing."""
-        from django.core.files.uploadedfile import UploadedFile
-
-        avatar = self.cleaned_data.get("avatar")
-        if not isinstance(avatar, UploadedFile):
-            return avatar  # unchanged, or False for "clear"
-        if avatar.size > avatar_max_bytes():
-            raise forms.ValidationError(
-                _("The picture is larger than %(mb)s MB.")
-                % {"mb": avatar_max_bytes() // (1024 * 1024)})
-        image = getattr(avatar, "image", None)  # set by forms.ImageField
-        extension = AVATAR_FORMATS.get(getattr(image, "format", "") or "")
-        if extension is None:
-            raise forms.ValidationError(
-                _("Only JPEG, PNG, GIF or WebP pictures can be an avatar."))
-        width, height = image.size
-        if width > AVATAR_MAX_PIXELS or height > AVATAR_MAX_PIXELS:
-            raise forms.ValidationError(
-                _("The picture is larger than %(px)s pixels on a side.")
-                % {"px": AVATAR_MAX_PIXELS})
-
-        from toto.vault import scanning
-        from toto.vault.models import VaultFile, refused_file_types
-
-        stored_name = f"{uuid.uuid4().hex}.{extension}"
-        file_type = VaultFile.detect_type(avatar.content_type or "", stored_name)
-        if file_type in refused_file_types():
-            raise forms.ValidationError(
-                _("This host does not accept %(type)s files.") % {"type": file_type})
-        avatar.seek(0)
-        verdict = scanning.scan(avatar.read(), file_type=file_type, filename=stored_name)
-        avatar.seek(0)
-        if not verdict.ok:
-            raise forms.ValidationError(
-                _("The picture was refused: %(detail)s")
-                % {"detail": verdict.detail or verdict.reason})
-        avatar.name = stored_name
-        return avatar
+        return clean_avatar_upload(self.cleaned_data.get("avatar"))
 
 
 def time_zone_choices():

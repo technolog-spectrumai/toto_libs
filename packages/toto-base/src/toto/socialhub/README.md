@@ -130,10 +130,17 @@ creates or deletes an account (console only; a first save creates the
   must read it as JPEG, PNG, GIF or WebP, at most 2 MB
   (`SOCIALHUB_AVATAR_MAX_BYTES`) and 4096 pixels a side, the host's
   `VAULT_REFUSED_FILE_TYPES` apply, and the antivirus door
-  (`toto.vault.scanning.scan`) is asked — today it answers "not scanned" for a
-  raster image. It is stored under a random name with the extension of what is
-  inside, never the member's filename, and the picture it replaces or clears
-  is deleted from storage.
+  (`toto.vault.scanning.scan`) is asked. The antivirus cannot scan images: it
+  answers "not scanned" for every raster picture, avatars included. Since
+  2026-10-01 what is stored is the picture drawn again from its pixels
+  (`forms.reencode_avatar`): turned as its EXIF orientation says, in the same
+  format, without its EXIF (the GPS position, the camera), XMP, ICC profile or
+  comments; an animated GIF or WebP keeps its first frame. A JPEG or WebP is
+  encoded at quality 90, or 80 or 70 when that is what fits under the same
+  cap; a picture that fits at none is refused. It is stored under a random
+  name with the extension of what is inside, never the member's filename, and
+  the picture it replaces or clears is deleted from storage. The admin's
+  Person form cleans an avatar the same way (`forms.clean_avatar_upload`).
 - **Time zone** (`/account/timezone/`): `Person.timezone`, an IANA name
   validated against `zoneinfo` (blank = the platform's `TIME_ZONE`).
   `toto.core.middleware.ProfileTimezoneMiddleware`, placed after
