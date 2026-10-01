@@ -33,7 +33,9 @@ without standing up a separate metrics stack.
   platform's own TLS certificate, and whether mail still leaves — run on a
   schedule, and the operators in `ALERT_EMAILS` get a mail when one goes bad,
   a reminder while it keeps failing, and a mail when it recovers; a mail the
-  mail server refuses is tried again for about an hour. Mail sent by the
+  mail server refuses is tried again for about an hour. The Database page
+  says who is mailed (every address masked), how often the checks run, what
+  each check last mailed and how the last alert mail fared. Mail sent by the
   server cannot report the server itself being down; that needs something
   outside it.
 - **Every scheduled task, on time or not.** Each run of a task the beat
@@ -186,6 +188,20 @@ stopped worker or beat, a database that cannot be reached (the states live in
 it): each ends in silence, not in a mail — only something outside the server
 can notice those.
 
+**The Alerts section of the Database page** (2026-10-01) shows all of this
+read-only, from `alerts.overview()`: the addresses in `ALERT_EMAILS` and the
+crash-report addresses in `ADMINS`, each masked (`o***@example.org`, the
+shape of `toto.socialhub.email_change.mask_email`); whether the beat runs
+the checks here and how often (the `monit-alert-checks` entry's cadence) and
+the reminder interval; the last scheduled run; each `CheckState` — its
+verdict and since when, the last problem mail, an alert not yet followed by
+its recovery; and the last outcome of each alert kind (`NoticeDelivery`:
+status, tries, error class), with a warning when the mail backend reaches
+nobody (console, dummy). A table from `md` up, a card per check below it.
+The page states the dead-server limitation, and that the settings are the
+deploy profile's: nothing on it changes them. A summary that cannot be read
+is left out and the page renders without it.
+
 ### Heartbeats and run records (2026-10-01)
 
 `monit.heartbeats` records every run of a task the beat schedule
@@ -316,6 +332,8 @@ corresponding panel):
 - `ALERT_EMAILS` (a list, or one comma-separated string; empty: no mail),
   `ALERT_CHECK_MINUTES` (default 5, read by the host's beat schedule),
   `ALERT_REMIND_HOURS` (default 6; 0: no reminders) — the scheduled checks.
+  `ADMINS` (Django's crash-report list) is only read, for the Database
+  page's Alerts section.
 - `MONIT_CERT_DOMAIN` (the name whose certificate is checked; unset:
   `PLATFORM_DOMAIN`; empty: not checked).
 - `NOTICES_VIA_WORKER` (toto-base's; on where a Celery worker runs) — the
