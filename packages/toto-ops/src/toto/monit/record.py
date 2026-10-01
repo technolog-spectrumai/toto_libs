@@ -10,7 +10,10 @@ Every check runs when the page is requested, and none is graphed — a broken
 audit chain is not interesting as a chart. Since 2026-10-01 the same checks
 also run on the beat, and a change is mailed (``toto.monit.alerts``); one of
 them asks whether the beat itself keeps time (``check_overdue``), and one
-whether that mail still leaves (``check_mail``).
+whether that mail still leaves (``check_mail``). On the beat, the two that
+read everything take a cheaper form (``SCHEDULED_FORMS``): the media store
+is not counted file by file, and the audit chain is walked whole once a day
+and otherwise from where the last walk ended.
 
 Ported from the placidia truth book's ops app, generalised: the paths it
 probes come from settings every host has (`MEDIA_ROOT`) or declares
@@ -61,6 +64,14 @@ MAIL_FAILURES_WARN = 3
 #: Names no certificate authority will vouch for: a local profile's, a lab's.
 PRIVATE_SUFFIXES = (".localhost", ".local", ".localdomain", ".internal", ".lan",
                     ".home.arpa", ".test", ".example", ".invalid")
+#: The scheduled run (``run_checks(scheduled=True)``, every few minutes) walks
+#: the whole audit chain at most this often; in between it walks only what was
+#: appended since its last walk, from the hash that walk ended on (2026-10-01,
+#: the review). The page walks the whole chain whenever it opens.
+AUDIT_WALK_HOURS = 24
+#: Where the scheduled run keeps how far it has verified: a cache entry, so a
+#: cache that forgets costs a whole walk and nothing else.
+AUDIT_MARK_KEY = "toto:monit:audit-verified"
 
 
 @dataclass(frozen=True)
@@ -168,8 +179,13 @@ def check_migrations():
 
 
 @_guard("media", "Media store")
-def check_media():
-    """Uploads, logos, documents: the files the rows point at."""
+def check_media(*, scheduled=False):
+    """Uploads, logos, documents: the files the rows point at.
+
+    ``scheduled`` (the alert run, 2026-10-01): there and writable — all an
+    alert is about — without counting every file, which walks the whole
+    tree; the page counts them.
+    """
     from django.conf import settings
 
     root = Path(settings.MEDIA_ROOT)
@@ -179,6 +195,8 @@ def check_media():
     if not _writable(root):
         return Check("media", "Media store", FAIL,
                      "Not writable by this process.", detail=str(root))
+    if scheduled:
+        return Check("media", "Media store", OK, "Writable.", detail=str(root))
 
     files = [p for p in root.rglob("*") if p.is_file()]
     total = sum(p.stat().st_size for p in files)
@@ -247,8 +265,50 @@ def check_backups():
                  f"Newest {_age(age)}.", detail=detail, value=_age(age))
 
 
+def _verify_audit_on_schedule():
+    """The scheduled form of the audit check: the whole chain once every
+    AUDIT_WALK_HOURS, and in between what was appended since the last walk,
+    from the hash it ended on (``verify_chain(after=)``) — each run's cost
+    is the new records, not the chain. How far it got is kept in the cache
+    (AUDIT_MARK_KEY); nothing kept, or another chain, is a whole walk."""
+    from django.core.cache import cache
+
+    from toto.audit.models import AuditChain, chain_key
+    from toto.audit.services import verify_chain
+
+    chain = AuditChain.objects.filter(key=chain_key()).first()
+    if chain is None:
+        return verify_chain()
+    try:
+        mark = cache.get(AUDIT_MARK_KEY) or {}
+    except Exception:  # noqa: BLE001 - a cache that cannot answer is a whole walk
+        mark = {}
+    now = time.time()
+    whole = (mark.get("chain") != chain.pk or not mark.get("sequence")
+             or now - float(mark.get("walked_at") or 0) >= AUDIT_WALK_HOURS * 3600)
+    if whole:
+        result, walked_at = verify_chain(chain), now
+    else:
+        result = verify_chain(chain, after=(mark["sequence"], mark["hash"]))
+        walked_at = mark["walked_at"]
+    if result.ok and result.checked:
+        last = (chain.records.filter(sequence=result.checked)
+                .values_list("record_hash", flat=True).first())
+        if last:
+            try:
+                cache.set(AUDIT_MARK_KEY, {"chain": chain.pk, "sequence": result.checked,
+                                           "hash": last, "walked_at": walked_at},
+                          timeout=2 * AUDIT_WALK_HOURS * 3600)
+            except Exception:  # noqa: BLE001 - the next run walks it all again
+                pass
+    return result
+
+
 @_guard("audit", "Audit chain")
-def check_audit():
+def check_audit(*, scheduled=False):
+    """Does the audit chain still verify? ``scheduled`` (the alert run,
+    2026-10-01): the new records every run and the whole chain daily
+    (``_verify_audit_on_schedule``); the page walks it all."""
     from django.apps import apps as django_apps
 
     if not django_apps.is_installed("toto.audit"):
@@ -256,7 +316,7 @@ def check_audit():
                      "toto.audit is not installed on this host.")
     from toto.audit.services import verify_chain
 
-    result = verify_chain()
+    result = _verify_audit_on_schedule() if scheduled else verify_chain()
     if result.ok:
         return Check("audit", "Audit chain", OK,
                      f"{result.checked} record(s) verify.",
@@ -513,8 +573,17 @@ ALL_CHECKS = (check_database, check_migrations, check_media, check_disk,
               check_mail)
 
 
-def run_checks():
-    return [check() for check in ALL_CHECKS]
+#: The checks with a cheaper form for the scheduled run (2026-10-01): the two
+#: that read everything — every media file, every audit record — and would do
+#: it every ALERT_CHECK_MINUTES.
+SCHEDULED_FORMS = (check_media, check_audit)
+
+
+def run_checks(*, scheduled=False):
+    """Every check, as the page shows them; ``scheduled`` (the alert run)
+    takes each check's cheaper form where it has one (SCHEDULED_FORMS)."""
+    return [check(scheduled=True) if scheduled and check in SCHEDULED_FORMS else check()
+            for check in ALL_CHECKS]
 
 
 def worst(checks) -> str:

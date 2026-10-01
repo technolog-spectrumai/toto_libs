@@ -271,19 +271,37 @@ class AuditVerification:
         return "healthy" if self.ok else "broken"
 
 
-def verify_chain(chain=None):
+def verify_chain(chain=None, *, after=None):
     """Walk the chain and confirm every link. Three ways it can fail.
 
     A gap in the sequence means a record was deleted; a mismatched
     ``previous_hash`` means one was inserted or reordered; a mismatched
     ``record_hash`` means one was edited in place.
+
+    ``after`` — ``(sequence, record_hash)`` of a record an earlier walk
+    verified — walks only what was appended since, from that record's hash
+    (2026-10-01, the monitoring's scheduled run): it proves the new records,
+    and that the record it starts from still carries the hash it had; the
+    records before it only a whole walk proves. ``checked`` still counts
+    from the chain's start.
     """
     chain = chain or AuditChain.objects.filter(key=chain_key()).first()
     if chain is None:
         return AuditVerification(True, 0)
     previous_hash = ""
     checked = 0
-    for item in chain.records.select_related("chain").order_by("sequence"):
+    records = chain.records.select_related("chain").order_by("sequence")
+    if after is not None:
+        sequence, record_hash = after
+        kept = (chain.records.filter(sequence=sequence)
+                .values_list("record_hash", flat=True).first())
+        if kept != record_hash:
+            return AuditVerification(False, 0, sequence,
+                                     "A record verified before is gone or no longer "
+                                     "carries its hash — the chain was rewritten.")
+        previous_hash, checked = record_hash, sequence
+        records = records.filter(sequence__gt=sequence)
+    for item in records:
         if item.sequence != checked + 1:
             return AuditVerification(False, checked, item.sequence,
                                      "Sequence is not contiguous — a record is missing.")

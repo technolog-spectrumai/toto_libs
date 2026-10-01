@@ -256,7 +256,9 @@ def run(*, now=None, checks=None) -> dict:
     from .models import CheckState
 
     now = now or timezone.now()
-    checks = record.run_checks() if checks is None else list(checks)
+    # The checks' scheduled forms: this runs every few minutes, and must not
+    # read the whole media tree and audit chain each time (record.py).
+    checks = record.run_checks(scheduled=True) if checks is None else list(checks)
     to = recipients()
     hours = remind_hours()
     remind_after = timedelta(hours=hours) if hours else None

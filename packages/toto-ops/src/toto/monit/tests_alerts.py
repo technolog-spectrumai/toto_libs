@@ -6,10 +6,13 @@ goes through ``toto.core.notices.send_notice`` into Django's locmem outbox.
 
 from __future__ import annotations
 
+import tempfile
 from datetime import timedelta
+from pathlib import Path
 from unittest import mock
 
 from django.core import mail
+from django.core.cache import cache
 from django.db import DatabaseError
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -238,7 +241,7 @@ class TaskTests(TestCase):
                                return_value=[verdict(record.FAIL)]) as checks, \
                 self.captureOnCommitCallbacks(execute=True):
             tasks.monit_alert_checks()
-        checks.assert_called_once_with()
+        checks.assert_called_once_with(scheduled=True)
         self.assertEqual([m.to for m in mail.outbox], [["ops@example.test"]],
                          "a comma-separated string, blanks and repeats dropped")
         self.assertTrue(CheckState.objects.filter(key="backups").exists())
@@ -250,3 +253,93 @@ class TaskTests(TestCase):
         self.assertEqual(entry["task"], "toto.monit.tasks.monit_alert_checks")
         self.assertEqual(entry["schedule"].minute, set(range(0, 60, 5)))
         self.assertNotIn("monit-alert-checks", beat_schedule(monit=True))
+
+
+LOCAL_CACHE = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+                           "LOCATION": "monit-scheduled-checks"}}
+
+
+@override_settings(CACHES=LOCAL_CACHE)
+class ScheduledFormTests(TestCase):
+    """The alert run, every few minutes, does not read the whole media tree
+    and audit chain each time; the page still does (2026-10-01, the review)."""
+
+    def setUp(self):
+        from toto.audit.services import record as audit
+
+        cache.clear()
+        for index in range(5):
+            audit(f"MONIT_TEST_{index}", app_label="monit")
+
+    def walks(self):
+        from toto.audit import services
+
+        return mock.patch.object(services, "verify_chain", wraps=services.verify_chain)
+
+    def test_the_run_asks_for_the_scheduled_forms(self):
+        self.assertEqual(set(record.SCHEDULED_FORMS), {record.check_media, record.check_audit})
+        with mock.patch.object(record, "ALL_CHECKS", (record.check_media,)), \
+                mock.patch.object(Path, "rglob", side_effect=AssertionError("walked")), \
+                tempfile.TemporaryDirectory() as scratch, override_settings(MEDIA_ROOT=scratch):
+            [check] = record.run_checks(scheduled=True)
+            [page] = record.run_checks()
+        self.assertEqual((check.status, check.summary), (record.OK, "Writable."))
+        self.assertEqual(page.status, record.UNKNOWN, "the page form walks the tree")
+
+    def test_the_media_store_is_counted_on_the_page_only(self):
+        with tempfile.TemporaryDirectory() as scratch, override_settings(MEDIA_ROOT=scratch):
+            Path(scratch, "logo.png").write_bytes(b"png")
+            with mock.patch.object(Path, "rglob", side_effect=AssertionError("walked")):
+                self.assertEqual(record.check_media(scheduled=True).status, record.OK)
+            self.assertEqual(record.check_media().summary, "1 file(s), 3 B.")
+            self.assertEqual(record.check_media(scheduled=True).status, record.OK)
+        with override_settings(MEDIA_ROOT="/nonexistent/monit-media"):
+            self.assertEqual(record.check_media(scheduled=True).status, record.FAIL)
+
+    def test_the_chain_is_walked_whole_once_then_from_where_it_ended(self):
+        from toto.audit.services import record as audit
+
+        with self.walks() as walk:
+            self.assertEqual(record.check_audit(scheduled=True).status, record.OK)
+            self.assertIsNone(walk.call_args.kwargs.get("after"))
+            audit("MONIT_TEST_NEW", app_label="monit")
+            check = record.check_audit(scheduled=True)
+            self.assertEqual((check.status, check.summary), (record.OK, "6 record(s) verify."))
+            self.assertEqual(walk.call_args.kwargs["after"][0], 5)
+
+    def test_a_new_record_edited_is_found_by_the_next_run(self):
+        from toto.audit.models import AuditRecord
+        from toto.audit.services import record as audit
+
+        record.check_audit(scheduled=True)
+        audit("MONIT_TEST_NEW", app_label="monit")
+        AuditRecord.objects.filter(sequence=6).update(object_description="rewritten")
+        check = record.check_audit(scheduled=True)
+        self.assertEqual((check.status, check.summary), (record.FAIL, "Broken at sequence 6."))
+
+    def test_the_record_it_starts_from_must_keep_its_hash(self):
+        from toto.audit.models import AuditRecord
+
+        record.check_audit(scheduled=True)
+        AuditRecord.objects.filter(sequence=5).update(record_hash="0" * 64)
+        self.assertEqual(record.check_audit(scheduled=True).status, record.FAIL)
+
+    def test_an_old_record_edited_is_found_daily_and_on_the_page_at_once(self):
+        from toto.audit.models import AuditRecord
+
+        record.check_audit(scheduled=True)
+        AuditRecord.objects.filter(sequence=2).update(object_description="rewritten")
+        self.assertEqual(record.check_audit().status, record.FAIL, "the page walks it all")
+        self.assertEqual(record.check_audit(scheduled=True).status, record.OK,
+                         "between whole walks the run reads only what is new")
+        later = record.time.time() + record.AUDIT_WALK_HOURS * 3600
+        with mock.patch.object(record.time, "time", return_value=later):
+            check = record.check_audit(scheduled=True)
+        self.assertEqual((check.status, check.summary), (record.FAIL, "Broken at sequence 2."))
+
+    def test_a_cache_that_forgets_costs_a_whole_walk(self):
+        record.check_audit(scheduled=True)
+        cache.clear()
+        with self.walks() as walk:
+            self.assertEqual(record.check_audit(scheduled=True).status, record.OK)
+        self.assertIsNone(walk.call_args.kwargs.get("after"))
