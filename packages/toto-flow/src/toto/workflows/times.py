@@ -29,7 +29,10 @@ registry.register(TimeLimit(
     free_seconds=30,
     ceiling_seconds=300,
     display_unit="minutes",
+    # No "kernel-configured timeout" since 2026-10-01: lambdas lost their
+    # kernel link, and the server's WORKFLOW_LAMBDA_TASK_TIMEOUT_SECONDS is
+    # what can still outlast the dial.
     description=_("How long each asynchronous lambda step of this workflow may "
                   "run before it is killed. Applies to runs started after "
-                  "changing it; a longer kernel-configured timeout still wins."),
+                  "changing it; a longer server-wide limit still wins."),
 ))

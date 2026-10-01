@@ -8,7 +8,7 @@ is autodiscovered.
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from toto.quota import sweeps, times
 
@@ -20,16 +20,11 @@ User = get_user_model()
 KEY = "workflows.lambda_timeout"
 
 
-def make_node_run(workflow, *, kernel_timeout_ms=None):
+def make_node_run(workflow):
+    # No kernel since 2026-10-01: LambdaFunction lost its ComputeKernel link,
+    # so a step's base budget is WORKFLOW_LAMBDA_TASK_TIMEOUT_SECONDS alone.
     lambda_fn = LambdaFunction.objects.create(
-        function_name=f"fn-{workflow.pk}-{kernel_timeout_ms}", content="pass")
-    if kernel_timeout_ms is not None:
-        from toto.mandragora.models import ComputeKernel
-
-        lambda_fn.kernel = ComputeKernel.objects.create(
-            name=f"k-{workflow.pk}-{kernel_timeout_ms}",
-            timeout_ms=kernel_timeout_ms)
-        lambda_fn.save()
+        function_name=f"fn-{workflow.pk}", content="pass")
     node = WorkflowNode.objects.create(
         workflow=workflow, node_type=WorkflowNode.LAMBDA, label="l",
         lambda_function=lambda_fn)
@@ -50,27 +45,60 @@ class ExecutorDialTests(TestCase):
         TimeGrant.objects.create(user=self.alice, key=KEY,
                                  scope_id=self.workflow.pk, seconds=seconds)
 
-    def test_untouched_no_kernel_is_the_settings_default(self):
+    def test_untouched_is_the_settings_default(self):
         node_run = make_node_run(self.workflow)
         self.assertEqual(self.executor._lambda_task_timeout_seconds(node_run), 30)
 
-    def test_untouched_kernel_timeout_is_byte_identical(self):
-        node_run = make_node_run(self.workflow, kernel_timeout_ms=3000)
+    @override_settings(WORKFLOW_LAMBDA_TASK_TIMEOUT_SECONDS=3)
+    def test_an_untouched_tight_setting_stays_tight(self):
+        node_run = make_node_run(self.workflow)
         self.assertEqual(self.executor._lambda_task_timeout_seconds(node_run), 3)
 
+    @override_settings(WORKFLOW_LAMBDA_TASK_TIMEOUT_SECONDS=3)
     def test_raised_dial_floors_the_budget(self):
         self._grant(120)
-        node_run = make_node_run(self.workflow, kernel_timeout_ms=3000)
+        node_run = make_node_run(self.workflow)
         self.assertEqual(self.executor._lambda_task_timeout_seconds(node_run), 120)
 
-    def test_a_larger_kernel_still_wins(self):
+    @override_settings(WORKFLOW_LAMBDA_TASK_TIMEOUT_SECONDS=240)
+    def test_a_larger_setting_still_wins(self):
         self._grant(120)
-        node_run = make_node_run(self.workflow, kernel_timeout_ms=240_000)
+        node_run = make_node_run(self.workflow)
         self.assertEqual(self.executor._lambda_task_timeout_seconds(node_run), 240)
 
-    def test_runaway_kernel_is_clamped(self):
-        node_run = make_node_run(self.workflow, kernel_timeout_ms=7_200_000)
+    @override_settings(WORKFLOW_LAMBDA_TASK_TIMEOUT_SECONDS=7200)
+    def test_runaway_setting_is_clamped(self):
+        node_run = make_node_run(self.workflow)
         self.assertEqual(self.executor._lambda_task_timeout_seconds(node_run), 3600)
+
+
+class NoKernelLinkTests(SimpleTestCase):
+    """The retired notebooks hold nothing of workflows' (2026-10-01).
+
+    LambdaFunction's one-to-one into mandragora.ComputeKernel, and the
+    dependency of workflows' 0001 on mandragora's, were what kept the
+    notebooks installed on every host that runs workflows.
+    """
+
+    def test_a_lambda_has_no_kernel(self):
+        names = {field.name for field in LambdaFunction._meta.get_fields()}
+        self.assertNotIn("kernel", names)
+        related = {field.related_model._meta.app_label
+                   for field in LambdaFunction._meta.get_fields()
+                   if field.is_relation and field.related_model is not None}
+        self.assertNotIn("mandragora", related)
+
+    def test_no_workflows_migration_needs_mandragora(self):
+        from django.db.migrations.loader import MigrationLoader
+
+        loader = MigrationLoader(None, ignore_no_migrations=True)
+        nodes = [key for key in loader.disk_migrations if key[0] == "workflows"]
+        self.assertTrue(nodes)
+        for key in nodes:
+            with self.subTest(migration=key[1]):
+                migration = loader.disk_migrations[key]
+                self.assertNotIn("mandragora",
+                                 {app for app, _ in migration.dependencies})
 
 
 class DialOwnershipTests(TestCase):

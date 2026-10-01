@@ -1,6 +1,6 @@
 # toto-flow
 
-**toto workflow engine and compute kernels.** `toto-flow` bundles two tightly-coupled Django apps: **`toto.mandragora`** — interactive Jupyter-style notebooks backed by managed compute kernels — and **`toto.workflows`** — a DAG-based orchestration engine that chains Python "lambda" functions, branching/joining logic and rendered reports. The two ship as one unit because a workflow lambda can bind directly to a mandragora kernel and their database migrations depend on each other. Both are "Studio" apps (the host enables them in `BUILD_STUDIO=1` builds), and the package is one of nine lockstep-versioned wheels that share the `toto.*` PEP 420 namespace.
+**toto workflow engine and compute kernels.** `toto-flow` bundles two tightly-coupled Django apps: **`toto.mandragora`** — interactive Jupyter-style notebooks backed by managed compute kernels — and **`toto.workflows`** — a DAG-based orchestration engine that chains Python "lambda" functions, branching/joining logic and rendered reports. They shipped as one unit because a workflow lambda could bind to a mandragora kernel and their migrations depended on each other; since 2026-10-01 neither is true, and `toto.workflows` installs without the notebooks. Both are "Studio" apps (the host enables them in `BUILD_STUDIO=1` builds), and the package is one of nine lockstep-versioned wheels that share the `toto.*` PEP 420 namespace.
 
 ---
 
@@ -32,7 +32,7 @@
 
 ## How it works (technical)
 
-The distribution installs two Django apps under the shared namespace: `toto.mandragora` (app label `mandragora`) and `toto.workflows` (app label `workflows`). The host project adds them to `INSTALLED_APPS` in Studio builds. They are one deployable unit: `workflows.LambdaFunction` has a one-to-one FK into `mandragora.ComputeKernel`, and the `workflows` initial migration declares a dependency on `mandragora`'s initial migration, so the two must migrate together.
+The distribution installs two Django apps under the shared namespace: `toto.mandragora` (app label `mandragora`) and `toto.workflows` (app label `workflows`). The host project adds them to `INSTALLED_APPS` in Studio builds. Since 2026-10-01 they are independent: `workflows.LambdaFunction` lost its one-to-one FK into `mandragora.ComputeKernel`, and the `workflows` initial migration no longer depends on `mandragora`'s, so a host can install `toto.workflows` alone (zenobia does: the notebooks are retired there).
 
 ### toto.mandragora
 
@@ -56,7 +56,7 @@ The distribution installs two Django apps under the shared namespace: `toto.mand
 ### toto.workflows
 
 **Models** (`workflows/models.py`):
-- `LambdaFunction` — `function_name` (unique), `content` (Python source), `stdout`/`stderr`, `kernel` (one-to-one → `mandragora.ComputeKernel`).
+- `LambdaFunction` — `function_name` (unique), `content` (Python source), `stdout`/`stderr`. No `kernel` since 2026-10-01.
 - `Workflow` — `name`, auto-slug, `description`.
 - `WorkflowNode` — `node_type` (`lambda`/`split`/`join`/`report`/`predefined_task`), `label`, `task_name`, optional `lambda_function` FK, optional `report_template` FK, `config` (JSON), `position_x`/`position_y`.
 - `WorkflowEdge` — `source`/`target` FKs to nodes, `branch_key`, `is_default`; unique per `(source, target)`.
@@ -72,7 +72,7 @@ The distribution installs two Django apps under the shared namespace: `toto.mand
 - **report** — delegates to `services/reports.py` to create a `Report` from the node's `report_template`.
 - **predefined_task** — looks the `task_name` up in the registry; a Celery-registered task is dispatched asynchronously (`current_app.send_task`), otherwise the callable runs synchronously.
 
-In `async_lambdas` mode each lambda node is queued as its own Celery task (`execute_lambda_node_task`) with a soft time limit derived from the kernel's `timeout_ms` (or `WORKFLOW_LAMBDA_TASK_TIMEOUT_SECONDS`, default 30s). Completion is detected when no node run is left pending/running.
+In `async_lambdas` mode each lambda node is queued as its own Celery task (`execute_lambda_node_task`) with a soft time limit of `WORKFLOW_LAMBDA_TASK_TIMEOUT_SECONDS` (default 30s), raised by the workflow's own dial (`workflows.lambda_timeout`) and capped at 3600s. Completion is detected when no node run is left pending/running.
 
 **Validation** (`services/validator.py`): non-empty graph; lambda nodes require a `lambda_function`; report nodes require a `report_template`; no self-loops or duplicate edges; split nodes need exactly one incoming edge, at least one outgoing edge and at most one default; and the graph must be acyclic (Kahn's algorithm).
 
@@ -88,7 +88,7 @@ In `async_lambdas` mode each lambda node is queued as its own Celery task (`exec
 
 ### Cross-app coupling and shared dependencies
 
-- **mandragora ↔ workflows:** `workflows.LambdaFunction.kernel` → `mandragora.ComputeKernel` (one-to-one); cell promotion writes `LambdaFunction`s; the `workflows` migration depends on `mandragora`. A lambda may execute against a mandragora kernel via `WORKFLOW_KERNEL_CLIENT`.
+- **mandragora → workflows:** cell promotion writes `LambdaFunction`s; nothing of workflows' points back since 2026-10-01 (no `kernel` FK, no migration dependency). A lambda may execute against a kernel client named by `WORKFLOW_KERNEL_CLIENT`.
 - **On the sibling wheel `toto-base`** (the only declared dependency): `toto.core` (connectors, `FileClient`), `toto.ingress` (`IngressCommand`), `toto.vault` (`Bucket`, `VaultFile`, `VaultEditorPlugin`), `toto.ui` (`PageProcessor`), `toto.celery_utils`, and `toto.api` (seed connectors).
 - **Third-party:** Django, Django REST framework, Celery, `pyzmq`, `jupyter_client`/`ipykernel`, and optionally `pytesseract`/Pillow for OCR.
 

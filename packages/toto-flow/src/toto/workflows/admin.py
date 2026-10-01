@@ -77,7 +77,7 @@ class WorkflowEdgeInline(admin.TabularInline):
 
 @admin.register(LambdaFunction)
 class LambdaFunctionAdmin(admin.ModelAdmin):
-    list_display = ("id", "function_name", "kernel")
+    list_display = ("id", "function_name")
     search_fields = ("function_name",)
 
 

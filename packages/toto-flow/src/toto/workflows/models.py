@@ -104,18 +104,17 @@ def _validate_report_block(block, *, page_key: str, block_index: int):
 
 
 class LambdaFunction(models.Model):
+    # NO `kernel` since 2026-10-01: a one-to-one into mandragora.ComputeKernel,
+    # read only for that kernel's timeout. The notebooks and their kernel
+    # server are retired, and the link was the one reason a host had to keep
+    # toto.mandragora installed — and its pyzmq and Jupyter client imported.
+    # A lambda step's budget is WORKFLOW_LAMBDA_TASK_TIMEOUT_SECONDS and the
+    # workflow's own dial (services/executor.py).
     function_name = models.CharField(max_length=255, unique=True)
     content = models.TextField(blank=True)
     stdout = models.TextField(blank=True)
     stderr = models.TextField(blank=True)
     created_at = models.DateTimeField(default=timezone.now)
-    kernel = models.OneToOneField(
-        "mandragora.ComputeKernel",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="lambda_function",
-    )
 
     def __str__(self):
         return f"LambdaFunction {self.function_name}"
