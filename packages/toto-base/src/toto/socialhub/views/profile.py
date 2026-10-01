@@ -41,7 +41,12 @@ class ProfileListView(LoginRequiredMixin, ListView):
     paginate_by = 10
 
     def get_queryset(self):
+        # A stable order (2026-10-01, 37c.22): Person has none of its own, so
+        # each page was a slice of whatever order the database chose that
+        # time — a member could land on two pages or on none, and Django
+        # warned on every request (UnorderedObjectListWarning).
         return (super().get_queryset()
+                .order_by("display_name", "id")
                 .prefetch_related(listed_communities(self.request.user)))
 
     def get_context_data(self, **kwargs):
