@@ -85,7 +85,7 @@ class Command(IngressCommand):
     def _seed_demo_communities(self):
         """Three Communities that make eligibility observable in a demo and in
         tests: `toto` (a company) with the child `toto-dev`, which alone is
-        offered Standard and Developer — a member of toto-dev may buy them, a
+        offered Standard and Developer (those the ladder has) — a member of toto-dev may buy them, a
         member of toto only may not — and `quiet-harbour`, offered nothing but
         the default (the isolated case)."""
         from toto.socialhub.models import Community
@@ -95,10 +95,13 @@ class Command(IngressCommand):
         dev, _ = Community.objects.get_or_create(
             slug="toto-dev", defaults={"name": "toto-dev", "org_type": "company", "parent": toto})
         Community.objects.get_or_create(slug="quiet-harbour", defaults={"name": "Quiet Harbour"})
-        for key in ("standard", "developer"):
-            if plans.get(key) is not None:
-                CommunityPlanOffer.objects.get_or_create(community=dev, plan_key=key)
-        self.stdout.write("subscriptions: toto → toto-dev (standard, developer) and Quiet Harbour seeded")
+        # Only the keys this ladder has: zenobia's dropped Developer on
+        # 2026-10-01, and an offer of a plan nobody can buy is noise.
+        offered = [key for key in ("standard", "developer") if plans.get(key) is not None]
+        for key in offered:
+            CommunityPlanOffer.objects.get_or_create(community=dev, plan_key=key)
+        self.stdout.write(f"subscriptions: toto → toto-dev ({', '.join(offered) or 'nothing'}) "
+                          "and Quiet Harbour seeded")
 
     def _seed_demo_discount(self, community):
         _, was_new = CommunityDiscount.objects.update_or_create(

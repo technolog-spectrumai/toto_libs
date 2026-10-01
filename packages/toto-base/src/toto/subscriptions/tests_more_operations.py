@@ -102,6 +102,41 @@ class BootstrapTests(TestCase):
                               .values_list("user__username", flat=True)), ["root"])
 
 
+class RetiredPlanBootstrapTests(TestCase):
+    """A plan the ladder retired (`retired:`, 2026-10-01 — zenobia's
+    Developer plan to Standard): bootstrap_plans moves its subscriptions and
+    community offers to the successor, once, without a charge."""
+
+    def setUp(self):
+        plans.reload()
+
+    def test_its_people_and_offers_land_on_the_successor(self):
+        member = User.objects.create_user("dev", "d@example.com", "pw")
+        row = services.subscribe(member, plans.plan("standard"), force=True)
+        Subscription.objects.filter(pk=row.pk).update(plan_key="developer")
+        team = Community.objects.create(name="Team", slug="team")
+        CommunityPlanOffer.objects.create(community=team, plan_key="developer")
+        both = Community.objects.create(name="Both", slug="both")
+        CommunityPlanOffer.objects.create(community=both, plan_key="developer")
+        CommunityPlanOffer.objects.create(community=both, plan_key="standard")
+        out = StringIO()
+        with override_settings(SUBSCRIPTION_PLANS_FILE=str(
+                write(LADDER + "retired:\n  developer: standard\n"))):
+            plans.reload()
+            call_command("bootstrap_plans", stdout=out)
+            call_command("bootstrap_plans", stdout=StringIO())
+        plans.reload()
+        row.refresh_from_db()
+        self.assertEqual((row.plan_key, row.state), ("standard", SubscriptionState.ACTIVE))
+        self.assertFalse(CommunityPlanOffer.objects.filter(plan_key="developer").exists())
+        for community in (team, both):
+            with self.subTest(community=community.slug):
+                self.assertEqual(CommunityPlanOffer.objects.filter(
+                    community=community, plan_key="standard").count(), 1)
+        self.assertIn("Retired plan 'developer': 1 subscription(s) and 2 community "
+                      "offer(s) moved to 'standard'", out.getvalue())
+
+
 class SystemCheckTests(TestCase):
     def run_check(self, text):
         with override_settings(SUBSCRIPTION_PLANS_FILE=str(write(text))):

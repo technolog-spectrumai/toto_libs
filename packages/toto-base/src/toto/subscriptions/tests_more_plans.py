@@ -57,6 +57,34 @@ class KeyShapeTests(ValidationTestCase):
                             "units must be a whole number")
 
 
+class RetiredMapTests(ValidationTestCase):
+    """`retired:` (2026-10-01, zenobia's Developer plan): a dropped key and
+    the plan its people move to, which `bootstrap_plans` reads."""
+
+    def test_a_dropped_key_with_a_live_successor_validates_and_is_read(self):
+        text = GOOD + "retired:\n  developer: standard\n"
+        self.assertEqual(self.problems(text), [])
+        with override_settings(SUBSCRIPTION_PLANS_FILE=str(write(text))):
+            plans.reload()
+            self.assertEqual(plans.retired(), {"developer": "standard"})
+            self.assertIsNone(plans.get("developer"))
+        plans.reload()
+
+    def test_a_key_still_in_the_ladder_cannot_be_retired(self):
+        self.assertRejected(GOOD + "retired:\n  standard: free\n", "is still a plan")
+
+    def test_the_successor_must_be_a_plan(self):
+        self.assertRejected(GOOD + "retired:\n  developer: gold\n", "is not a plan")
+
+    def test_the_successor_may_not_be_for_admins(self):
+        text = (GOOD + "  - key: top\n    name: Top\n    for_admins: true\n"
+                "    all_features: true\nretired:\n  developer: top\n")
+        self.assertRejected(text, "is for admins")
+
+    def test_it_is_a_mapping(self):
+        self.assertRejected(GOOD + "retired: [developer]\n", "must be a mapping")
+
+
 class BuiltLadderTests(SimpleTestCase):
     TEXT = ladder(
         "  - key: zeta\n    name: Zeta\n    units: 5\n    order: 20\n",

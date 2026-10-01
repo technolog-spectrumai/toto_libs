@@ -46,7 +46,7 @@ plans:
     name: Pro Plus
     units: 7
     order: 30
-    features: [editor, gitea]
+    features: [editor, repo]
   - key: stipend
     name: Stipend
     units: -500

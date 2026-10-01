@@ -44,7 +44,7 @@ DEFAULT_PLANS_FILE = Path(__file__).parent / "plans.yaml"
 #: Same shape a Django slug takes, and the same shape the URL captures.
 KEY_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 
-_ALLOWED_TOP = {"version", "plans"}
+_ALLOWED_TOP = {"version", "plans", "retired"}
 _ALLOWED_PLAN = {"key", "name", "description", "units", "features",
                  "default", "order", "for_admins", "admin_only", "all_features"}
 #: The flag's documented spelling, and the older one it replaced (2026-09-28).
@@ -108,6 +108,7 @@ class Plan:
 
 
 _REGISTRY: dict[str, Plan] = {}
+_RETIRED: dict[str, str] = {}
 _SOURCE: Path | None = None
 
 
@@ -210,6 +211,26 @@ def _problems(raw: dict, path: Path) -> list[str]:
 
     if len(defaults) != 1:
         found.append(f"exactly one plan must set default: true, found {defaults}")
+
+    retired = raw.get("retired", {})
+    if retired is None:
+        retired = {}
+    if not isinstance(retired, dict):
+        found.append("retired must be a mapping of old plan_key: successor plan_key")
+    else:
+        live = {entry.get("key"): entry for entry in plans if isinstance(entry, dict)}
+        for old, successor in retired.items():
+            where = f"retired[{old!r}]"
+            if not isinstance(old, str) or not KEY_RE.match(old):
+                found.append(f"{where}: {old!r} must match {KEY_RE.pattern}")
+            elif old in live:
+                found.append(f"{where}: {old!r} is still a plan — a retired key "
+                             "names a plan the ladder no longer has")
+            if successor not in live:
+                found.append(f"{where}: successor {successor!r} is not a plan")
+            elif _for_admins(live[successor]):
+                found.append(f"{where}: successor {successor!r} is for admins — "
+                             "the people on a retired plan move to one they may hold")
     return found
 
 
@@ -255,7 +276,10 @@ def load(path: Path | None = None) -> None:
     if problems:
         raise PlanError(f"{path} is not a usable plan file:\n  - "
                         + "\n  - ".join(problems))
-    _REGISTRY = _build(_read(path))
+    raw = _read(path)
+    _REGISTRY = _build(raw)
+    _RETIRED.clear()
+    _RETIRED.update(raw.get("retired") or {})
     _SOURCE = path
 
 
@@ -269,6 +293,7 @@ def reload() -> None:
     global _REGISTRY, _SOURCE
 
     _REGISTRY = {}
+    _RETIRED.clear()
     _SOURCE = None
 
 
@@ -305,6 +330,18 @@ def public_plans() -> tuple[Plan, ...]:
 def admin_plan() -> Plan | None:
     """The plan superusers are put on, or None when the ladder has none."""
     return next((p for p in all_plans() if p.admin_only), None)
+
+
+def retired() -> dict[str, str]:
+    """Plans the ladder dropped, each with the plan its people move to.
+
+    The file's ``retired:`` mapping (2026-10-01, when zenobia's Developer
+    plan went with its Gitea). `bootstrap_plans` reads it: a subscription
+    or a community offer naming a retired key is moved to the successor.
+    Without an entry a dropped key still resolves to the default plan
+    (`plan_for`), so the map only decides WHERE its people land."""
+    _ensure()
+    return dict(_RETIRED)
 
 
 def keys() -> frozenset[str]:

@@ -21,9 +21,14 @@ What it does, every time it runs, changing only what is missing:
   (`services.sync_for_admins`), so a plans.yaml edit does not leave the
   admin's column and filter answering from the old one.
 
-Nothing is taken away: a superuser already on some other plan keeps it (an
-admin who chose Developer to test the ladder is not moved). Nothing here
-touches an ordinary member.
+* every subscription and community offer naming a plan the ladder retired
+  (the file's ``retired:`` mapping, `plans.retired`) moved to its successor —
+  zenobia's Developer plan to Standard, 2026-10-01 — so its people land on
+  the plan meant for them rather than on the default.
+
+Nothing else is taken away: a superuser already on some other plan keeps it
+(an admin who chose a lower plan to test the ladder is not moved). Nothing
+here touches an ordinary member but the retired-plan move.
 """
 
 from django.contrib.auth import get_user_model
@@ -62,6 +67,8 @@ class Command(BaseCommand):
             community.head = head
             community.save(update_fields=["head"])
 
+        self._move_retired()
+
         offered = 0
         for plan in plans.all_plans():
             _, new = CommunityPlanOffer.objects.get_or_create(community=community, plan_key=plan.key)
@@ -90,3 +97,23 @@ class Command(BaseCommand):
         else:
             self.stdout.write(self.style.SUCCESS(
                 f"{len(superusers)} superuser(s) in '{NAME}', {placed} put on '{reserved.key}'."))
+
+    def _move_retired(self):
+        """Subscriptions and offers on a retired plan, onto its successor.
+
+        A row update, not `services.subscribe`: nobody chose anything, so no
+        charge, no new anchor date and no state change — the plan they hold
+        is renamed under them. An offer of the retired key becomes an offer
+        of the successor (kept once), so the community can still buy it."""
+        for old, new in plans.retired().items():
+            moved = Subscription.objects.filter(plan_key=old).update(plan_key=new)
+            dropped = 0
+            for offer in CommunityPlanOffer.objects.filter(plan_key=old):
+                CommunityPlanOffer.objects.get_or_create(
+                    community_id=offer.community_id, plan_key=new)
+                offer.delete()
+                dropped += 1
+            if moved or dropped:
+                self.stdout.write(self.style.SUCCESS(
+                    f"Retired plan '{old}': {moved} subscription(s) and "
+                    f"{dropped} community offer(s) moved to '{new}'."))

@@ -91,6 +91,10 @@ plans:
     # when the only host that mounted it parked it. Its catalogue entry went in
     # the same edit. `yamabiko` (bucket echoes, the job sepulka's leaving handed
     # over) joined the same day, declared in catalogue.py in the same edit.
+    # `gitea` left on 2026-10-01: toto.gitea declares it itself now
+    # (toto/gitea/entitlements.py), so it is a known key only on a host that
+    # installs the forge — and a host that does writes its own ladder. Listed
+    # here, it would stop every host without the forge (E001).
     features:
       - cyprian
       - memo
@@ -106,7 +110,6 @@ plans:
       - mandragora
       - notarius
       - repo
-      - gitea
       - vod
       - steven
       - travels

@@ -46,6 +46,9 @@ plans:
     features:                 # registered, non-free feature keys
       - editor
       - kanban
+
+retired:                      # optional: dropped plan_key -> its successor
+  developer: standard         # (bootstrap_plans moves its people and offers)
 ```
 
 Every per-plan key is listed above; there are no others, and an unrecognised one
@@ -97,6 +100,10 @@ rather than the first. Errors, in the order they are reported:
 | **unknown `feature_key`** | `plans[N]: unknown feature_key '...' — nothing registers it` |
 | a free feature sold by a plan | `plans[N]: '...' is a FREE feature and cannot be sold by a plan` |
 | zero or two defaults | `exactly one plan must set default: true, found [...]` |
+| `retired` not a mapping | `retired must be a mapping of old plan_key: successor plan_key` |
+| a retired key still in `plans` | `retired['...']: '...' is still a plan — ...` |
+| a successor that is not a plan | `retired['...']: successor '...' is not a plan` |
+| a successor for admins | `retired['...']: successor '...' is for admins — ...` |
 
 Unreadable or unparseable files are the same kind of fault: `no plan file at
 ...`, `... is not valid YAML: ...`, `... must be a mapping, not list`.
@@ -193,6 +200,13 @@ nothing. That is handled where it belongs: `plans.get()` answers `None` and
 than meeting a crash, and their existing charge rows keep the name they paid
 under. Offer them the replacement tier before you delete the old one.
 
+**Or name the successor** (2026-10-01): the file's `retired:` mapping —
+`developer: standard` when zenobia dropped its Developer plan with its Gitea —
+and `bootstrap_plans`, which every deploy runs, moves each subscription on the
+retired key to the successor (a row update: no charge, no new anchor date) and
+turns each community offer of it into an offer of the successor. Keep the
+entry for as long as an old row could still name the key.
+
 **Renaming a `key` is a retirement plus a new tier.** Rename `name` instead —
 that is what it is for.
 
@@ -221,7 +235,7 @@ where a Community of theirs offers the plan) and get a 404 from the subscribe
 door; `subscribe(force=True)` refuses them too. It cannot be the default plan.
 
 **The row says so.** `Subscription.for_admins` is set from the plan on every
-save (a switch down to Developer clears it, a switch back sets it) and is
+save (a switch down to Standard clears it, a switch back sets it) and is
 editable nowhere; the admin lists and filters by it and shows it read-only.
 The model refuses a live row (active or in arrears) on a plan for admins for
 an account that is not a superuser — `Subscription.clean()` raises a

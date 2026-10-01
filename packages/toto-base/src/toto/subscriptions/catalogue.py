@@ -324,9 +324,10 @@ _DEFAULTS = (
     Entitlement("repo", "Version control", order=44,
                 icon="fa-solid fa-code-branch",
                 description="Git over your vault directories."),
-    Entitlement("gitea", "Git hosting", order=45,
-                icon="fa-brands fa-git-alt",
-                description="Repositories hosted on this platform."),
+    # NO "gitea" here since 2026-10-01: toto.gitea declares it itself
+    # (toto/gitea/entitlements.py), so it is in the catalogue exactly on the
+    # hosts that install the forge's page. zenobia's forge left its stack for
+    # a machine of its own (nabu) that day, and with it the plan that sold it.
     Entitlement("vod", "Media", order=46,
                 icon="fa-solid fa-film",
                 description="Video and audio, transcoded and streamed."),

@@ -42,7 +42,7 @@ plans:
   - key: developer
     name: Developer
     units: 20
-    features: [editor, gitea]
+    features: [editor, repo]
   - key: superuser
     name: Superuser
     for_admins: true
@@ -350,7 +350,7 @@ class SuperuserPlanTests(EligibilityBase):
         self.addCleanup(_PATH.write_text, ADMIN_LADDER)
         # The flag moves from Superuser to Developer; no row is saved.
         _PATH.write_text(ADMIN_LADDER.replace("    for_admins: true\n", "").replace(
-            "    features: [editor, gitea]\n", "    features: [editor, gitea]\n    for_admins: true\n"))
+            "    features: [editor, repo]\n", "    features: [editor, repo]\n    for_admins: true\n"))
         plans.reload()
         self.assertEqual((plans.plan("developer").for_admins, plans.plan("superuser").for_admins),
                          (True, False))
