@@ -317,5 +317,28 @@ class RegisterExportTests(ChartTestCase):
         export.assert_not_called()
         self.assertContains(response, "Nothing to export")
 
+    def test_what_it_says_is_translated(self):
+        """Both answers are marked for translation (2026-10-01: neither was)."""
+        from unittest import mock
+
+        from django.contrib.messages import get_messages
+        from django.utils import translation
+
+        empty = self.make_company("Empty sp. z o.o.")
+        self.client.force_login(self.member)
+        sent = []
+        with mock.patch("toto.documents.services.export"), \
+             mock.patch.object(translation._trans, "gettext",
+                               side_effect=lambda message: f"[pl] {message}"):
+            for company in (self.company, empty):
+                response = self.client.post(
+                    reverse("company:register_export", args=[company.slug]))
+                # The last word: the first answer is still waiting in the second.
+                sent.append(str(list(get_messages(response.wsgi_request))[-1]))
+        self.assertEqual(sent, [
+            "[pl] The PDF is rendering. It will be in your vault, in the folder "
+            "“Business Center exports”.",
+            "[pl] Nothing to export — the register is empty."])
+
     def test_the_button_is_on_the_page(self):
         self.assertContains(self.page(), "Register PDF")

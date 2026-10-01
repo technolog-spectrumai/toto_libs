@@ -23,6 +23,7 @@ from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
 from toto.company.forms import (
@@ -955,7 +956,7 @@ def vote_export(request, slug, uid, proposition_uid=None):
     except services.ExportRefused as exc:
         messages.error(request, str(exc))
     else:
-        messages.success(request, "The PDF is rendering.")
+        messages.success(request, services.queued_message())
     return redirect("company:vote_detail", slug=company.slug, uid=meeting.uid)
 
 def _audit(action, **kwargs):
@@ -1118,7 +1119,7 @@ def register_export(request, slug):
     company = _company(slug)
     register = ownership_register(company)
     if not register["shareholder_structure"]:
-        messages.error(request, "Nothing to export — the register is empty.")
+        messages.error(request, _("Nothing to export — the register is empty."))
         return redirect("company:shareholders", slug=company.slug)
 
     html = builders.register_document(company, register)
@@ -1128,5 +1129,5 @@ def register_export(request, slug):
     except services.ExportRefused as exc:
         messages.error(request, str(exc))
     else:
-        messages.success(request, "The PDF is rendering.")
+        messages.success(request, services.queued_message())
     return redirect("company:shareholders", slug=company.slug)

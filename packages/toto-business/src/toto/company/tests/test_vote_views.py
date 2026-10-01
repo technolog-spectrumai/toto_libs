@@ -9,8 +9,10 @@ from decimal import Decimal
 from unittest import mock, skipUnless
 
 from django.contrib.auth import get_user_model
+from django.contrib.messages import get_messages
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import translation
 
 from toto.aralia import dispatch, render as render_mod
 from toto.aralia.models import AraliaRun
@@ -282,6 +284,21 @@ class ExportTests(VoteViewTestCase):
         run = AraliaRun.objects.get()
         self.assertIn("Adopt the 2027 plan", run.html)
         self.assertIn("a" * 16, run.html)          # the attachment hash
+
+    def test_what_it_says_is_translated(self):
+        """Marked for translation (2026-10-01: it was not)."""
+        self.open_voting()
+        self.client.force_login(self.user)
+        with mock.patch.object(dispatch, "dispatch_run", side_effect=lambda run: run), \
+             mock.patch.object(translation._trans, "gettext",
+                               side_effect=lambda message: f"[pl] {message}"):
+            response = self.client.post(reverse("company:meeting_export",
+                                                args=[self.company.slug, self.meeting.uid]))
+        # The last word: opening the vote left its own message waiting.
+        self.assertEqual(
+            str(list(get_messages(response.wsgi_request))[-1]),
+            "[pl] The PDF is rendering. It will be in your vault, in the folder "
+            "“Business Center exports”.")
 
     def test_a_superseded_ballot_is_printed_too(self):
         self.open_voting()

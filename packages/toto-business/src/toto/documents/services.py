@@ -58,6 +58,13 @@ def available() -> bool:
     return apps.is_installed("toto.aralia")
 
 
+def queued_message() -> str:
+    """What an export view says once the render is queued. It names the
+    folder because none of their pages shows a render (2026-10-01)."""
+    return _("The PDF is rendering. It will be in your vault, in the folder "
+             "“%(folder)s”.") % {"folder": EXPORT_FOLDER}
+
+
 def export(html: str, *, user, label: str = "export"):
     """Queue one Business Center export. Returns the AraliaRun.
 

@@ -9,8 +9,10 @@ from unittest import mock, skipUnless
 from xml.etree import ElementTree
 
 from django.contrib.auth import get_user_model
+from django.contrib.messages import get_messages
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import translation
 
 from toto.aralia import dispatch, render as render_mod
 from toto.aralia.models import AraliaRun, AraliaUsageEvent, RunStatus
@@ -260,6 +262,18 @@ class ExportViewTests(DocumentTestCase):
         self.client.logout()
         response = self.client.post(reverse("ledger:export_pdf", args=[self.ledger.uid]))
         self.assertEqual(response.status_code, 302)
+
+    def test_what_it_says_is_translated_and_names_the_folder(self):
+        """Marked for translation (2026-10-01: it was not), and it says where
+        the PDF will be: the ledger's page never shows a render."""
+        with mock.patch.object(dispatch, "dispatch_run", side_effect=lambda run: run), \
+             mock.patch.object(translation._trans, "gettext",
+                               side_effect=lambda message: f"[pl] {message}"):
+            response = self.client.post(reverse("ledger:export_pdf", args=[self.ledger.uid]))
+        self.assertEqual(
+            [str(message) for message in get_messages(response.wsgi_request)],
+            ["[pl] The PDF is rendering. It will be in your vault, in the folder "
+             "“Business Center exports”."])
 
 
 @PDF

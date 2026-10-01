@@ -260,5 +260,5 @@ def export_pdf(request, uid):
         messages.error(request, str(exc))
         return redirect("ledger:detail", uid=ledger.uid)
 
-    messages.success(request, "The PDF is rendering. It will appear here when it is done.")
+    messages.success(request, services.queued_message())
     return redirect(f"{reverse('ledger:detail', args=[ledger.uid])}?run={run.pk}")
