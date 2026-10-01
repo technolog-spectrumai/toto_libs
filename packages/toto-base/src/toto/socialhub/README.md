@@ -369,7 +369,17 @@ again, and an inactive account nobody would ever use.
   finds it; with none left, one is made as for a new application. An expired
   code now says to apply again with the same address.
   `SOCIALHUB.APPLICATION_RENEWED` and a fresh `PRIVACY.NOTICE_ACCEPTED` go on
-  the chain.
+  the chain. **So does one whose every reference was declined** (the
+  review, 2026-10-01: the decline mail says to apply again, yet the address
+  stayed taken for the rest of the week; `applications.declined`).
+- **Addresses are compared without case** (the review, 2026-10-01): the form
+  refuses `Ann@…` while an application from `ann@…` holds the address, and
+  the account an application made — the one its acceptance activates, a
+  renewal names again and the reference step sets a password on — is
+  `applications.applicant_account`: the accounts at its address in any case,
+  one that has not got in first. Before, the first account with the exact
+  address was taken, so an address a member also had found the member's —
+  activated and enrolled instead, and its password set from that public page.
 - **The nightly housekeeping prunes it** (`applications.prune`, called by
   `toto.core.housekeeping` on the beat) once it lapsed more than
   `SOCIALHUB_EXPIRED_APPLICATION_DAYS` (default 30) days ago — the
@@ -384,8 +394,10 @@ ledger account, which stays detached, and the mana pools' opening fill). A
 person, a privacy acceptance, a data export, an erasure request, a file or
 a bucket keeps the application and its account, counted as `kept`; an
 application whose applicant got in is the member's record and not
-housekeeping's at all. Applications whose account is already gone (erased)
-are pruned alone. Counts only reach the chain — one `PRIVACY.HOUSEKEEPING`
+housekeeping's at all — known by its accepted reference
+(`applications.admitted`), since a member who changed their e-mail has no
+account at its address any more. Applications whose account is already gone
+(erased) are pruned alone. Counts only reach the chain — one `PRIVACY.HOUSEKEEPING`
 record a night (`toto.core.housekeeping`), never an address.
 
 Tests: `tests_application_housekeeping.py` (renewal through the form, the
