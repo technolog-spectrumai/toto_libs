@@ -220,8 +220,15 @@ class VaultFileAdmin(admin.ModelAdmin):
         return redirect(url)
     decrypt_selected_files.short_description = _("Decrypt selected encrypted files with password")
 
+    @staticmethod
+    def _selected_ids(request):
+        """The files the action carried in ``?ids=``, numbers only. A bare GET
+        of either page (or an address edited by hand) used to hand the ORM an
+        empty id and answer 500 (2026-10-01, the 37c regression net)."""
+        return [part for part in request.GET.get('ids', '').split(',') if part.isdigit()]
+
     def encrypt_view(self, request):
-        ids = request.GET.get('ids', '').split(',')
+        ids = self._selected_ids(request)
         queryset = VaultFile.all_objects.filter(pk__in=ids)
         strategy = queryset.first().get_strategy() if queryset.exists() else None
         form = strategy.get_encrypt_form(request, ids) if strategy else None
@@ -250,7 +257,7 @@ class VaultFileAdmin(admin.ModelAdmin):
         return render(request, template, context)
 
     def decrypt_view(self, request):
-        ids = request.GET.get('ids', '').split(',')
+        ids = self._selected_ids(request)
         queryset = VaultFile.all_objects.filter(pk__in=ids)
         strategy = queryset.first().get_strategy() if queryset.exists() else None
         form = strategy.get_decrypt_form(request, ids) if strategy else None

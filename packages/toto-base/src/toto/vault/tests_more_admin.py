@@ -108,12 +108,20 @@ class BulkEncryptTests(_Fixture):
         f.refresh_from_db()
         self.assertFalse(f.is_encrypted)
 
-    @skip("BUG vault/admin.py:215 encrypt_view (and :243 decrypt_view) - ids come from "
-          "request.GET['ids'].split(','), so opening the door with no or a malformed id list "
-          "filters pk__in=[''] and 500s (ValueError) instead of rendering an empty selection")
     def test_an_empty_selection_is_not_a_500(self):
-        response = self.client.get(reverse("admin:vaultfile_encrypt"))
-        self.assertIn(response.status_code, (200, 302))
+        """Fixed 2026-10-01 (found again by the 37c regression net): with no
+        or a malformed id list both doors filtered pk__in=[''] and raised."""
+        for name in ("encrypt", "decrypt"):
+            for query in ("", "?ids=", "?ids=abc,,1x"):
+                with self.subTest(door=name, query=query):
+                    response = self.client.get(reverse(f"admin:vaultfile_{name}") + query)
+                    self.assertEqual(response.status_code, 200)
+
+    def test_the_selection_keeps_its_numbers_and_drops_the_rest(self):
+        f = self.file("kept.txt")
+        response = self.client.get(reverse("admin:vaultfile_encrypt") + f"?ids=x,{f.pk},")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("kept.txt", response.content.decode())
 
 
 class ContentHashActionTests(_Fixture):
