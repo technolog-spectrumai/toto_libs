@@ -108,6 +108,14 @@ def _settings():
     return OcrSettings.get()
 
 
+def _trashed_source_sentence():
+    """Why the missing pages cannot be read again while the file the scan
+    was read from is in the vault's trash (2026-10-01). Said by the page,
+    in place of the retry button, and by the retry door."""
+    return _("The file this scan was read from is in the trash. Restore it "
+             "to read the missing pages again.")
+
+
 # ---------------------------------------------------------------------------
 # The tool page
 # ---------------------------------------------------------------------------
@@ -269,13 +277,18 @@ def ocr_run_detail(request, pk):
     run = _own_run(request, pk)
     payload = runs.run_payload(run)
     buckets, directories = _buckets_and_directories(request.user)
+    missing = bool(run.is_finished and run.retry_page_numbers())
+    # A trashed source is a missing one (2026-10-01): no button that can only
+    # be refused — the sentence says why, and what brings the button back.
+    trashed = missing and runs.source_trashed(run)
     context = {
         "run": run,
         "payload": payload,
         "buckets": buckets,
         "directories": directories,
-        "can_retry": bool(run.is_finished and run.retry_page_numbers()
+        "can_retry": bool(missing and not trashed
                           and (run.source or run.source_file)),
+        "retry_refusal": _trashed_source_sentence() if trashed else "",
         "retention_days": _settings().retention_days,
     }
     return render(request, "ocr/run_detail.html",
@@ -401,6 +414,8 @@ def ocr_retry(request, pk):
         return JsonResponse({"error": _("Every page was read.")}, status=400)
     try:
         runs.source_path(run)
+    except runs.SourceTrashed:
+        return JsonResponse({"error": _trashed_source_sentence()}, status=409)
     except Exception:  # noqa: BLE001
         return JsonResponse({"error": _(
             "The original file has been removed, so these pages cannot be "

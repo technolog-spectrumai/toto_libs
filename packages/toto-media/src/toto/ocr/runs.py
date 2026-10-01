@@ -62,11 +62,27 @@ def create_run(*, owner, inspection, language, source_name,
     return run
 
 
+class SourceTrashed(FileNotFoundError):
+    """The vault file a run was read from is in the trash: gone, for a page
+    and for a retry, until its owner restores it."""
+
+
+def source_trashed(run: OcrRun) -> bool:
+    """Whether the run was read from a vault file that is now in the trash.
+
+    The foreign key still finds such a file — the vault's base manager sees
+    the trash — so this asks, rather than the row's absence (2026-10-01).
+    """
+    vault_file = run.source_file if run.source_file_id else None
+    return vault_file is not None and vault_file.trashed_at is not None
+
+
 def source_path(run: OcrRun, number: int = 1) -> str:
     """Where page `number`'s bytes are, for a subprocess that needs a path.
 
     A PDF is one file for every page; a group of images is one file per page.
-    The caller does not have to know which it got.
+    The caller does not have to know which it got. A trashed vault file is a
+    missing file (2026-10-01): `SourceTrashed`, before its bytes are read.
     """
     if run.sources:
         name = run.source_for(number)
@@ -75,6 +91,8 @@ def source_path(run: OcrRun, number: int = 1) -> str:
         return run.source.storage.path(name)
     if run.source:
         return run.source.path
+    if source_trashed(run):
+        raise SourceTrashed("the file this run was read from is in the trash")
     if run.source_file and run.source_file.file:
         return run.source_file.file.path
     raise FileNotFoundError("this run has no source file any more")

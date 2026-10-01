@@ -105,10 +105,16 @@ def _looks_transient(exc) -> bool:
 
     A timeout or a missing file may be a busy worker or a slow volume; a page
     that is not a page will fail the same way every time, and retrying it only
-    delays every other job on the one queue this platform has.
+    delays every other job on the one queue this platform has. A source in
+    the vault's trash is not slow (2026-10-01): it stays gone until its owner
+    restores it, so the page fails at once.
     """
     import subprocess
 
+    from toto.ocr.runs import SourceTrashed
+
+    if isinstance(exc, SourceTrashed):
+        return False
     return isinstance(exc, (subprocess.TimeoutExpired, OSError))
 
 

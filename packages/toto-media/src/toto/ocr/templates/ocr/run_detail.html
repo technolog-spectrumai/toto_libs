@@ -42,6 +42,9 @@
               <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
               {% trans "Read the missing pages" %}</button>
           </form>
+        {% elif retry_refusal %}
+          <p class="max-w-xs text-sm opacity-80">
+            <i class="fa-solid fa-trash-can" aria-hidden="true"></i> {{ retry_refusal }}</p>
         {% endif %}
       </div>
     </header>

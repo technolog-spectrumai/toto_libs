@@ -78,6 +78,15 @@ Two things about it are load-bearing and easy to undo by accident:
   `NodeNotFoundError` for a dependency on an uninstalled app). Keep it that way when
   adding a model here.
 
+**A trashed source is a missing one** (2026-10-01). A run read from a vault file
+keeps a foreign key to it, and the key still finds a file in the vault's trash (the
+vault's base manager sees the trash), so a retry read its bytes as if nothing had
+happened. `runs.source_path` now refuses such a file (`runs.SourceTrashed`, a
+`FileNotFoundError`): a page task fails at once without reading it, the retry door
+answers 409 with a sentence, and the run's page shows that sentence in place of the
+"Read the missing pages" button. Restored, the file is read again. Tests:
+`tests_trashed_source`.
+
 ### The shared Media sub-nav
 
 Both pages include `oya/_media_tabs.html`, which lives in **toto-base**, not here.
@@ -138,6 +147,11 @@ fine as long as `BUILD_OCR` stays off, which is how zenobia carries it today.
 Both pages need an active `Platform` row (`PageProcessor` 404s without one) and the
 `sso` url namespace mounted, since `oya/base.html` reverses into it. The library's
 `tests/settings_min.py` supplies both.
+
+The ocr suites have a harness of their own, `toto.ocr.testing.settings`
+(2026-10-01): no host in the monorepo installs the app, so nothing else runs them.
+From a host directory, whose `manage.py` puts the vendored sources first:
+`manage.py test toto.ocr.tests_trashed_source --settings=toto.ocr.testing.settings`.
 
 ---
 
