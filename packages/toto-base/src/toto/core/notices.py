@@ -129,7 +129,10 @@ def error_text(exc: BaseException) -> str:
     address or the login."""
     name = type(exc).__name__
     if isinstance(exc, smtplib.SMTPRecipientsRefused):
-        codes = sorted({str(code) for code, _text in exc.recipients.values()})
+        try:
+            codes = sorted({str(code) for code, _text in exc.recipients.values()})
+        except Exception:  # noqa: BLE001 - a refusal shaped unlike smtplib's
+            codes = []
         return f"{name} ({', '.join(codes)})" if codes else name
     if isinstance(exc, smtplib.SMTPResponseException):
         return f"{name} ({exc.smtp_code})"
@@ -209,10 +212,14 @@ def send_notice(user, kind: str, context: dict | None = None, *, to: str = "") -
         record(kind, address, NoticeDelivery.FAILED, error=error_text(exc))
         return False
     if via_worker():
-        # Nothing leaves for a change that is rolled back; outside a
-        # transaction (a view, in autocommit) this runs at once.
-        transaction.on_commit(partial(_queue, message))
-        return True
+        try:
+            # Nothing leaves for a change that is rolled back; outside a
+            # transaction (a view, in autocommit) this runs at once.
+            transaction.on_commit(partial(_queue, message))
+            return True
+        except Exception as exc:  # noqa: BLE001 - manual transaction management
+            log.warning("notice: %s could not wait for the commit (%s); sent at once",
+                        kind, type(exc).__name__)
     return not deliver(message)
 
 
@@ -267,16 +274,18 @@ def record(kind: str, address: str, status: str, *, tries: int = 1, error: str =
 
         now = timezone.now()
         with transaction.atomic():
+            if status == NoticeDelivery.SENT:
+                # A delivery proves the way out works: the failures counted
+                # so far, of every kind, are behind it. Before this kind's
+                # own row is locked, so that two deliveries at once take
+                # the rows in one order and cannot deadlock.
+                NoticeDelivery.objects.filter(failures__gt=0).update(failures=0)
             row, _created = (NoticeDelivery.objects.select_for_update()
                              .get_or_create(purpose=kind[:40]))
             row.recipient_hash = recipient_hash(address) if address else ""
             row.status, row.tries, row.error, row.updated_at = status, tries, error[:200], now
             if status == NoticeDelivery.SENT:
                 row.sent_at, row.failures = now, 0
-                # A delivery proves the way out works: the failures counted
-                # so far, of every kind, are behind it.
-                (NoticeDelivery.objects.exclude(pk=row.pk).filter(failures__gt=0)
-                 .update(failures=0))
             elif status == NoticeDelivery.FAILED:
                 row.failures += 1
             row.save()

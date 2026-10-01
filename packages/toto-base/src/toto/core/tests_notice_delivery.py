@@ -15,6 +15,7 @@ from unittest import mock
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.db import transaction
+from django.db.transaction import TransactionManagementError
 from django.forms.models import model_to_dict
 from django.test import TestCase, override_settings
 from kombu.exceptions import OperationalError
@@ -93,6 +94,15 @@ class QueuedTests(NoticeTestCase):
         [notice] = mail.outbox
         self.assertEqual(notice.to, ["ada@example.test"])
         self.assertEqual(outcome("password_changed").status, NoticeDelivery.SENT)
+
+
+    def test_a_transaction_that_cannot_wait_for_a_commit_sends_it_at_once(self):
+        with mock.patch(TASK) as task, \
+                mock.patch("toto.core.notices.transaction.on_commit",
+                           side_effect=TransactionManagementError("manual")):
+            self.assertTrue(send_notice(self.user, "password_changed"))
+        task.delay.assert_not_called()
+        self.assertEqual(len(mail.outbox), 1)
 
 
 @override_settings(NOTICES_VIA_WORKER=False)
@@ -223,3 +233,6 @@ class NothingSecretKeptTests(NoticeTestCase):
         self.assertEqual(text(ConnectionRefusedError("ops@example.test")),
                          "ConnectionRefusedError")
         self.assertEqual(text(ValueError("ops@example.test")), "ValueError")
+        # A refusal shaped unlike smtplib's still answers, with its class.
+        self.assertEqual(text(smtplib.SMTPRecipientsRefused({"ops@example.test": 550})),
+                         "SMTPRecipientsRefused")
