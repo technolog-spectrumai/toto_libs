@@ -39,7 +39,7 @@ Outside this directory, the pieces it relies on: `HeaderPlugin` (toto.core),
 ## Tests
 
 - **Unit** — `toto.mana.tests.unit.*`: each operation called directly. Fast; run on every change, and in the clean-env gate.
-- **Integration** — `toto.mana.tests.integration.*`: management commands, page renders, the tax sweep, the real encryption strategy, the staff gate, one member's whole day. Run by hand: **`./user_tests.sh`** at the repo root (`--wide` adds the economy suites mana touches).
+- **Integration** — `toto.mana.tests.integration.*`: management commands, page renders, the tax sweep, the real encryption strategy, the staff gate, one member's whole day. Run by hand from the zenobia monorepo root: **`tests/user_tests.sh`** (`--wide` adds the economy suites mana touches).
 
 `zenobia/manage.py test` imports this source tree: `manage.py` puts
 `vendor/toto_libs/packages/*/src` first on `sys.path` unless `TOTO_SRC` is set.

@@ -1,7 +1,8 @@
 """Whole paths, end to end — what the unit tests take one step at a time.
 
 These go through management commands, the tax sweep, the real encryption
-strategy and the charge ladder. Run by /user_tests.sh, not by the quick loop.
+strategy and the charge ladder. Run by tests/user_tests.sh (from the zenobia
+monorepo root), not by the quick loop.
 """
 
 from decimal import Decimal
