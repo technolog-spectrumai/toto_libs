@@ -128,7 +128,7 @@ pks. Panel: `/vault/transfers/`.
 | `BUILD_WORKFLOWS` off | refresh + transfer dispatch refuse by name |
 | `BUILD_ANTIVIRUS` off | scans degrade to clean-but-unscanned (façade) |
 
-## Play: a file's player or reader (2026-10-02: Markdown, sheets)
+## Play: a file's player or reader (2026-10-02: Markdown, sheets, decks)
 
 `VaultPlayPlugin` (keyed by file type) gives a file its **Play** button — the
 file list's row and card, the per-file actions chooser and, for Markdown, the
@@ -147,6 +147,16 @@ the host's editor plugin declares `new_file_extension = ".uson"`, which puts
 it in the New-file menu with an empty workbook as its blank. Without such a
 host app a `.uson` file is a plain file. The old `sheet` type (a `.json`
 workbook) stays a plain file either way.
+
+A **deck** (`.pxml`, file type `pxml`) plays as a full-screen reveal.js
+slideshow (zenobia: `toto.decks`, `/pxml/<pk>/`), for anybody who may read
+it; every block is sanitised on the way out (memo's format, with the legacy
+`html` block no longer trusted). Its Edit is the deck's XML source in ACE
+(`/pxml/<pk>/edit/`), editable for a writer the door lets in, and its save
+takes the `.uson` save's steps, screened by `scan_pxml`. The host's editor
+plugin declares `new_file_extension = ".pxml"` with a one-slide deck as its
+blank. Without such a host app (or `toto.memo`) a `.pxml` file is a plain
+file; the legacy `presentation` type stays plain either way.
 
 ## File types: accepted and refused (2026-09-30)
 
