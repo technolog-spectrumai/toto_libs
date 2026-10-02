@@ -206,3 +206,23 @@ class AdminDoorTests(_Door):
         response = self.knock("ada", RIGHT, address=ELSEWHERE)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(self.client.session[SESSION_KEY], str(self.ada.pk))
+
+    def test_a_member_s_right_password_here_is_no_guess(self):
+        # A try is counted before its password is compared (41.4); at this
+        # door a member who is not staff is turned away AFTER the right
+        # password, and the try stayed counted: a dozen visits to /admin/
+        # paused their own sign-in at the form for 15 minutes (41.5).
+        User.objects.create_user("bea", password=RIGHT)
+        for _ in range(12):
+            self.assertContains(self.knock("bea", RIGHT), "staff account")
+        request = _session(RequestFactory().post(
+            "/sso/login/", {"username": "bea", "password": RIGHT}, REMOTE_ADDR=HERE))
+        self.assertIsNone(lockout.refusal(request, "bea"))
+        response = password_login_view(request, template_name="oya/login.html",
+                                       page_title="Sign in")
+        self.assertEqual(response.status_code, 302)
+
+    def test_a_wrong_password_here_still_counts(self):
+        User.objects.create_user("bea", password=RIGHT)
+        self.pause("bea")
+        self.assertContains(self.knock("bea", RIGHT), PAUSED)
