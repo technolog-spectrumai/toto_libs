@@ -26,7 +26,7 @@
     <a href="{% url 'socialhub:profile_details' person.slug %}"
        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
        class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm hover:opacity-90">
-      <i class="fa-solid fa-user-astronaut"></i>{% trans "My Profile" %}</a>
+      <i class="fa-solid fa-user-astronaut"></i>{% trans "Profile" %}</a>
     {% endif %}
   </header>
 
@@ -202,7 +202,7 @@
       </div>
     {% else %}
       <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-           class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-60">{% url 'account:home' as account_url %}{% if account_url %}{% translate "No key store yet." %} <a href="{{ account_url }}#keystore" class="underline">{% translate "Create yours on My account." %}</a>{% else %}{% translate "No strongboxes found. Ask an administrator to set one up for you." %}{% endif %}</div>
+           class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-60">{% url 'account:home' as account_url %}{% if account_url %}{% translate "No key store yet." %} <a href="{{ account_url }}?tab=security#keystore" class="underline">{% translate "Create yours on your profile, under Security." %}</a>{% else %}{% translate "No strongboxes found. Ask an administrator to set one up for you." %}{% endif %}</div>
     {% endif %}
   </section>
 
