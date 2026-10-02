@@ -1,14 +1,23 @@
-"""The nightly sweep, as a task.
+"""The nightly cleanup and the temporary-room expiry, as tasks.
 
-A thin wrapper and nothing else: the work lives in `cleanup.py`, which imports
-no celery, so a host with no worker runs exactly the same code straight from a
-request. That is the tax sweep's doctrine and the reason "Run cleanup now"
-works on a box that never started a worker.
+`forum_cleanup` keeps its name and its module on purpose: monit's heartbeats
+record by task name, and `toto.tests_schedules` pairs the beat entry with
+`toto.registry.TASK_MODULES`. `toto.forum` had to be added to TASK_MODULES for
+this to be reachable at all — without that line beat enqueues the task forever
+and the worker answers `KeyError`, which is how `toto.weather`'s refresh
+silently did nothing for months.
 
-`toto.forum` had to be added to `toto.registry.TASK_MODULES` for this to be
-reachable at all — without that line beat enqueues the task forever and the
-worker answers `KeyError`, which is how `toto.weather`'s refresh silently did
-nothing for months. `toto.tests_schedules` asserts the pairing.
+Since 2026-10-02 the beat task does not sweep in-process. It CLAIMS the night's
+passes (one per room with its own enabled dial, plus the platform pass for
+every other room) and hands them to the worker as ONE run of the "Forum
+cleanup" workflow, so the night shows in the Workflows tab beside every manual
+cleanup, started by "System". The deleting happens in that workflow's node
+(`predefined_tasks.py`), on the worker, inside its own deadline. There is no
+inline path left anywhere: a web request never deletes history itself.
+
+The former `forum_cleanup_run(run_id)` task — the room button's door onto the
+worker — is gone: every button now dispatches the workflow, and a task that
+finished any RUNNING row by id was one more door than the design needs.
 """
 
 from celery import shared_task
@@ -17,41 +26,19 @@ from celery import shared_task
 @shared_task(name="toto.forum.tasks.forum_cleanup", ignore_result=True,
              soft_time_limit=1740, time_limit=1800)
 def forum_cleanup():
-    """Delete forum history older than the staff-set retention period."""
-    from . import cleanup
+    """Queue tonight's cleanup: claim the passes, dispatch one workflow run.
 
-    # Our own deadline, comfortably inside celery's soft limit, so the run
-    # closes itself as `partial` and records what it managed rather than being
-    # killed mid-chunk with nothing written.
-    return cleanup.run_scheduled(deadline_seconds=1500)
-
-
-@shared_task(name="toto.forum.tasks.forum_cleanup_run", ignore_result=True,
-             soft_time_limit=1740, time_limit=1800)
-def forum_cleanup_run(run_id):
-    """Finish a run somebody already claimed — the room Settings tab's button.
-
-    Takes the run id rather than a channel id BECAUSE THE CLAIM ALREADY
-    HAPPENED. `cleanup.trigger()` created the row inside a locked transaction
-    and that is what stops two sweeps overlapping; a task that re-derived the
-    channel and claimed again would race with the request that queued it, and
-    the second claim would raise `CleanupInProgress` into a worker where
-    nobody would read it.
-
-    A missing row is not an error: the run can have been closed by the
-    stuck-run sweeper, or the room deleted, between the request and the
-    worker picking this up.
+    Claiming is a handful of rows and returns at once. The long limits are for
+    the one other branch: on a worker whose build has no workflow engine the
+    passes are finished right here instead — still on the worker, never in a
+    web request — so the library stays usable on its own.
     """
-    from . import cleanup
-    from .models import ForumCleanupRun, RunStatus
+    from . import cleanup, dispatch
 
-    run = ForumCleanupRun.objects.filter(
-        pk=run_id, status__in=(RunStatus.PENDING, RunStatus.RUNNING)).first()
-    if run is None:
-        return {"skipped": True, "run": run_id}
-    cleanup.run_cleanup(run, deadline_seconds=1500)
-    return {"run": run.pk, "status": run.status,
-            "messages_deleted": run.messages_deleted}
+    if not dispatch.workflows_installed():
+        return cleanup.run_scheduled(
+            deadline_seconds=cleanup.WORKER_DEADLINE_SECONDS)
+    return dispatch.start_scheduled()
 
 
 @shared_task(name="toto.forum.tasks.forum_expire", ignore_result=True,

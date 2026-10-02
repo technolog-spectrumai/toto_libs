@@ -708,27 +708,39 @@ class ModelTests(RoomFixture):
 class SweepTaskTests(RoomFixture):
     """The worker entry points: what they do with a run or a room that moved on."""
 
+    def _queued(self, room):
+        """A room cleanup claimed and queued the way the button does it."""
+        from toto.forum import dispatch
+
+        with patch("toto.celery_utils.celery_available", return_value=True), \
+             patch("toto.workflows.tasks.start_workflow_run_task.delay") as delay:
+            delay.return_value.id = "t"
+            return dispatch.start_room(room, self.staff)
+
     def test_a_cleanup_run_already_closed_is_skipped_by_the_worker(self):
-        from toto.forum import cleanup
-        from toto.forum.models import ForumCleanupRun, RunStatus, TriggeredBy
-        from toto.forum.tasks import forum_cleanup_run
+        from toto.forum.models import ForumCleanupRun, RunStatus
+        from toto.workflows.predefined_tasks import run as run_node
 
         room = self.room()
-        run = cleanup.trigger(triggered_by=TriggeredBy.MANUAL, user=self.staff, channel=room)
+        run = self._queued(room)
         ForumCleanupRun.objects.filter(pk=run.pk).update(status=RunStatus.FAILED)
-        self.assertEqual(forum_cleanup_run(run.pk), {"skipped": True, "run": run.pk})
-        self.assertEqual(forum_cleanup_run(987654), {"skipped": True, "run": 987654})
+        out = run_node("forum_cleanup", {"data": {
+            "cleanup_run_ids": [run.pk, 987654],
+            "workflow_run_id": run.workflow_run_id}})
+        self.assertEqual(out["data"]["finished"], 0)
+        self.assertEqual(out["data"]["ignored"], 2)
 
     def test_the_worker_finishes_a_run_the_page_claimed(self):
         from toto.forum import cleanup
-        from toto.forum.models import TriggeredBy
-        from toto.forum.tasks import forum_cleanup_run
+        from toto.workflows.models import WorkflowRun
+        from toto.workflows.predefined_tasks import run as run_node
 
         room = self.room()
-        run = cleanup.trigger(triggered_by=TriggeredBy.MANUAL, user=self.staff, channel=room)
-        result = forum_cleanup_run(run.pk)
-        self.assertEqual(result["run"], run.pk)
-        self.assertEqual(result["status"], "success")
+        run = self._queued(room)
+        out = run_node("forum_cleanup", WorkflowRun.objects.get(
+            pk=run.workflow_run_id).input_data)
+        self.assertEqual(out["data"]["runs"][0]["run"], run.pk)
+        self.assertEqual(out["data"]["runs"][0]["status"], "success")
         self.assertFalse(cleanup.in_flight(room))
 
     def test_one_room_that_fails_to_expire_does_not_stop_the_next(self):

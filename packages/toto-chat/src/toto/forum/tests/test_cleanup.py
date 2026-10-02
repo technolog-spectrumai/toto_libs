@@ -33,15 +33,13 @@ User = get_user_model()
 _ROOT = tempfile.mkdtemp()
 
 
+# The forum-LEVEL Cleanup desk was removed on 2026-08-29 and came back on
+# 2026-10-02 (the whole-forum Export did not), so its permission, confirmation
+# and wording tests are back below. Every run now goes to the worker as a run
+# of the "Forum cleanup" workflow; `test_cleanup_worker.py` covers that door.
+
+
 @override_settings(FORUM_ATTACHMENT_ROOT=_ROOT, MEDIA_ROOT=_ROOT)
-# The forum-LEVEL Cleanup and Export desks were removed on 2026-08-29 — both
-# operations are per-room now, on each room's Settings tab — so the classes
-# that drove `/forum/cleanup/` and `/forum/export/` went with them. Their
-# coverage did not: `tests/test_room_hygiene.py` asserts the staff gate, the
-# confirmation word, the boundary re-derivation and the archive scoping
-# against the room endpoints that replaced them.
-
-
 class CleanupBase(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -266,6 +264,186 @@ class ScheduleTests(CleanupBase):
         from toto.registry import TASK_MODULES
 
         self.assertIn("toto.forum", TASK_MODULES)
+
+
+def _worker():
+    """A listening worker and a queue that accepts, with nothing running."""
+    from contextlib import ExitStack
+
+    stack = ExitStack()
+    stack.enter_context(mock.patch("toto.celery_utils.celery_available",
+                                   return_value=True))
+    delay = stack.enter_context(mock.patch(
+        "toto.workflows.tasks.start_workflow_run_task.delay"))
+    delay.return_value.id = "t"
+    return stack
+
+
+class PermissionTests(CleanupBase):
+    def test_a_member_is_refused_the_page_and_both_endpoints(self):
+        self.client.force_login(self.member)
+        self.assertEqual(self.client.get(reverse("forum:cleanup")).status_code, 403)
+        self.assertEqual(self.client.post(
+            reverse("forum:cleanup_settings"), {"retention_days": 5}).status_code, 403)
+        with _worker():
+            self.assertEqual(self.client.post(
+                reverse("forum:cleanup_run"), {"confirm": "DELETE"}).status_code, 403)
+        self.assertFalse(ForumCleanupRun.objects.exists())
+
+    def test_anonymous_is_sent_to_log_in(self):
+        response = self.client.get(reverse("forum:cleanup"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("login", response["Location"])
+
+    def test_staff_may_open_it(self):
+        self.client.force_login(self.staff)
+        self.assertEqual(self.client.get(reverse("forum:cleanup")).status_code, 200)
+
+    def test_a_superuser_who_is_not_staff_still_counts(self):
+        """is_superuser does not imply is_staff in Django, and bare is_staff
+        once locked superusers out of the quota desk."""
+        root = User.objects.create_user(username="root", password="x",
+                                        is_superuser=True)
+        self.client.force_login(root)
+        self.assertEqual(self.client.get(reverse("forum:cleanup")).status_code, 200)
+
+    def test_the_run_endpoint_refuses_a_get(self):
+        self.client.force_login(self.staff)
+        self.assertEqual(self.client.get(reverse("forum:cleanup_run")).status_code, 405)
+
+    def test_the_link_is_hidden_from_members_and_shown_to_staff(self):
+        self.client.force_login(self.member)
+        self.assertNotContains(self.client.get(reverse("forum:channel_list")),
+                               reverse("forum:cleanup"))
+        self.client.force_login(self.staff)
+        self.assertContains(self.client.get(reverse("forum:channel_list")),
+                            reverse("forum:cleanup"))
+
+    def test_the_whole_forum_export_did_not_come_back(self):
+        from django.urls import NoReverseMatch
+
+        with self.assertRaises(NoReverseMatch):
+            reverse("forum:export")
+
+
+class ConfirmationTests(CleanupBase):
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.staff)
+
+    def _finish(self):
+        """Run the queued workflow's node, as the worker would."""
+        from toto.workflows.models import WorkflowRun
+        from toto.workflows.predefined_tasks import run
+
+        for workflow_run in WorkflowRun.objects.all():
+            with self.captureOnCommitCallbacks(execute=True):
+                run("forum_cleanup", workflow_run.input_data)
+
+    def test_the_wrong_word_deletes_nothing(self):
+        old = self._message(days_old=40)
+        with _worker():
+            response = self.client.post(reverse("forum:cleanup_run"),
+                                        {"confirm": "yes"}, follow=True)
+        self.assertTrue(ForumMessage.objects.filter(pk=old.pk).exists())
+        self.assertEqual(ForumCleanupRun.objects.count(), 0)
+        self.assertContains(response, "Nothing was deleted")
+
+    def test_confirming_runs_it_on_the_worker(self):
+        old = self._message(days_old=40)
+        with _worker():
+            self.client.post(reverse("forum:cleanup_run"),
+                             {"confirm": "DELETE"})
+        # Nothing is deleted in the request itself.
+        self.assertTrue(ForumMessage.objects.filter(pk=old.pk).exists())
+        run = ForumCleanupRun.objects.get()
+        self.assertEqual(run.triggered_by, TriggeredBy.MANUAL)
+        self.assertEqual(run.triggered_by_user, self.staff)
+        self._finish()
+        self.assertFalse(ForumMessage.objects.filter(pk=old.pk).exists())
+
+    def test_the_run_re_derives_the_boundary_and_ignores_the_page(self):
+        """A cutoff carried in a form field is a cutoff somebody can edit, and
+        a stale one deletes more than the screen said it would."""
+        old = self._message(days_old=40)
+        recent = self._message(days_old=5)
+        with _worker():
+            self.client.post(reverse("forum:cleanup_run"), {
+                "confirm": "DELETE",
+                # A hostile boundary: "delete everything up to now".
+                "boundary": timezone.now().isoformat(),
+                "retention_days": "0",
+            })
+        self._finish()
+        self.assertFalse(ForumMessage.objects.filter(pk=old.pk).exists())
+        self.assertTrue(ForumMessage.objects.filter(pk=recent.pk).exists())
+
+    def test_saving_the_dial_records_who_changed_it(self):
+        self.client.post(reverse("forum:cleanup_settings"),
+                         {"retention_days": 90, "enabled": "on"})
+        policy = ForumRetentionPolicy.current()
+        self.assertEqual(policy.retention_days, 90)
+        self.assertEqual(policy.updated_by, self.staff)
+
+    def test_saving_the_platform_dial_leaves_a_rooms_own_alone(self):
+        own = ForumRetentionPolicy.for_channel(self.room)
+        own.retention_days = 400
+        own.save()
+        self.client.post(reverse("forum:cleanup_settings"),
+                         {"retention_days": 90, "enabled": "on"})
+        own.refresh_from_db()
+        self.assertEqual(own.retention_days, 400)
+        self.assertEqual(ForumRetentionPolicy.default().retention_days, 90)
+
+    def test_an_impossible_retention_is_refused(self):
+        self.client.post(reverse("forum:cleanup_settings"),
+                         {"retention_days": 0, "enabled": "on"})
+        self.assertEqual(ForumRetentionPolicy.current().retention_days, 30)
+
+
+class WordingTests(CleanupBase):
+    """The page must never imply that cleaning up keeps a copy."""
+
+    def test_it_says_the_deletion_is_permanent_and_uncopied(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("forum:cleanup"))
+        self.assertContains(response, "permanently")
+        self.assertContains(response, "keeps no copy")
+        self.assertContains(response, "There are no exceptions")
+
+    def test_it_never_calls_itself_a_backup_or_an_archive(self):
+        self.client.force_login(self.staff)
+        body = self.client.get(reverse("forum:cleanup")).content.decode().lower()
+        self.assertNotIn("backup", body)
+        # "no archive and no recycle bin" is the one legitimate use.
+        self.assertNotIn("archived", body)
+
+    def test_it_shows_the_boundary_and_what_would_go(self):
+        self._message(days_old=40)
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("forum:cleanup"))
+        self.assertEqual(response.context["preview"]["messages"], 1)
+        self.assertContains(response, "Deletion boundary")
+
+    def test_it_says_rooms_with_their_own_setting_run_too(self):
+        own = ForumRetentionPolicy.for_channel(self.room)
+        own.enabled = True
+        own.save()
+        self.client.force_login(self.staff)
+        with _worker():
+            response = self.client.get(reverse("forum:cleanup"))
+        self.assertContains(response, 'data-testid="cleanup-own-rooms"')
+
+    def test_it_lists_forum_wide_runs_only(self):
+        wide = cleanup.trigger(triggered_by=TriggeredBy.MANUAL)
+        cleanup.fail_run(wide, "x")
+        room = cleanup.trigger(triggered_by=TriggeredBy.MANUAL,
+                               channel=self.room)
+        cleanup.fail_run(room, "y")
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("forum:cleanup"))
+        self.assertEqual([r.pk for r in response.context["recent_runs"]],
+                         [wide.pk])
 
 
 class ReservedSlugTests(CleanupBase):

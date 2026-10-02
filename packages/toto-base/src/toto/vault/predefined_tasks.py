@@ -52,7 +52,7 @@ def vault_encrypt_file(input_data: dict) -> dict:
     )
 
 
-@register("vault_refresh_remote_bucket")
+@register("vault_refresh_remote_bucket", dispatch_only=True)
 def vault_refresh_remote_bucket(input_data: dict) -> dict:
     """Walk a paired host's bucket listing and bring the metadata stubs up to
     date. Expects input_data = {"data": {"run_id": <BucketRefreshRun pk>}}."""
@@ -71,7 +71,7 @@ def vault_refresh_remote_bucket(input_data: dict) -> dict:
     return {"data": {"run_id": run_id, "status": run.status}}
 
 
-@register("vault_transfer_files")
+@register("vault_transfer_files", dispatch_only=True)
 def vault_transfer_files(input_data: dict) -> dict:
     """Copy a frozen selection between buckets, resuming at the cursor.
     Expects input_data = {"data": {"run_id": <TransferRun pk>}}."""

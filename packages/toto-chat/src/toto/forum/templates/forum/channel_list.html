@@ -16,11 +16,9 @@
         <a href="{% url 'core:dashboard' %}" class="text-sm underline hover:opacity-80">{% trans "Dashboard" %}</a>
         <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">{% trans "Forum" %}</h1>
         <p class="max-w-2xl text-sm opacity-70">{% trans "Active channels" %}</p>
-        {% comment %}No forum-level controls here since 2026-08-29. Cleanup and
-           Export were staff buttons onto whole-forum desks; both operations
-           are per-room now, on each room's own Settings tab, and a blunter
-           duplicate beside the room list was the thing most likely to be
-           pressed by mistake.{% endcomment %}
+        {% comment %}Staff only: the platform's Cleanup desk (back on
+           2026-10-02). The whole-forum Export stays gone.{% endcomment %}
+        {% include "forum/_forum_nav.html" %}
       </div>
 
       <div class="flex w-full flex-col gap-2 md:w-[26rem]">

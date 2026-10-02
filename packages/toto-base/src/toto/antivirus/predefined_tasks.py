@@ -10,7 +10,7 @@ from toto.workflows.predefined_tasks import register
 from .models import RunStatus
 
 
-@register("antivirus_scan")
+@register("antivirus_scan", dispatch_only=True)
 def antivirus_scan(input_data: dict) -> dict:
     from .runner import execute_run
 

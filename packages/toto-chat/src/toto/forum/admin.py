@@ -43,8 +43,9 @@ class ForumMemberAdmin(admin.ModelAdmin):
 class ForumMessageAdmin(admin.ModelAdmin):
     """Messages are plaintext and permanent, so they are inspectable here.
 
-    A staff-set retention period removes older messages permanently;
-    see the Cleanup page and `toto.forum.cleanup`.
+    A staff-set retention period removes older messages permanently: the
+    platform's on the forum's Cleanup page (/forum/cleanup/), a room's own on
+    that room's Settings tab; see `toto.forum.cleanup`.
     """
 
     list_display = ("channel", "sender_name", "msg_type", "created_at", "edited_at", "deleted_at")
@@ -102,7 +103,11 @@ class PollBallotAdmin(admin.ModelAdmin):
 
 @admin.register(ForumRetentionPolicy)
 class ForumRetentionPolicyAdmin(admin.ModelAdmin):
-    """One row. The Cleanup page is where staff normally edit it."""
+    """The platform row plus one per room that set its own.
+
+    Staff normally edit the platform row on the forum's Cleanup page and a
+    room's row on that room's Settings tab.
+    """
 
     list_display = ("retention_days", "enabled", "last_run_at",
                     "last_run_status")
@@ -125,8 +130,9 @@ class ForumCleanupRunAdmin(admin.ModelAdmin):
     whoever destroyed it.
     """
 
-    list_display = ("started_at", "status", "triggered_by", "boundary",
-                    "messages_deleted", "attachments_deleted", "bytes_freed")
+    list_display = ("started_at", "status", "triggered_by", "channel_name",
+                    "boundary", "messages_deleted", "attachments_deleted",
+                    "bytes_freed", "workflow_run_id")
     list_filter = ("status", "triggered_by")
     date_hierarchy = "started_at"
     readonly_fields = tuple(f.name for f in ForumCleanupRun._meta.fields)

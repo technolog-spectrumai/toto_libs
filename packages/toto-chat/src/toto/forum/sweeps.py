@@ -13,7 +13,7 @@ every future cleanup until something closed its row. This is that something.
 
 from toto.quota.sweeps import StuckRunPolicy, register
 
-#: Six hours: far beyond the task's own 30-minute hard limit plus any queue
+#: Six hours: far beyond the worker's 30-minute hard limit plus any queue
 #: wait, so a row this old is a lie rather than a slow night.
 register(StuckRunPolicy(
     model_label="forum.ForumCleanupRun",
@@ -22,4 +22,7 @@ register(StuckRunPolicy(
     cutoff_seconds=21600,
     reference_fields=("started_at",),
     status_field="status",
+    # Every queued cleanup carries the workflow task's id (2026-10-02); an
+    # expiry, which runs inside its own task, has none and is just closed.
+    task_id_field="task_id",
 ))

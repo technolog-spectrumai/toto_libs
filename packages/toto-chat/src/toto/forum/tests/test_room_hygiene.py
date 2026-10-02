@@ -632,14 +632,31 @@ class SettingsTabTests(RoomHygieneBase):
         self.assertTrue(ForumMessage.objects.filter(pk=old.pk).exists())
         self.assertFalse(ForumCleanupRun.objects.exists())
 
+    def _press_and_finish(self, data):
+        """Press the room's button with a worker listening, then run the
+        queued workflow's node the way the worker would. Since 2026-10-02
+        there is no inline run in the request to lean on."""
+        from unittest import mock
+
+        from toto.workflows.models import WorkflowRun
+        from toto.workflows.predefined_tasks import run
+
+        self.client.force_login(self.staff)
+        with mock.patch("toto.celery_utils.celery_available",
+                        return_value=True), \
+             mock.patch("toto.workflows.tasks.start_workflow_run_task.delay") as delay:
+            delay.return_value.id = "t"
+            self.client.post(
+                reverse("forum:room_cleanup_run", args=[self.alpha.slug]),
+                data)
+        for workflow_run in WorkflowRun.objects.all():
+            with self.captureOnCommitCallbacks(execute=True):
+                run("forum_cleanup", workflow_run.input_data)
+
     def test_the_run_button_sweeps_only_this_room(self):
         old_alpha = self._message(self.alpha, days_old=90)
         old_beta = self._message(self.beta, days_old=90)
-        self.client.force_login(self.staff)
-        with self.captureOnCommitCallbacks(execute=True):
-            self.client.post(
-                reverse("forum:room_cleanup_run", args=[self.alpha.slug]),
-                {"confirm": "DELETE"})
+        self._press_and_finish({"confirm": "DELETE"})
         self.assertFalse(ForumMessage.objects.filter(pk=old_alpha.pk).exists())
         self.assertTrue(ForumMessage.objects.filter(pk=old_beta.pk).exists())
 
@@ -647,12 +664,9 @@ class SettingsTabTests(RoomHygieneBase):
         """Nothing the preview put on the page is trusted — a cutoff in a form
         field is a cutoff somebody can edit."""
         recent = self._message(self.alpha, days_old=1)
-        self.client.force_login(self.staff)
-        with self.captureOnCommitCallbacks(execute=True):
-            self.client.post(
-                reverse("forum:room_cleanup_run", args=[self.alpha.slug]),
-                {"confirm": "DELETE",
-                 "boundary": (timezone.now() + timedelta(days=1)).isoformat()})
+        self._press_and_finish(
+            {"confirm": "DELETE",
+             "boundary": (timezone.now() + timedelta(days=1)).isoformat()})
         self.assertTrue(ForumMessage.objects.filter(pk=recent.pk).exists())
 
     def test_the_archive_button_streams_this_rooms_zip(self):

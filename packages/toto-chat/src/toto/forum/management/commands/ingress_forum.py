@@ -13,6 +13,19 @@ class Command(IngressCommand):
     help = "Seed sample Forum channels and member rosters"
 
     def process(self):
+        # Before the --full check: the "Forum cleanup" workflow is not demo
+        # data. Seeding it here means the Workflows tab shows it from the first
+        # deploy rather than from the first night's cleanup.
+        # `ensure_cleanup_workflow` is the same get-or-create the dispatcher
+        # makes, so this only saves a lookup later.
+        from django.apps import apps
+
+        if apps.is_installed("toto.workflows"):
+            from toto.forum.workflow import ensure_cleanup_workflow
+
+            workflow = ensure_cleanup_workflow()
+            self.stdout.write(self.style.SUCCESS(
+                f"Forum cleanup workflow present: {workflow.slug}"))
 
         if not self.full:
             return

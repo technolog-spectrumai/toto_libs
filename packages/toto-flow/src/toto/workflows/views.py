@@ -287,6 +287,22 @@ def run_list(request, workflow_id):
         qs = workflow.runs.order_by("-created_at")
         return Response(WorkflowRunSerializer(qs, many=True).data)
 
+    # A workflow carrying a dispatch-only node is started by its app's own
+    # dispatcher and never through this door — by nobody, staff included.
+    # Such a node trusts its input to name records somebody already claimed
+    # (a forum cleanup, a scan, a transfer); input typed in here would let a
+    # person replay, or point it at, another person's record.
+    from django.utils.translation import gettext as _
+
+    from .predefined_tasks import dispatch_only_tasks
+
+    if dispatch_only_tasks(workflow):
+        return Response(
+            {"detail": _("This workflow is started by the platform itself, "
+                         "never by hand. Its runs are listed here so you "
+                         "can see them.")},
+            status=status.HTTP_403_FORBIDDEN)
+
     ser = StartRunSerializer(data=request.data)
     ser.is_valid(raise_exception=True)
 

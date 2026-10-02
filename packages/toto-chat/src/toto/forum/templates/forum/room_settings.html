@@ -132,6 +132,12 @@ behind it re-checks; neither is trusted alone.{% endcomment %}
     {% if in_flight %}
       <p class="text-sm opacity-70"><i class="fa-solid fa-spinner"></i>
         {% trans "A cleanup covering this room is running. This page shows the result when it finishes." %}</p>
+    {% elif not worker_available %}
+      {% comment %}Cleanup runs on the worker only (2026-10-02) — there is no
+      inline run in the request to fall back on, so no button either.{% endcomment %}
+      <p class="text-sm" data-testid="cleanup-needs-worker"
+         :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+        {% trans "Cleanup runs on the background worker, and no worker is listening. Start one, and the button comes back." %}</p>
     {% elif preview.messages == 0 and preview.polls == 0 %}
       <p class="text-sm opacity-70">{% trans "Nothing here is old enough to remove." %}</p>
     {% else %}
@@ -178,7 +184,8 @@ behind it re-checks; neither is trusted alone.{% endcomment %}
             <th scope="col" class="py-2 pr-4">{% trans "Started" %}</th>
             <th scope="col" class="py-2 pr-4">{% trans "How" %}</th>
             <th scope="col" class="py-2 pr-4">{% trans "Result" %}</th>
-            <th scope="col" class="py-2">{% trans "Removed" %}</th>
+            <th scope="col" class="py-2 pr-4">{% trans "Removed" %}</th>
+            <th scope="col" class="py-2">{% trans "Workflow" %}</th>
           </tr></thead>
           <tbody>
             {% for run in recent_runs %}
@@ -186,7 +193,8 @@ behind it re-checks; neither is trusted alone.{% endcomment %}
                 <td class="py-2 pr-4 whitespace-nowrap">{{ run.started_at|date:"Y-m-d H:i" }}</td>
                 <td class="py-2 pr-4">{{ run.get_triggered_by_display }}</td>
                 <td class="py-2 pr-4">{{ run.get_status_display }}</td>
-                <td class="py-2">{% blocktrans with n=run.messages_deleted size=run.bytes_freed|filesizeformat %}{{ n }} messages · {{ size }}{% endblocktrans %}</td>
+                <td class="py-2 pr-4">{% blocktrans with n=run.messages_deleted size=run.bytes_freed|filesizeformat %}{{ n }} messages · {{ size }}{% endblocktrans %}</td>
+                <td class="py-2">{% if run.workflow_url %}<a href="{{ run.workflow_url }}" class="underline hover:opacity-80">{% blocktrans with id=run.workflow_run_id %}Run #{{ id }}{% endblocktrans %}</a>{% else %}—{% endif %}</td>
               </tr>
             {% endfor %}
           </tbody>

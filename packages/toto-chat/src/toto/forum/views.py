@@ -683,22 +683,160 @@ def room_stats(request, slug):
 
 
 # ---------------------------------------------------------------------------
-# Room settings — the fourth tab, and the whole of forum hygiene.
+# Cleanup — forum-level, staff only (/forum/cleanup/).
 #
-# There were forum-LEVEL Cleanup and Export desks until 2026-08-29, and they
-# are gone rather than kept beside this: a retention period is a property of a
-# conversation, not of a server, and an archive somebody can hand to the people
-# in a room must not contain every other room. Once each room could do both for
-# itself, the wide desks offered only a blunter version of the same two
-# operations plus one dial nobody had asked to keep.
+# Removed on 2026-08-29 and back on 2026-10-02 at the owner's request ("forum
+# manual cleanup button and task"). It is the PLATFORM's desk: the retention
+# dial every room follows until it sets its own, what that dial would remove,
+# and a "Run cleanup now" that runs what the night runs — each room with its
+# own enabled setting at its own boundary, the platform setting for every
+# other room. Rooms keep their own desk on their Settings tab; neither replaces
+# the other. The whole-forum EXPORT did not come back: an archive is handed to
+# the people in a room, and one holding every room is not.
 #
-# WHAT WENT WITH THEM, so nobody looks for it: the whole-forum ZIP (archive
-# room by room instead) and the UI for the PLATFORM DEFAULT retention period.
-# `ForumRetentionPolicy.default()` still exists and still governs every room
-# that has not set its own — rooms resolve through it — but it is now editable
-# only in the Django admin. Its shipped value is 30 days with `enabled` FALSE,
-# so the practical effect is that nothing expires anywhere until a room turns
-# it on for itself, which is the safe direction.
+# Every run goes to the worker, as one run of the "Forum cleanup" workflow
+# (`dispatch.py`). There is no inline run in the request any more: with no
+# worker listening, nothing is claimed and the page says so.
+#
+# STAFF ONLY, checked in every view here and not merely hidden in the list.
+# ---------------------------------------------------------------------------
+
+
+def _workflow_run_url(workflow_run_id):
+    """The Workflows tab's page for a run, or "" — when there is no run, the
+    workflow engine is not installed, or its routes are not mounted."""
+    from django.apps import apps
+    from django.urls import NoReverseMatch
+
+    if not workflow_run_id or not apps.is_installed("toto.workflows"):
+        return ""
+    try:
+        return reverse("workflows:workflow_run_detail", args=[workflow_run_id])
+    except NoReverseMatch:
+        return ""
+
+
+def _with_workflow_links(runs):
+    """The runs as a list, each carrying `workflow_url` for the template."""
+    runs = list(runs)
+    for run in runs:
+        run.workflow_url = _workflow_run_url(run.workflow_run_id)
+    return runs
+
+
+@login_required
+@require_safe
+def cleanup_page(request):
+    """The platform's retention dial, what it would remove, and what it did."""
+    from django.shortcuts import render
+
+    from toto.celery_utils import celery_available
+
+    from . import cleanup as cleanup_engine
+    from .forms import ConfirmCleanupForm, RetentionSettingsForm
+    from .models import ForumCleanupRun, ForumRetentionPolicy
+
+    permissions.require_operator(request)
+    policy = ForumRetentionPolicy.default()
+    # Forum-wide runs only. A room's sweep lives on its Settings tab; shown
+    # here, in a table with no room column, it would read as a forum-wide run
+    # that somehow removed nine messages. `channel_name=""` keeps out the
+    # sweeps of rooms deleted since (their FK went NULL, their name stayed).
+    wide = ForumCleanupRun.objects.filter(channel__isnull=True,
+                                          channel_name="")
+    recent = _with_workflow_links(wide[:10])
+    own_rooms = (ForumRetentionPolicy.objects
+                 .filter(channel__isnull=False, enabled=True).count())
+
+    context = {
+        "policy": policy,
+        "settings_form": RetentionSettingsForm(instance=policy),
+        "confirm_form": ConfirmCleanupForm(),
+        "boundary": policy.boundary(),
+        "preview": cleanup_engine.preview(policy),
+        "rooms_with_own_rule": own_rooms,
+        "last_run": recent[0] if recent else None,
+        "recent_runs": recent,
+        "next_run": cleanup_engine.next_scheduled_run(),
+        # Asked once and said out loud: without a worker the schedule never
+        # fires and the button has nowhere to send the work.
+        "worker_available": celery_available(),
+        "in_flight": cleanup_engine.in_flight(),
+        "page_title": "Forum cleanup",
+    }
+    return render(request, "forum/cleanup.html",
+                  PageProcessor().decorate(context, request))
+
+
+@login_required
+@require_POST
+def cleanup_settings(request):
+    """Save the platform dial. Staff only, re-checked here and not merely
+    hidden. Rooms with a setting of their own are not moved by it."""
+    from .forms import RetentionSettingsForm
+    from .models import ForumRetentionPolicy
+
+    permissions.require_operator(request)
+    policy = ForumRetentionPolicy.default()
+    form = RetentionSettingsForm(request.POST, instance=policy)
+    if form.is_valid():
+        saved = form.save(commit=False)
+        saved.channel = None
+        saved.updated_by = request.user
+        saved.save()
+        messages.success(request, _("Retention settings saved."))
+    else:
+        messages.error(request, "; ".join(
+            m for errors in form.errors.values() for m in errors))
+    return redirect("forum:cleanup")
+
+
+@login_required
+@require_POST
+def cleanup_run(request):
+    """Run what the night runs, now, after an explicit confirmation.
+
+    Every boundary is RE-DERIVED from the policies and the clock when the
+    passes are claimed. Nothing the preview put on the page is trusted: a
+    form field carrying a cutoff would be a cutoff somebody could edit, and a
+    stale one would delete more than the screen said it would.
+    """
+    from . import cleanup as cleanup_engine
+    from . import dispatch
+    from .forms import ConfirmCleanupForm
+
+    permissions.require_operator(request)
+    form = ConfirmCleanupForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, _("Nothing was deleted — the confirmation "
+                                  "did not match."))
+        return redirect("forum:cleanup")
+
+    try:
+        runs = dispatch.start_forum(request.user)
+    except (dispatch.CannotQueue, cleanup_engine.CleanupInProgress) as exc:
+        messages.error(request, str(exc))
+        return redirect("forum:cleanup")
+
+    if runs:
+        messages.success(request, _("Cleanup started. This page shows the "
+                                    "result when it finishes."))
+    return redirect("forum:cleanup")
+
+
+# ---------------------------------------------------------------------------
+# Room settings — the room's own half of forum hygiene.
+#
+# The forum-level Cleanup desk above is NOT replaced by this: it is the
+# platform view and sets the default every room follows until it says
+# otherwise. This tab is the same operation SCOPED TO ONE ROOM — a retention
+# period is a property of a conversation as much as of a server. The archive
+# is per room only (the Archive tab); the whole-forum export was removed on
+# 2026-08-29 and stays removed.
+#
+# The platform default retention period is editable on /forum/cleanup/ (and
+# in the Django admin). It ships at 365 days with `enabled` FALSE, so nothing
+# expires anywhere until staff turn a dial on — the safe direction.
 #
 # STAFF ONLY, checked in every one of these views and not merely hidden in the
 # tab strip. `require_operator` answers 403 rather than 404 for the reason it
@@ -734,7 +872,8 @@ def _room_hygiene_context(request, channel):
         "boundary": governing.boundary(),
         "preview": cleanup_engine.preview(governing, channel=channel),
         "last_run": ForumCleanupRun.objects.filter(channel=channel).first(),
-        "recent_runs": ForumCleanupRun.objects.filter(channel=channel)[:10],
+        "recent_runs": _with_workflow_links(
+            ForumCleanupRun.objects.filter(channel=channel)[:10]),
         "next_run": cleanup_engine.next_scheduled_run(),
         "worker_available": celery_available(),
         "in_flight": cleanup_engine.in_flight(channel),
@@ -860,12 +999,14 @@ def room_cleanup_run(request, slug):
     The boundary is re-derived from the governing policy and the clock, never
     read from the page — the forum-wide endpoint carries the same rule and the
     same reason: a cutoff in a form field is a cutoff somebody can edit.
-    """
-    from toto.celery_utils import celery_available
 
+    On the worker only, as one run of the "Forum cleanup" workflow started by
+    this staff member. With no worker listening nothing is claimed, and the
+    page says so instead of deleting inside the request.
+    """
     from . import cleanup as cleanup_engine
+    from . import dispatch
     from .forms import ConfirmCleanupForm
-    from .models import TriggeredBy
 
     channel = get_object_or_404(ForumChannel, slug=slug)
     permissions.require_operator(request)
@@ -877,31 +1018,13 @@ def room_cleanup_run(request, slug):
         return redirect("forum:room_settings", slug=channel.slug)
 
     try:
-        run = cleanup_engine.trigger(triggered_by=TriggeredBy.MANUAL,
-                                     user=request.user, channel=channel)
-    except cleanup_engine.CleanupInProgress as exc:
+        dispatch.start_room(channel, request.user)
+    except (dispatch.CannotQueue, cleanup_engine.CleanupInProgress) as exc:
         messages.error(request, str(exc))
         return redirect("forum:room_settings", slug=channel.slug)
 
-    if celery_available():
-        from .tasks import forum_cleanup_run
-
-        forum_cleanup_run.delay(run.pk)
-        messages.success(request, _("Cleanup started. This page shows the "
-                                    "result when it finishes."))
-        return redirect("forum:room_settings", slug=channel.slug)
-
-    cleanup_engine.run_cleanup(run, deadline_seconds=25)
-    run.refresh_from_db()
-    if run.status == "partial":
-        messages.warning(request, _(
-            "Removed %(n)s message(s) before running out of time. Press Run "
-            "cleanup now again, or start a worker.") % {
-                "n": run.messages_deleted})
-    else:
-        messages.success(request, _(
-            "Removed %(n)s message(s) and %(f)s file(s), permanently.") % {
-                "n": run.messages_deleted, "f": run.attachments_deleted})
+    messages.success(request, _("Cleanup started. This page shows the "
+                                "result when it finishes."))
     return redirect("forum:room_settings", slug=channel.slug)
 
 

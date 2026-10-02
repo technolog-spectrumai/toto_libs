@@ -144,11 +144,13 @@ def is_operator(user) -> bool:
 def require_operator(request):
     """403 for anybody who is not staff.
 
-    403 and not 404: the 404 rule protects a URL that contains a secret — a
-    room slug somebody could enumerate. ``/forum/cleanup/`` is a fixed path
-    and knowing it exists discloses nothing. The link to it is hidden from
-    non-staff as well, because a page that always answers 403 is worse than
-    no link at all.
+    The gate of the forum's staff desks: ``/forum/cleanup/`` (the platform's
+    retention, back since 2026-10-02) and each room's Settings and Archive
+    tabs. 403 and not 404: the 404 rule protects a URL that contains a secret
+    — a room slug somebody could enumerate. ``/forum/cleanup/`` is a fixed
+    path and knowing it exists discloses nothing, and a room tab's slug is
+    one the caller already knows. The links are hidden from non-staff as
+    well, because a page that always answers 403 is worse than no link.
     """
     from django.core.exceptions import PermissionDenied
     from django.utils.translation import gettext as _

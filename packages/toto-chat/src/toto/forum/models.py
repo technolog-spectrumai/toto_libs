@@ -761,6 +761,17 @@ class ForumCleanupRun(models.Model):
     started_at = models.DateTimeField(default=timezone.now, db_index=True)
     finished_at = models.DateTimeField(null=True, blank=True)
 
+    #: The "Forum cleanup" workflow run that carries this row (2026-10-02).
+    #: A plain id rather than a FK, as antivirus and vault keep theirs: this
+    #: app must not need toto.workflows installed to migrate. Written by
+    #: `dispatch.py` BEFORE the task is queued — the workflow's node finishes
+    #: only rows carrying its own run's id. Empty for an expiry, which runs in
+    #: its own task.
+    workflow_run_id = models.PositiveBigIntegerField(null=True, blank=True,
+                                                     db_index=True)
+    #: The celery task id, for the stuck-run sweeper to revoke.
+    task_id = models.CharField(max_length=255, blank=True)
+
     class Meta:
         ordering = ["-started_at"]
         indexes = [models.Index(fields=["status", "started_at"])]

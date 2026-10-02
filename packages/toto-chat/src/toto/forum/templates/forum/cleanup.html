@@ -1,0 +1,211 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% comment %}The platform's cleanup desk (removed 2026-08-29, back 2026-10-02).
+
+Its job is to be unmistakable that it destroys things. It must never imply that
+cleaning up keeps a copy of anything: there is none, and a room's archive is a
+separate, optional act somebody takes on that room's Archive tab.
+
+Every run happens on the worker, as a run of the "Forum cleanup" workflow; the
+page never deletes inside the request, and without a worker it says so instead
+of offering the button.
+{% endcomment %}
+
+{% block title %}{% trans "Forum cleanup" %} - {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<main :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+      x-data="{ confirming: false }"
+      @keydown.escape.window="confirming = false"
+      class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-4xl space-y-6">
+
+    <div>
+      <a href="{% url 'forum:channel_list' %}" class="text-sm underline hover:opacity-80">{% trans "Forum" %}</a>
+      <h1 class="mt-1 text-2xl font-bold"><i class="fa-solid fa-broom opacity-70"></i>
+        {% trans "Cleanup" %}</h1>
+      <p class="mt-1 text-sm opacity-70">
+        {% trans "How long this forum keeps what was said, and what removing the rest takes away." %}</p>
+      <p class="mt-1 text-sm opacity-70">
+        {% trans "This is the platform setting. Every room follows it until staff give the room a setting of its own on its Settings tab." %}</p>
+    </div>
+
+    {% comment %}The warning first, before any control that acts on it.{% endcomment %}
+    <section role="alert" class="rounded-lg border-2 p-5"
+             :class="darkMode ? 'border-warn-dark' : 'border-warn-light'">
+      <h2 class="font-bold"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+        {% trans "This deletes conversations permanently." %}</h2>
+      <ul class="mt-2 space-y-1 text-sm opacity-85">
+        <li>{% trans "Messages older than the retention period are removed from the database, and the images and voice recordings posted with them are deleted from disk." %}</li>
+        <li>{% trans "There is no undo, no archive and no recycle bin. Cleanup keeps no copy of anything it removes." %}</li>
+        <li>{% trans "There are no exceptions. Nothing can be marked important enough to survive." %}</li>
+        <li>{% trans "Polls older than the boundary are deleted too — open or closed — together with every vote cast in them." %}</li>
+        <li>{% trans "Rooms and members are left alone. A room with a retention setting of its own follows that setting instead, at its own boundary; a room whose own setting is off loses nothing." %}</li>
+        <li>{% trans "Anyone with the room open keeps seeing removed messages until they reload the page." %}</li>
+      </ul>
+    </section>
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5">
+      <h2 class="mb-3 font-bold">{% trans "Retention" %}</h2>
+      <form method="post" action="{% url 'forum:cleanup_settings' %}" class="space-y-4">
+        {% csrf_token %}
+        <label class="flex items-start gap-3 text-sm">
+          {{ settings_form.enabled }}
+          <span>
+            <span class="font-semibold">{{ settings_form.enabled.label }}</span>
+            <span class="block text-xs opacity-65">
+              {% trans "While this is off, nothing is ever removed on a schedule. You can still run a cleanup by hand below." %}</span>
+          </span>
+        </label>
+        <label class="block text-sm">
+          <span class="mb-1 block font-semibold">{{ settings_form.retention_days.label }}</span>
+          <span class="flex items-center gap-2">
+            {{ settings_form.retention_days }}
+            <span class="opacity-70">{% trans "days" %}</span>
+          </span>
+        </label>
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-white'"
+                class="rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90">
+          {% trans "Save" %}</button>
+      </form>
+    </section>
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5">
+      <h2 class="mb-3 font-bold">{% trans "State" %}</h2>
+      <dl class="grid gap-3 sm:grid-cols-2">
+        <div>
+          <dt class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Deletion boundary" %}</dt>
+          <dd class="text-sm">{% blocktrans with when=boundary|date:"Y-m-d H:i" %}Everything sent before {{ when }}{% endblocktrans %}</dd>
+        </div>
+        <div>
+          <dt class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Last cleanup" %}</dt>
+          <dd class="text-sm">
+            {% if last_run %}{{ last_run.finished_at|default:last_run.started_at|date:"Y-m-d H:i" }}
+              — {{ last_run.get_status_display }}
+            {% else %}{% trans "Never run." %}{% endif %}</dd>
+        </div>
+        <div>
+          <dt class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Next scheduled cleanup" %}</dt>
+          <dd class="text-sm">
+            {% if not policy.enabled %}{% trans "None — automatic cleanup is off." %}
+            {% elif not worker_available %}
+              {% comment %}Honest rather than reassuring: beat is a static
+              settings dict with no worker to fire it, so a time here would be
+              a promise nothing keeps.{% endcomment %}
+              <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+                {% trans "No background worker is running, so the schedule will not fire." %}</span>
+            {% elif next_run %}{{ next_run|date:"Y-m-d H:i" }}
+            {% else %}{% trans "No schedule is configured on this server." %}{% endif %}</dd>
+        </div>
+        <div>
+          <dt class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Latest result" %}</dt>
+          <dd class="text-sm">
+            {% if last_run %}
+              {% blocktrans with n=last_run.messages_deleted f=last_run.attachments_deleted size=last_run.bytes_freed|filesizeformat %}{{ n }} messages, {{ f }} files, {{ size }}{% endblocktrans %}
+              {% if last_run.error %}<span class="block text-xs" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ last_run.error }}</span>{% endif %}
+            {% else %}—{% endif %}</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5">
+      <h2 class="mb-1 font-bold">{% trans "Run cleanup now" %}</h2>
+      <p class="mb-3 text-sm opacity-75">
+        {% blocktrans with when=preview.boundary|date:"Y-m-d H:i" %}Running now would permanently remove everything sent before {{ when }}:{% endblocktrans %}
+      </p>
+      <ul class="mb-4 space-y-1 text-sm">
+        <li><strong>{{ preview.messages }}</strong> {% trans "messages" %}
+          <span class="opacity-60">{% blocktrans with total=preview.total_messages %}of {{ total }} in the forum{% endblocktrans %}</span></li>
+        <li><strong>{{ preview.attachments }}</strong> {% trans "files" %},
+          <strong>{{ preview.bytes|filesizeformat }}</strong></li>
+        <li><strong>{{ preview.polls }}</strong> {% trans "polls" %},
+          <strong>{{ preview.ballots }}</strong> {% trans "votes" %}</li>
+        <li>{% blocktrans with n=preview.channels total=preview.total_channels %}across {{ n }} of {{ total }} rooms{% endblocktrans %}</li>
+      </ul>
+      {% if rooms_with_own_rule %}
+        <p class="mb-4 text-sm opacity-75" data-testid="cleanup-own-rooms">
+          {% blocktrans count counter=rooms_with_own_rule %}The same run also cleans {{ counter }} room with its own setting switched on, by that room's setting. It is not counted above.{% plural %}The same run also cleans {{ counter }} rooms with their own setting switched on, each by its own setting. They are not counted above.{% endblocktrans %}</p>
+      {% endif %}
+
+      {% if in_flight %}
+        <p class="text-sm opacity-70"><i class="fa-solid fa-spinner"></i>
+          {% trans "A cleanup is running. This page shows the result when it finishes." %}</p>
+      {% elif not worker_available %}
+        {% comment %}No inline run: cleanup happens on the worker only, so
+        without one there is nothing to press.{% endcomment %}
+        <p class="text-sm" data-testid="cleanup-needs-worker"
+           :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+          {% trans "Cleanup runs on the background worker, and no worker is listening. Start one, and the button comes back." %}</p>
+      {% elif preview.messages == 0 and preview.polls == 0 and not rooms_with_own_rule %}
+        <p class="text-sm opacity-70">{% trans "Nothing is old enough to remove." %}</p>
+      {% else %}
+        <button type="button" @click="confirming = true"
+                :class="darkMode ? 'bg-warn-dark' : 'bg-warn-light'"
+                class="rounded-lg px-4 py-2 text-sm font-bold text-white hover:opacity-90">
+          {% trans "Run cleanup now" %}</button>
+      {% endif %}
+
+      <div x-show="confirming" x-cloak
+           class="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4">
+        <form method="post" action="{% url 'forum:cleanup_run' %}" @click.outside="confirming = false"
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+              class="w-full max-w-lg rounded-lg border p-5">
+          {% csrf_token %}
+          <h3 class="font-bold">{% trans "Delete permanently?" %}</h3>
+          <p class="mt-2 text-sm opacity-80">
+            {% blocktrans with n=preview.messages f=preview.attachments when=preview.boundary|date:"Y-m-d H:i" %}{{ n }} messages and {{ f }} files, everything sent before {{ when }}. This cannot be undone, and no copy is kept.{% endblocktrans %}
+          </p>
+          {% if rooms_with_own_rule %}
+            <p class="mt-2 text-sm opacity-80">{% trans "Rooms with their own setting switched on are cleaned in the same run, each by its own setting." %}</p>
+          {% endif %}
+          <label class="mt-4 block text-sm">
+            <span class="mb-1 block font-semibold">{{ confirm_form.confirm.label }}</span>
+            {{ confirm_form.confirm }}
+          </label>
+          <div class="mt-4 flex justify-end gap-2">
+            <button type="button" @click="confirming = false"
+                    class="rounded px-3 py-1.5 text-sm">{% trans "Cancel" %}</button>
+            <button type="submit"
+                    :class="darkMode ? 'bg-warn-dark' : 'bg-warn-light'"
+                    class="rounded px-3 py-1.5 text-sm font-bold text-white">
+              {% trans "Delete permanently" %}</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    {% if recent_runs %}
+      <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-lg border p-5">
+        <h2 class="mb-3 font-bold">{% trans "Previous cleanups" %}</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead><tr class="border-b border-current/15 text-left text-xs uppercase tracking-wide opacity-60">
+              <th scope="col" class="py-2 pr-4">{% trans "Started" %}</th>
+              <th scope="col" class="py-2 pr-4">{% trans "How" %}</th>
+              <th scope="col" class="py-2 pr-4">{% trans "Result" %}</th>
+              <th scope="col" class="py-2 pr-4">{% trans "Removed" %}</th>
+              <th scope="col" class="py-2">{% trans "Workflow" %}</th>
+            </tr></thead>
+            <tbody>
+              {% for run in recent_runs %}
+                <tr class="border-b border-current/5">
+                  <td class="py-2 pr-4 whitespace-nowrap">{{ run.started_at|date:"Y-m-d H:i" }}</td>
+                  <td class="py-2 pr-4">{{ run.get_triggered_by_display }}</td>
+                  <td class="py-2 pr-4">{{ run.get_status_display }}</td>
+                  <td class="py-2 pr-4">{% blocktrans with n=run.messages_deleted size=run.bytes_freed|filesizeformat %}{{ n }} messages · {{ size }}{% endblocktrans %}</td>
+                  <td class="py-2">{% if run.workflow_url %}<a href="{{ run.workflow_url }}" class="underline hover:opacity-80">{% blocktrans with id=run.workflow_run_id %}Run #{{ id }}{% endblocktrans %}</a>{% else %}—{% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}

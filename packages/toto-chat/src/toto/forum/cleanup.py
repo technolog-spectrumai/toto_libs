@@ -1,9 +1,13 @@
 """Removing old conversations, permanently.
 
-Imports no celery. `tasks.py` is a thin wrapper over `run_scheduled()`, so a
-host with no worker can call the same code straight from a request — the tax
-sweep's doctrine, and the reason "Run cleanup now" works on a box that never
-started a worker.
+Imports no celery, and runs on the worker only (2026-10-02). Every cleanup —
+the nightly one, the forum-wide "Run cleanup now" and each room's — is CLAIMED
+here in the web request or the beat task (`trigger`, `claim_passes`), handed
+to the worker by `dispatch.py` as one run of the "Forum cleanup" workflow, and
+FINISHED there by the workflow's node (`predefined_tasks.py` → `finish`). A
+host with no worker gets a sentence instead of a cleanup; there is no inline
+run in a web request any more, so nothing destructive is ever cut off by a
+request timeout or hidden from the Workflows tab.
 
 ## What it deletes, and what it deliberately does not
 
@@ -60,6 +64,13 @@ from django.utils import timezone
 from django.utils.translation import gettext as _
 
 log = logging.getLogger(__name__)
+
+#: The worker's budget for one dispatch, every pass in it together. Well
+#: under the host's celery soft limit (zenobia: 1500 s), which
+#: `start_workflow_run_task` inherits because it sets no limit of its own — so
+#: a long night closes its rows as "stopped part-way" with what it managed
+#: written down, instead of being killed mid-chunk with nothing recorded.
+WORKER_DEADLINE_SECONDS = 1200
 
 #: Rows per transaction. `vault/mirror.py::_prune_unseen`'s figure. Note a
 #: chunk can touch far more rows than this: every reply to a removed message is
@@ -365,98 +376,174 @@ def trigger(*, triggered_by, user=None, policy=None, channel=None):
             raise CleanupInProgress(
                 _("A cleanup covering this room is already running. Wait for "
                   "it to finish."))
-        run = ForumCleanupRun.objects.create(
-            status=RunStatus.RUNNING,
-            triggered_by=triggered_by,
-            triggered_by_user=user,
-            channel=channel,
-            channel_name=channel.name if channel is not None else "",
-            boundary=policy.boundary(),
-            retention_days=policy.retention_days,
-        )
-        policy.last_run_at = run.started_at
-        policy.last_run_status = RunStatus.RUNNING
-        policy.last_error = ""
-        policy.save(update_fields=["last_run_at", "last_run_status",
-                                   "last_error"])
+        run = _create_run(policy, channel, triggered_by=triggered_by,
+                          user=user)
     return run
 
 
-def run_scheduled(*, deadline_seconds=None) -> dict:
-    """The nightly entry point. Silent and harmless while every dial is off.
+def _create_run(policy, channel, *, triggered_by, user=None):
+    """The claimed row, and the policy saying it is running. Call inside the
+    claim's transaction, after the in-flight check."""
+    from .models import ForumCleanupRun, RunStatus
+
+    run = ForumCleanupRun.objects.create(
+        status=RunStatus.RUNNING,
+        triggered_by=triggered_by,
+        triggered_by_user=user,
+        channel=channel,
+        channel_name=channel.name if channel is not None else "",
+        boundary=policy.boundary(),
+        retention_days=policy.retention_days,
+    )
+    policy.last_run_at = run.started_at
+    policy.last_run_status = RunStatus.RUNNING
+    policy.last_error = ""
+    policy.save(update_fields=["last_run_at", "last_run_status",
+                               "last_error"])
+    return run
+
+
+def claim_passes(*, triggered_by, user=None, manual=False):
+    """Claim what the night runs, without running it. Returns (runs, skipped).
 
     ONE PASS PER POLICY, not one pass over the forum. Each room that set its
-    own retention gets a sweep at its own boundary, and the platform default
-    gets one covering everything that did not — so the wide sweep is scoped to
-    exclude the rooms with overrides, or a room asking to keep two years of
-    history would lose it to a platform dial set to thirty days.
+    own retention AND has it switched on gets a pass at its own boundary, and
+    the platform default gets one covering everything that did not — scoped
+    to exclude every room with an override, or a room asking to keep two years
+    of history would lose it to a platform dial set to thirty days. A room
+    whose own dial is OFF is excluded from the wide pass as well: it said "not
+    here", and the platform default must not overrule that.
 
-    A room whose own dial is OFF is likewise excluded from the wide sweep: it
-    said "not here", and the platform default must not overrule that. Turning
-    a room's override off and expecting the platform's to apply again is done
-    by deleting the override, which is what the settings tab's Reset does.
+    The passes of one batch are disjoint by construction (the wide one
+    excludes every override room), so they are checked against what was live
+    BEFORE the batch and never against each other — otherwise the wide pass
+    would refuse because of the room passes claimed a line earlier.
+
+    Two callers, two rules for a collision:
+
+    * the SCHEDULE (`manual=False`) skips a pass that is already in flight and
+      claims the rest, and claims nothing while every dial is off;
+    * a PERSON (`manual=True`, the Cleanup page's button) gets all or nothing:
+      `CleanupInProgress` while any cleanup is live, because a button that
+      quietly ran half of what it promised would be read as having run it
+      all. The platform pass runs even while its dial is off — "off" stops
+      the schedule, not a person who pressed the button on purpose.
     """
-    from .models import ForumRetentionPolicy, RunStatus, TriggeredBy
+    from .models import ForumRetentionPolicy
 
-    results = []
-    overrides = list(ForumRetentionPolicy.objects
-                     .filter(channel__isnull=False)
-                     .select_related("channel"))
+    with transaction.atomic():
+        default = ForumRetentionPolicy.default()
+        default = (ForumRetentionPolicy.objects.select_for_update()
+                   .filter(pk=default.pk).first()) or default
+        overrides = list(ForumRetentionPolicy.objects.select_for_update()
+                         .filter(channel__isnull=False)
+                         .select_related("channel").order_by("pk"))
+        if manual and in_flight():
+            raise CleanupInProgress(
+                _("A cleanup is already running. Wait for it to finish."))
 
-    # ONE deadline for the whole task, not one per pass. Each pass used to get
-    # the full budget, so N enabled overrides could run the task N times past
-    # the number `tasks.py` promised was "comfortably inside celery's soft
-    # limit" — at which point celery kills it mid-chunk, the exact death the
-    # deadline exists to prevent. A pass that gets no time is skipped and says
-    # so; every chunk already committed, and the next night resumes it.
+        plan, skipped = [], []
+        for policy in overrides:
+            if not policy.enabled:
+                continue
+            if in_flight(policy.channel):
+                skipped.append({"skipped": "in_progress",
+                                "channel": policy.channel.slug})
+                continue
+            plan.append((policy, policy.channel))
+        if default.enabled or manual:
+            if in_flight():
+                skipped.append({"skipped": "in_progress", "channel": None})
+            else:
+                plan.append((default, None))
+
+        runs = [_create_run(policy, channel, triggered_by=triggered_by,
+                            user=user)
+                for policy, channel in plan]
+    return runs, skipped
+
+
+def finish(runs, *, deadline_seconds=None) -> list[dict]:
+    """Do the deleting for runs somebody already claimed, in order.
+
+    ONE deadline for the whole batch, not one per pass. Each pass used to get
+    the full budget, so N enabled overrides could run the task N times past
+    the number the worker was promised — at which point celery kills it
+    mid-chunk, the exact death the deadline exists to prevent. A pass that
+    gets no time is closed as "stopped part-way" and says so; every chunk
+    already committed, and the next run resumes it.
+
+    A pass that raises closes itself FAILED, and so does every pass after it
+    that never started — they were claimed, and a claimed row left RUNNING
+    would block cleanup until the stuck-run sweeper came by. Then it
+    re-raises, so whatever drove it (the workflow node) fails visibly too.
+    """
+    from .models import RunStatus
+
+    runs = list(runs)
     started = time.monotonic()
+    results = []
 
     def _remaining():
         if deadline_seconds is None:
             return None
         return deadline_seconds - (time.monotonic() - started)
 
-    for policy in overrides:
-        if not policy.enabled:
+    for index, run in enumerate(runs):
+        if run.channel_id is None and run.channel_name:
+            # A ROOM's pass whose room was deleted after the claim (the FK is
+            # SET_NULL). Run as it stands it would read as forum-wide —
+            # channel None — and sweep every room at this room's boundary.
+            # The room's history went with the room; say so and stop.
+            run.status = RunStatus.SUCCESS
+            run.error = str(_("The room was deleted before this cleanup "
+                              "ran; nothing of it was left to remove."))
+            run.finished_at = timezone.now()
+            run.save(update_fields=["status", "error", "finished_at"])
+            results.append({"run": run.pk, "status": run.status,
+                            "channel": None, "messages": 0, "bytes": 0})
             continue
+        slug = run.channel.slug if run.channel_id else None
         left = _remaining()
         if left is not None and left <= 0:
-            results.append({"skipped": "out_of_time",
-                            "channel": policy.channel.slug})
+            _close(run, RunStatus.PARTIAL, error=str(
+                _("No time was left for this pass. The next cleanup "
+                  "continues it.")))
+            results.append({"skipped": "out_of_time", "channel": slug})
             continue
-        results.append(_run_one(policy, policy.channel, left))
+        try:
+            run_cleanup(run, deadline_seconds=left)
+        except Exception as exc:  # noqa: BLE001 — SoftTimeLimitExceeded too
+            _close(run, RunStatus.FAILED, error=repr(exc))
+            for rest in runs[index + 1:]:
+                fail_run(rest, _("An earlier pass of the same cleanup "
+                                 "failed, so this one never started."))
+            raise
+        results.append({"run": run.pk, "status": run.status,
+                        "channel": slug,
+                        "messages": run.messages_deleted,
+                        "bytes": run.bytes_freed})
+    return results
 
-    default = ForumRetentionPolicy.default()
-    if default.enabled:
-        left = _remaining()
-        if left is not None and left <= 0:
-            results.append({"skipped": "out_of_time", "channel": None})
-        else:
-            results.append(_run_one(default, None, left,
-                                    exclude=[p.channel_id for p in overrides]))
 
-    if not results:
+def run_scheduled(*, deadline_seconds=None) -> dict:
+    """Claim and finish the night's passes in THIS process.
+
+    Not what beat runs any more: `tasks.forum_cleanup` claims the same passes
+    and hands them to the worker as one "Forum cleanup" workflow run, so the
+    night shows in the Workflows tab. This stays as the one-call form of
+    `claim_passes` + `finish` — the reference the tests hold the rules to, and
+    what the beat falls back to on a worker whose build has no workflow
+    engine. Nothing in a web request calls it.
+
+    Silent and harmless while every dial is off.
+    """
+    from .models import TriggeredBy
+
+    runs, skipped = claim_passes(triggered_by=TriggeredBy.BEAT)
+    if not runs and not skipped:
         return {"skipped": "disabled"}
-    return {"runs": results}
-
-
-def _run_one(policy, channel, deadline_seconds, exclude=None) -> dict:
-    from .models import RunStatus, TriggeredBy
-
-    try:
-        run = trigger(triggered_by=TriggeredBy.BEAT, policy=policy,
-                      channel=channel)
-    except CleanupInProgress:
-        return {"skipped": "in_progress",
-                "channel": channel.slug if channel else None}
-    try:
-        run_cleanup(run, deadline_seconds=deadline_seconds, exclude=exclude)
-    except Exception as exc:  # noqa: BLE001 — a failed sweep must close its row
-        _close(run, RunStatus.FAILED, error=repr(exc))
-        raise
-    return {"run": run.pk, "status": run.status,
-            "channel": channel.slug if channel else None,
-            "messages": run.messages_deleted, "bytes": run.bytes_freed}
+    return {"runs": skipped + finish(runs, deadline_seconds=deadline_seconds)}
 
 
 def next_scheduled_run(now=None):

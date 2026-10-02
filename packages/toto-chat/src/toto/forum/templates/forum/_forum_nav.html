@@ -1,0 +1,17 @@
+{% load i18n %}
+{% comment %}Forum-level controls, as opposed to the room tabs.
+
+One staff-only link: the platform's Cleanup desk (back on 2026-10-02). It is
+hidden rather than disabled for people who cannot use it — a control that
+always answers 403 is worse than no control — and the page behind it
+re-checks, because hiding is cosmetic. There is no forum-wide Export link: that
+desk was removed on 2026-08-29 and stays removed; each room archives itself.
+{% endcomment %}
+{% if is_operator %}
+  <nav class="flex flex-wrap items-center gap-2" aria-label="{% trans 'Forum administration' %}">
+    <a href="{% url 'forum:cleanup' %}" data-testid="forum-cleanup-link"
+       :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+       class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+      <i class="fa-solid fa-broom" aria-hidden="true"></i>{% trans "Cleanup" %}</a>
+  </nav>
+{% endif %}
