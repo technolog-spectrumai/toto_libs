@@ -89,24 +89,25 @@ class SvgTests(SimpleTestCase):
     def test_only_same_document_references_survive(self):
         self.assertEqual(sanitize_svg('<svg><use href="#a"/><use href="https://e/x.svg#a"/>'
                                       '<image xlink:href="data:image/png;base64,AA"/></svg>'),
-                         '<svg><use href="#a"/><use/><image/></svg>')
+                         '<svg><use href="#a"/><use/></svg>')
 
     def test_an_animation_that_rewrites_a_link_is_dropped_whole(self):
         for tag in ('<animate attributeName="href" to="javascript:x">'
                     '<desc>kept?</desc></animate>',
                     '<set attributeName=" XLINK:HREF " to="javascript:x"/>'):
             with self.subTest(tag=tag):
-                self.assertEqual(sanitize_svg(f"<svg><a href='#t'>{tag}</a></svg>"),
-                                 '<svg><a href="#t"></a></svg>')
+                self.assertEqual(sanitize_svg(f"<svg><g>{tag}</g></svg>"),
+                                 '<svg><g></g></svg>')
 
     def test_an_ordinary_animation_is_kept(self):
         self.assertEqual(sanitize_svg('<svg><animate attributeName="opacity" dur="1s"/></svg>'),
                          '<svg><animate attributeName="opacity" dur="1s"/></svg>')
 
-    def test_a_style_url_with_a_script_scheme_goes_and_a_web_one_stays(self):
+    def test_a_style_url_keeps_only_a_same_document_reference(self):
         self.assertEqual(sanitize_svg('<svg style="fill:url(javascript:x)"/>'), "<svg/>")
-        self.assertEqual(sanitize_svg('<svg style="fill:url(https://e/p.png)"/>'),
-                         '<svg style="fill:url(https://e/p.png)"/>')
+        self.assertEqual(sanitize_svg('<svg style="fill:url(https://e/p.png)"/>'), "<svg/>")
+        self.assertEqual(sanitize_svg('<svg style="fill:url(#g)"/>'),
+                         '<svg style="fill:url(#g)"/>')
 
     def test_prolog_doctype_and_comments_are_removed_and_entities_kept(self):
         svg = ('<?xml version="1.0"?><!DOCTYPE svg><!-- c --><svg><text>&amp; &#169;'
@@ -115,6 +116,39 @@ class SvgTests(SimpleTestCase):
 
     def test_a_stray_close_of_a_dropped_tag_is_ignored(self):
         self.assertEqual(sanitize_svg("<svg></script><g/></svg>"), "<svg><g/></svg>")
+
+    def test_html_breakout_tags_and_their_payload_never_survive(self):
+        # Stage 51: a browser leaves foreign content at <p>, <meta>, <div> and
+        # the like, so a <form> after one is a live HTML form on the page.
+        out = sanitize_svg('<svg><p></p><form action=x><button>b</button></form>'
+                           '<meta http-equiv=refresh content=0><style>a{}</style>'
+                           '</div></svg>')
+        for needle in ("form", "button", "meta", "style", "<p", "</div>", "refresh"):
+            with self.subTest(needle=needle):
+                self.assertNotIn(needle, out)
+        self.assertEqual(out, "<svg></svg>")
+
+    def test_only_drawing_elements_and_their_attributes_are_kept(self):
+        # A link is unwrapped: the drawing inside it stays, the link does not.
+        self.assertEqual(
+            sanitize_svg('<svg class="fixed inset-0" width="9"><a href="#t"><rect x="1"/></a>'
+                         '<image href="#i"/><font color=red>f</font><circle r="2" '
+                         'data-x="1" formaction="javascript:x" fill="red"/></svg>'),
+            '<svg width="9"><rect x="1"/><circle r="2" fill="red"/></svg>')
+
+    def test_nothing_is_kept_outside_an_svg_root_and_the_tree_is_balanced(self):
+        self.assertEqual(sanitize_svg('<rect/>text<svg><g><rect></svg></svg><b>x</b>'),
+                         "<svg><g><rect></rect></g></svg>")
+
+    def test_an_unclosed_breakout_tag_does_not_swallow_the_close(self):
+        self.assertEqual(sanitize_svg('<svg><p>x<form><input name=a></svg>'),
+                         "<svg></svg>")
+
+    def test_a_style_keeps_presentation_and_drops_layout(self):
+        self.assertEqual(
+            sanitize_svg('<svg style="position:fixed;inset:0;fill:red;'
+                         'stroke:url(#g);opacity:.5;background:url(https://e/p.png)"/>'),
+            '<svg style="fill:red;stroke:url(#g);opacity:.5"/>')
 
 
 class KatexTests(SimpleTestCase):

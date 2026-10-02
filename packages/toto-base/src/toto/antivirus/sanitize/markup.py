@@ -185,17 +185,127 @@ def plain_text(html: str) -> str:
 # doctype and <script>. Attributes are invisible to a regex, so `<svg
 # onload="...">` went straight through it into the player — and the editor's
 # client-side path did not even strip <script>. A parser can see attributes.
+#
+# Stage 51 turned the blocklist that followed into an ALLOWLIST. A browser
+# leaves SVG's foreign content at an HTML "breakout" tag (<p>, <div>, <meta>,
+# <b>, <font color> and some forty more), so `<svg><p></p><form action=...>`
+# put a live HTML form, a meta refresh or a <style> on the Play page, and a
+# blocklist cannot list everything HTML has. Now only drawing elements and
+# their presentation attributes come out, inside an <svg> root, with every
+# element closed; anything else goes with its whole subtree.
 
-SVG_DROP_TAGS = {
-    "script", "foreignobject", "handler", "listener",
-    "iframe", "object", "embed", "audio", "video",
+SVG_ELEMENTS = {
+    "svg", "g", "defs", "symbol", "use", "switch", "title", "desc",
+    "path", "rect", "circle", "ellipse", "line", "polyline", "polygon",
+    "text", "tspan", "textpath",
+    "lineargradient", "radialgradient", "stop", "pattern", "clippath", "mask",
+    "marker", "filter",
+    "feblend", "fecolormatrix", "fecomponenttransfer", "fecomposite",
+    "feconvolvematrix", "fediffuselighting", "fedisplacementmap",
+    "fedistantlight", "fedropshadow", "feflood", "fefunca", "fefuncb",
+    "fefuncg", "fefuncr", "fegaussianblur", "femerge", "femergenode",
+    "femorphology", "feoffset", "fepointlight", "fespecularlighting",
+    "fespotlight", "fetile", "feturbulence",
+    "animate", "animatetransform", "animatemotion", "set", "mpath",
 }
 
-# `<animate attributeName="href">` rewrites a link target after load, so it is
-# the one animation element that has to go. The rest are legitimate.
+# Unwrapped rather than dropped: the drawing inside a link survives, the link
+# does not.
+SVG_UNWRAP = {"a"}
+
+# Elements a browser never closes (HTML voids, and <image>, which an HTML
+# parser reads as <img>). Starting a subtree drop at one would wait for an end
+# tag that never comes.
+_NEVER_CLOSED = {
+    "area", "base", "br", "col", "embed", "hr", "image", "img", "input",
+    "keygen", "link", "meta", "param", "source", "track", "wbr",
+}
+
+# The animation elements; `attributeName` on one must name an attribute that
+# is itself allowed, and never a reference (`href`) or `style`.
 SVG_ANIMATE_TAGS = {"animate", "animatetransform", "animatemotion", "set"}
 
-_URL_IN_STYLE = re.compile(r"url\(\s*['\"]?\s*([a-z][a-z0-9+.-]*)\s*:", re.IGNORECASE)
+# Presentation properties, usable as attributes and inside `style`.
+SVG_PRESENTATION = {
+    "fill", "fill-opacity", "fill-rule", "stroke", "stroke-width",
+    "stroke-linecap", "stroke-linejoin", "stroke-miterlimit",
+    "stroke-dasharray", "stroke-dashoffset", "stroke-opacity", "opacity",
+    "clip-path", "clip-rule", "mask", "filter", "marker-start", "marker-mid",
+    "marker-end", "color", "display", "visibility", "font-family",
+    "font-size", "font-size-adjust", "font-stretch", "font-weight",
+    "font-style", "font-variant", "text-anchor", "dominant-baseline",
+    "alignment-baseline", "baseline-shift", "letter-spacing", "word-spacing",
+    "text-decoration", "writing-mode", "direction", "unicode-bidi",
+    "stop-color", "stop-opacity", "flood-color", "flood-opacity",
+    "lighting-color", "color-interpolation", "color-interpolation-filters",
+    "color-rendering", "shape-rendering", "text-rendering", "image-rendering",
+    "vector-effect", "paint-order", "overflow",
+}
+
+SVG_ATTRS = SVG_PRESENTATION | {
+    # structure and geometry
+    "id", "x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry",
+    "fx", "fy", "fr", "width", "height", "d", "points", "dx", "dy", "rotate",
+    "offset", "viewbox", "preserveaspectratio", "version", "xmlns",
+    "xmlns:xlink", "xml:space", "lang", "xml:lang", "transform", "style",
+    "pathlength", "textlength", "lengthadjust", "startoffset", "method",
+    "spacing", "side", "href", "xlink:href", "gradientunits",
+    "gradienttransform", "spreadmethod", "patternunits",
+    "patterncontentunits", "patterntransform", "clippathunits", "maskunits",
+    "maskcontentunits", "markerwidth", "markerheight", "markerunits", "refx",
+    "refy", "orient", "systemlanguage", "requiredfeatures",
+    "requiredextensions", "role", "aria-label", "aria-hidden",
+    "aria-labelledby", "aria-describedby",
+    # filter primitives
+    "in", "in2", "result", "stddeviation", "mode", "operator", "k1", "k2",
+    "k3", "k4", "values", "type", "tablevalues", "slope", "intercept",
+    "amplitude", "exponent", "basefrequency", "numoctaves", "seed",
+    "stitchtiles", "scale", "xchannelselector", "ychannelselector", "radius",
+    "surfacescale", "specularconstant", "specularexponent", "diffuseconstant",
+    "kernelmatrix", "order", "divisor", "bias", "targetx", "targety",
+    "edgemode", "preservealpha", "azimuth", "elevation", "pointsatx",
+    "pointsaty", "pointsatz", "limitingconeangle", "filterunits",
+    "primitiveunits", "kernelunitlength", "z",
+    # animation timing and values
+    "attributename", "attributetype", "begin", "dur", "end", "min", "max",
+    "restart", "repeatcount", "repeatdur", "calcmode", "keytimes",
+    "keysplines", "from", "to", "by", "additive", "accumulate", "path",
+    "keypoints",
+}
+
+# What an animation may not retarget: a reference, the style, an identity.
+_ANIMATE_FORBIDDEN = {"href", "xlink:href", "style", "id", "attributename"}
+
+# Every `url(` in a value must be a same-document one, `url(#id)`; an external
+# one is a tracking beacon at best.
+_URL_FUNC = re.compile(r"url\s*\(", re.IGNORECASE)
+_URL_LOCAL = re.compile(r"url\s*\(\s*['\"]?\s*#", re.IGNORECASE)
+_SVG_ID = re.compile(r"^[A-Za-z_][A-Za-z0-9_.:-]*$")
+_SVG_STYLE_VALUE = re.compile(r"^[-+.,\s0-9a-zA-Z%#()'\"]*$")
+
+
+def _url_safe(value: str) -> bool:
+    """True when every url( in the value is url(#...). A backslash is refused
+    outright: a CSS escape (`u\\72l(`) would hide a url( from the check."""
+    if "\\" in value:
+        return False
+    return len(_URL_FUNC.findall(value)) == len(_URL_LOCAL.findall(value))
+
+
+def _svg_style(value: str) -> str:
+    """Presentation declarations only: no position, no layout, no fetch."""
+    kept = []
+    for declaration in (value or "").split(";"):
+        if ":" not in declaration:
+            continue
+        name, _, raw = declaration.partition(":")
+        name, raw = name.strip().lower(), raw.strip()
+        if name not in SVG_PRESENTATION or not raw:
+            continue
+        if not _SVG_STYLE_VALUE.match(raw) or not _url_safe(raw):
+            continue
+        kept.append(f"{name}:{raw}")
+    return ";".join(kept)
 
 # SVG is case-sensitive and `html.parser` lowercases every tag and attribute
 # name it reports. Emitting what it hands back would turn `viewBox` into
@@ -213,6 +323,7 @@ _SVG_CANONICAL = {
         "feDiffuseLighting", "feSpecularLighting", "feDistantLight",
         "fePointLight", "feSpotLight", "feConvolveMatrix",
         "feComponentTransfer", "feFuncR", "feFuncG", "feFuncB", "feFuncA",
+        "feDisplacementMap",
         # attributes
         "viewBox", "preserveAspectRatio", "gradientUnits", "gradientTransform",
         "patternUnits", "patternContentUnits", "patternTransform",
@@ -227,7 +338,8 @@ _SVG_CANONICAL = {
         "diffuseConstant", "kernelMatrix", "kernelUnitLength", "tableValues",
         "limitingConeAngle", "pointsAtX", "pointsAtY", "pointsAtZ",
         "systemLanguage", "requiredFeatures", "requiredExtensions",
-        "baseProfile", "zoomAndPan",
+        "baseProfile", "zoomAndPan", "stitchTiles", "edgeMode", "preserveAlpha",
+        "targetX", "targetY",
     )
 }
 
@@ -237,16 +349,24 @@ def _canon(name: str) -> str:
 
 
 class _SvgCleaner(HTMLParser):
-    """Drops a forbidden element **with its subtree**.
+    """An allowlist: drawing elements and their attributes, nothing else.
 
-    Skipping is tracked as (tag name, depth) rather than a bare counter: a
-    counter that any end tag decrements lets `<script><a></a>payload</script>`
-    resume emitting at `payload`, which defeats the whole exercise.
+    A forbidden element goes **with its subtree**. Skipping is tracked as (tag
+    name, depth) rather than a bare counter: a counter that any end tag
+    decrements lets `<script><a></a>payload</script>` resume emitting at
+    `payload`. An end tag of an element still open above the dropped one ends
+    the drop too, so an unclosed `<p>` cannot swallow the closing `</svg>`.
+
+    Output is balanced: an end tag closes only an element this cleaner opened
+    (stray `</div>`s that would close the slide's own containers go), and
+    whatever is still open at the end is closed. Nothing is kept outside an
+    `<svg>` root.
     """
 
     def __init__(self):
         super().__init__(convert_charrefs=False)
         self.out: list[str] = []
+        self._open: list[str] = []
         self._skip_tag: str | None = None
         self._skip_depth = 0
 
@@ -257,51 +377,62 @@ class _SvgCleaner(HTMLParser):
     def _begin_skip(self, tag: str) -> None:
         self._skip_tag, self._skip_depth = tag, 1
 
-    def _attrs(self, attrs, *, is_animate: bool) -> str | None:
+    def _attrs(self, tag: str, attrs) -> str | None:
+        """The kept attributes, or None when the whole element must go."""
+        is_animate = tag in SVG_ANIMATE_TAGS
         parts = []
         for name, value in attrs:
             name = (name or "").lower()
             value = value or ""
-            if name.startswith("on"):
-                continue                              # every event handler
-            if is_animate and name == "attributename" \
-                    and value.strip().lower() in ("href", "xlink:href"):
-                return None                           # drop the whole element
-            if name in ("href", "xlink:href", "src"):
+            if name not in SVG_ATTRS:
+                continue                    # every on*, class, data-*, ...
+            if is_animate and name == "attributename":
+                target = value.strip().lower()
+                if target not in SVG_ATTRS or target in _ANIMATE_FORBIDDEN:
+                    return None             # drop the whole element
+            if name in ("href", "xlink:href"):
                 # Only same-document references. An external one is both a
                 # tracking beacon and, via <use>, a script-injection vector.
-                if not value.strip().startswith("#"):
+                if not value.strip().startswith("#") or not _url_safe(value):
                     continue
-            if name == "style" and _URL_IN_STYLE.search(value):
-                scheme = _URL_IN_STYLE.search(value).group(1).lower()
-                if scheme not in ("http", "https", "data"):
+            elif name == "id":
+                if not _SVG_ID.match(value):
                     continue
+            elif name == "style":
+                value = _svg_style(value)
+                if not value:
+                    continue
+            elif not _url_safe(value):
+                continue
             parts.append(f' {_canon(name)}="{escape(value, quote=True)}"')
         return "".join(parts)
 
-    def handle_starttag(self, tag, attrs):
+    def _start(self, tag: str, attrs, *, closed: bool) -> None:
         tag = tag.lower()
         if self._suppress:
-            if tag == self._skip_tag:
+            if tag == self._skip_tag and not closed:
                 self._skip_depth += 1          # same tag nested inside itself
             return
-        if tag in SVG_DROP_TAGS:
-            self._begin_skip(tag)
-            return
-        rendered = self._attrs(attrs, is_animate=tag in SVG_ANIMATE_TAGS)
+        if tag in SVG_UNWRAP and self._open:
+            return                             # the children stay
+        rendered = None
+        if tag in SVG_ELEMENTS and (self._open or tag == "svg"):
+            rendered = self._attrs(tag, attrs)
         if rendered is None:
-            self._begin_skip(tag)
+            if not closed and tag not in _NEVER_CLOSED:
+                self._begin_skip(tag)
             return
-        self.out.append(f"<{_canon(tag)}{rendered}>")
+        if closed:
+            self.out.append(f"<{_canon(tag)}{rendered}/>")
+        else:
+            self.out.append(f"<{_canon(tag)}{rendered}>")
+            self._open.append(tag)
+
+    def handle_starttag(self, tag, attrs):
+        self._start(tag, attrs, closed=False)
 
     def handle_startendtag(self, tag, attrs):
-        tag = tag.lower()
-        if self._suppress or tag in SVG_DROP_TAGS:
-            return
-        rendered = self._attrs(attrs, is_animate=tag in SVG_ANIMATE_TAGS)
-        if rendered is None:
-            return
-        self.out.append(f"<{_canon(tag)}{rendered}/>")
+        self._start(tag, attrs, closed=True)
 
     def handle_endtag(self, tag):
         tag = tag.lower()
@@ -310,22 +441,30 @@ class _SvgCleaner(HTMLParser):
                 self._skip_depth -= 1
                 if self._skip_depth <= 0:
                     self._skip_tag, self._skip_depth = None, 0
-            return
-        if tag in SVG_DROP_TAGS:
+                return
+            if tag not in self._open:
+                return
+            self._skip_tag, self._skip_depth = None, 0   # an ancestor closes
+        if tag not in self._open:
             return                              # stray close tag; ignore it
-        self.out.append(f"</{_canon(tag)}>")
+        while self._open:
+            open_tag = self._open.pop()
+            self.out.append(f"</{_canon(open_tag)}>")
+            if open_tag == tag:
+                break
+
+    def _text(self, text: str) -> None:
+        if self._open and not self._suppress:
+            self.out.append(text)
 
     def handle_data(self, data):
-        if not self._suppress:
-            self.out.append(_esc_text(data))
+        self._text(_esc_text(data))
 
     def handle_entityref(self, name):
-        if not self._suppress:
-            self.out.append(f"&{name};")
+        self._text(f"&{name};")
 
     def handle_charref(self, name):
-        if not self._suppress:
-            self.out.append(f"&#{name};")
+        self._text(f"&#{name};")
 
     def handle_comment(self, data):
         pass
@@ -336,12 +475,17 @@ class _SvgCleaner(HTMLParser):
     def handle_pi(self, data):
         pass                                          # <?xml ... ?>
 
+    def unknown_decl(self, data):
+        pass                                          # <![CDATA[ ... ]]>
+
     def value(self) -> str:
+        while self._open:
+            self.out.append(f"</{_canon(self._open.pop())}>")
         return "".join(self.out).strip()
 
 
 def sanitize_svg(markup: str) -> str:
-    """Inline SVG with scripts, event handlers and external refs removed."""
+    """Inline SVG reduced to drawing elements and presentation attributes."""
     cleaner = _SvgCleaner()
     cleaner.feed(markup or "")
     cleaner.close()
