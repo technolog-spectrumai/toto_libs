@@ -360,7 +360,7 @@ class ClearancesTabRefusalTests(OnThePlan, ClearanceFixture):
 
     def test_every_door_refuses_a_superuser_without_the_plan_and_changes_nothing(self):
         """Superuser functionality asks for the Superuser plan too (2026-10-01,
-        the review of stage 37c): a bucket's and a wiki topic's own doors did,
+        the review of stage 37c): a bucket's and a domain's own doors did,
         and this tab set both through them with the superuser bit alone."""
         if not apps.is_installed("toto.subscriptions"):
             self.skipTest("a host that sells no plan: the superuser bit is the rule")

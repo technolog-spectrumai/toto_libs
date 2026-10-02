@@ -86,7 +86,7 @@ def off_the_plan_is_refused() -> bool:
 
 class PlanTests(DomainsTestCase):
     """Map domains and their clearances are Superuser-plan functionality
-    (2026-10-02, crown 41), as a bucket's clearances and a wiki topic's are:
+    (2026-10-02, crown 41), as a bucket's clearances are:
     the superuser bit alone opened every door of the tab, so a superuser off
     the plan kept any map item to any clearance."""
 

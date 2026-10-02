@@ -18,7 +18,7 @@ clearance is named after what it **opens**, never after who holds it.
 | | Community | Clearance |
 |---|---|---|
 | Examples | `devs`, `testers` | `internal`, `confidential`, `onboarding` |
-| Carries | plan offers, discounts, privileges, news, a page, a forum | who may **read** — through the GROUPS it keeps (wiki topics, vault buckets, map domains; never single items), by `clearance_access` — and how fast its holders' **mana refills** (`regen_security`/`regen_compute`/`regen_storage`, per hour; blank = the pool's own) |
+| Carries | plan offers, discounts, privileges, news, a page, a forum | who may **read** — through the GROUPS it keeps (vault buckets, map domains; never single items), by `clearance_access` — and how fast its holders' **mana refills** (`regen_security`/`regen_compute`/`regen_storage`, per hour; blank = the pool's own) |
 | Membership | `Person.communities` | `Person.clearances` |
 | Joined | by application, accepted by a referee | given by a superuser: the Clearances tab, the admin, the console |
 | Shown to members | yes — directory, profiles, map, API | never; it has no page |
@@ -51,10 +51,9 @@ only, and `clearance_access` and `toto.mana.services.clearance_speeds` read
 the platform — can therefore never grant access to anything.
 
 **Clearances go on groups, never on items** (2026-09-30). Each app keeps
-GROUPS to clearances and the rule reaches the items through them: the wiki's
-**topics** (a page is read through its topics — zenobia's `toto.wiki`), the
-vault's **buckets** (a file through its bucket — sheets and decks included),
-and locations' **map domains** (routes, map layers, places, addresses, zones
+GROUPS to clearances and the rule reaches the items through them: the
+vault's **buckets** (a file through its bucket — sheets, decks and Markdown
+pages included) and locations' **map domains** (routes, map layers, places, addresses, zones
 and territories through the domains they are in). One rule,
 `clearance_access.group_gate` / `group_hidden`: an item in no kept group
 follows its app's own rule; an item in kept groups is read by superusers and
@@ -65,8 +64,10 @@ hidden item answers as a missing one. Each group model carries a
 `(group, clearance)` table with a PROTECT on the clearance, so the Clearances
 list counts the groups each keeps and refuses deleting one still in use.
 Where a group's clearances are set is the group's own page, superusers only:
-the wiki's Topics page and `/wiki/clearances/` grid, a bucket's page in the
-vault, the Locations → Domains tab.
+a bucket's page in the vault, the Locations → Domains tab. zenobia's wiki
+kept its **topics** to clearances the same way until it was parked
+(2026-10-02, zenobia's `RETIRED.md`); a bucket that held a topic's files is
+an ordinary bucket, kept by whatever clearances its own page sets.
 
 ### Where clearances are hidden
 
@@ -102,9 +103,9 @@ Holders and speeds change afterwards in the Django admin, on the clearance's
 own page (its **Members** field, written through `clearance.members.set`, the
 relation's own door), or from the console (`community_members join ada
 --clearance internal`). What a clearance KEEPS is set on each group's own
-page (topics, buckets, map domains) — and, when the clearance is made, in the
-New clearance modal's **What it keeps** section: pick a kind (wiki topics,
-buckets, map domains), search, add. The kinds are plugins
+page (buckets, map domains) — and, when the clearance is made, in the
+New clearance modal's **What it keeps** section: pick a kind (buckets, map
+domains), search, add. The kinds are plugins
 (`plugins/clearance_plugins.py`, `ClearanceTargetPlugin`, autodiscovered from
 each app's `plugins/clearance_plugins.py`), so the socialhub imports none of
 those apps; each adds the clearance through its app's own door, which writes
@@ -390,8 +391,8 @@ the socialhub is where a person first hands the platform their data.
   an unchanged text is refused; a refusal
   is Post/Redirect/Get with the typed text kept. Every version is listed
   with its date and publisher.
-- **Plain text**, drawn escaped through `urlize` and `linebreaks` (the
-  wiki's own chain): a blank line starts a paragraph and a web or e-mail
+- **Plain text**, drawn escaped through `urlize` and `linebreaks` (Django's
+  own escaping filters): a blank line starts a paragraph and a web or e-mail
   address becomes a link. Nothing from the database reaches the page as HTML.
 - **Seeded**: `ingress_socialhub` publishes version 1 in the realistic and
   full modes when there is none (`privacy.seed_notice`; `seed_placeholder`
@@ -531,7 +532,7 @@ pruning rules), `toto/core/tests_housekeeping.py` (the night).
 
 Since 2026-09-28 every community and clearance operation is a record on the
 platform's audit chain (`audit.py`, signals — so the admin, the membership
-flow, the wiki's Clearances page and a shell are all covered): a community or a
+flow, the Clearances tab and a shell are all covered): a community or a
 clearance made, changed (the fields, before and after) or removed; a person
 added to or taken out of a community (`MEMBER_ADDED`/`_REMOVED`) or given or
 losing a clearance (`CLEARANCE_MEMBER_ADDED`/`_REMOVED`), from either side of

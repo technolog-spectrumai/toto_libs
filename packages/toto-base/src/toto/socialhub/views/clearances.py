@@ -2,8 +2,8 @@
 superusers — on the Superuser plan since 2026-10-01 (``may_manage``).
 
 A clearance (``socialhub.Clearance`` — ``internal``, ``confidential``, named
-after what it opens) decides who reads wiki pages (and what else an app
-gates by clearances) and how fast its holders' mana refills; it carries no
+after what it opens) decides who reads the files of a bucket and the map
+items of a domain (whatever an app gates by clearances) and how fast its holders' mana refills; it carries no
 plan, discount or right, and members never see it listed (README,
 "Communities and clearances").
 
@@ -27,8 +27,8 @@ Django admin (``ClearanceAdmin``; since 2026-10-02 it asks this page's rule,
 change reaches the audit chain through ``audit.py``'s signals, whichever door
 made it.
 
-What a clearance READS is each app's own business and stays there: the wiki's
-page × clearance grid, a sheet's or a place's access control.
+What a clearance READS is each app's own business and stays there: the
+vault's bucket gate, the map's domain gate.
 """
 
 from __future__ import annotations
@@ -68,8 +68,8 @@ def may_manage(user) -> bool:
     superuser on the Superuser plan (2026-10-01, the review of stage 37c).
     The superuser bit alone opened every door here, and through it the doors
     behind, which ask the plan themselves — a bucket's clearances
-    (``vault.clearances.may_manage``, 37c.1), a wiki topic's
-    (``wiki.perms.may_keep``) — since the plugins set those through the
+    (``vault.clearances.may_manage``, 37c.1), a map domain's
+    (``locations.access.may_manage_domains``) — since the plugins set those through the
     apps' own setters. ``contact_access.is_administrator`` is that rule."""
     from toto.socialhub.contact_access import is_administrator
 
@@ -104,7 +104,7 @@ def _ids(values) -> set:
 
 def _keeping_relations() -> list:
     """The through tables that keep things to a clearance — every app's
-    ``*Clearance`` row (wiki pages, vault files, routes, layers, places),
+    ``*Clearance`` row (a vault bucket's, a map domain's),
     found by their PROTECT on the clearance rather than named, so an app
     installed or not changes nothing here."""
     return [rel for rel in Clearance._meta.related_objects
@@ -230,7 +230,7 @@ GRAPH_HOLDERS_LIMIT = 300
 
 def _group_field(through, clearance_field):
     """The FK on a keeping table that is not the clearance: the group (a
-    topic, a domain, a bucket)."""
+    domain, a bucket)."""
     for field in through._meta.get_fields():
         if getattr(field, "many_to_one", False) and field is not clearance_field:
             return field
@@ -243,7 +243,7 @@ def clearance_graph(request):
     """The clearances and what they keep, as a graph (JSON for the page's
     Graph view): a node per clearance, a node per group it keeps — whatever
     apps keep things to clearances, found by their PROTECT on the clearance
-    (a wiki topic, a map domain, a bucket), never by name — and, when asked
+    (a map domain, a bucket), never by name — and, when asked
     (``?holders=1``), a node per holder. Superusers only."""
     if not may_manage(request.user):
         return JsonResponse({"error": _refusal(request.user)}, status=403)

@@ -69,7 +69,7 @@ def may_import_layer(user) -> bool:
 def may_manage_domains(user) -> bool:
     """Map domains — their items and their clearances — are a real superuser's
     on the Superuser plan (2026-10-02, crown 41), as a bucket's clearances
-    (``vault.clearances.may_manage``) and a wiki topic's are. The superuser
+    (``vault.clearances.may_manage``) are. The superuser
     bit alone opened every door of the Domains tab, so a superuser off the
     plan kept any map item to any clearance. On a host that sells no plan,
     being an active superuser is the rule."""

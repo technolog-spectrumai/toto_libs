@@ -4,7 +4,7 @@ A ``Clearance`` names what it opens (``internal``, ``confidential``); its
 holders are whoever ``Person.clearances`` says.
 
 **Clearances go on GROUPS, never on items** (the owner, 2026-09-30): a map
-domain (locations), a bucket (vault), a wiki topic. Each group model keeps a
+domain (locations), a bucket (vault). Each group model keeps a
 through table of ``(group, clearance)`` rows, reached from the group by the
 related name ``clearance_rows``. An item is read by the rule of its groups:
 
@@ -13,7 +13,7 @@ related name ``clearance_rows``. An item is read by the rule of its groups:
   signed in");
 * an item in **kept groups** is read by superusers and by whoever holds, for
   EVERY one of its kept groups, at least one of that group's clearances —
-  **pessimistic**: a page with two kept topics needs a clearance of each.
+  **pessimistic**: an item in two kept groups needs a clearance of each.
   Nobody else: not its owner or creator, not the public flag, not a folder's
   ACL. A clearance both keeps and grants;
 * a user with no ``Person`` holds no clearance; anonymous visitors hold none.
@@ -23,8 +23,8 @@ not exist; the app's doors 404 and its lists, counts and exports leave it out.
 ``group_gate`` is the queryset half, ``group_hidden`` the per-object twin —
 the same subqueries, so the two cannot disagree.
 
-``set_clearances`` / ``clearances_of`` work on the GROUP (a domain, a bucket,
-a topic) and record the change on the audit chain.
+``set_clearances`` / ``clearances_of`` work on the GROUP (a domain, a
+bucket) and record the change on the audit chain.
 
 A community never grants reading: a clearance is its own model, so nothing
 here can be handed one by mistake (README, "Communities and clearances").

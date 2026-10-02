@@ -1,7 +1,7 @@
 """Communities, clearances and who is in them, on the audit chain (2026-09-28).
 
 Signals, not view patches, so every writer is covered — the admin, the
-membership flow, the wiki's Clearances page, the ingress, a shell:
+membership flow, the Clearances tab, the ingress, a shell:
 
 | action | when |
 |---|---|

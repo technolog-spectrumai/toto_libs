@@ -7,7 +7,7 @@ not: ``ClearanceAdmin`` let in any superuser — one off the plan made
 clearances, gave them to members and deleted them there — and the person
 admin showed ``Person.clearances`` as an ordinary field to anybody holding
 ``people.change_person``, so a staff clerk with that one right ticked any
-clearance on their own person and read every kept bucket, topic and map
+clearance on their own person and read every kept bucket and map
 domain from then on. Now both ask the tab's rule: the clearance pages are
 shut to everybody else, and on a person the field is read-only for them.
 

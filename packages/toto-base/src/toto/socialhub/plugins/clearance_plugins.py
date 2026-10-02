@@ -1,9 +1,10 @@
 """What a clearance keeps — one plugin per kind of GROUP an app keeps to
 clearances (2026-09-30).
 
-Clearances go on groups, never on single items (``clearance_access``): wiki
-topics, vault buckets, map domains. The socialhub's New clearance modal lets a
-superuser choose, when a clearance is made, which groups it keeps. The
+Clearances go on groups, never on single items (``clearance_access``): vault
+buckets and map domains (zenobia's wiki topics went with the wiki,
+2026-10-02). The socialhub's New clearance modal lets a superuser choose,
+when a clearance is made, which groups it keeps. The
 socialhub must not import those apps, so it asks them: each app ships
 ``<app>/plugins/clearance_plugins.py`` with a ``ClearanceTargetPlugin`` per
 kind of group, found by ``autodiscover_plugins("plugins.clearance_plugins")``

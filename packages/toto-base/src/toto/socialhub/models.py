@@ -246,8 +246,8 @@ class CommunityPrivilege(models.Model):
     A community without a row grants nothing — the commoner default, free to
     resolve.
 
-    **A clearance grants nothing** (2026-09-28): clearances carry wiki reading and
-    mana refill speed, and no rights. A row naming one is refused here (``clean`` and ``save``), the
+    **A clearance grants nothing** (2026-09-28): clearances carry reading (a bucket's
+    files, a domain's map items) and mana refill speed, and no rights. A row naming one is refused here (``clean`` and ``save``), the
     admin offers no inline for it, and ``privileges.has_privilege`` skips
     clearances should a row exist anyway — three layers, one rule.
 
@@ -577,8 +577,8 @@ class PrivacyNotice(models.Model):
     Versions are never edited: publishing writes a NEW row with the next
     number (``toto.socialhub.privacy.publish``), so the version somebody
     accepted stays readable, word for word, at its own address. Plain text in
-    both languages, drawn escaped (``urlize`` then ``linebreaks``, the wiki's
-    own chain) — never HTML from the database.
+    both languages, drawn escaped (``urlize`` then ``linebreaks``, Django's
+    own escaping filters) — never HTML from the database.
     """
 
     version = models.PositiveIntegerField(unique=True)

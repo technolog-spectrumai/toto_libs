@@ -17,7 +17,7 @@
   (``toto.socialhub.erasure``).
 
 The text is plain text, drawn escaped through ``urlize`` and ``linebreaks``
-(the chain the wiki uses) — nothing from the database reaches the page as
+(Django's own escaping filters) — nothing from the database reaches the page as
 HTML.
 """
 
