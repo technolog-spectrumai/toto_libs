@@ -116,12 +116,30 @@ class EntitlementRegistry:
         from django.apps import apps
 
         mounted = mounted_app_names()
+        served = served_feature_keys()
         for entitlement in self.all():
-            if not apps.is_installed(f"toto.{entitlement.feature_key}"):
+            if not (apps.is_installed(f"toto.{entitlement.feature_key}")
+                    or entitlement.feature_key in served):
                 continue
             if entitlement.feature_key not in mounted:
                 continue
             yield entitlement
+
+
+def served_feature_keys() -> set:
+    """Feature keys an installed app serves under another module name.
+
+    An app says so with ``entitlement = "<key>"`` on its AppConfig. zenobia's
+    deck player (``toto.decks``, 2026-10-02) sells Presentations, whose key is
+    ``memo``, while ``toto.memo`` itself stays parked: the key is what plans
+    list and what the gate reads off ``app_name``, so it cannot follow the
+    module's name. The second condition of :meth:`EntitlementRegistry.installed`
+    (something mounted under the key) still applies unchanged.
+    """
+    from django.apps import apps
+
+    return {key for key in (getattr(config, "entitlement", "")
+                            for config in apps.get_app_configs()) if key}
 
 
 def mounted_app_names() -> set:
