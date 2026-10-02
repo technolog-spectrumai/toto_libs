@@ -8,7 +8,9 @@ bundles `cryptography` + toto and mounts the shared cert dir read-write at
 healthy. Running this in the web entrypoint (before the server starts) therefore
 guarantees the cert exists before nginx ever starts.
 
-Idempotent: skips when both cert and key already exist (e.g. pre-seeded via push).
+Idempotent: keeps a cert that still fits. One it made before is made again when
+its names differ from the SSL_CERT_* ones or it ends within 30 days (stage 51); a
+cert somebody else put there (e.g. pre-seeded via push) is left as it is.
 Cert parameters come from the SSL_CERT_* env vars that deploy.py writes into .env.
 """
 
@@ -72,4 +74,4 @@ class Command(BaseCommand):
                 )
             )
         else:
-            self.stdout.write(f"gervazy cert already exists at {cert_path} — leaving as-is")
+            self.stdout.write(f"gervazy cert at {cert_path} still fits — leaving as-is")

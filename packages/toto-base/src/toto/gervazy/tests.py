@@ -95,3 +95,80 @@ class GenSslCertCommandTests(TestCase):
             original = cert.read_bytes()
             call_command("gen_ssl_cert", cert_path=str(cert), key_path=str(key))
             self.assertEqual(cert.read_bytes(), original)  # unchanged on re-run
+
+
+class CertificateRenewalTests(TestCase):
+    """Stage 51 (zenobia/todo.md item 7): the self-signed cert was kept as soon
+    as both files existed, so a name added to cert:, tailscale switched on, or
+    825 days passed left browsers warning, and members learn to click through
+    a warning that would also hide a real interception."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp(prefix="gervazy-cert-"))
+        self.cert, self.key = self.dir / "a.crt", self.dir / "a.key"
+
+    def tearDown(self):
+        import shutil
+
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def ensure(self, **kwargs):
+        from toto.gervazy.crypto import ensure_self_signed_certificate
+
+        return ensure_self_signed_certificate(self.cert, self.key, **kwargs)
+
+    def sans(self):
+        cert = x509.load_pem_x509_certificate(self.cert.read_bytes())
+        san = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+        return (set(san.get_values_for_type(x509.DNSName)),
+                {str(a) for a in san.get_values_for_type(x509.IPAddress)})
+
+    def test_a_new_name_regenerates_it(self):
+        self.assertTrue(self.ensure(dns_names=["localhost"]))
+        self.assertTrue(self.ensure(dns_names=["localhost", "new.example"]))
+        self.assertIn("new.example", self.sans()[0])
+
+    def test_a_new_address_regenerates_it(self):
+        self.ensure(dns_names=["localhost"], ip_addresses=["127.0.0.1"])
+        self.assertTrue(self.ensure(dns_names=["localhost"],
+                                    ip_addresses=["127.0.0.1", "100.64.0.7"]))
+        self.assertIn("100.64.0.7", self.sans()[1])
+
+    def test_the_same_names_keep_it(self):
+        self.ensure(dns_names=["localhost", "a.example"], ip_addresses=["127.0.0.1"])
+        before = self.cert.read_bytes()
+        self.assertFalse(self.ensure(dns_names=["a.example", "localhost"],
+                                     ip_addresses=["127.0.0.1"]))
+        self.assertEqual(self.cert.read_bytes(), before)
+
+    def test_one_near_its_end_is_renewed(self):
+        from toto.gervazy.crypto import generate_self_signed_certificate
+
+        cert_pem, key_pem = generate_self_signed_certificate(
+            common_name="localhost", dns_names=["localhost"], valid_days=10)
+        self.cert.write_bytes(cert_pem)
+        self.key.write_bytes(key_pem)
+        self.assertTrue(self.ensure(dns_names=["localhost"]))
+        cert = x509.load_pem_x509_certificate(self.cert.read_bytes())
+        import datetime as dt
+        self.assertGreater(cert.not_valid_after_utc,
+                           dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=300))
+
+    def test_a_certificate_it_did_not_make_is_left_alone(self):
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.x509.oid import NameOID
+        import datetime as dt
+
+        key = ec.generate_private_key(ec.SECP256R1())
+        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "owner.example")])
+        now = dt.datetime.now(dt.timezone.utc)
+        cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name)
+                .public_key(key.public_key()).serial_number(1)
+                .not_valid_before(now).not_valid_after(now + dt.timedelta(days=5))
+                .sign(key, hashes.SHA256()))
+        self.cert.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+        self.key.write_bytes(b"owner's key")
+        before = self.cert.read_bytes()
+        self.assertFalse(self.ensure(dns_names=["localhost", "new.example"]))
+        self.assertEqual(self.cert.read_bytes(), before)

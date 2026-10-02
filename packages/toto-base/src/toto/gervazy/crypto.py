@@ -117,7 +117,7 @@ def generate_self_signed_certificate(
     subject = issuer = x509.Name(
         [
             x509.NameAttribute(NameOID.COUNTRY_NAME, "PL"),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Toto Local Development"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, _OWN_ORGANIZATION),
             x509.NameAttribute(NameOID.COMMON_NAME, common_name),
         ]
     )
@@ -164,6 +164,38 @@ def generate_self_signed_certificate(
     return cert_pem, key_pem
 
 
+#: A certificate this module made is renewed this long before it ends.
+RENEW_WITHIN_DAYS = 30
+_OWN_ORGANIZATION = "Toto Local Development"
+
+
+def _own_certificate_needs_renewal(cert_path, wanted_dns: set, wanted_ips: set) -> bool:
+    """True for a certificate this module made whose names differ from the
+    wanted ones or which ends within RENEW_WITHIN_DAYS. False for one it did
+    not make (somebody's own, pushed there) and for one that still fits; an
+    unreadable file is made again."""
+    try:
+        with open(cert_path, "rb") as cert_file:
+            cert = x509.load_pem_x509_certificate(cert_file.read())
+    except (OSError, ValueError):
+        return True
+    organizations = [a.value for a in cert.subject.get_attributes_for_oid(NameOID.ORGANIZATION_NAME)]
+    if cert.issuer != cert.subject or _OWN_ORGANIZATION not in organizations:
+        return False
+    try:
+        san = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+        have_dns = set(san.get_values_for_type(x509.DNSName))
+        have_ips = {str(a) for a in san.get_values_for_type(x509.IPAddress)}
+    except x509.ExtensionNotFound:
+        have_dns, have_ips = set(), set()
+    if (have_dns, have_ips) != (wanted_dns, wanted_ips):
+        return True
+    ends = getattr(cert, "not_valid_after_utc", None)
+    if ends is None:  # cryptography < 42, as a host's own Python may carry (deploy.py)
+        ends = cert.not_valid_after.replace(tzinfo=dt.timezone.utc)
+    return ends - dt.datetime.now(dt.timezone.utc) < dt.timedelta(days=RENEW_WITHIN_DAYS)
+
+
 def ensure_self_signed_certificate(
     cert_path,
     key_path,
@@ -172,12 +204,24 @@ def ensure_self_signed_certificate(
     dns_names: list[str] | None = None,
     ip_addresses: list[str] | None = None,
 ) -> bool:
-    """Create a self-signed certificate unless both cert and key already exist."""
+    """Create the self-signed certificate, or renew the one this made before.
+
+    Kept while both files exist and the certificate still fits (stage 51):
+    one this function made (its own organisation, self-issued) is made again
+    when its DNS or IP names differ from the ones asked for, or when it ends
+    within RENEW_WITHIN_DAYS. It used to be kept as soon as both files
+    existed, so a name added to the config, or 825 days passing, left every
+    browser warning. A certificate somebody else put there is never touched.
+    Returns whether it wrote one.
+    """
     cert_path = os.fspath(cert_path)
     key_path = os.fspath(key_path)
 
     if os.path.exists(cert_path) and os.path.exists(key_path):
-        return False
+        wanted_dns = set(dns_names or [common_name])
+        wanted_ips = {str(ipaddress.ip_address(a)) for a in (ip_addresses or [])}
+        if not _own_certificate_needs_renewal(cert_path, wanted_dns, wanted_ips):
+            return False
 
     cert_pem, key_pem = generate_self_signed_certificate(
         common_name=common_name,
