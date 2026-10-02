@@ -524,13 +524,20 @@ def admin_test_callback(request):
 
 @login_required
 def my_profile(request):
+    """The member's own profile — its Profile tab (2026-10-02, stage 50: the
+    profile carries the account's tabs for its owner). With no profile to go
+    to (the console makes none, or a name made no slug), ``/account/``, which
+    draws the same page in place; the dashboard where no host mounts that."""
     profile = getattr(request.user, "community_profile", None)
     if profile is not None:
         try:
             return redirect("socialhub:profile_details", slug=profile.slug)
         except NoReverseMatch:
             pass
-    return redirect("core:dashboard")
+    try:
+        return redirect("account:home")
+    except NoReverseMatch:
+        return redirect("core:dashboard")
 
 
 # ---------------------------------------------------------------------------

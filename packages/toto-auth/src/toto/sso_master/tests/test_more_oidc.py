@@ -752,9 +752,34 @@ class FederationConsoleEdgeTests(TestCase):
 
 @FAST_HASHING
 class MyProfileTests(TestCase):
-    def test_a_user_without_a_profile_lands_on_the_dashboard(self):
+    """``/sso/my-profile/`` (2026-10-02, stage 50): the member's own profile —
+    the page whose tabs hold their account — and, with no profile to go to,
+    the host's ``/account/``, which draws that page in place; the dashboard
+    on a host that mounts no ``/account/``."""
+
+    def test_a_user_without_a_profile_lands_on_their_own_page(self):
+        from django.urls import NoReverseMatch
+
         _platform()
         self.client.force_login(User.objects.create_user("np", password="pw"))
         response = self.client.get(reverse("sso:my_profile"))
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["Location"], reverse("core:dashboard"))
+        try:
+            expected = reverse("account:home")
+        except NoReverseMatch:
+            expected = reverse("core:dashboard")
+        self.assertEqual(response["Location"], expected)
+
+    def test_a_user_with_a_profile_lands_on_it(self):
+        from django.apps import apps
+
+        if not apps.is_installed("toto.people"):
+            self.skipTest("no profiles on this host")
+        _platform()
+        user = User.objects.create_user("withp", password="pw")
+        person = apps.get_model("people", "Person").objects.create(user=user, display_name="With P")
+        self.client.force_login(user)
+        response = self.client.get(reverse("sso:my_profile"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"],
+                         reverse("socialhub:profile_details", args=[person.slug]))
