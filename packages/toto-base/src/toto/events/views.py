@@ -29,13 +29,11 @@ def _current_person(user):
 
 
 def _is_organizer(user, event):
-    """True if the user is a superuser, the event owner, or one of the organizers."""
-    if user.is_superuser or user.is_staff:
-        return True
-    person = _current_person(user)
-    if not person:
-        return False
-    return event.owner == person or event.organizers.filter(pk=person.pk).exists()
+    """The event's owner or one of its organisers — no staff or superuser
+    arm since 2026-10-02 (``access.may_organise``)."""
+    from .access import may_organise
+
+    return may_organise(user, event)
 
 
 # ─── Calendar ────────────────────────────────────────────────────────────────
@@ -196,11 +194,13 @@ def _avail_status(person, event):
 def _may_see_availability(user, person, event) -> bool:
     """Whether ``user`` may see ``person``'s availability against ``event``
     (2026-10-01, 37c.21): the person themself, and the event's organisers
-    (``_is_organizer``) who plan it. Anybody else saw it too — the times and
-    the reason typed, which can say why somebody is away — for any event,
-    private ones included."""
-    own = _current_person(user)
-    return (own is not None and own.pk == person.pk) or _is_organizer(user, event)
+    who plan it — since 2026-10-02 only for a person invited to it
+    (``access.may_see_availability``). Anybody else saw it too — the times
+    and the reason typed, which can say why somebody is away — for any
+    event, private ones included."""
+    from .access import may_see_availability
+
+    return may_see_availability(user, person, event)
 
 
 @login_required
@@ -212,7 +212,8 @@ def event_availability_api(request):
     person = get_object_or_404(Person, pk=person_id)
     event = get_object_or_404(ScheduledEvent, pk=event_id)
     # An event hidden from the caller is a missing one; the availability is
-    # the person's and the organisers' only (see _may_see_availability).
+    # the person's, and the organisers' when they invited them (see
+    # _may_see_availability).
     if not may_read(request.user, event):
         raise Http404
     if not _may_see_availability(request.user, person, event):
@@ -290,6 +291,8 @@ def event_plan(request, pk):
         # Somebody else's availability, and its reason, is the organisers'
         # to see (2026-10-01, 37c.21): a member who may read the plan sees
         # who is invited and their answer, and only their own availability.
+        # Everybody listed here is invited; the people still to invite show
+        # no availability at all (2026-10-02, access.may_see_availability).
         if _may_see_availability(request.user, invite.person, event):
             status_key, conflict = _avail_status(invite.person, event)
         else:

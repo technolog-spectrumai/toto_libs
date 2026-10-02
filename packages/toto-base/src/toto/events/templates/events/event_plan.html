@@ -134,8 +134,12 @@
         {% csrf_token %}
         <div class="max-h-64 overflow-y-auto space-y-1 pr-1">
           {% for person in uninvited %}
+          {# The name is the row's DATA, never part of the expression (2026-10-02): #}
+          {# inside x-show's string the browser undid Django's escaping before Alpine #}
+          {# ran it, so a name like x'+alert(1)+' ran in every organiser's browser. #}
           <div
-            x-show="!search || '{{ person.display_name|lower }}'.includes(search.toLowerCase())"
+            data-name="{{ person.display_name|lower }}"
+            x-show="!search || $el.dataset.name.includes(search.toLowerCase())"
             :class="darkMode ? 'hover:bg-primary-bg-dark' : 'hover:bg-primary-bg-light'"
             class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition">
 
@@ -150,16 +154,8 @@
               </span>
               <span class="truncate">{{ person.display_name }}</span>
             </label>
-
-            <!-- Availability info button -->
-            <button
-              type="button"
-              @click.prevent="openAvailability('{{ person.pk }}')"
-              :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
-              class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border text-xs opacity-60 transition hover:opacity-100"
-              title="{% trans "View availability" %}">
-              <i class="fa-solid fa-calendar-check"></i>
-            </button>
+            {# No availability button here (2026-10-02): an organiser sees the #}
+            {# availability of the people invited, never of somebody not invited yet. #}
           </div>
           {% endfor %}
         </div>

@@ -7,7 +7,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
 from toto.api.cors import CorsApiView, MeshGatedApiView
-from .access import visible_events
+from .access import may_organise, visible_events
 from .models import EventCategory, ScheduledEvent, EventInvite
 
 
@@ -183,24 +183,17 @@ class EventInviteApiView(CorsApiView):
         if err:
             return err
 
+        # The event as the caller may see it, and its owner or organisers
+        # alone invite (2026-10-02, access.may_organise). The lookup asked no
+        # visibility rule and every staff account and superuser counted as
+        # an organiser, so one holding a private event's UUID could invite
+        # itself and then read the event.
         try:
-            event = ScheduledEvent.objects.prefetch_related("organizers").get(pk=pk)
+            event = visible_events(request.user).get(pk=pk)
         except ScheduledEvent.DoesNotExist:
             return JsonResponse({"error": "Event not found."}, status=404)
 
-        try:
-            requester = request.user.community_profile
-        except Exception:
-            requester = None
-
-        is_organizer = (
-            request.user.is_superuser or request.user.is_staff or
-            (requester and (
-                event.owner == requester or
-                event.organizers.filter(pk=requester.pk).exists()
-            ))
-        )
-        if not is_organizer:
+        if not may_organise(request.user, event):
             return JsonResponse({"error": "Only organizers can invite people."}, status=403)
 
         try:

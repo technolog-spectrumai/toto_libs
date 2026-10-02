@@ -202,11 +202,14 @@ class PlanPageTests(EventCase):
 
 class AvailabilityTests(EventCase):
     def status(self, who, target=None):
-        # The owner of the sitting plans it: an organiser may read anybody's
-        # availability against it (2026-10-01, AvailabilityPrivacyTests).
+        # The owner of the sitting plans it: an organiser reads the
+        # availability of the people invited to it (2026-10-02,
+        # AvailabilityInviteeTests), so the person is invited first.
+        target = target or self.sitting
+        EventInvite.objects.get_or_create(event=target, person=who)
         self.client.force_login(self.owner_user)
         return self.client.get(reverse("events:event_availability_api"), {
-            "person_id": who.pk, "event_id": (target or self.sitting).pk}).json()
+            "person_id": who.pk, "event_id": target.pk}).json()
 
     def test_a_blocking_entry_wins_over_a_soft_one(self):
         Availability.objects.create(person=self.guest, start_time=START,
@@ -314,6 +317,137 @@ class AvailabilityPrivacyTests(EventCase):
         self.client.force_login(self.owner_user)
         response = self.client.get(reverse("events:event_plan", args=[self.open_day.pk]))
         self.assertContains(response, "Chemotherapy")
+
+
+class AvailabilityInviteeTests(EventCase):
+    """An organiser sees the availability of the people INVITED to their
+    event, and nobody else's (2026-10-02, crown 41). Any member who made an
+    event read any other member's periods and reasons through it — one
+    spanning a year overlaps all of them — and every staff account and every
+    superuser, plan or none, counted as an organiser of every event."""
+
+    REASON = "Oncology appointment"
+
+    def setUp(self):
+        _, self.bob = person("bob")
+        Availability.objects.create(person=self.bob, start_time=START + timedelta(days=30),
+                                    end_time=START + timedelta(days=30, hours=2),
+                                    reason=self.REASON,
+                                    availability_type=Availability.AvailabilityType.BUSY)
+        Availability.objects.create(person=self.bob, start_time=START,
+                                    end_time=START + timedelta(hours=1), reason=self.REASON,
+                                    availability_type=Availability.AvailabilityType.OUT_OF_OFFICE)
+
+    def ask(self, as_user, who, target):
+        self.client.force_login(as_user)
+        return self.client.get(reverse("events:event_availability_api"), {
+            "person_id": who.pk, "event_id": target.pk})
+
+    def year_long_private_event(self, maker):
+        """Made the way a member makes one: the real form, no "public" tick."""
+        self.client.force_login(maker)
+        first, last = START - timedelta(days=30), START + timedelta(days=330)
+        response = self.client.post(reverse("events:event_create"), {
+            "title": "My year", "description": "",
+            "start_time_0": first.strftime("%Y-%m-%d"), "start_time_1": "00:00",
+            "end_time_0": last.strftime("%Y-%m-%d"), "end_time_1": "00:00"})
+        made = ScheduledEvent.objects.get(title="My year")
+        self.assertRedirects(response, reverse("events:event_detail", args=[made.pk]),
+                             fetch_redirect_response=False)
+        self.assertFalse(made.public)
+        return made
+
+    def test_a_year_long_private_event_reads_nobody_it_does_not_invite(self):
+        made = self.year_long_private_event(self.stranger_user)
+        response = self.ask(self.stranger_user, self.bob, made)
+        self.assertEqual(response.status_code, 403)
+        self.assertNotIn(self.REASON, response.content.decode())
+        plan = self.client.get(reverse("events:event_plan", args=[made.pk]))
+        self.assertEqual(plan.status_code, 200)
+        self.assertNotContains(plan, self.REASON)
+
+    def test_the_organiser_sees_an_invitee_with_the_reason(self):
+        self.client.force_login(self.owner_user)
+        self.client.post(reverse("events:event_plan", args=[self.sitting.pk]),
+                         {"person_ids": [self.bob.pk]})
+        response = self.ask(self.owner_user, self.bob, self.sitting)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["conflict"]["reason"], self.REASON)
+
+    def test_the_person_sees_their_own_without_an_invitation(self):
+        response = self.ask(self.bob.user, self.bob, self.open_day)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["conflict"]["reason"], self.REASON)
+
+    def test_staff_and_superusers_are_no_organisers(self):
+        EventInvite.objects.create(event=self.open_day, person=self.bob)
+        clerk, _ = person("clerk", is_staff=True)
+        root = User.objects.create_superuser("root", "root@example.invalid", "pw")
+        bare_root = User.objects.create_superuser("bareroot", "bare@example.invalid", "pw")
+        Person.objects.create(user=bare_root, display_name="Bare root")
+        plan = reverse("events:event_plan", args=[self.open_day.pk])
+        for user in (clerk, root, bare_root):
+            with self.subTest(user=user.username):
+                response = self.ask(user, self.bob, self.open_day)
+                self.assertEqual(response.status_code, 403)
+                self.assertNotIn(self.REASON, response.content.decode())
+                page = self.client.get(plan)
+                self.assertEqual(page.status_code, 200)
+                self.assertNotContains(page, self.REASON)
+                self.assertFalse(page.context["user_is_organizer"])
+                self.assertEqual(self.client.post(plan, {"person_ids": [self.guest.pk]})
+                                 .status_code, 403)
+                detail = self.client.get(reverse("events:event_detail", args=[self.open_day.pk]))
+                self.assertFalse(detail.context["user_is_organizer"])
+        self.assertEqual(list(self.open_day.invites.values_list("person", flat=True)),
+                         [self.bob.pk])
+
+    def test_the_plan_offers_no_availability_of_people_not_invited(self):
+        """The sidebar's people to invite had an availability button each,
+        which asked the API about somebody not invited — a refusal now."""
+        self.client.force_login(self.owner_user)
+        page = self.client.get(reverse("events:event_plan", args=[self.sitting.pk]))
+        self.assertIn(self.bob, list(page.context["uninvited"]))
+        self.assertNotContains(page, f"openAvailability('{self.bob.pk}')")
+
+
+def alpine_directives(html):
+    """``[(name, value)]`` of every Alpine directive (``x-…``, ``@…``,
+    ``:…``) on the page, its value as the browser hands it to Alpine — the
+    entities decoded, which is why Django's escaping does not keep a value
+    out of the code."""
+    from html.parser import HTMLParser
+
+    found = []
+
+    class Collect(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            found.extend((name, value or "") for name, value in attrs
+                         if name.startswith(("x-", "@", ":")))
+
+    Collect().feed(html)
+    return found
+
+
+class PlanPageMarkupTests(EventCase):
+    """A member's name reaches the plan page's code as data, never as code
+    (2026-10-02, crown 41). The people filter put each display name inside a
+    JavaScript string in an Alpine ``x-show``: Django turns ``'`` into
+    ``&#x27;``, the browser turns it back before Alpine runs the expression,
+    so a name like ``x'+alert(1)+'`` ran in every organiser's browser."""
+
+    NAME = "Eve'+alert(document.domain)+'"
+
+    def test_a_name_is_never_part_of_an_expression(self):
+        _, eve = person("eve")
+        Person.objects.filter(pk=eve.pk).update(display_name=self.NAME)
+        self.client.force_login(self.owner_user)
+        page = self.client.get(reverse("events:event_plan", args=[self.sitting.pk]))
+        self.assertEqual(page.status_code, 200)
+        self.assertEqual([(name, value) for name, value in alpine_directives(page.content.decode())
+                          if "alert(document.domain)" in value], [])
+        # The filter still knows the name: as the row's data.
+        self.assertContains(page, 'data-name="eve&#x27;+alert(document.domain)+&#x27;"')
 
 
 class InvitePageTests(EventCase):
@@ -444,14 +578,32 @@ class InviteApiTests(EventCase):
         self.assertEqual(self.sitting.invites.count(), 1)
 
     def test_a_non_organiser_is_refused_before_anything_is_read(self):
-        response = self.invite(self.guest_user, self.sitting, raw="not json")
+        response = self.invite(self.guest_user, self.open_day, raw="not json")
         self.assertEqual(response.status_code, 403)
-        self.assertFalse(self.sitting.invites.exists())
+        self.assertFalse(self.open_day.invites.exists())
 
-    def test_staff_may_invite_to_any_event(self):
+    def test_staff_and_superusers_invite_to_no_event_they_do_not_organise(self):
+        """Fixed 2026-10-02: every staff account and every superuser, plan or
+        none, counted as an organiser of every event here, and the event was
+        looked up with no visibility rule — a staff account holding a private
+        event's UUID could invite itself and then read it. A public event
+        refuses them; a private one is a missing one."""
         staff, _ = person("clerk", is_staff=True)
-        self.assertEqual(self.invite(staff, self.sitting,
-                                     {"person_id": self.guest.pk}).status_code, 201)
+        root = User.objects.create_superuser("root", "root@example.invalid", "pw")
+        Person.objects.create(user=root, display_name="Root")
+        for user in (staff, root):
+            with self.subTest(user=user.username):
+                public = self.invite(user, self.open_day, {"person_id": self.guest.pk})
+                self.assertEqual(public.status_code, 403)
+                hidden = self.invite(user, self.sitting, {"person_id": self.guest.pk})
+                self.assertEqual((hidden.status_code, hidden.json()),
+                                 (404, {"error": "Event not found."}))
+        self.assertFalse(EventInvite.objects.exists())
+
+    def test_an_organiser_who_is_not_the_owner_invites(self):
+        self.sitting.organizers.add(self.guest)
+        self.assertEqual(self.invite(self.guest_user, self.sitting,
+                                     {"person_id": self.stranger.pk}).status_code, 201)
 
     def test_the_organisers_mistakes_are_named(self):
         self.assertEqual(self.invite(self.owner_user, self.sitting, raw="{").status_code, 400)
