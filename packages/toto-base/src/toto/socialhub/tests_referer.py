@@ -44,8 +44,8 @@ class RefererDoorTests(TestCase):
 
     def test_the_language_door_follows_a_referer_on_this_host(self):
         response = self.post("set_preferred_language", {"language": "xx"},
-                             "http://testserver/wiki/")
-        self.assertEqual(response["Location"], "http://testserver/wiki/")
+                             "http://testserver/vault/")
+        self.assertEqual(response["Location"], "http://testserver/vault/")
 
     def test_the_map_sharing_door_ignores_an_off_site_referer(self):
         response = self.post("set_location_sharing", {"location_sharing": "nonsense"}, EVIL)

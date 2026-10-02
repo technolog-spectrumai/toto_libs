@@ -476,7 +476,7 @@ class TrailFilterTests(TestCase):
                                 active=True)
         cls.keeper = User.objects.create_user("keeper", password="pw", is_staff=True)
         record("FILE_UPLOADED", app_label="vault", object_id="501", description="alpha.txt")
-        record("PAGE_EDITED", app_label="wiki", object_id="9", description="beta page")
+        record("ROOM_RENAMED", app_label="forum", object_id="9", description="beta room")
 
     def setUp(self):
         self.client.force_login(self.keeper)
@@ -487,7 +487,7 @@ class TrailFilterTests(TestCase):
         return [r.object_description for r in response.context["page_obj"]]
 
     def test_the_app_filter_keeps_one_app(self):
-        self.assertEqual(self.rows(app="wiki"), ["beta page"])
+        self.assertEqual(self.rows(app="forum"), ["beta room"])
 
     def test_the_action_filter_ignores_case(self):
         self.assertEqual(self.rows(action="file_uploaded"), ["alpha.txt"])
@@ -495,4 +495,4 @@ class TrailFilterTests(TestCase):
     def test_the_search_matches_an_object_id_exactly_and_names_loosely(self):
         self.assertEqual(self.rows(q="501"), ["alpha.txt"])
         self.assertEqual(self.rows(q="50"), [])
-        self.assertEqual(self.rows(q="BETA"), ["beta page"])
+        self.assertEqual(self.rows(q="BETA"), ["beta room"])

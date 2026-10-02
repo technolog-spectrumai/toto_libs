@@ -57,9 +57,9 @@ class LoginDoorTests(TestCase):
 
     def test_the_right_password_signs_in_and_follows_next(self):
         request = _request("post", {"username": "ada", "password": "Correct-horse-9",
-                                    "next": "/wiki/"})
+                                    "next": "/vault/"})
         response = _door(request)
-        self.assertEqual((response.status_code, response["Location"]), (302, "/wiki/"))
+        self.assertEqual((response.status_code, response["Location"]), (302, "/vault/"))
         self.assertEqual(request.session[SESSION_KEY], str(self.ada.pk))
 
     def test_a_wrong_password_is_refused_and_starts_the_cooldown(self):

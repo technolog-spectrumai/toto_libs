@@ -80,7 +80,7 @@ class MaintenanceSwitchTests(TestCase):
 
     def test_an_inactive_platform_sends_everyone_to_the_maintenance_page(self):
         Platform.objects.create(site_name="T", author="t", publication_year=2026, active=False)
-        response = self.through("/wiki/")
+        response = self.through("/vault/")
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], reverse("core:maintenance"))
 
@@ -90,13 +90,13 @@ class MaintenanceSwitchTests(TestCase):
         self.assertEqual(self.through(reverse("core:maintenance")).content, b"page")
 
     def test_an_active_platform_or_none_at_all_lets_the_request_through(self):
-        self.assertEqual(self.through("/wiki/").content, b"page")
+        self.assertEqual(self.through("/vault/").content, b"page")
         Platform.objects.create(site_name="T", author="t", publication_year=2026, active=True)
-        self.assertEqual(self.through("/wiki/").content, b"page")
+        self.assertEqual(self.through("/vault/").content, b"page")
 
     def test_a_database_that_is_not_ready_never_blocks_a_request(self):
         with mock.patch.object(Platform.objects, "first", side_effect=RuntimeError("no table")):
-            self.assertEqual(self.through("/wiki/").content, b"page")
+            self.assertEqual(self.through("/vault/").content, b"page")
 
 
 class RateLimitEdgeTests(SimpleTestCase):

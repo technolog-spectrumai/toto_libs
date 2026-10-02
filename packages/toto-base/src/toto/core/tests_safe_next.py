@@ -27,7 +27,7 @@ class SafeNextTests(SimpleTestCase):
         return RequestFactory().get("/", secure=secure, HTTP_HOST="zenobia.example.org")
 
     def test_a_path_on_this_site_is_kept(self):
-        self.assertEqual(safe_next(self.request(), "/wiki/?page=2"), "/wiki/?page=2")
+        self.assertEqual(safe_next(self.request(), "/vault/?page=2"), "/vault/?page=2")
 
     def test_an_absolute_url_naming_this_host_is_kept(self):
         url = "http://zenobia.example.org/vault/"
@@ -103,8 +103,8 @@ class PasswordDoorsStayHereTests(TestCase):
         self.assertNotContains(response, f'value="{EVIL}"')
 
     def test_the_form_still_carries_a_local_next(self):
-        response = _door(_request(data={"next": "/wiki/"}))
-        self.assertContains(response, 'value="/wiki/"')
+        response = _door(_request(data={"next": "/vault/"}))
+        self.assertContains(response, 'value="/vault/"')
 
     def test_signing_out_with_an_off_site_next_lands_on_the_dashboard(self):
         response = password_logout_view(_request("post", {"next": EVIL}, user=self.ada))

@@ -14,7 +14,7 @@ request came over HTTPS, only an HTTPS one. Anything else (another host, a
 ``//host`` scheme-relative URL, ``javascript:``, a blank) answers the
 fallback, which is each door's normal landing page.
 
-    safe_next(request, "/wiki/")                       -> "/wiki/"
+    safe_next(request, "/vault/")                      -> "/vault/"
     safe_next(request, "https://evil.example.com/", "/") -> "/"
 """
 
