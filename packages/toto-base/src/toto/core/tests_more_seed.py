@@ -276,6 +276,29 @@ class InitPlatformTests(TestCase):
         self.assertEqual([c.args[0] for c in called.call_args_list], ["migrate", "init_data"])
         self.assertEqual(called.call_args_list[1].kwargs, {"password": "s3cret"})
 
+    def test_the_environment_gives_the_password_off_the_command_line(self):
+        """Stage 51: entrypoint.sh no longer passes --password (the host's
+        `ps` showed it); the command reads ADMIN_PASSWORD itself."""
+        target = "toto.core.management.commands.init_platform.call_command"
+        with mock.patch.dict(os.environ, {"ADMIN_PASSWORD": "from-the-env"}), \
+                mock.patch(target) as called:
+            call_command("init_platform", stdout=io.StringIO())
+        self.assertEqual(called.call_args_list[1].kwargs, {"password": "from-the-env"})
+
+    def test_no_password_anywhere_is_refused_before_anything_runs(self):
+        """It used to become the literal `admin`, a known superuser login."""
+        from django.core.management.base import CommandError
+
+        target = "toto.core.management.commands.init_platform.call_command"
+        environ = {k: v for k, v in os.environ.items() if k != "ADMIN_PASSWORD"}
+        for env in (environ, {**environ, "ADMIN_PASSWORD": ""}):
+            with self.subTest(set="ADMIN_PASSWORD" in env), \
+                    mock.patch.dict(os.environ, env, clear=True), \
+                    mock.patch(target) as called, self.assertRaises(CommandError) as caught:
+                call_command("init_platform", "--reset", stdout=io.StringIO())
+            self.assertIn("ADMIN_PASSWORD", str(caught.exception))
+            self.assertEqual(called.call_args_list, [])
+
 
 class CreateThemeTests(TestCase):
     def test_colours_that_are_not_json_create_no_theme(self):

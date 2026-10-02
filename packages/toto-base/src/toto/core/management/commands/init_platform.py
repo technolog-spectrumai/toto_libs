@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.core.management import call_command
 import os
 import django
@@ -9,11 +9,16 @@ class Command(BaseCommand):
     help = "Initial setup: clears DB, runs migrations, and accepts admin password and GitHub token"
 
     def add_arguments(self, parser):
+        # No default password (stage 51): an unset ADMIN_PASSWORD used to
+        # become the literal 'admin', a known superuser login. Read from the
+        # environment in handle(), so the container's start passes nothing on
+        # its command line, where the host's `ps` would show it.
         parser.add_argument(
             '--password',
-            default=os.environ.get('ADMIN_PASSWORD', 'admin'),
+            default=None,
             type=str,
-            help='Password for the admin user'
+            help='Password for the admin user (default: $ADMIN_PASSWORD; refused when '
+                 'neither is set)'
         )
         parser.add_argument(
             '--reset',
@@ -40,6 +45,11 @@ class Command(BaseCommand):
                 print(f"Skipping {app}: {e}")
 
     def handle(self, *args, **options):
+        admin_password = options.get('password') or os.environ.get('ADMIN_PASSWORD', '')
+        if not admin_password:
+            raise CommandError(
+                "ADMIN_PASSWORD is not set and no --password was given: refusing to seed "
+                "an administrator with a default password. Nothing was changed.")
 
         if options.get('reset'):
             self.clear_db()
@@ -48,7 +58,6 @@ class Command(BaseCommand):
         call_command("migrate")
         self.stdout.write(self.style.SUCCESS("Migrations complete."))
 
-        admin_password = options['password']
         call_command("init_data", password=admin_password)
         self.stdout.write(self.style.SUCCESS("Installation completed."))
 
