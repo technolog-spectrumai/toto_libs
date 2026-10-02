@@ -153,6 +153,41 @@ class PersonAdminClearancesTests(AdminPlanCase):
         response = client_for(self.bare_root).get(reverse("admin:people_person_add"))
         self.assertNotIn("clearances", response.context["adminform"].form.fields)
 
+    def test_a_clerk_cannot_move_a_cleared_person_onto_their_own_account(self):
+        # The clearances are read-only, but the account the person signs in
+        # with was not: unlinking their own person, then linking Ada's to
+        # their account, made Ada's clearances the clerk's (41.5, the review).
+        self.ada.clearances.add(self.secret)
+        client = client_for(self.clerk)
+        client.post(reverse("admin:people_person_change", args=[self.clerk_person.pk]),
+                    person_form(self.clerk_person, user=""))
+        _, fields = self.form_fields(self.clerk, self.ada)
+        self.assertNotIn("user", fields)
+        client.post(reverse("admin:people_person_change", args=[self.ada.pk]),
+                    person_form(self.ada, user=self.clerk.pk))
+        self.ada.refresh_from_db()
+        self.assertEqual(self.ada.user.username, "ada")
+        self.assertFalse(Person.objects.filter(user=self.clerk, clearances=self.secret).exists())
+
+    def test_a_clerk_still_links_a_person_who_holds_no_clearance(self):
+        spare = User.objects.create_user("spare", "spare@example.com", "pw")
+        _, fields = self.form_fields(self.clerk, self.ada)
+        self.assertIn("user", fields)
+        client_for(self.clerk).post(reverse("admin:people_person_change", args=[self.ada.pk]),
+                                    person_form(self.ada, user=spare.pk))
+        self.ada.refresh_from_db()
+        self.assertEqual(self.ada.user_id, spare.pk)
+
+    def test_a_superuser_on_the_plan_moves_a_cleared_person(self):
+        self.ada.clearances.add(self.secret)
+        spare = User.objects.create_user("spare", "spare@example.com", "pw")
+        _, fields = self.form_fields(self.root, self.ada)
+        self.assertIn("user", fields)
+        client_for(self.root).post(reverse("admin:people_person_change", args=[self.ada.pk]),
+                                   person_form(self.ada, user=spare.pk, clearances=[self.secret.pk]))
+        self.ada.refresh_from_db()
+        self.assertEqual(self.ada.user_id, spare.pk)
+
     def test_a_superuser_on_the_plan_gives_one_on_the_person(self):
         _, fields = self.form_fields(self.root, self.ada)
         self.assertIn("clearances", fields)

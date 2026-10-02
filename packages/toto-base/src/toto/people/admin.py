@@ -67,12 +67,22 @@ class PersonAdmin(TotoModelAdmin):
     # who may change a person sees the field read-only — it was an ordinary
     # field here, so a staff clerk holding only people.change_person ticked
     # any clearance on their own person and read everything it keeps.
+    #
+    # The account a person signs in with carries their clearances with it
+    # (41.5, the review of that fix): with ``clearances`` read-only, a clerk
+    # still unlinked their own person and linked a cleared one to their
+    # account. So on a person who holds a clearance, ``user`` is the same
+    # rule's too; on one who holds none it stays the clerk's to set.
     def get_readonly_fields(self, request, obj=None):
         from toto.socialhub.views.clearances import may_manage
 
         fields = list(super().get_readonly_fields(request, obj))
-        if "clearances" not in fields and not may_manage(request.user):
+        if may_manage(request.user):
+            return fields
+        if "clearances" not in fields:
             fields.append("clearances")
+        if obj is not None and "user" not in fields and obj.clearances.exists():
+            fields.append("user")
         return fields
 
     # The picture replaced, taken off or left behind here goes with it
