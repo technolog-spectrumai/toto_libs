@@ -128,7 +128,7 @@ pks. Panel: `/vault/transfers/`.
 | `BUILD_WORKFLOWS` off | refresh + transfer dispatch refuse by name |
 | `BUILD_ANTIVIRUS` off | scans degrade to clean-but-unscanned (façade) |
 
-## Play: a file's player or reader (2026-10-02: Markdown)
+## Play: a file's player or reader (2026-10-02: Markdown, sheets)
 
 `VaultPlayPlugin` (keyed by file type) gives a file its **Play** button — the
 file list's row and card, the per-file actions chooser and, for Markdown, the
@@ -137,13 +137,25 @@ plays as a read-only page that renders it the way GitHub renders a README;
 the reader is the host's (zenobia: `toto.htmlview`, `/htmlview/markdown/<pk>/`),
 so a host without one has no button. An encrypted file never has one.
 
+A **sheet** (`.uson`, file type `uson`) plays as the Univer spreadsheet grid
+(zenobia: `toto.primula`, `/uson/<pk>/`): read-only for a reader, editable for
+a writer (`access.may_write`) when `editing.door_for` lets them in, saved
+through the same lock, screen, base-hash and version steps as the ACE editor.
+The file is one JSON object, `{"format": "uson", "version": 1, "workbook":
+<Univer IWorkbookData>}`. The vault knows only the type and its extension;
+the host's editor plugin declares `new_file_extension = ".uson"`, which puts
+it in the New-file menu with an empty workbook as its blank. Without such a
+host app a `.uson` file is a plain file. The old `sheet` type (a `.json`
+workbook) stays a plain file either way.
+
 ## File types: accepted and refused (2026-09-30)
 
 A file's type is `VaultFile.detect_type(mime, filename)`: the extension
 first (`_EXT_MAP`), then the browser's MIME type, and `text` when neither
 names anything. The types a file can be: PDF, image, HTML, text, Markdown,
 JSON, NeoJSON, YAML, XML, LaTeX, bibliography, CSV, SVG, audio, video,
-Python, a Primula sheet, a deck (`.pxml`) and a zip archive. Only svg, html,
+Python, a sheet (`.uson`), a legacy Primula sheet (`.json`, typed `sheet`),
+a deck (`.pxml`) and a zip archive. Only svg, html,
 xml, json, pdf and pxml are read by the screener (`scanning.SCANNABLE_TYPES`);
 every other type is stored unscreened and recorded as unscreened.
 
