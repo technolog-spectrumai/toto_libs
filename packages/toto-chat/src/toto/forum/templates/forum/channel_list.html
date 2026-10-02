@@ -128,7 +128,7 @@
             </div>
 
             <div class="mt-5 flex items-center justify-between text-xs opacity-70">
-              <span>{{ channel.member_count }} member{{ channel.member_count|pluralize }}</span>
+              <span>{% blocktranslate count counter=channel.member_count %}{{ counter }} member{% plural %}{{ counter }} members{% endblocktranslate %}</span>
               <span class="inline-flex items-center gap-2 font-semibold">{% trans "Open" %}<i class="fa-solid fa-arrow-right transition group-hover:translate-x-1"></i>
               </span>
             </div>
@@ -146,7 +146,7 @@
             <span></span>
           {% endif %}
 
-          <span class="opacity-70">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+          <span class="opacity-70">{% blocktranslate with number=page_obj.number total=page_obj.paginator.num_pages %}Page {{ number }} of {{ total }}{% endblocktranslate %}</span>
 
           {% if page_obj.has_next %}
             <a

@@ -17,6 +17,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.text import slugify
+from django.utils.translation import gettext as _, ngettext
 from django.views import View
 from django.views.generic import TemplateView, DetailView, ListView
 from django.urls import reverse, NoReverseMatch
@@ -441,10 +442,12 @@ def _file_response_or_bad_gateway(file_obj):
     try:
         stream = _storage_backends.open_file_stream(file_obj)
     except Exception as exc:  # noqa: BLE001 — a dead backend must not traceback
-        label = file_obj.bucket.name if file_obj.bucket_id else "its storage"
+        label = file_obj.bucket.name if file_obj.bucket_id else _("its storage")
         return HttpResponse(
-            f"'{file_obj.title}' could not be fetched from {label}: "
-            f"{type(exc).__name__}: {exc}",
+            _("'%(title)s' could not be fetched from %(label)s: "
+              "%(error_type)s: %(error)s") % {
+                "title": file_obj.title, "label": label,
+                "error_type": type(exc).__name__, "error": exc},
             status=502, content_type="text/plain; charset=utf-8")
     _record_egress(file_obj)
     return FileResponse(
@@ -505,7 +508,7 @@ class VaultFileDownloadView(View):
         if not access.may_read(request.user, file_obj):
             if not request.user.is_authenticated:
                 return HttpResponseForbidden(
-                    "You must be logged in to access this file.")
+                    _("You must be logged in to access this file."))
             raise Http404("No such file.")
 
         # Through the bucket driver, not the FieldFile: an s3 or remote
@@ -565,7 +568,7 @@ class FileGatewayPageView(LoginRequiredMixin, DetailView):
             and gateway.allowed_users.exists()
             and request.user not in gateway.allowed_users.all()
         ):
-            return HttpResponseForbidden("You are not allowed to access this gateway")
+            return HttpResponseForbidden(_("You are not allowed to access this gateway"))
         return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
@@ -629,18 +632,18 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
             and gateway.allowed_users.exists()
             and request.user not in gateway.allowed_users.all()
         ):
-            return JsonResponse({"error": "You are not allowed to use this gateway"}, status=403)
+            return JsonResponse({"error": _("You are not allowed to use this gateway")}, status=403)
 
         uploaded_files = request.FILES.getlist("file")
         if not uploaded_files:
-            return JsonResponse({"error": "No file uploaded"}, status=400)
+            return JsonResponse({"error": _("No file uploaded")}, status=400)
 
         target_directory_id = request.POST.get("target_directory_id", "").strip()
         if target_directory_id:
             try:
                 directory = VaultDirectory.objects.get(pk=int(target_directory_id), bucket=gateway.bucket)
             except (VaultDirectory.DoesNotExist, ValueError):
-                return JsonResponse({"error": "Invalid target directory."}, status=400)
+                return JsonResponse({"error": _("Invalid target directory.")}, status=400)
         else:
             directory = gateway.directory
 
@@ -662,7 +665,7 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
 
             location = get_full_path(directory)
         else:
-            location = "Root"
+            location = _("Root")
 
         from toto.quota import InArrears, QuotaExceeded, check_quota, record_usage as _ru
         from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
@@ -678,8 +681,10 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
             # ── Per-file size limit ──────────────────────────────────────────
             if uploaded_file.size > max_bytes:
                 errors.append(
-                    f"{uploaded_file.name}: too large "
-                    f"({uploaded_file.size / (1024*1024):.1f} MB; max {gateway.max_file_size / 1024:.1f} MB)."
+                    _("%(name)s: too large (%(size).1f MB; max %(max).1f MB).") % {
+                        "name": uploaded_file.name,
+                        "size": uploaded_file.size / (1024*1024),
+                        "max": gateway.max_file_size / 1024}
                 )
                 continue
 
@@ -698,7 +703,7 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                     continue
 
             try:
-                mime, _ = mimetypes.guess_type(uploaded_file.name)
+                mime = mimetypes.guess_type(uploaded_file.name)[0]
                 auto_file_type = VaultFile.detect_type(mime or "", uploaded_file.name)
                 file_type = manual_type if manual_type in valid_types else auto_file_type
 
@@ -724,8 +729,11 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                         # This file's error entry, not the batch's — same rule
                         # the size and quota checks above already follow.
                         errors.append(
-                            f"{uploaded_file.name}: refused ({verdict.reason}"
-                            f"{': ' + verdict.detail if verdict.detail else ''}).")
+                            _("%(name)s: refused (%(reason)s).") % {
+                                "name": uploaded_file.name,
+                                "reason": verdict.reason + (
+                                    ": " + verdict.detail
+                                    if verdict.detail else "")})
                         continue
 
                 vault_file = VaultFile(
@@ -1440,7 +1448,7 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
                     pk=dest_dir_id, bucket=destination_bucket
                 )
             except VaultDirectory.DoesNotExist:
-                form.add_error(None, "Invalid destination directory.")
+                form.add_error(None, _("Invalid destination directory."))
                 return render(request, self.template_name, self._build_context(request, source_bucket, form))
 
         copy_policy = request.POST.get("copy_policy", "add_suffix")
@@ -1455,10 +1463,10 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
             if data.get("ok"):
                 messages.success(
                     request,
-                    "Transfer queued — it continues in the background.")
+                    _("Transfer queued — it continues in the background."))
                 return redirect("vault:transfer_detail", pk=data["run_id"])
             form.add_error(None, data.get("error",
-                                          "Could not queue the transfer."))
+                                          _("Could not queue the transfer.")))
             return render(request, self.template_name,
                           self._build_context(request, source_bucket, form))
 
@@ -1470,8 +1478,10 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
             if conflicts:
                 preview = ", ".join(f'"{k}"' for k in conflicts[:5])
                 if len(conflicts) > 5:
-                    preview += f" … (+{len(conflicts) - 5} more)"
-                form.add_error(None, f"Key conflict(s): {preview}")
+                    preview += _(" … (+%(count)s more)") % {
+                        "count": len(conflicts) - 5}
+                form.add_error(None, _("Key conflict(s): %(keys)s") % {
+                    "keys": preview})
                 return render(request, self.template_name, self._build_context(request, source_bucket, form))
 
         office = _office_titles(selected_files)
@@ -1520,7 +1530,10 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
         )
         messages.success(
             request,
-            f"Copied {count} file{'s' if count != 1 else ''} to \"{destination_bucket.name}\".",
+            ngettext("Copied %(count)s file to \"%(bucket)s\".",
+                     "Copied %(count)s files to \"%(bucket)s\".",
+                     count) % {"count": count,
+                               "bucket": destination_bucket.name},
         )
         return redirect("vault:bucket_metrics", bucket_slug=destination_bucket.slug)
 
@@ -1556,13 +1569,13 @@ class EncryptFileView(LoginRequiredMixin, View):
         password = request.POST.get("password", "").strip()
         owner_password = request.POST.get("owner_password", "").strip() or None
         if not file_pk or not password:
-            return JsonResponse({"ok": False, "error": "Missing required fields."}, status=400)
+            return JsonResponse({"ok": False, "error": _("Missing required fields.")}, status=400)
         vault_file = get_object_or_404(access.gate_by_bucket(
             request.user, VaultFile.objects.filter(owner=request.user)), pk=file_pk)
         if not access.is_local_content(vault_file):
             return access.remote_lock_response(request, vault_file)
         if vault_file.is_encrypted:
-            return JsonResponse({"ok": False, "error": "File is already encrypted."}, status=400)
+            return JsonResponse({"ok": False, "error": _("File is already encrypted.")}, status=400)
 
         # Offload to a 'vault-encrypt' workflow run when the engine is installed
         # (faros + portal): encryption does an S3 download → crypto → re-upload that
@@ -1612,7 +1625,7 @@ class EncryptFileView(LoginRequiredMixin, View):
         except Exception as e:
             msg = str(e)
             if "EOF marker not found" in msg or "PdfRead" in type(e).__name__:
-                msg = "File does not appear to be a valid PDF."
+                msg = _("File does not appear to be a valid PDF.")
             return JsonResponse({"ok": False, "error": msg}, status=500)
         return JsonResponse({"ok": True, "raw_url": vault_file.get_public_url() or ""})
 
@@ -1628,13 +1641,13 @@ class EncryptStatusView(LoginRequiredMixin, View):
     def get(self, request):
         run_id = request.GET.get("run_id", "").strip()
         if not run_id:
-            return JsonResponse({"ok": False, "error": "Missing run_id."}, status=400)
+            return JsonResponse({"ok": False, "error": _("Missing run_id.")}, status=400)
         from toto.workflows.models import WorkflowRun
 
         run = get_object_or_404(WorkflowRun, pk=run_id)
         owner_id = ((run.input_data or {}).get("data") or {}).get("owner_id")
         if owner_id != request.user.id and not request.user.is_superuser:
-            return JsonResponse({"ok": False, "error": "Not found."}, status=404)
+            return JsonResponse({"ok": False, "error": _("Not found.")}, status=404)
 
         out = run.output_data or {}
         is_terminal = run.status in (WorkflowRun.COMPLETED, WorkflowRun.FAILED)
@@ -1643,7 +1656,7 @@ class EncryptStatusView(LoginRequiredMixin, View):
             payload.update({"ok": True, "raw_url": out.get("raw_url", ""),
                             "vault_file_id": out.get("vault_file_id")})
         elif run.status == WorkflowRun.FAILED:
-            payload.update({"ok": False, "error": out.get("error", "Encryption failed.")})
+            payload.update({"ok": False, "error": out.get("error", _("Encryption failed."))})
         return JsonResponse(payload)
 
 
@@ -1652,13 +1665,13 @@ class DecryptFileView(LoginRequiredMixin, View):
         file_pk = request.POST.get("file_pk", "").strip()
         password = request.POST.get("password", "").strip()
         if not file_pk or not password:
-            return JsonResponse({"ok": False, "error": "Missing required fields."}, status=400)
+            return JsonResponse({"ok": False, "error": _("Missing required fields.")}, status=400)
         vault_file = get_object_or_404(access.gate_by_bucket(
             request.user, VaultFile.objects.filter(owner=request.user)), pk=file_pk)
         if not access.is_local_content(vault_file):
             return access.remote_lock_response(request, vault_file)
         if not vault_file.is_encrypted:
-            return JsonResponse({"ok": False, "error": "File is not encrypted."}, status=400)
+            return JsonResponse({"ok": False, "error": _("File is not encrypted.")}, status=400)
         try:
             vault_file.decrypt(password=password)
             vault_file.is_public = True
@@ -1673,15 +1686,15 @@ class EncryptedDownloadView(LoginRequiredMixin, View):
         file_pk  = request.POST.get("file_pk", "").strip()
         password = request.POST.get("password", "").strip()
         if not file_pk or not password:
-            return JsonResponse({"ok": False, "error": "Missing required fields."}, status=400)
+            return JsonResponse({"ok": False, "error": _("Missing required fields.")}, status=400)
         try:
             vault_file = access.gate_by_bucket(
                 request.user, VaultFile.objects.select_related("owner", "bucket")
             ).get(pk=file_pk, owner=request.user)
         except VaultFile.DoesNotExist:
-            return JsonResponse({"ok": False, "error": "File not found."}, status=404)
+            return JsonResponse({"ok": False, "error": _("File not found.")}, status=404)
         if not vault_file.is_encrypted:
-            return JsonResponse({"ok": False, "error": "File is not encrypted."}, status=400)
+            return JsonResponse({"ok": False, "error": _("File is not encrypted.")}, status=400)
         refusal = _egress_refusal(vault_file)
         if refusal is not None:
             return JsonResponse({"ok": False, "error": refusal.content.decode()},
@@ -1704,7 +1717,7 @@ class MoveFileView(LoginRequiredMixin, View):
         file_pk = request.POST.get("file_pk", "").strip()
         dest_dir_pk = request.POST.get("destination_directory", "").strip()
         if not file_pk:
-            return JsonResponse({"ok": False, "error": "Missing file_pk."}, status=400)
+            return JsonResponse({"ok": False, "error": _("Missing file_pk.")}, status=400)
         vault_file = get_object_or_404(access.gate_by_bucket(
             request.user, VaultFile.objects.filter(owner=request.user)), pk=file_pk)
         if access.is_mirror_row(vault_file):
@@ -1726,9 +1739,9 @@ class RenameFileView(LoginRequiredMixin, View):
         new_title = request.POST.get("title", "").strip()
         file_type = request.POST.get("file_type", "").strip()
         if not file_pk or not new_title:
-            return JsonResponse({"ok": False, "error": "Missing required fields."}, status=400)
+            return JsonResponse({"ok": False, "error": _("Missing required fields.")}, status=400)
         if file_type and file_type not in self._VALID_TYPES:
-            return JsonResponse({"ok": False, "error": "Invalid file type."}, status=400)
+            return JsonResponse({"ok": False, "error": _("Invalid file type.")}, status=400)
         from toto.vault.models import upload_refusal
         # A name is a door too: renaming a note to .docx would list an Office
         # file the upload doors refused (2026-09-30).
@@ -1752,7 +1765,7 @@ class DeleteFileView(LoginRequiredMixin, View):
     def post(self, request):
         file_pk = request.POST.get("file_pk", "").strip()
         if not file_pk:
-            return JsonResponse({"ok": False, "error": "Missing file_pk."}, status=400)
+            return JsonResponse({"ok": False, "error": _("Missing file_pk.")}, status=400)
         vault_file = get_object_or_404(access.gate_by_bucket(
             request.user, VaultFile.objects.filter(owner=request.user)), pk=file_pk)
         if access.is_mirror_row(vault_file):
@@ -1783,14 +1796,14 @@ class BucketCopyAjaxView(LoginRequiredMixin, View):
         dest_bucket_id = request.POST.get("destination_bucket", "").strip()
 
         if not file_ids:
-            return JsonResponse({"ok": False, "error": "Select at least one file."}, status=400)
+            return JsonResponse({"ok": False, "error": _("Select at least one file.")}, status=400)
         if not dest_bucket_id:
-            return JsonResponse({"ok": False, "error": "Choose a destination bucket."}, status=400)
+            return JsonResponse({"ok": False, "error": _("Choose a destination bucket.")}, status=400)
 
         try:
             destination_bucket = Bucket.objects.get(pk=dest_bucket_id, owner=request.user)
         except Bucket.DoesNotExist:
-            return JsonResponse({"ok": False, "error": "Invalid destination bucket."}, status=400)
+            return JsonResponse({"ok": False, "error": _("Invalid destination bucket.")}, status=400)
         if destination_bucket.is_being_deleted:
             from .models import closed_bucket_sentence
 
@@ -1798,14 +1811,14 @@ class BucketCopyAjaxView(LoginRequiredMixin, View):
                                 status=409)
 
         if destination_bucket.pk == source_bucket.pk:
-            return JsonResponse({"ok": False, "error": "Source and destination must differ."}, status=400)
+            return JsonResponse({"ok": False, "error": _("Source and destination must differ.")}, status=400)
 
         selected_files = list(
             access.gate_by_bucket(request.user, VaultFile.objects.filter(
                 pk__in=file_ids, bucket=source_bucket, owner=request.user))
         )
         if len(selected_files) != len(file_ids):
-            return JsonResponse({"ok": False, "error": "Some selected files are invalid."}, status=400)
+            return JsonResponse({"ok": False, "error": _("Some selected files are invalid.")}, status=400)
 
         if not (source_bucket.is_local and destination_bucket.is_local):
             return _delegate_to_transfer(
@@ -1875,7 +1888,7 @@ class BucketConnectionUrlView(LoginRequiredMixin, View):
         from .models import external_buckets_allowed
         if bucket.storage_backend != "local" and not external_buckets_allowed():
             # Don't advertise endpoint hosts of backends this host refuses to use.
-            return JsonResponse({"error": "Not found."}, status=404)
+            return JsonResponse({"error": _("Not found.")}, status=404)
         from .connection import BucketConnectionSpec
         spec = BucketConnectionSpec.from_bucket(bucket)
         return JsonResponse({
@@ -1902,7 +1915,7 @@ class RefreshRemoteBucketView(LoginRequiredMixin, View):
         from .models import external_buckets_allowed
         if not external_buckets_allowed():
             return JsonResponse(
-                {"error": "External buckets are disabled on this host."},
+                {"error": _("External buckets are disabled on this host.")},
                 status=403)
         bucket = get_object_or_404(
             Bucket.objects.select_related("peer"), slug=bucket_slug)
@@ -1910,7 +1923,7 @@ class RefreshRemoteBucketView(LoginRequiredMixin, View):
             raise Http404("No such bucket.")
         if bucket.storage_backend != "remote_toto":
             return JsonResponse(
-                {"error": "Only a mounted remote bucket can be refreshed."},
+                {"error": _("Only a mounted remote bucket can be refreshed.")},
                 status=400)
 
         from . import transfer_dispatch
@@ -2030,16 +2043,16 @@ class TransferRetryView(LoginRequiredMixin, View):
 
         if not run.is_finished:
             return JsonResponse(
-                {"ok": False, "error": "This run is still going."}, status=400)
+                {"ok": False, "error": _("This run is still going.")}, status=400)
         if run.source_bucket is None or run.dest_bucket is None:
             return JsonResponse(
                 {"ok": False,
-                 "error": "A bucket this run used no longer exists."},
+                 "error": _("A bucket this run used no longer exists.")},
                 status=400)
         retry_ids = run.retry_file_ids()
         if not retry_ids:
             return JsonResponse(
-                {"ok": False, "error": "Nothing left to retry."}, status=400)
+                {"ok": False, "error": _("Nothing left to retry.")}, status=400)
         sibling = run.__class__.objects.filter(
             owner=run.owner_id, source_bucket=run.source_bucket,
             dest_bucket=run.dest_bucket,
@@ -2047,16 +2060,16 @@ class TransferRetryView(LoginRequiredMixin, View):
         if sibling:
             return JsonResponse(
                 {"ok": False,
-                 "error": "A transfer between these buckets is already "
-                          "running — wait for it to finish."}, status=409)
+                 "error": _("A transfer between these buckets is already "
+                            "running — wait for it to finish.")}, status=409)
 
         files = list(access.gate_by_bucket(request.user, VaultFile.objects.filter(
             pk__in=retry_ids, bucket=run.source_bucket)))
         if not files:
             return JsonResponse(
                 {"ok": False,
-                 "error": "The files to retry no longer exist at the "
-                          "source."}, status=400)
+                 "error": _("The files to retry no longer exist at the "
+                            "source.")}, status=400)
         new_run = transfer_dispatch.create_transfer_run(
             user=request.user, source_bucket=run.source_bucket,
             dest_bucket=run.dest_bucket, dest_directory=run.dest_directory,
@@ -2141,7 +2154,7 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
     def post(self, request):
         from toto.vault.models import file_edits_allowed
         if not file_edits_allowed():
-            return JsonResponse({"error": "File editing is disabled on this host."}, status=403)
+            return JsonResponse({"error": _("File editing is disabled on this host.")}, status=403)
         from toto.vault.plugins import VaultEditorPlugin
 
         title      = request.POST.get("title", "").strip()
@@ -2149,7 +2162,7 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
         dir_id     = request.POST.get("directory_id", "").strip()
 
         if not title:
-            return JsonResponse({"error": "Filename is required."}, status=400)
+            return JsonResponse({"error": _("Filename is required.")}, status=400)
         from toto.vault.models import upload_refusal
         refusal = upload_refusal(title)
         if refusal:
@@ -2158,17 +2171,17 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
         # used to be two of them that had to agree, and a plugin-declared type
         # would have been offered by the menu and refused by this check.
         if file_type not in {t for t, _ in available_create_types()}:
-            return JsonResponse({"error": f"Unsupported type: {file_type}"}, status=400)
+            return JsonResponse({"error": _("Unsupported type: %(type)s") % {"type": file_type}}, status=400)
         # Only allow creating a type whose editor app is installed on this deployment
         # (the UI already hides the others; this guards direct POSTs).
         if VaultEditorPlugin.for_file_type(file_type) is None:
-            return JsonResponse({"error": "No editor available for this file type."}, status=400)
+            return JsonResponse({"error": _("No editor available for this file type.")}, status=400)
         if not dir_id:
-            return JsonResponse({"error": "directory_id is required."}, status=400)
+            return JsonResponse({"error": _("directory_id is required.")}, status=400)
 
         directory = get_object_or_404(VaultDirectory, pk=int(dir_id))
         if directory.bucket.owner_id is None or directory.bucket.owner_id != request.user.pk:
-            return JsonResponse({"error": "Permission denied."}, status=403)
+            return JsonResponse({"error": _("Permission denied.")}, status=403)
         if directory.bucket.is_being_deleted:
             from .models import closed_bucket_sentence
 
@@ -2176,9 +2189,9 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
         if not directory.bucket.is_local:
             # An empty file exists to be edited, and editors need local bytes.
             return JsonResponse(
-                {"error": "This bucket's storage is remote — files are "
-                          "uploaded or transferred into it, not created "
-                          "empty here."}, status=403)
+                {"error": _("This bucket's storage is remote — files are "
+                            "uploaded or transferred into it, not created "
+                            "empty here.")}, status=403)
 
         vault_file = create_empty_vault_file(
             request.user, directory.bucket, directory, title, file_type,
@@ -2203,17 +2216,17 @@ class CreateZipView(LoginRequiredMixin, View):
     def post(self, request):
         from django.apps import apps
         if not apps.is_installed("toto.workflows"):
-            return JsonResponse({"error": "Archiving is not available on this deployment."}, status=400)
+            return JsonResponse({"error": _("Archiving is not available on this deployment.")}, status=400)
 
         source_id = request.POST.get("source_directory_id", "").strip()
         target_id = request.POST.get("target_directory_id", "").strip()
         output_name = request.POST.get("output_name", "").strip()
 
         if not source_id:
-            return JsonResponse({"error": "source_directory_id is required."}, status=400)
+            return JsonResponse({"error": _("source_directory_id is required.")}, status=400)
         source = get_object_or_404(VaultDirectory, pk=source_id)
         if source.bucket.owner_id != request.user.id and not request.user.is_superuser:
-            return JsonResponse({"error": "Permission denied."}, status=403)
+            return JsonResponse({"error": _("Permission denied.")}, status=403)
 
         target = None
         if target_id:
@@ -2222,7 +2235,7 @@ class CreateZipView(LoginRequiredMixin, View):
         try:
             ids = [int(x) for x in request.POST.getlist("file_ids")]
         except (TypeError, ValueError):
-            return JsonResponse({"error": "Invalid file selection."}, status=400)
+            return JsonResponse({"error": _("Invalid file selection.")}, status=400)
         valid_ids = list(
             access.gate_by_bucket(request.user, VaultFile.objects.filter(
                 pk__in=ids, bucket=source.bucket, is_encrypted=False))
@@ -2232,7 +2245,7 @@ class CreateZipView(LoginRequiredMixin, View):
             .values_list("pk", flat=True)
         )
         if not valid_ids:
-            return JsonResponse({"error": "Select at least one file to archive."}, status=400)
+            return JsonResponse({"error": _("Select at least one file to archive.")}, status=400)
 
         payload = {"data": {
             "owner_id": request.user.id,
@@ -2309,7 +2322,7 @@ class ZipStatusView(LoginRequiredMixin, View):
         run = get_object_or_404(WorkflowRun, pk=request.GET.get("run_id"))
         owner_id = ((run.input_data or {}).get("data") or {}).get("owner_id")
         if owner_id != request.user.id and not request.user.is_superuser:
-            return JsonResponse({"error": "Not found."}, status=404)
+            return JsonResponse({"error": _("Not found.")}, status=404)
 
         vfid = None
         if run.status == WorkflowRun.COMPLETED:

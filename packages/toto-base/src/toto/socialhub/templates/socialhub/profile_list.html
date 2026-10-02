@@ -2,7 +2,7 @@
 {% load static %}
 {% load i18n %}
 
-{% block title %}Community Members – {{ platform.site_name }}{% endblock %}
+{% block title %}{% trans "Community Members" %} – {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
 <style>
@@ -65,7 +65,7 @@
             : 'border-accent-2 bg-sunken-light'"
           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
           <i class="fa-solid fa-user-group"></i>
-          {{ profiles|length }} profile{% if profiles|length != 1 %}s{% endif %}
+          {% blocktranslate trimmed count counter=profiles|length %}{{ counter }} profile{% plural %}{{ counter }} profiles{% endblocktranslate %}
         </div>
       </div>
     </section>
@@ -241,7 +241,7 @@
               </a>
 
               <p class="mt-1 text-xs opacity-70">
-                Joined {{ member.joined_date|date:"F j, Y" }}
+                {% blocktranslate trimmed with date=member.joined_date|date:"F j, Y" %}Joined {{ date }}{% endblocktranslate %}
               </p>
             </div>
           </div>
@@ -347,7 +347,7 @@
             ? 'border-accent-1 bg-sunken-dark'
             : 'border-accent-2 bg-sunken-light'"
           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-semibold shadow-sm">
-          Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+          {% blocktranslate trimmed with page=page_obj.number total=page_obj.paginator.num_pages %}Page {{ page }} of {{ total }}{% endblocktranslate %}
         </span>
 
         {% if page_obj.has_next %}

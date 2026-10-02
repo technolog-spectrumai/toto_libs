@@ -72,6 +72,7 @@ from django.template import loader
 from django.urls import NoReverseMatch, reverse
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+from django.utils import translation
 from django.utils.translation import gettext as _
 
 from toto.core.auth_cooldown import (
@@ -79,6 +80,7 @@ from toto.core.auth_cooldown import (
     start_reset_request_cooldown,
 )
 from toto.core.email_config import email_delivery_configured
+from toto.core.notices import _language as recipient_language
 from toto.ui import PageProcessor
 
 from . import recovery
@@ -102,6 +104,18 @@ def _email_send_mode():
         except Exception:
             pass
     return None
+
+
+class _ResetForm(PasswordResetForm):
+    """Django's reset form, each mail in its recipient's language
+    (2026-10-02): the account's chosen language, else the platform's — never
+    the language of whoever typed the address into the form."""
+
+    def send_mail(self, subject_template_name, email_template_name, context,
+                  from_email, to_email, html_email_template_name=None):
+        with translation.override(recipient_language(context["user"])):
+            super().send_mail(subject_template_name, email_template_name, context,
+                              from_email, to_email, html_email_template_name)
 
 
 def _send_inline(form: PasswordResetForm, request) -> None:
@@ -137,7 +151,10 @@ def _send_inline(form: PasswordResetForm, request) -> None:
             "token": default_token_generator.make_token(user),
             "protocol": "https" if request.is_secure() else "http",
         }
-        subject = loader.render_to_string("sso/password_reset_subject.txt", context)
+        # In the recipient's language, as _ResetForm.send_mail (2026-10-02).
+        with translation.override(recipient_language(user)):
+            subject = loader.render_to_string("sso/password_reset_subject.txt", context)
+            body = loader.render_to_string("sso/password_reset_email.html", context)
         subject = "".join(subject.splitlines())
         if password is None:
             # Unlocked away between the page render and this POST (a logout,
@@ -152,7 +169,6 @@ def _send_inline(form: PasswordResetForm, request) -> None:
                       "see /jess/unlock/.",
             )
             continue
-        body = loader.render_to_string("sso/password_reset_email.html", context)
         send_single_now(
             subject=subject, body=body, to=[user.email],
             purpose=MailMessage.PURPOSE_PASSWORD_RESET, password=password,
@@ -236,7 +252,7 @@ def password_reset_view(request):
                       processor.decorate(context, request))
 
     # ---- flow 1: the email form -------------------------------------------
-    form = PasswordResetForm(request.POST or None)
+    form = _ResetForm(request.POST or None)
     context = {"flow": "email", "form": form, "page_title": "Reset Password",
                "error": None}
 

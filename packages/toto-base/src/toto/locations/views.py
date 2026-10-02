@@ -14,6 +14,7 @@ from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
 from django.views.decorators.http import require_POST
 
 from toto.core.safe_next import safe_next
@@ -34,10 +35,10 @@ from .geocode import geocoding_enabled, geocoding_headers, geocoding_settings
 
 
 ROUTING_MODE_OPTIONS = (
-    {"value": "car", "label": "Car", "icon": "fa-car-side"},
-    {"value": "bicycle", "label": "Bicycle", "icon": "fa-bicycle"},
-    {"value": "foot", "label": "Foot", "icon": "fa-person-walking"},
-    {"value": "public_transport", "label": "Public transport", "icon": "fa-train-subway"},
+    {"value": "car", "label": gettext_lazy("Car"), "icon": "fa-car-side"},
+    {"value": "bicycle", "label": gettext_lazy("Bicycle"), "icon": "fa-bicycle"},
+    {"value": "foot", "label": gettext_lazy("Foot"), "icon": "fa-person-walking"},
+    {"value": "public_transport", "label": gettext_lazy("Public transport"), "icon": "fa-train-subway"},
 )
 
 ROAD_ROUTING_ENDPOINTS = {
@@ -1068,7 +1069,7 @@ def route_save(request):
     else:
         messages.error(
             request,
-            "Only LineString and MultiLineString routes can be saved.",
+            _("Only LineString and MultiLineString routes can be saved."),
         )
         return redirect("locations:route_search")
 
@@ -1093,7 +1094,7 @@ def route_save(request):
         created_by=request.user,
     )
 
-    messages.success(request, f"Route '{route.name}' saved.")
+    messages.success(request, _("Route '%(name)s' saved.") % {"name": route.name})
     return redirect("locations:route_detail", pk=route.pk)
 
 
@@ -1156,13 +1157,13 @@ def api_import_layer(request):
     # A layer is shared: every member sees it on the map. Importing one is a
     # staff act (2026-09-25).
     if not may_import_layer(request.user):
-        return JsonResponse({"error": "Only staff may import map layers."}, status=403)
+        return JsonResponse({"error": _("Only staff may import map layers.")}, status=403)
 
     uploaded = request.FILES.get("file")
     vault_file_id = request.POST.get("vault_file_id", "").strip()
 
     if not uploaded and not vault_file_id:
-        return JsonResponse({"error": "Provide a file upload or a vault_file_id."}, status=400)
+        return JsonResponse({"error": _("Provide a file upload or a vault_file_id.")}, status=400)
 
     try:
         if uploaded:
@@ -1173,11 +1174,11 @@ def api_import_layer(request):
                     from cryptography.fernet import Fernet, InvalidToken
                     keyring = request.user.user_strongboxes.first()
                     if not keyring:
-                        return JsonResponse({"error": "No encryption strongbox found for your account."}, status=400)
+                        return JsonResponse({"error": _("No encryption strongbox found for your account.")}, status=400)
                     key = keyring.derive_key(password)
                     raw_bytes = Fernet(key).decrypt(raw_bytes)
                 except InvalidToken:
-                    return JsonResponse({"error": "Wrong password or file is not encrypted."}, status=400)
+                    return JsonResponse({"error": _("Wrong password or file is not encrypted.")}, status=400)
             raw = raw_bytes.decode("utf-8")
         else:
             from toto.vault.access import may_read
@@ -1189,28 +1190,28 @@ def api_import_layer(request):
             if vf.is_encrypted:
                 password = request.POST.get("password", "").strip()
                 if not password:
-                    return JsonResponse({"error": "encrypted", "message": "File is encrypted — provide a password."}, status=422)
+                    return JsonResponse({"error": "encrypted", "message": _("File is encrypted — provide a password.")}, status=422)
                 try:
-                    content_bytes, _ = vf.get_strategy().decrypt_to_bytes(vf, password=password)
+                    content_bytes, _meta = vf.get_strategy().decrypt_to_bytes(vf, password=password)
                     raw = content_bytes.decode("utf-8")
                 except Exception:
-                    return JsonResponse({"error": "Wrong password or corrupted file."}, status=400)
+                    return JsonResponse({"error": _("Wrong password or corrupted file.")}, status=400)
             else:
                 vf.file.open("rb")
                 raw = vf.file.read().decode("utf-8")
                 vf.file.close()
         data = json.loads(raw)
     except VaultFile.DoesNotExist:
-        return JsonResponse({"error": "Vault file not found."}, status=404)
+        return JsonResponse({"error": _("Vault file not found.")}, status=404)
     except Exception as exc:
-        return JsonResponse({"error": f"Invalid GeoJSON — could not parse file: {exc}"}, status=400)
+        return JsonResponse({"error": _("Invalid GeoJSON — could not parse file: %(error)s") % {"error": exc}}, status=400)
 
     if data.get("type") != "FeatureCollection":
-        return JsonResponse({"error": "Expected a GeoJSON FeatureCollection."}, status=400)
+        return JsonResponse({"error": _("Expected a GeoJSON FeatureCollection.")}, status=400)
 
     features = data.get("features") or []
     if not features:
-        return JsonResponse({"error": "File contains no features."}, status=400)
+        return JsonResponse({"error": _("File contains no features.")}, status=400)
 
     # Group features by layer_slug property
     groups: dict[str, list] = defaultdict(list)
@@ -1235,7 +1236,7 @@ def api_import_layer(request):
         min_val = min(raw_values) if raw_values else None
         max_val = max(raw_values) if raw_values else None
 
-        layer, _ = MapLayer.objects.update_or_create(
+        layer, _created = MapLayer.objects.update_or_create(
             slug=layer_slug,
             defaults={
                 "name": layer_name,
@@ -1343,7 +1344,7 @@ def metadata_save(request, kind, pk):
 
     if not may_write(request.user, obj):
         return JsonResponse(
-            {"status": "error", "error": "Only its creator or staff may change this."},
+            {"status": "error", "error": _("Only its creator or staff may change this.")},
             status=403)
     fmt = request.POST.get("format", "json")
 
@@ -1351,7 +1352,7 @@ def metadata_save(request, kind, pk):
         parsed = _parse_metadata(request.POST.get("metadata"), fmt)
     except (json.JSONDecodeError, yaml.YAMLError) as exc:
         return JsonResponse(
-            {"status": "error", "error": f"Invalid {fmt.upper()}: {exc}"}, status=400
+            {"status": "error", "error": _("Invalid %(format)s: %(error)s") % {"format": fmt.upper(), "error": exc}}, status=400
         )
 
     if parsed is None:
@@ -1359,7 +1360,7 @@ def metadata_save(request, kind, pk):
 
     if not isinstance(parsed, dict):
         return JsonResponse(
-            {"status": "error", "error": "Metadata must be a mapping/object."},
+            {"status": "error", "error": _("Metadata must be a mapping/object.")},
             status=400,
         )
 
@@ -1405,7 +1406,7 @@ def metadata_convert(request):
         data = _parse_metadata(text, src)
     except (json.JSONDecodeError, yaml.YAMLError) as exc:
         return JsonResponse(
-            {"status": "error", "error": f"Invalid {src.upper()}: {exc}"}, status=400
+            {"status": "error", "error": _("Invalid %(format)s: %(error)s") % {"format": src.upper(), "error": exc}}, status=400
         )
 
     if data is None:
@@ -1413,7 +1414,7 @@ def metadata_convert(request):
 
     if not isinstance(data, dict):
         return JsonResponse(
-            {"status": "error", "error": "Metadata must be a mapping/object."},
+            {"status": "error", "error": _("Metadata must be a mapping/object.")},
             status=400,
         )
 

@@ -107,14 +107,15 @@ def _age(seconds):
     if seconds is None:
         return "—"
     if seconds < 90:
-        return f"{seconds:.0f}s ago"
+        return _("%(seconds)ss ago") % {"seconds": f"{seconds:.0f}"}
     minutes = seconds / 60
     if minutes < 90:
-        return f"{minutes:.0f} min ago"
+        return _("%(minutes)s min ago") % {"minutes": f"{minutes:.0f}"}
     hours = minutes / 60
     if hours < 48:
-        return f"{hours:.0f} h ago"
-    return f"{hours / 24:.0f} days ago"
+        return _("%(hours)s h ago") % {"hours": f"{hours:.0f}"}
+    days = round(hours / 24)
+    return ngettext("%(days)s day ago", "%(days)s days ago", days) % {"days": days}
 
 
 def _guard(key, label):
@@ -124,7 +125,7 @@ def _guard(key, label):
             try:
                 return fn(*args, **kwargs)
             except Exception as exc:  # noqa: BLE001 - the whole point
-                return Check(key, label, UNKNOWN, "Could not be checked.",
+                return Check(key, label, UNKNOWN, _("Could not be checked."),
                              detail=f"{exc.__class__.__name__}: {exc}"[:300])
         wrapper.__name__ = fn.__name__
         wrapper.__doc__ = fn.__doc__
@@ -147,7 +148,7 @@ def _writable(path: Path) -> bool:
 # ---------------------------------------------------------------------------
 
 
-@_guard("database", "Database")
+@_guard("database", gettext_lazy("Database"))
 def check_database():
     from django.db import connection
 
@@ -158,14 +159,14 @@ def check_database():
     latency = (time.perf_counter() - started) * 1000
 
     status = OK if latency < 250 else WARN
-    return Check("database", "Database", status,
-                 f"Reachable, {latency:.1f} ms.",
+    return Check("database", _("Database"), status,
+                 _("Reachable, %(ms)s ms.") % {"ms": f"{latency:.1f}"},
                  detail=f"{connection.vendor} · "
                         f"{connection.settings_dict.get('NAME')}",
                  value=f"{latency:.1f} ms")
 
 
-@_guard("migrations", "Migrations")
+@_guard("migrations", gettext_lazy("Migrations"))
 def check_migrations():
     """Unapplied migrations mean the code and the schema disagree."""
     from django.db import connection
@@ -174,15 +175,16 @@ def check_migrations():
     executor = MigrationExecutor(connection)
     plan = executor.migration_plan(executor.loader.graph.leaf_nodes())
     if not plan:
-        return Check("migrations", "Migrations", OK, "All applied.",
+        return Check("migrations", _("Migrations"), OK, _("All applied."),
                      value=str(len(executor.loader.applied_migrations)))
     names = ", ".join(f"{m.app_label}.{m.name}" for m, _ in plan[:5])
-    return Check("migrations", "Migrations", FAIL,
-                 f"{len(plan)} not applied.", detail=names,
+    return Check("migrations", _("Migrations"), FAIL,
+                 ngettext("%(count)d not applied.", "%(count)d not applied.",
+                          len(plan)) % {"count": len(plan)}, detail=names,
                  value=str(len(plan)))
 
 
-@_guard("media", "Media store")
+@_guard("media", gettext_lazy("Media store"))
 def check_media(*, scheduled=False):
     """Uploads, logos, documents: the files the rows point at.
 
@@ -194,22 +196,23 @@ def check_media(*, scheduled=False):
 
     root = Path(settings.MEDIA_ROOT)
     if not root.exists():
-        return Check("media", "Media store", FAIL,
-                     "The directory does not exist.", detail=str(root))
+        return Check("media", _("Media store"), FAIL,
+                     _("The directory does not exist."), detail=str(root))
     if not _writable(root):
-        return Check("media", "Media store", FAIL,
-                     "Not writable by this process.", detail=str(root))
+        return Check("media", _("Media store"), FAIL,
+                     _("Not writable by this process."), detail=str(root))
     if scheduled:
-        return Check("media", "Media store", OK, _("Writable."), detail=str(root))
+        return Check("media", _("Media store"), OK, _("Writable."), detail=str(root))
 
     files = [p for p in root.rglob("*") if p.is_file()]
     total = sum(p.stat().st_size for p in files)
-    return Check("media", "Media store", OK,
-                 f"{len(files)} file(s), {_bytes(total)}.",
+    return Check("media", _("Media store"), OK,
+                 ngettext("%(count)d file, %(size)s.", "%(count)d files, %(size)s.",
+                          len(files)) % {"count": len(files), "size": _bytes(total)},
                  detail=str(root), value=str(len(files)))
 
 
-@_guard("disk", "Disk")
+@_guard("disk", gettext_lazy("Disk"))
 def check_disk():
     from django.conf import settings
 
@@ -223,12 +226,13 @@ def check_disk():
         status = FAIL
     elif used_percent >= DISK_WARN_PERCENT:
         status = WARN
-    return Check("disk", "Disk", status,
-                 f"{used_percent:.0f}% used, {_bytes(usage.free)} free.",
+    return Check("disk", _("Disk"), status,
+                 _("%(percent)s%% used, %(free)s free.") % {
+                     "percent": f"{used_percent:.0f}", "free": _bytes(usage.free)},
                  detail=str(probe), value=f"{used_percent:.0f}%")
 
 
-@_guard("backups", "Backups")
+@_guard("backups", gettext_lazy("Backups"))
 def check_backups():
     """Freshness, not existence. A backup directory full of last year is
     worse than an empty one, because it looks like a working backup.
@@ -241,9 +245,9 @@ def check_backups():
 
     roots = [Path(p) for p in getattr(settings, "MONIT_BACKUP_DIRS", [])]
     if not roots:
-        return Check("backups", "Backups", OFF,
-                     "No backup directories declared.",
-                     detail="Set MONIT_BACKUP_DIRS to watch them here.")
+        return Check("backups", _("Backups"), OFF,
+                     _("No backup directories declared."),
+                     detail=_("Set MONIT_BACKUP_DIRS to watch them here."))
 
     newest, label = None, ""
     missing = [str(root) for root in roots if not root.exists()]
@@ -258,15 +262,16 @@ def check_backups():
                 newest, label = stamp, path.name
 
     if newest is None:
-        return Check("backups", "Backups", WARN,
-                     "No backup has been taken.",
+        return Check("backups", _("Backups"), WARN,
+                     _("No backup has been taken."),
                      detail=", ".join(str(r) for r in roots))
 
     age = time.time() - newest
     status = OK if age < BACKUP_STALE_HOURS * 3600 else FAIL
-    detail = label + (f" · missing: {', '.join(missing)}" if missing else "")
-    return Check("backups", "Backups", status,
-                 f"Newest {_age(age)}.", detail=detail, value=_age(age))
+    detail = label + (" · " + _("missing: %(dirs)s") % {"dirs": ", ".join(missing)}
+                      if missing else "")
+    return Check("backups", _("Backups"), status,
+                 _("Newest %(age)s.") % {"age": _age(age)}, detail=detail, value=_age(age))
 
 
 def _offsite_state(path: Path) -> dict:
@@ -424,7 +429,7 @@ def _verify_audit_on_schedule():
     return result
 
 
-@_guard("audit", "Audit chain")
+@_guard("audit", gettext_lazy("Audit chain"))
 def check_audit(*, scheduled=False):
     """Does the audit chain still verify? ``scheduled`` (the alert run,
     2026-10-01): the new records every run and the whole chain daily
@@ -432,17 +437,19 @@ def check_audit(*, scheduled=False):
     from django.apps import apps as django_apps
 
     if not django_apps.is_installed("toto.audit"):
-        return Check("audit", "Audit chain", OFF,
-                     "toto.audit is not installed on this host.")
+        return Check("audit", _("Audit chain"), OFF,
+                     _("toto.audit is not installed on this host."))
     from toto.audit.services import verify_chain
 
     result = _verify_audit_on_schedule() if scheduled else verify_chain()
     if result.ok:
-        return Check("audit", "Audit chain", OK,
-                     f"{result.checked} record(s) verify.",
+        return Check("audit", _("Audit chain"), OK,
+                     ngettext("%(count)d record verifies.", "%(count)d records verify.",
+                              result.checked) % {"count": result.checked},
                      value=str(result.checked))
-    return Check("audit", "Audit chain", FAIL,
-                 f"Broken at sequence {result.first_bad_sequence}.",
+    return Check("audit", _("Audit chain"), FAIL,
+                 _("Broken at sequence %(sequence)s.") % {
+                     "sequence": result.first_bad_sequence},
                  detail=result.detail, value="broken")
 
 

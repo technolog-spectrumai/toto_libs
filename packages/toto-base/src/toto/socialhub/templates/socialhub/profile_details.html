@@ -313,7 +313,7 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
             : 'border-accent-2 bg-sunken-light'"
           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
           <i class="fa-solid fa-users"></i>
-          {{ profile.listed_communities|length }} communit{% if profile.listed_communities|length == 1 %}y{% else %}ies{% endif %}
+          {% blocktranslate trimmed count counter=profile.listed_communities|length %}{{ counter }} community{% plural %}{{ counter }} communities{% endblocktranslate %}
         </div>
       </div>
 
@@ -371,7 +371,7 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
               : 'border-accent-2 bg-sunken-light'"
             class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
             <i class="fa-solid fa-inbox"></i>
-            {{ reference_requests|length }} request{% if reference_requests|length != 1 %}s{% endif %}
+            {% blocktranslate trimmed count counter=reference_requests|length %}{{ counter }} request{% plural %}{{ counter }} requests{% endblocktranslate %}
           </div>
         </div>
 
@@ -419,7 +419,7 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
                     {% endif %}
 
                     <span class="rounded-full px-1 py-1 opacity-70">
-                      Sent {{ ref.created_at|date:"F j, Y" }}
+                      {% blocktranslate trimmed with date=ref.created_at|date:"F j, Y" %}Sent {{ date }}{% endblocktranslate %}
                     </span>
                   </div>
                 </div>

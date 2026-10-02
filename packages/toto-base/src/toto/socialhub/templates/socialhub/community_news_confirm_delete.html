@@ -1,7 +1,7 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
 
-{% block title %}Delete Community News | {{ community.name }}{% endblock %}
+{% block title %}{% trans "Delete Community News" %} | {{ community.name }}{% endblock %}
 
 {% block content %}
 <section
@@ -20,7 +20,7 @@
       <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
          class="text-xs font-semibold uppercase tracking-wide">{% trans "Delete community news" %}</p>
       <h1 class="mt-2 break-words text-3xl font-bold">{{ post.display_title }}</h1>
-      <p class="mt-3 text-sm leading-6 opacity-75">This removes the post from {{ community.name }}.</p>
+      <p class="mt-3 text-sm leading-6 opacity-75">{% blocktranslate trimmed with community=community.name %}This removes the post from {{ community }}.{% endblocktranslate %}</p>
       <div class="mt-6 flex flex-wrap justify-end gap-3">
         <a href="{{ post.get_absolute_url }}"
            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"

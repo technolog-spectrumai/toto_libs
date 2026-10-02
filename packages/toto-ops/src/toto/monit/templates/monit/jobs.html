@@ -106,7 +106,7 @@
         <a href="?{% if active_source %}source={{ active_source }}&amp;{% endif %}{% if active_status != name %}status={{ name }}{% endif %}"
            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
            class="rounded-lg border px-3 py-1.5 text-sm {% if active_status == name %}font-bold{% else %}opacity-80{% endif %}">
-          {{ name|capfirst }} <span class="opacity-70">{{ count }}</span></a>
+          {% if name == 'pending' %}{% trans "Pending" %}{% elif name == 'running' %}{% trans "Running" %}{% elif name == 'done' %}{% trans "Done" %}{% elif name == 'failed' %}{% trans "Failed" %}{% elif name == 'other' %}{% trans "Other" %}{% else %}{{ name|capfirst }}{% endif %} <span class="opacity-70">{{ count }}</span></a>
       {% endfor %}
 
       <form method="get" class="ml-auto flex items-center gap-2">
@@ -143,13 +143,13 @@
                 <td class="px-3 py-2 whitespace-nowrap">
                   {% if job.status == 'failed' %}
                     <span class="font-bold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
-                      <i class="fa-solid fa-circle-xmark" aria-hidden="true"></i> {{ job.raw_status }}</span>
+                      <i class="fa-solid fa-circle-xmark" aria-hidden="true"></i> {{ job.raw_status_label }}</span>
                   {% elif job.status == 'running' %}
-                    <span class="font-semibold"><i class="fa-solid fa-spinner" aria-hidden="true"></i> {{ job.raw_status }}</span>
+                    <span class="font-semibold"><i class="fa-solid fa-spinner" aria-hidden="true"></i> {{ job.raw_status_label }}</span>
                   {% elif job.status == 'pending' %}
-                    <span class="opacity-70"><i class="fa-regular fa-clock" aria-hidden="true"></i> {{ job.raw_status }}</span>
+                    <span class="opacity-70"><i class="fa-regular fa-clock" aria-hidden="true"></i> {{ job.raw_status_label }}</span>
                   {% else %}
-                    <span class="opacity-80">{{ job.raw_status }}</span>
+                    <span class="opacity-80">{{ job.raw_status_label }}</span>
                   {% endif %}
                 </td>
                 <td class="px-3 py-2 whitespace-nowrap opacity-80">{{ job.source_label }}</td>

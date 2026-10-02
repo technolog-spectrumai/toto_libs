@@ -1,12 +1,13 @@
 from django.db.models import Q
 from django.utils.timezone import now
+from django.utils.translation import gettext_lazy as _
 
 from toto.socialhub.plugins.profile_plugins import ProfilePlugin
 
 
 @ProfilePlugin.plugin(
     key="upcoming_events",
-    title="Upcoming Events",
+    title=_("Upcoming Events"),
     order=35,
 )
 class UpcomingEventsProfilePlugin(ProfilePlugin):

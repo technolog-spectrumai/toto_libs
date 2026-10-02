@@ -6,6 +6,7 @@ from django.http import FileResponse, JsonResponse, HttpResponseRedirect
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.utils.text import slugify
+from django.utils.translation import gettext as _
 
 from toto.api.cors import CorsApiView
 from toto.vault import access
@@ -115,7 +116,7 @@ def _readable(user, queryset):
 class FileListApiView(CorsApiView):
     def get(self, request):
         if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
+            return JsonResponse({"error": _("Not authenticated.")}, status=401)
         files = (
             _readable(request.user, VaultFile.objects.filter(owner=request.user))
             .select_related("bucket")
@@ -128,11 +129,11 @@ class FileListApiView(CorsApiView):
 class FileUploadApiView(CorsApiView):
     def post(self, request):
         if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
+            return JsonResponse({"error": _("Not authenticated.")}, status=401)
 
         file = request.FILES.get("file")
         if not file:
-            return JsonResponse({"error": "No file provided."}, status=400)
+            return JsonResponse({"error": _("No file provided.")}, status=400)
 
         # Same metrics and the same rate card as the gateway upload — this is
         # the other door onto one resource, so it must not be the cheap one.
@@ -166,7 +167,7 @@ class FileUploadApiView(CorsApiView):
         if bucket_slug:
             bucket = _resolve_owned_bucket(request.user, bucket_slug)
             if bucket is None:
-                return JsonResponse({"error": "Bucket not found."}, status=404)
+                return JsonResponse({"error": _("Bucket not found.")}, status=404)
         else:
             bucket = _get_or_create_default_bucket(request.user)
 
@@ -175,7 +176,7 @@ class FileUploadApiView(CorsApiView):
         if directory_id:
             directory = _resolve_owned_directory(request.user, directory_id, bucket)
             if directory is None:
-                return JsonResponse({"error": "Directory not found."}, status=404)
+                return JsonResponse({"error": _("Directory not found.")}, status=404)
 
         content = file.read()
         content_hash = hashlib.sha256(content).hexdigest()
@@ -250,27 +251,27 @@ class FileDetailApiView(CorsApiView):
 
     def get(self, request, key):
         if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
+            return JsonResponse({"error": _("Not authenticated.")}, status=401)
         vf = self._get_file(request.user, key)
         if not vf:
-            return JsonResponse({"error": "File not found."}, status=404)
+            return JsonResponse({"error": _("File not found.")}, status=404)
         return JsonResponse(_file_to_dict(request, vf))
 
     def patch(self, request, key):
         if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
+            return JsonResponse({"error": _("Not authenticated.")}, status=401)
         vf = self._get_file(request.user, key)
         if not vf:
-            return JsonResponse({"error": "File not found."}, status=404)
+            return JsonResponse({"error": _("File not found.")}, status=404)
         try:
             data = json.loads(request.body)
         except Exception:
-            return JsonResponse({"error": "Invalid JSON."}, status=400)
+            return JsonResponse({"error": _("Invalid JSON.")}, status=400)
         update_fields = []
         if "title" in data:
             title = str(data["title"]).strip()
             if not title:
-                return JsonResponse({"error": "Title cannot be empty."}, status=400)
+                return JsonResponse({"error": _("Title cannot be empty.")}, status=400)
             # The API's rename is the page's rename: a note renamed to .docx
             # would list an Office file every upload door refused (2026-10-01).
             from toto.vault.models import upload_refusal
@@ -288,7 +289,7 @@ class FileDetailApiView(CorsApiView):
             else:
                 directory = _resolve_owned_directory(request.user, directory_id, vf.bucket)
                 if directory is None:
-                    return JsonResponse({"error": "Directory not found."}, status=404)
+                    return JsonResponse({"error": _("Directory not found.")}, status=404)
                 vf.directory = directory
             update_fields.append("directory")
         if update_fields:
@@ -297,13 +298,13 @@ class FileDetailApiView(CorsApiView):
 
     def delete(self, request, key):
         if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
+            return JsonResponse({"error": _("Not authenticated.")}, status=401)
 
         # Scope to the owner up front: an unscoped get(key=key) would 500 on a key
         # another user also owns (MultipleObjectsReturned) and leak existence.
         vf = self._get_file(request.user, key)
         if not vf:
-            return JsonResponse({"error": "File not found."}, status=404)
+            return JsonResponse({"error": _("File not found.")}, status=404)
 
         # To the trash like the web door (2026-10-01); a remote bucket's
         # file goes at once — this host cannot hold it for a restore.
@@ -317,21 +318,21 @@ class FileDetailApiView(CorsApiView):
 class FileEncryptApiView(CorsApiView):
     def post(self, request, key):
         if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
+            return JsonResponse({"error": _("Not authenticated.")}, status=401)
         try:
             vf = _readable(request.user, VaultFile.objects.select_related("bucket")).get(
                 key=key, owner=request.user)
         except VaultFile.DoesNotExist:
-            return JsonResponse({"error": "File not found."}, status=404)
+            return JsonResponse({"error": _("File not found.")}, status=404)
         try:
             data = json.loads(request.body)
         except Exception:
-            return JsonResponse({"error": "Invalid JSON."}, status=400)
+            return JsonResponse({"error": _("Invalid JSON.")}, status=400)
         password = str(data.get("password", "")).strip()
         if not password:
-            return JsonResponse({"error": "Password required."}, status=400)
+            return JsonResponse({"error": _("Password required.")}, status=400)
         if vf.is_encrypted:
-            return JsonResponse({"error": "File is already encrypted."}, status=400)
+            return JsonResponse({"error": _("File is already encrypted.")}, status=400)
         try:
             vf.encrypt(password=password)
             vf.is_public = False
@@ -345,21 +346,21 @@ class FileEncryptApiView(CorsApiView):
 class FileDecryptApiView(CorsApiView):
     def post(self, request, key):
         if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
+            return JsonResponse({"error": _("Not authenticated.")}, status=401)
         try:
             vf = _readable(request.user, VaultFile.objects.select_related("bucket")).get(
                 key=key, owner=request.user)
         except VaultFile.DoesNotExist:
-            return JsonResponse({"error": "File not found."}, status=404)
+            return JsonResponse({"error": _("File not found.")}, status=404)
         try:
             data = json.loads(request.body)
         except Exception:
-            return JsonResponse({"error": "Invalid JSON."}, status=400)
+            return JsonResponse({"error": _("Invalid JSON.")}, status=400)
         password = str(data.get("password", "")).strip()
         if not password:
-            return JsonResponse({"error": "Password required."}, status=400)
+            return JsonResponse({"error": _("Password required.")}, status=400)
         if not vf.is_encrypted:
-            return JsonResponse({"error": "File is not encrypted."}, status=400)
+            return JsonResponse({"error": _("File is not encrypted.")}, status=400)
         try:
             vf.decrypt(password=password)
         except Exception as e:
@@ -371,7 +372,7 @@ class FileDecryptApiView(CorsApiView):
 class VaultMetricsApiView(CorsApiView):
     def get(self, request):
         if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
+            return JsonResponse({"error": _("Not authenticated.")}, status=401)
         from django.utils import timezone
         from datetime import timedelta, date
         from django.db.models import Count, Sum, Q
@@ -453,11 +454,11 @@ class VaultMetricsApiView(CorsApiView):
 class FileDownloadApiView(CorsApiView):
     def get(self, request, key):
         if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
+            return JsonResponse({"error": _("Not authenticated.")}, status=401)
         try:
             vf = _readable(request.user, VaultFile.objects.all()).get(key=key, owner=request.user)
         except VaultFile.DoesNotExist:
-            return JsonResponse({"error": "File not found."}, status=404)
+            return JsonResponse({"error": _("File not found.")}, status=404)
         from .views import _egress_refusal, _record_egress
 
         refusal = _egress_refusal(vf)
@@ -483,7 +484,7 @@ class BucketTreeApiView(CorsApiView):
 
     def get(self, request):
         if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
+            return JsonResponse({"error": _("Not authenticated.")}, status=401)
 
         # Buckets the user owns, plus any bucket holding one of their files.
         owned = Bucket.objects.filter(owner=request.user)
@@ -532,22 +533,22 @@ class DirectoryCreateApiView(CorsApiView):
 
     def post(self, request):
         if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
+            return JsonResponse({"error": _("Not authenticated.")}, status=401)
         try:
             data = json.loads(request.body)
         except Exception:
-            return JsonResponse({"error": "Invalid JSON."}, status=400)
+            return JsonResponse({"error": _("Invalid JSON.")}, status=400)
 
         name = str(data.get("name") or "").strip()
         if not name:
-            return JsonResponse({"error": "Name is required."}, status=400)
+            return JsonResponse({"error": _("Name is required.")}, status=400)
 
         bucket_slug = str(data.get("bucket_slug") or "").strip()
         if bucket_slug:
             try:
                 bucket = Bucket.objects.get(slug=bucket_slug, owner=request.user)
             except Bucket.DoesNotExist:
-                return JsonResponse({"error": "Bucket not found."}, status=404)
+                return JsonResponse({"error": _("Bucket not found.")}, status=404)
         else:
             bucket = _get_or_create_default_bucket(request.user)
 
@@ -556,10 +557,10 @@ class DirectoryCreateApiView(CorsApiView):
         if parent_id is not None:
             parent = _resolve_owned_directory(request.user, parent_id, bucket)
             if parent is None:
-                return JsonResponse({"error": "Parent directory not found."}, status=404)
+                return JsonResponse({"error": _("Parent directory not found.")}, status=404)
 
         if VaultDirectory.objects.filter(bucket=bucket, parent=parent, name=name).exists():
-            return JsonResponse({"error": "Directory already exists."}, status=409)
+            return JsonResponse({"error": _("Directory already exists.")}, status=409)
 
         directory = VaultDirectory.objects.create(
             name=name, bucket=bucket, owner=request.user, parent=parent
@@ -582,18 +583,18 @@ class DirectoryDeleteApiView(CorsApiView):
 
     def delete(self, request, pk):
         if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
+            return JsonResponse({"error": _("Not authenticated.")}, status=401)
         # <int:pk> matches unbounded digits; a huge value would overflow the SQLite
         # column and 500. Range-check before hitting the DB.
         if pk < 0 or pk > 9223372036854775807:
-            return JsonResponse({"error": "Directory not found."}, status=404)
+            return JsonResponse({"error": _("Directory not found.")}, status=404)
         try:
             directory = VaultDirectory.objects.get(pk=pk, owner=request.user)
         except (VaultDirectory.DoesNotExist, OverflowError):
-            return JsonResponse({"error": "Directory not found."}, status=404)
+            return JsonResponse({"error": _("Directory not found.")}, status=404)
 
         if directory.files.exists() or directory.subdirectories.exists():
-            return JsonResponse({"error": "Directory is not empty."}, status=409)
+            return JsonResponse({"error": _("Directory is not empty.")}, status=409)
 
         directory.delete()
         return JsonResponse({}, status=204)
@@ -620,20 +621,20 @@ class FileContentApiView(CorsApiView):
 
     def get(self, request, key):
         if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
+            return JsonResponse({"error": _("Not authenticated.")}, status=401)
         vf = self._get_file(request.user, key)
         if not vf:
-            return JsonResponse({"error": "File not found."}, status=404)
+            return JsonResponse({"error": _("File not found.")}, status=404)
         if not access.is_local_content(vf):
             return JsonResponse(
-                {"error": "This file's bytes live on remote storage — "
-                          "download it instead of editing it here."}, status=403)
+                {"error": _("This file's bytes live on remote storage — "
+                            "download it instead of editing it here.")}, status=403)
         if vf.is_encrypted:
-            return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=400)
+            return JsonResponse({"error": _("File is encrypted. Decrypt it first.")}, status=400)
         if vf.file_type not in EDITABLE_FILE_TYPES:
-            return JsonResponse({"error": "This file type is not editable."}, status=415)
+            return JsonResponse({"error": _("This file type is not editable.")}, status=415)
         if vf.file_size_bytes and vf.file_size_bytes > MAX_EDIT_BYTES:
-            return JsonResponse({"error": "File is too large to edit."}, status=413)
+            return JsonResponse({"error": _("File is too large to edit.")}, status=413)
         try:
             vf.file.open("rb")
             try:
@@ -642,9 +643,9 @@ class FileContentApiView(CorsApiView):
                 vf.file.close()
             content = raw.decode("utf-8")
         except UnicodeDecodeError:
-            return JsonResponse({"error": "File is not valid UTF-8 text."}, status=415)
+            return JsonResponse({"error": _("File is not valid UTF-8 text.")}, status=415)
         except Exception as e:
-            return JsonResponse({"error": f"Could not read file: {e}"}, status=500)
+            return JsonResponse({"error": _("Could not read file: %(error)s") % {"error": e}}, status=500)
         return JsonResponse({
             "key": vf.key,
             "title": vf.title,
@@ -666,30 +667,30 @@ class FileContentApiView(CorsApiView):
 
     def put(self, request, key):
         if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
+            return JsonResponse({"error": _("Not authenticated.")}, status=401)
         if not file_edits_allowed():
-            return JsonResponse({"error": "File editing is disabled on this host."}, status=403)
+            return JsonResponse({"error": _("File editing is disabled on this host.")}, status=403)
         vf = self._get_file(request.user, key)
         if not vf:
-            return JsonResponse({"error": "File not found."}, status=404)
+            return JsonResponse({"error": _("File not found.")}, status=404)
         if not access.is_local_content(vf):
             return JsonResponse(
-                {"error": "This file's bytes live on remote storage — "
-                          "download it instead of editing it here."}, status=403)
+                {"error": _("This file's bytes live on remote storage — "
+                            "download it instead of editing it here.")}, status=403)
         if vf.is_encrypted:
-            return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=400)
+            return JsonResponse({"error": _("File is encrypted. Decrypt it first.")}, status=400)
         if vf.file_type not in EDITABLE_FILE_TYPES:
-            return JsonResponse({"error": "This file type is not editable."}, status=415)
+            return JsonResponse({"error": _("This file type is not editable.")}, status=415)
         try:
             data = json.loads(request.body)
         except Exception:
-            return JsonResponse({"error": "Invalid JSON."}, status=400)
+            return JsonResponse({"error": _("Invalid JSON.")}, status=400)
         content = data.get("content")
         if not isinstance(content, str):
-            return JsonResponse({"error": "content (string) is required."}, status=400)
+            return JsonResponse({"error": _("content (string) is required.")}, status=400)
         encoded = content.encode("utf-8")
         if len(encoded) > MAX_EDIT_BYTES:
-            return JsonResponse({"error": "Content is too large to save."}, status=413)
+            return JsonResponse({"error": _("Content is too large to save.")}, status=413)
 
         # ── the two guards that make a desktop push safe ──────────────────────
         #
@@ -706,7 +707,7 @@ class FileContentApiView(CorsApiView):
         if not locks.may_write(vf, request.user):
             held = locks.holder_of(vf)
             return JsonResponse(
-                {"error": f"{held.holder} is editing this file.",
+                {"error": _("%(who)s is editing this file.") % {"who": held.holder},
                  "locked_by": held.holder.get_username()}, status=423)
 
         # Optimistic concurrency. `base_hash` is what the client last read;
@@ -724,8 +725,8 @@ class FileContentApiView(CorsApiView):
             except Exception:                          # noqa: BLE001
                 pass                                   # never turn a 409 into a 500
             return JsonResponse(
-                {"error": "This file changed somewhere else since you opened it. "
-                          "Your version was kept so nothing is lost.",
+                {"error": _("This file changed somewhere else since you opened it. "
+                            "Your version was kept so nothing is lost."),
                  "content_hash": vf.content_hash,
                  "kept_as_version": rescued.number if rescued else None}, status=409)
 
@@ -766,7 +767,7 @@ class FileContentApiView(CorsApiView):
             if verdict is not None:
                 scanning.record(vf, verdict, user=request.user, door="api")
         except Exception as e:
-            return JsonResponse({"error": f"Could not save file: {e}"}, status=500)
+            return JsonResponse({"error": _("Could not save file: %(error)s") % {"error": e}}, status=500)
         return JsonResponse(_file_to_dict(request, vf))
 
 
@@ -784,13 +785,13 @@ class FileCreateApiView(CorsApiView):
 
     def post(self, request):
         if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
+            return JsonResponse({"error": _("Not authenticated.")}, status=401)
         if not file_edits_allowed():
-            return JsonResponse({"error": "File editing is disabled on this host."}, status=403)
+            return JsonResponse({"error": _("File editing is disabled on this host.")}, status=403)
         try:
             data = json.loads(request.body)
         except Exception:
-            return JsonResponse({"error": "Invalid JSON."}, status=400)
+            return JsonResponse({"error": _("Invalid JSON.")}, status=400)
 
         from toto.vault.views import CreateEmptyFileView, create_empty_vault_file
 
@@ -801,9 +802,9 @@ class FileCreateApiView(CorsApiView):
         content = data.get("content")
 
         if not title:
-            return JsonResponse({"error": "Filename is required."}, status=400)
+            return JsonResponse({"error": _("Filename is required.")}, status=400)
         if content is not None and not isinstance(content, str):
-            return JsonResponse({"error": "content must be a string."}, status=400)
+            return JsonResponse({"error": _("content must be a string.")}, status=400)
         from toto.vault.models import upload_refusal
         refusal = upload_refusal(title, file_type=file_type)
         if refusal:
@@ -820,29 +821,31 @@ class FileCreateApiView(CorsApiView):
             creatable = set(CreateEmptyFileView._INITIAL) & EDITABLE_FILE_TYPES
             if file_type not in creatable:
                 return JsonResponse(
-                    {"error": f"Cannot create an empty {file_type or '?'} file."}, status=400)
+                    {"error": _("Cannot create an empty %(type)s file.") % {
+                        "type": file_type or "?"}}, status=400)
         elif file_type not in EDITABLE_FILE_TYPES:
             return JsonResponse(
-                {"error": f"Cannot write a {file_type or '?'} file here."}, status=415)
+                {"error": _("Cannot write a %(type)s file here.") % {
+                    "type": file_type or "?"}}, status=415)
 
         if content is not None and len(content.encode("utf-8")) > MAX_EDIT_BYTES:
-            return JsonResponse({"error": "Content is too large to save."}, status=413)
+            return JsonResponse({"error": _("Content is too large to save.")}, status=413)
         if not bucket_slug:
-            return JsonResponse({"error": "bucket_slug is required."}, status=400)
+            return JsonResponse({"error": _("bucket_slug is required.")}, status=400)
 
         try:
             bucket = Bucket.objects.get(slug=bucket_slug, owner=request.user)
         except Bucket.DoesNotExist:
-            return JsonResponse({"error": "Bucket not found."}, status=404)
+            return JsonResponse({"error": _("Bucket not found.")}, status=404)
         if bucket.is_being_deleted:
             from .models import closed_bucket_sentence
 
             return JsonResponse({"error": closed_bucket_sentence(bucket)}, status=409)
         if not bucket.is_local:
             return JsonResponse(
-                {"error": "This bucket's storage is remote — files are "
-                          "uploaded or transferred into it, not created "
-                          "empty here."}, status=403)
+                {"error": _("This bucket's storage is remote — files are "
+                            "uploaded or transferred into it, not created "
+                            "empty here.")}, status=403)
 
         directory = None
         if directory_id not in (None, "", 0, "0"):
@@ -854,7 +857,7 @@ class FileCreateApiView(CorsApiView):
                 directory = VaultDirectory.objects.get(
                     pk=int(directory_id), bucket=bucket, owner=request.user)
             except (VaultDirectory.DoesNotExist, ValueError, TypeError):
-                return JsonResponse({"error": "Directory not found."}, status=404)
+                return JsonResponse({"error": _("Directory not found.")}, status=404)
 
         # Screened like every other write door. A file arriving with its bytes
         # is an upload in everything but name, and the upload door screens.
@@ -888,7 +891,7 @@ class StrongboxApiView(CorsApiView):
 
     def get(self, request):
         if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
+            return JsonResponse({"error": _("Not authenticated.")}, status=401)
         from toto.gervazy.models import UserStrongbox
         from toto.gervazy.personal import PERSONAL_STRONGBOX_NAME
 

@@ -8,6 +8,8 @@ from django.http import HttpResponseBadRequest, HttpResponseForbidden, JsonRespo
 from django.shortcuts import redirect, render
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
+from django.utils.translation import gettext as _
+from django.utils.translation import pgettext
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
@@ -25,6 +27,14 @@ from .services import (
     may_sign_in_to,
     verify_pkce,
 )
+
+
+def _role_label(role: str) -> str:
+    """A ``roles`` claim value as the refusal names it, in the reader's language."""
+    labels = {"admin": pgettext("account role", "administrator"),
+              "staff": pgettext("account role", "staff"),
+              "viewer": pgettext("account role", "member")}
+    return labels.get(role, role)
 
 
 def login_view(request):
@@ -138,8 +148,11 @@ def _authorize(request, params, *, approved):
     # relying party never hears of it (services.DEFAULT_CLIENT_REQUIRED_ROLES).
     if not may_sign_in_to(request.user, client.client_id):
         return HttpResponseForbidden(
-            f"Your account may not sign in to {client.name}: it is open only "
-            f"to {' or '.join(client_required_roles(client.client_id))} accounts.")
+            _("Your account may not sign in to %(client)s: it is open only to "
+              "%(roles)s accounts.")
+            % {"client": client.name,
+               "roles": _(" or ").join(_role_label(role) for role in
+                                       client_required_roles(client.client_id))})
 
     admin_test_uri = request.build_absolute_uri(reverse("sso:admin_test_callback"))
     is_admin_test = (redirect_uri == admin_test_uri and request.user.is_staff)
@@ -662,7 +675,7 @@ def federation_branding(request):
             if platform and platform.federation_id != federation.pk:
                 platform.federation = federation
                 platform.save(update_fields=["federation"])
-            messages.success(request, "Federation branding saved.")
+            messages.success(request, _("Federation branding saved."))
             return redirect("sso:federation_branding")
 
     context = PageProcessor().decorate({

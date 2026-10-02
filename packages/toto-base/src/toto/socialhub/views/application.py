@@ -23,7 +23,9 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
 from django.utils.crypto import constant_time_compare
 from django.utils.dateparse import parse_datetime
+from django.utils import translation
 from django.utils.translation import gettext as _
+from toto.core.notices import _language as recipient_language
 
 
 #: The log names an application by its id (2026-10-01, 37c.21): never the
@@ -173,7 +175,8 @@ def membership_application_view(request):
         # The login username is chosen by the applicant (validated unique in the
         # form); the email is the application's key — one application per
         # address. The account stays inactive until a reference is accepted.
-        user, _ = User.objects.get_or_create(
+        # (Not ``_``: that is gettext in this module.)
+        user, _created = User.objects.get_or_create(
             username=username, defaults={"email": email, "is_active": False}
         )
         application, created = MembershipApplication.objects.get_or_create(
@@ -251,7 +254,9 @@ def verify_application_view(request):
     if request.method == "POST":
         remaining = captcha_retry_cooldown_remaining(request)
         if remaining > 0:
-            context["error"] = f"Please wait {remaining} seconds before trying again."
+            context["error"] = _(
+                "Please wait %(seconds)s seconds before trying again."
+            ) % {"seconds": remaining}
             context["cooldown_remaining"] = remaining
             logger.warning("CAPTCHA retry blocked by the cooldown for application %s (%ss left).",
                            application.pk, remaining)
@@ -271,7 +276,7 @@ def verify_application_view(request):
                                  "e-mail address to get a new one.")
             logger.warning("Verification failed: application %s has expired.", app.pk)
         elif app.is_verified:
-            context["message"] = "This application is already verified."
+            context["message"] = _("This application is already verified.")
             logger.info("Verification skipped: application %s is already verified.", app.pk)
         else:
             app.verified_at = timezone.now()
@@ -380,15 +385,23 @@ def reference_accept(request, ref_id):
         # Sign-in is by username (2026-10-02): the mail said "using your
         # email address", which signs nobody in — an address typed where the
         # username goes is tried at whichever account has it as its username.
-        subject = f"Your Membership in {community.name} Has Been Approved"
-        body = (
-            f"Hello,\n\n"
-            f"Good news! Your reference has been accepted and your membership "
-            f"in {community.name} is now fully approved.\n\n"
-            f"You can now sign in with your username: {user.get_username()}\n\n"
-            f"Welcome aboard!\n"
-            f"{community.name} Team"
-        )
+        # In the applicant's language (2026-10-02): their Person's
+        # preferred_language — made by the acceptance above — else the
+        # platform's (settings.LANGUAGE_CODE), as toto.core.notices does.
+        names = {"community": community.name, "username": user.get_username()}
+        with translation.override(recipient_language(user)):
+            subject = _("Your Membership in %(community)s Has Been Approved") % names
+            body = _(
+                "Hello,\n"
+                "\n"
+                "Good news! Your reference has been accepted and your membership "
+                "in %(community)s is now fully approved.\n"
+                "\n"
+                "You can now sign in with your username: %(username)s\n"
+                "\n"
+                "Welcome aboard!\n"
+                "%(community)s Team"
+            ) % names
         _send_endorsement_mail(subject, body, to=user.email, community=community)
         logger.info("Approval mail queued for application %s.", application.pk)
 
@@ -418,20 +431,31 @@ def reference_reject(request, ref_id):
     # ---------------------------------------------------------
     try:
         application = ref.application
-        user = User.objects.get(email=application.email)
+        # The application's own account, as the acceptance finds it
+        # (2026-10-02): the address alone also found a member's account, or
+        # two accounts and so no mail.
+        user = applications.applicant_account(application)
+        if user is None:
+            raise LookupError("the application has no account")
         community = application.community
 
-        subject = f"Your Membership Application to {community.name}"
-        body = (
-            f"Hello,\n\n"
-            f"We're sorry to inform you that your reference for joining {community.name} "
-            f"was not approved at this time.\n\n"
-            f"This does not prevent you from applying again in the future.\n"
-            f"If you believe this was a mistake or would like more information, "
-            f"please contact the community leadership.\n\n"
-            f"Best regards,\n"
-            f"{community.name} Team"
-        )
+        # In the applicant's language (2026-10-02), see reference_accept.
+        names = {"community": community.name}
+        with translation.override(recipient_language(user)):
+            subject = _("Your Membership Application to %(community)s") % names
+            body = _(
+                "Hello,\n"
+                "\n"
+                "We're sorry to inform you that your reference for joining %(community)s "
+                "was not approved at this time.\n"
+                "\n"
+                "This does not prevent you from applying again in the future.\n"
+                "If you believe this was a mistake or would like more information, "
+                "please contact the community leadership.\n"
+                "\n"
+                "Best regards,\n"
+                "%(community)s Team"
+            ) % names
         _send_endorsement_mail(subject, body, to=user.email, community=community)
         logger.info("Rejection mail queued for application %s.", application.pk)
 

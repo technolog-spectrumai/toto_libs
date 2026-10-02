@@ -1064,14 +1064,19 @@ function bucketCopyMenu() {
           this.transferDetailUrl = '{% url "vault:transfer_panel" %}' + data.run_id + '/';
           this.pollTransfer(data.status_url, 0);
         } else if (data.ok) {
-          this.successMsg = `Copied ${data.count} file${data.count !== 1 ? 's' : ''} to "${data.dest_name}".`;
+          // Two msgids, not ngettext: there is no JS catalogue here. Braced
+          // tokens, not %(…)s: a translated template variable doubles every %.
+          this.successMsg = (data.count === 1
+            ? '{{ _('Copied {count} file to "{bucket}".')|escapejs }}'
+            : '{{ _('Copied {count} files to "{bucket}".')|escapejs }}')
+            .replace('{count}', data.count).replace('{bucket}', () => data.dest_name);
           setTimeout(() => { window.location.href = data.dest_url; }, 1500);
         } else {
-          this.errorMsg = data.error || 'Copy failed. Please try again.';
+          this.errorMsg = data.error || '{{ _("Copy failed. Please try again.")|escapejs }}';
           this.isSubmitting = false;
         }
       } catch (_) {
-        this.errorMsg = 'Network error. Please try again.';
+        this.errorMsg = '{{ _("Network error. Please try again.")|escapejs }}';
         this.isSubmitting = false;
       }
     },
@@ -1089,10 +1094,14 @@ function bucketCopyMenu() {
         if (p && p.finished) {
           this.isSubmitting = false;
           if (p.ok) {
-            this.successMsg = `Transferred ${p.files_done} file${p.files_done !== 1 ? 's' : ''}`
-              + (p.files_skipped ? `, ${p.files_skipped} skipped` : '') + '.';
+            this.successMsg = (p.files_done === 1
+                ? '{{ _("Transferred {count} file")|escapejs }}'
+                : '{{ _("Transferred {count} files")|escapejs }}').replace('{count}', p.files_done)
+              + (p.files_skipped
+                ? '{{ _(", {count} skipped")|escapejs }}'.replace('{count}', p.files_skipped)
+                : '') + '.';
           } else {
-            this.errorMsg = p.error || 'The transfer failed.';
+            this.errorMsg = p.error || '{{ _("The transfer failed.")|escapejs }}';
           }
           return;
         }

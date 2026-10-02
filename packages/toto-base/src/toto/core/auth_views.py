@@ -9,6 +9,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.shortcuts import redirect, render
 from django.urls import NoReverseMatch, reverse
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
 from toto.core.auth_cooldown import (
@@ -63,7 +64,9 @@ def password_login_view(request, *, template_name, page_title, extra_context=Non
     if request.method == "POST":
         remaining = login_retry_cooldown_remaining(request)
         if remaining > 0:
-            context["error"] = f"Please wait {remaining} seconds before trying again."
+            context["error"] = _(
+                "Please wait %(seconds)s seconds before trying again."
+            ) % {"seconds": remaining}
             context["cooldown_remaining"] = remaining
             messages.error(request, context["error"])
             return render(request, template_name, processor.decorate(context, request))
@@ -93,12 +96,12 @@ def password_login_view(request, *, template_name, page_title, extra_context=Non
         # and then a password typed into the wrong box. AUTH.LOGIN_FAILED on
         # the audit chain names it for those who may read it.
         logger.warning("Failed sign-in attempt.")
-        context["error"] = "Invalid username or password."
+        context["error"] = _("Invalid username or password.")
         context["cooldown_remaining"] = login_retry_cooldown_seconds()
         messages.error(request, context["error"])
         start_login_retry_cooldown(request)
     elif request.method == "POST":
-        context["error"] = "Enter your username and password."
+        context["error"] = _("Enter your username and password.")
         context["cooldown_remaining"] = login_retry_cooldown_seconds()
         messages.error(request, context["error"])
         start_login_retry_cooldown(request)

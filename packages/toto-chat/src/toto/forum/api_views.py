@@ -166,7 +166,7 @@ class ChannelMessagesApiView(CorsApiView):
             return JsonResponse({"error": "Channel not found."}, status=404)
 
         if not permissions.can_read(request.user, channel):
-            return JsonResponse({"error": "Join this channel to read its history."}, status=403)
+            return JsonResponse({"error": _("Join this channel to read its history.")}, status=403)
 
         before = None
         raw_before = request.GET.get("before")
@@ -232,7 +232,7 @@ class MessageAttachmentApiView(CorsApiView):
 
         if not permissions.can_read(request.user, row.channel):
             return JsonResponse(
-                {"error": "Join this channel to read its attachments."}, status=403
+                {"error": _("Join this channel to read its attachments.")}, status=403
             )
 
         if row.attachment_sealed:
@@ -249,7 +249,7 @@ class MessageAttachmentApiView(CorsApiView):
             except (FileNotFoundError, OSError):
                 raise Http404("Attachment file is missing.")
             except (RoomKeyUnavailable, sealing.SealBroken):
-                return JsonResponse({"error": "This attachment cannot be opened now."}, status=409)
+                return JsonResponse({"error": _("This attachment cannot be opened now.")}, status=409)
             response = HttpResponse(data, content_type=row.attachment_mime or "application/octet-stream")
             response["Content-Disposition"] = f'inline; filename="{row.attachment_name or "attachment"}"'
             response["X-Content-Type-Options"] = "nosniff"
@@ -418,12 +418,12 @@ class MediaUploadApiView(CorsApiView):
         member = permissions.member_for(request.user, channel)
         if not member or channel.is_expired:
             return JsonResponse(
-                {"error": "Join this channel before posting to it."}, status=403
+                {"error": _("Join this channel before posting to it.")}, status=403
             )
 
         file = request.FILES.get(self.form_field)
         if not file:
-            return JsonResponse({"error": f"No {self.form_field} file provided."}, status=400)
+            return JsonResponse({"error": _("No %(field)s file provided.") % {"field": self.form_field}}, status=400)
 
         content_type = file.content_type or ""
         if not self._accepts(content_type):
@@ -436,7 +436,7 @@ class MediaUploadApiView(CorsApiView):
 
         if file.size > _MAX_MEDIA_BYTES:
             return JsonResponse(
-                {"error": f"File too large. Maximum size is {_MAX_MEDIA_BYTES // (1024 * 1024)} MB."},
+                {"error": _("File too large. Maximum size is %(size)s MB.") % {"size": _MAX_MEDIA_BYTES // (1024 * 1024)}},
                 status=413,
             )
 

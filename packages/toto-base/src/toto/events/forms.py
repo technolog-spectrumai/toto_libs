@@ -1,4 +1,5 @@
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 from .models import ScheduledEvent
 
@@ -56,11 +57,11 @@ class ScheduledEventForm(forms.ModelForm):
             "public",
         ]
         widgets = {
-            "title": forms.TextInput(attrs={"placeholder": "Event title"}),
-            "description": forms.Textarea(attrs={"rows": 5, "placeholder": "Describe the event..."}),
+            "title": forms.TextInput(attrs={"placeholder": _("Event title")}),
+            "description": forms.Textarea(attrs={"rows": 5, "placeholder": _("Describe the event...")}),
             "category": forms.Select(),
             "address": forms.Select(),
-            "capacity": forms.NumberInput(attrs={"placeholder": "Leave blank for unlimited"}),
+            "capacity": forms.NumberInput(attrs={"placeholder": _("Leave blank for unlimited")}),
         }
 
     def __init__(self, *args, user=None, **kwargs):

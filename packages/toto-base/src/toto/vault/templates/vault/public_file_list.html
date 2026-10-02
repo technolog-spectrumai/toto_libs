@@ -360,7 +360,7 @@
           this.cipherModal         = true;
         },
         async submitCipher() {
-          if (!this.cipherPassword.trim()) { this.cipherError = 'Password is required.'; return; }
+          if (!this.cipherPassword.trim()) { this.cipherError = '{{ _("Password is required.")|escapejs }}'; return; }
           this.cipherLoading = true;
           this.cipherError   = '';
           try {
@@ -401,10 +401,10 @@
               }
               this.cipherModal = false;
             } else {
-              this.cipherError = data.error || 'Operation failed.';
+              this.cipherError = data.error || '{{ _("Operation failed.")|escapejs }}';
             }
           } catch {
-            this.cipherError = 'Network error. Please try again.';
+            this.cipherError = '{{ _("Network error. Please try again.")|escapejs }}';
           }
           this.cipherLoading = false;
         },
@@ -419,7 +419,7 @@
             const s = await res.json();
             if (s.done) return s;                    // {ok, raw_url} or {ok:false, error}
           }
-          return { ok: false, error: 'Encryption timed out. Please try again.' };
+          return { ok: false, error: '{{ _("Encryption timed out. Please try again.")|escapejs }}' };
         },
 
         openEncDownload(item) {
@@ -431,7 +431,7 @@
           this.encDownloadModal     = true;
         },
         async submitEncDownload() {
-          if (!this.encDownloadPassword.trim()) { this.encDownloadError = 'Password is required.'; return; }
+          if (!this.encDownloadPassword.trim()) { this.encDownloadError = '{{ _("Password is required.")|escapejs }}'; return; }
           this.encDownloadLoading = true;
           this.encDownloadError   = '';
           try {
@@ -455,10 +455,10 @@
               this.encDownloadModal = false;
             } else {
               const data = await res.json().catch(() => ({}));
-              this.encDownloadError = data.error || `Download failed (${res.status}).`;
+              this.encDownloadError = data.error || '{{ _("Download failed ({status}).")|escapejs }}'.replace('{status}', res.status);
             }
           } catch {
-            this.encDownloadError = 'Network error. Please try again.';
+            this.encDownloadError = '{{ _("Network error. Please try again.")|escapejs }}';
           }
           this.encDownloadLoading = false;
         },
@@ -471,7 +471,7 @@
           this.removeEncModal     = true;
         },
         async submitRemoveEnc() {
-          if (!this.removeEncPassword.trim()) { this.removeEncError = 'Password is required.'; return; }
+          if (!this.removeEncPassword.trim()) { this.removeEncError = '{{ _("Password is required.")|escapejs }}'; return; }
           this.removeEncLoading = true;
           this.removeEncError   = '';
           try {
@@ -488,10 +488,10 @@
               if (item) { item.encrypted = false; item.url = data.url; }
               this.removeEncModal = false;
             } else {
-              this.removeEncError = data.error || 'Failed to remove encryption.';
+              this.removeEncError = data.error || '{{ _("Failed to remove encryption.")|escapejs }}';
             }
           } catch {
-            this.removeEncError = 'Network error. Please try again.';
+            this.removeEncError = '{{ _("Network error. Please try again.")|escapejs }}';
           }
           this.removeEncLoading = false;
         },
@@ -537,10 +537,10 @@
               if (item) item.pid = data.new_pid;
               this.moveModal = false;
             } else {
-              this.moveError = data.error || 'Move failed.';
+              this.moveError = data.error || '{{ _("Move failed.")|escapejs }}';
             }
           } catch {
-            this.moveError = 'Network error. Please try again.';
+            this.moveError = '{{ _("Network error. Please try again.")|escapejs }}';
           }
           this.moveLoading = false;
         },
@@ -568,10 +568,10 @@
               this.items = this.items.filter(i => i.id !== this.deleteFileId);
               this.deleteModal = false;
             } else {
-              this.deleteError = data.error || 'Delete failed.';
+              this.deleteError = data.error || '{{ _("Delete failed.")|escapejs }}';
             }
           } catch {
-            this.deleteError = 'Network error. Please try again.';
+            this.deleteError = '{{ _("Network error. Please try again.")|escapejs }}';
           }
           this.deleteLoading = false;
         },
@@ -686,7 +686,7 @@
         },
         async submitRename() {
           const title = this.renameNewTitle.trim();
-          if (!title) { this.renameError = 'Name cannot be empty.'; return; }
+          if (!title) { this.renameError = '{{ _("Name cannot be empty.")|escapejs }}'; return; }
           const item0 = this.items.find(i => i.id === this.renameFileId);
           if (title === this.renameOldTitle && this.renameFileType === (item0?.file_type || '')) {
             this.renameModal = false; return;
@@ -707,10 +707,10 @@
               if (item) { item.title = data.title; item.file_type = data.file_type; }
               this.renameModal = false;
             } else {
-              this.renameError = data.error || 'Rename failed.';
+              this.renameError = data.error || '{{ _("Rename failed.")|escapejs }}';
             }
           } catch {
-            this.renameError = 'Network error. Please try again.';
+            this.renameError = '{{ _("Network error. Please try again.")|escapejs }}';
           }
           this.renameLoading = false;
         },
@@ -743,7 +743,7 @@
 
         async submitCreateFile() {
           this.createError = '';
-          if (!this.createTitle.trim()) { this.createError = 'Filename is required.'; return; }
+          if (!this.createTitle.trim()) { this.createError = '{{ _("Filename is required.")|escapejs }}'; return; }
           this.createLoading = true;
           try {
             const csrf = document.cookie.split(';')
@@ -765,10 +765,10 @@
               if (data.editor_url) { window.location.href = data.editor_url; }
               else { window.location.reload(); }
             } else {
-              this.createError = data.error || 'Failed to create file.';
+              this.createError = data.error || '{{ _("Failed to create file.")|escapejs }}';
             }
           } catch {
-            this.createError = 'Network error. Please try again.';
+            this.createError = '{{ _("Network error. Please try again.")|escapejs }}';
           }
           this.createLoading = false;
         },
@@ -805,8 +805,8 @@
         get zipSelectedCount() { return this.zipFiles.filter(f => f.selected).length; },
         async submitZip() {
           const selected = this.zipFiles.filter(f => f.selected).map(f => f.id);
-          if (selected.length === 0) { this.zipError = 'Select at least one file.'; return; }
-          if (!this.zipFilename.trim()) { this.zipError = 'Filename is required.'; return; }
+          if (selected.length === 0) { this.zipError = '{{ _("Select at least one file.")|escapejs }}'; return; }
+          if (!this.zipFilename.trim()) { this.zipError = '{{ _("Filename is required.")|escapejs }}'; return; }
           this.zipLoading = true; this.zipError = '';
           try {
             const csrf = document.cookie.split(';')
@@ -827,11 +827,11 @@
               this.zipStatus = 'running';
               this.pollZip(data.workflow_run_id, csrf);
             } else {
-              this.zipError = data.error || 'Could not start archiving.';
+              this.zipError = data.error || '{{ _("Could not start archiving.")|escapejs }}';
               this.zipLoading = false;
             }
           } catch {
-            this.zipError = 'Network error. Please try again.';
+            this.zipError = '{{ _("Network error. Please try again.")|escapejs }}';
             this.zipLoading = false;
           }
         },
@@ -844,7 +844,7 @@
               this.zipStatus = data.status;
               if (data.is_terminal) {
                 if (data.status === 'completed') { window.location.reload(); }
-                else { this.zipError = 'Archiving failed.'; this.zipLoading = false; }
+                else { this.zipError = '{{ _("Archiving failed.")|escapejs }}'; this.zipLoading = false; }
                 return;
               }
             } catch { /* keep polling */ }
@@ -898,17 +898,17 @@
             this.svcList = data.services || [];
             if (this.svcList.length) this.svcSelected = this.svcList[0].key;
           } catch {
-            this.svcError = 'Could not load services.';
+            this.svcError = '{{ _("Could not load services.")|escapejs }}';
           }
         },
 
         async submitService() {
           this.svcError = '';
           const svc = this.svcCurrent;
-          if (!svc) { this.svcError = 'Pick a service.'; return; }
+          if (!svc) { this.svcError = '{{ _("Pick a service.")|escapejs }}'; return; }
           // Builder-backed services collect their arguments on the next page.
           if (svc.args_required && !svc.builder && !this.svcArgs.trim()) {
-            this.svcError = `${svc.args_label} are required.`; return;
+            this.svcError = '{{ _("{label} are required.")|escapejs }}'.replace('{label}', svc.args_label); return;
           }
           this.svcLoading = true;
           try {
@@ -926,10 +926,10 @@
             } else if (data.run_url) {
               window.location.href = data.run_url;
             } else {
-              this.svcError = data.error || 'Failed to start service.';
+              this.svcError = data.error || '{{ _("Failed to start service.")|escapejs }}';
             }
           } catch {
-            this.svcError = 'Network error. Please try again.';
+            this.svcError = '{{ _("Network error. Please try again.")|escapejs }}';
           }
           this.svcLoading = false;
         },

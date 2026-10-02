@@ -9,6 +9,7 @@ from django.core.exceptions import PermissionDenied
 from django.db import connection
 from django.http import JsonResponse
 from django.utils import timezone
+from django.utils.translation import gettext as _
 from django.views import View
 from django.views.generic import TemplateView
 
@@ -47,7 +48,7 @@ class MonitAccessMixin:
 
     def dispatch(self, request, *args, **kwargs):
         if not superuser_on_plan(request.user):
-            raise PermissionDenied("This needs a superuser on the Superuser plan.")
+            raise PermissionDenied(_("This needs a superuser on the Superuser plan."))
         return super().dispatch(request, *args, **kwargs)
 
 

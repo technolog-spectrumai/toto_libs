@@ -2,7 +2,7 @@
 {% load static %}
 {% load i18n %}
 
-{% block title %}Application Submitted | {{ platform.site_name }}{% endblock %}
+{% block title %}{% trans "Application Submitted" %} | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
 <style>
@@ -56,9 +56,11 @@
               <h1 class="mt-3 max-w-xl text-3xl font-bold leading-tight sm:text-4xl">{% trans "Thank you for applying." %}</h1>
 
               <p class="mt-4 max-w-xl text-sm leading-6 opacity-75 sm:text-base">
+                {% blocktranslate trimmed with site_name=platform.site_name %}
                 We’ve received your application. Continue to verification, where you’ll be
                 shown a code image to retype and confirm you’re human. Once verified, you’ll
-                be able to access member features and continue into {{ platform.site_name }}.
+                be able to access member features and continue into {{ site_name }}.
+                {% endblocktranslate %}
               </p>
             </div>
           </div>
@@ -111,8 +113,10 @@
             <h2 class="text-2xl font-bold">{% trans "Next step" %}</h2>
 
             <p class="mt-2 text-sm leading-6 opacity-70">
+              {% blocktranslate trimmed %}
               Continue to verification to retype the code image. You can also return to login
               and come back later.
+              {% endblocktranslate %}
             </p>
           </div>
 

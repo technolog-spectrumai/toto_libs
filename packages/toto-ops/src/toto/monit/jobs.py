@@ -39,6 +39,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
+from django.utils.translation import gettext_lazy as _
+
 log = logging.getLogger(__name__)
 
 #: The canonical vocabulary this page sorts and filters by. Deliberately the
@@ -64,6 +66,18 @@ _STATUS_MAP = {
     # changing their mind. Calling any of them a failure would make the page
     # cry wolf.
     "partial": OTHER, "refused": OTHER, "cancelled": OTHER, "skipped": OTHER,
+}
+
+
+#: The apps' own words for a run's state, as the table's first column shows
+#: them (2026-10-02); a word not here is shown untranslated.
+RAW_STATUS_LABELS = {
+    "pending": _("Pending"), "waiting": _("Waiting"), "queued": _("Queued"),
+    "running": _("Running"), "retry": _("Retrying"), "success": _("Succeeded"),
+    "done": _("Done"), "completed": _("Completed"), "ingested": _("Ingested"),
+    "failed": _("Failed"), "partial": _("Partial"), "refused": _("Refused"),
+    "cancelled": _("Cancelled"), "skipped": _("Skipped"), "killed": _("Killed"),
+    "lost": _("Lost"),
 }
 
 
@@ -100,43 +114,43 @@ def _faucet_status(run) -> str:
 
 
 SOURCES: tuple = (
-    JobSource(key="workflow", label="Workflow runs",
+    JobSource(key="workflow", label=_("Workflow runs"),
               app_label="toto.workflows", model="workflows.WorkflowRun",
               finished_field="completed_at", error_fields=(),
               select_related=("workflow",)),
-    JobSource(key="workflow_node", label="Workflow steps",
+    JobSource(key="workflow_node", label=_("Workflow steps"),
               app_label="toto.workflows", model="workflows.WorkflowNodeRun",
               finished_field="completed_at", created_field="",
               task_id_field="celery_task_id", select_related=("node",)),
-    JobSource(key="ocr", label="Text recognition",
+    JobSource(key="ocr", label=_("Text recognition"),
               app_label="toto.ocr", model="ocr.OcrRun",
               error_fields=("error",)),
-    JobSource(key="scan", label="Antivirus scans",
+    JobSource(key="scan", label=_("Antivirus scans"),
               app_label="toto.antivirus", model="antivirus.ScanRun",
               # A ScanRun has no `started_at` — it is created and finished. The
               # default name was read through `getattr(..., None)`, so it never
               # raised; it simply meant no scan has ever had a duration on this
               # page. Saying "" is the honest version of the same result.
               started_field=""),
-    JobSource(key="transfer", label="Vault transfers",
+    JobSource(key="transfer", label=_("Vault transfers"),
               app_label="toto.vault", model="vault.TransferRun",
               task_id_field="task_id"),
-    JobSource(key="mirror", label="Bucket refreshes",
+    JobSource(key="mirror", label=_("Bucket refreshes"),
               app_label="toto.vault", model="vault.BucketRefreshRun"),
-    JobSource(key="aralia", label="PDF renders",
+    JobSource(key="aralia", label=_("PDF renders"),
               app_label="toto.aralia", model="aralia.AraliaRun",
               task_id_field="task_id"),
-    JobSource(key="ingestion", label="Lodge submissions",
+    JobSource(key="ingestion", label=_("Lodge submissions"),
               app_label="toto.lacedo", model="lacedo.IngestionRun",
               status_field="state", error_fields=("detail",)),
-    JobSource(key="git", label="Git operations",
+    JobSource(key="git", label=_("Git operations"),
               app_label="toto.repo", model="repo.GitRun",
               # A GitRun keeps its failure in `stderr`; there is no `error`
               # column, so the default read an attribute that is not there and
               # every failed push showed on this page with a blank reason —
               # the one column somebody opens the Jobs page to read.
               error_fields=("stderr",)),
-    JobSource(key="forum_cleanup", label="Forum cleanups",
+    JobSource(key="forum_cleanup", label=_("Forum cleanups"),
               app_label="toto.forum", model="forum.ForumCleanupRun",
               # NO created_at ON THAT MODEL, and the default named one — so
               # every read of this source raised FieldError, was swallowed by
@@ -156,11 +170,11 @@ SOURCES: tuple = (
     # deadline or somebody's Cancel, which the map already refuses to call a
     # failure, and an unmapped state is meant to be visible rather than
     # dropped.
-    JobSource(key="capsule_job", label="Capsule jobs",
+    JobSource(key="capsule_job", label=_("Capsule jobs"),
               app_label="toto.anastasia", model="anastasia.Execution",
               select_related=("lease",)),
     # A watched install. Its sentence lives in `detail`, not `error`.
-    JobSource(key="capsule_install", label="Capsule installs",
+    JobSource(key="capsule_install", label=_("Capsule installs"),
               app_label="toto.anastasia", model="anastasia.InstallRun",
               error_fields=("detail",), select_related=("lease",)),
     # EVERY RUN OF A SCHEDULED TASK (2026-10-01), written by Celery's own
@@ -168,13 +182,13 @@ SOURCES: tuple = (
     # sweeps that keep no table of their own are here too, each with a short
     # summary of what it returned. toto.monit.heartbeats has the rest; the
     # page's schedule table shows each entry's newest.
-    JobSource(key="beat", label="Scheduled tasks",
+    JobSource(key="beat", label=_("Scheduled tasks"),
               app_label="toto.monit", model="monit.TaskRun",
               created_field="", task_id_field="task_id"),
     # The hourly faucet payouts and the mana pools' refills, one row per
     # execution (and per pool). Counts and no status column: `_faucet_status`
     # reads one off the counts, and the failures' reasons are in `detail`.
-    JobSource(key="faucet", label="Faucet runs",
+    JobSource(key="faucet", label=_("Faucet runs"),
               app_label="toto.assets", model="assets.FaucetRun",
               status_field="", status_from=_faucet_status, created_field="",
               error_fields=("detail",), select_related=("faucet",)),
@@ -197,6 +211,12 @@ class JobRow:
     error: str = ""
     task_id: str = ""
     duration_s: float = None
+
+    @property
+    def raw_status_label(self):
+        """The app's own word for the state, in the reader's language when
+        it is one this page knows; an unknown word is shown as it is."""
+        return RAW_STATUS_LABELS.get(self.raw_status, self.raw_status)
 
 
 def _first_error(obj, fields) -> str:

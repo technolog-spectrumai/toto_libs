@@ -47,8 +47,8 @@ def community_news_create(request, community_slug):
     return community_news_render(request, "socialhub/community_news_form.html", {
         "form": form,
         "community": community,
-        "title": "New community news",
-        "submit_label": "Publish",
+        "title": _("New community news"),
+        "submit_label": _("Publish"),
         "icon": "fa-solid fa-paper-plane",
     })
 
@@ -71,8 +71,8 @@ def community_news_update(request, pk):
         "form": form,
         "post": post,
         "community": post.community,
-        "title": "Edit community news",
-        "submit_label": "Save post",
+        "title": _("Edit community news"),
+        "submit_label": _("Save post"),
         "icon": "fa-solid fa-pen-to-square",
     })
 

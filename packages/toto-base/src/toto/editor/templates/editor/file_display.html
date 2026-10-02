@@ -111,7 +111,7 @@
         </span>
         <span data-active-target-badge
               class="hidden shrink-0 rounded px-1.5 py-px text-[10px] font-bold uppercase tracking-wide
-                     bg-accent-light text-primary-bg-light">live</span>
+                     bg-accent-light text-primary-bg-light">{% trans "live" %}</span>
       </div>
 
       <div class="h-5 w-px opacity-20 bg-current hidden sm:block"></div>
@@ -520,7 +520,7 @@ document.getElementById("toggle-readonly").addEventListener("click", function ()
   editor.setReadOnly(isReadOnly);
   document.getElementById("lock-icon").className = `fa-solid ${isReadOnly ? "fa-lock" : "fa-lock-open"}`;
   editor.container.style.opacity = isReadOnly ? "0.65" : "1";
-  this.title = isReadOnly ? "Read-only (click to unlock)" : "Toggle read-only";
+  this.title = isReadOnly ? "{{ _("Read-only (click to unlock)")|escapejs }}" : "{{ _("Toggle read-only")|escapejs }}";
 });
 
 let syncEnabled = true;
@@ -528,7 +528,7 @@ document.getElementById("toggle-sync").addEventListener("click", function () {
   syncEnabled = !syncEnabled;
   document.getElementById("sync-icon").className = `fa-solid ${syncEnabled ? "fa-arrows-rotate" : "fa-ban"}`;
   this.style.opacity = syncEnabled ? "1" : "0.5";
-  this.title = syncEnabled ? "Toggle live sync" : "Sync off (click to enable)";
+  this.title = syncEnabled ? "{{ _("Toggle live sync")|escapejs }}" : "{{ _("Sync off (click to enable)")|escapejs }}";
 });
 
 const filePk = "{{ vault_file.pk }}";
@@ -565,15 +565,15 @@ async function readJson(res) {
   } catch (err) {
     if (res.status === 401 || res.status === 403 ||
         res.redirected && /login|signin/i.test(res.url)) {
-      throw new Error("your session has expired — open this page again in a new tab, sign in, then come back and save");
+      throw new Error("{{ _("your session has expired — open this page again in a new tab, sign in, then come back and save")|escapejs }}");
     }
     if (res.status === 413) {
-      throw new Error("this file is too large for the server to accept");
+      throw new Error("{{ _("this file is too large for the server to accept")|escapejs }}");
     }
     if (res.status >= 500) {
-      throw new Error(`the server failed while saving (HTTP ${res.status})`);
+      throw new Error("{{ _("the server failed while saving (HTTP {status})")|escapejs }}".replace("{status}", res.status));
     }
-    throw new Error(`the server answered HTTP ${res.status} with something that was not JSON`);
+    throw new Error("{{ _("the server answered HTTP {status} with something that was not JSON")|escapejs }}".replace("{status}", res.status));
   }
 }
 
@@ -631,10 +631,10 @@ async function saveFile(force) {
     if (res.status === 423) {
       /* Somebody else is in the file. The lock banner above says who, from the
          versions component's own state; this only reports the refusal. */
-      alert(data.error || "Somebody else is editing this file.");
+      alert(data.error || "{{ _("Somebody else is editing this file.")|escapejs }}");
       return false;
     }
-    if (!res.ok || data.status !== "ok") { alert(data.error || "Failed to save file."); return false; }
+    if (!res.ok || data.status !== "ok") { alert(data.error || "{{ _("Failed to save file.")|escapejs }}"); return false; }
     hideConflict();
     /* Carry the new hash forward, or the next save refuses itself. The POST
        wrote the whole buffer, so this response is newer than anything the
@@ -643,7 +643,7 @@ async function saveFile(force) {
     EditorSync.setHash(data.content_hash || "");
     return true;
   } catch (err) {
-    alert("Save failed: " + err);
+    alert("{{ _("Save failed: {error}")|escapejs }}".replace("{error}", err));
     return false;
   } finally {
     btn.style.opacity = "1";
@@ -677,9 +677,9 @@ document.getElementById("delete-confirm").addEventListener("click", async () => 
     });
     const data = await readJson(res);
     if (data.status === "ok") { window.location.href = data.redirect || "/vault/"; }
-    else { alert(data.error || "Delete failed."); btn.disabled = false; btn.style.opacity = "1"; }
+    else { alert(data.error || "{{ _("Delete failed.")|escapejs }}"); btn.disabled = false; btn.style.opacity = "1"; }
   } catch (err) {
-    alert("Delete failed: " + err); btn.disabled = false; btn.style.opacity = "1";
+    alert("{{ _("Delete failed: {error}")|escapejs }}".replace("{error}", err)); btn.disabled = false; btn.style.opacity = "1";
   }
 });
 
@@ -701,7 +701,7 @@ function compileDone(pdfUrl, errText) {
   const link = document.getElementById("compile-pdf-link");
   const err = document.getElementById("compile-error");
   if (pdfUrl) { link.href = pdfUrl; link.classList.remove("hidden"); err.classList.add("hidden"); }
-  else { link.classList.add("hidden"); err.textContent = (errText || "Compile failed").slice(0, 300); err.classList.remove("hidden"); err.title = errText || ""; }
+  else { link.classList.add("hidden"); err.textContent = (errText || "{{ _("Compile failed")|escapejs }}").slice(0, 300); err.classList.remove("hidden"); err.title = errText || ""; }
 }
 
 function pollCompile(runId) {
@@ -731,7 +731,7 @@ document.getElementById("compile-file").addEventListener("click", async () => {
     const data = await readJson(res);
     if (data.status === "queued" && data.run_id) { pollCompile(data.run_id); }
     else if (data.pdf_url) { compileDone(data.pdf_url, ""); }          // inline (no-worker) success
-    else { compileDone("", data.log || data.error || "Compile failed"); }
+    else { compileDone("", data.log || data.error || "{{ _("Compile failed")|escapejs }}"); }
   } catch (e) { compileDone("", String(e)); }
 });
 {% endif %}

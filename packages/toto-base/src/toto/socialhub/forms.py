@@ -30,7 +30,7 @@ class MembershipApplicationForm(forms.ModelForm):
         widget=forms.TextInput(attrs={
             'class': 'w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300',
             'x-bind:class': "darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'",
-            'placeholder': 'Choose a username',
+            'placeholder': _('Choose a username'),
             'autocomplete': 'username',
         }),
         help_text=_("You'll use this to log in once your application is approved."),
@@ -130,7 +130,7 @@ class MembershipApplicationForm(forms.ModelForm):
             'email': forms.EmailInput(attrs={
                 'class': 'w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300',
                 'x-bind:class': "darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'",
-                'placeholder': 'Email address'
+                'placeholder': _('Email address')
             }),
             'community': forms.Select(attrs={
                 'class': 'w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300',
@@ -145,7 +145,7 @@ class CodeVerificationForm(forms.Form):
         widget=forms.TextInput(attrs={
             'class': 'w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300',
             'x-bind:class': "darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'",
-            'placeholder': 'Enter your verification code'
+            'placeholder': _('Enter your verification code')
         })
     )
 
@@ -166,7 +166,7 @@ class ReferenceRequestForm(forms.ModelForm):
         required=False,
         label=_("Password"),
         widget=forms.PasswordInput(attrs={
-            'placeholder': 'Choose a password (optional)',
+            'placeholder': _('Choose a password (optional)'),
             'autocomplete': 'new-password',
         }),
         help_text=_("Optional — set a password now so you can log in as soon as your application is approved."),
@@ -229,7 +229,7 @@ class ReferenceRequestForm(forms.ModelForm):
             'message': forms.Textarea(attrs={
                 'class': 'w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300',
                 'x-bind:class': "darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'",
-                'placeholder': 'Write a short endorsement message (optional)',
+                'placeholder': _('Write a short endorsement message (optional)'),
                 'rows': 4
             })
         }
@@ -244,7 +244,7 @@ class CommunityNewsPostForm(forms.ModelForm):
         model = CommunityNewsPost
         fields = _community_news_fields()
         widgets = {
-            "title": forms.TextInput(attrs={"placeholder": "Optional headline"}),
+            "title": forms.TextInput(attrs={"placeholder": _("Optional headline")}),
             "topics": forms.SelectMultiple(),
         }
 

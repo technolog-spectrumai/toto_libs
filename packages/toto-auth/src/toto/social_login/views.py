@@ -19,6 +19,7 @@ from django.contrib.auth import get_user_model, login
 from django.http import Http404, HttpResponseBadRequest
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.utils.translation import gettext as _
 
 from toto.core.safe_next import safe_next
 
@@ -103,11 +104,11 @@ def social_callback(request, provider):
     state = request.GET.get("state", "")
     if (cookie_provider != spec.key or not state
             or not hmac.compare_digest(state, stored_state)):
-        return HttpResponseBadRequest("Invalid social login state. Please try again.")
+        return HttpResponseBadRequest(_("Invalid social login state. Please try again."))
 
     code = request.GET.get("code")
     if not code:
-        return HttpResponseBadRequest("Missing authorization code.")
+        return HttpResponseBadRequest(_("Missing authorization code."))
 
     token_data = {
         "grant_type": "authorization_code",
@@ -122,7 +123,7 @@ def social_callback(request, provider):
     token_resp = http_requests.post(spec.token_url, data=token_data, timeout=10)
     if not token_resp.ok:
         logger.warning(f"{spec.key} token exchange failed: {token_resp.status_code}")
-        return HttpResponseBadRequest("Social login token exchange failed.")
+        return HttpResponseBadRequest(_("Social login token exchange failed."))
 
     access_token = token_resp.json().get("access_token")
     userinfo_resp = http_requests.get(
@@ -131,7 +132,7 @@ def social_callback(request, provider):
         timeout=10,
     )
     if not userinfo_resp.ok:
-        return HttpResponseBadRequest("Social login userinfo fetch failed.")
+        return HttpResponseBadRequest(_("Social login userinfo fetch failed."))
 
     claims = spec.normalize(userinfo_resp.json())
     user, error = _resolve_user(spec, claims)
