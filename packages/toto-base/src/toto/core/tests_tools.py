@@ -8,19 +8,35 @@ became `core/tools.py`.
 What this file asserts is what the hub has to be worth: it offers exactly the
 tools that are installed AND mounted, it never advertises a door that leads
 nowhere, and it refuses to be an empty room.
+
+A host need not mount the hub at all — zenobia retired it on 2026-09-07 and
+mounts nothing at /tools/ (its urls.py says why) — so these tests mount it
+themselves, in front of the host's own routes, rather than assume the host
+does (2026-10-02, 41.4: every one of them errored on zenobia's settings).
 """
 from __future__ import annotations
 
+from importlib import import_module
+
+from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import TestCase
-from django.urls import NoReverseMatch, reverse
+from django.test import TestCase, override_settings
+from django.urls import NoReverseMatch, include, path, reverse
 
 from toto.core import tools as tools_hub
 from toto.core.models import Platform
 
 User = get_user_model()
 
+#: The hub at /tools/, then every route of the host's (its pages' header and
+#: sign-in links reverse them).
+urlpatterns = [
+    path("tools/", include("toto.core.tools_urls")),
+    *import_module(settings.ROOT_URLCONF).urlpatterns,
+]
 
+
+@override_settings(ROOT_URLCONF=__name__)
 class ToolsHubTestCase(TestCase):
     def setUp(self):
         Platform.objects.create(site_name="Test Platform", author="Tests",
