@@ -19,10 +19,30 @@ from __future__ import annotations
 from celery import shared_task
 
 
+#: What a member reads when the file is no PDF the library can read.
+NOT_A_PDF = "File does not appear to be a valid PDF."
+
+
 def _pdf_friendly_error(exc: Exception) -> str:
+    """The reason a member reads when a PDF could not be encrypted.
+
+    A file pypdf cannot read as a PDF raises its ``PdfReadError`` or a
+    subclass — ``PdfStreamError`` ("Stream has ended unexpectedly") for one
+    cut short or no PDF at all, ``EmptyFileError`` for an empty one — and each
+    reads as ``NOT_A_PDF``. This went by the class's NAME while PyPDF2 raised
+    ``PdfReadError("EOF marker not found")`` itself; pypdf (37c.30) raises the
+    subclasses, so their own words reached the member (2026-10-02, 41.4). A
+    PDF already locked with a password (``FileNotDecryptedError``) keeps its
+    own sentence, as it did."""
     msg = str(exc)
+    try:
+        from pypdf.errors import FileNotDecryptedError, PdfReadError
+    except ImportError:  # no pypdf here: nothing of its to recognise
+        FileNotDecryptedError = PdfReadError = ()
+    if isinstance(exc, PdfReadError) and not isinstance(exc, FileNotDecryptedError):
+        return NOT_A_PDF
     if "EOF marker not found" in msg or "PdfRead" in type(exc).__name__:
-        return "File does not appear to be a valid PDF."
+        return NOT_A_PDF
     return msg
 
 

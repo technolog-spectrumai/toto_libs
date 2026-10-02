@@ -86,10 +86,39 @@ class EncryptRunTests(TestCase):
             [n.input_data, n.output_data] for n in run.node_runs.all()])
         self.assertNotIn("hunter2-secret", stored)
 
+    def test_a_pdf_cut_short_or_empty_reads_the_same(self):
+        # pypdf (37c.30) says "Stream has ended unexpectedly" and "Cannot read
+        # an empty file" — its PdfReadError's subclasses, which reached the
+        # member in their own words until 2026-10-02 (41.4).
+        from io import BytesIO
+
+        from pypdf import PdfWriter
+
+        writer = PdfWriter()
+        writer.add_blank_page(100, 100)
+        whole = BytesIO()
+        writer.write(whole)
+        for name, body in (("cut.pdf", whole.getvalue()[:len(whole.getvalue()) // 2]),
+                           ("empty.pdf", b"")):
+            with self.subTest(name=name):
+                f = self.file(file_type="pdf", body=body, title=name)
+                result = encrypt_workflow_run(self.run_for(f.pk).pk, "pw")
+                self.assertEqual(result, {"ok": False,
+                                          "error": "File does not appear to be a valid PDF."})
+
     def test_the_friendly_error_leaves_other_messages_alone(self):
+        from pypdf.errors import EmptyFileError, FileNotDecryptedError, PdfReadError, PdfStreamError
+
         self.assertEqual(_pdf_friendly_error(ValueError("disk full")), "disk full")
         self.assertEqual(_pdf_friendly_error(ValueError("EOF marker not found")),
                          "File does not appear to be a valid PDF.")
+        for exc in (PdfStreamError("Stream has ended unexpectedly"),
+                    EmptyFileError("Cannot read an empty file"), PdfReadError("anything")):
+            with self.subTest(exc=type(exc).__name__):
+                self.assertEqual(_pdf_friendly_error(exc), "File does not appear to be a valid PDF.")
+        # A PDF already locked with a password is a PDF: its own sentence stays.
+        self.assertEqual(_pdf_friendly_error(FileNotDecryptedError("File has not been decrypted")),
+                         "File has not been decrypted")
 
 
 class PredefinedStepTests(TestCase):
