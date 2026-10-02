@@ -1,6 +1,7 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
 {% load app_tags %}
+{% load locations_flags %}
 
 {% block title %}{% block locations_title %}Locations{% endblock %} | {{ platform.site_name }}{% endblock %}
 
@@ -47,8 +48,9 @@
       <i class="fa-solid fa-building fa-fw"></i> {% trans "Places" %}
     </a>
     {% endif %}
-    {% if request.user.is_superuser %}
-    {# Map domains (2026-09-30): superusers group map items and keep the groups to clearances. #}
+    {% if request.user|may_manage_domains %}
+    {# Map domains (2026-09-30): superusers group map items and keep the groups to clearances; #}
+    {# on the Superuser plan since 2026-10-02, the question every door of the tab asks. #}
     <a href="{% url 'locations:domains' %}" data-testid="locations-tab-domains"
        :class="{% if request.resolver_match.url_name == 'domains' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">

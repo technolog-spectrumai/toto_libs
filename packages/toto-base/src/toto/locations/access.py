@@ -42,7 +42,7 @@ and note changed by whoever created it, or by staff; a row from before
 `created_by` existed has no creator and is staff's alone. Territories, zones
 and route chains arrive from imported layers and the admin, so only staff
 change them. Importing a map layer is a staff act. Map domains are made and
-kept by superusers alone (the Domains tab).
+kept by superusers on the Superuser plan alone (the Domains tab).
 """
 
 from __future__ import annotations
@@ -67,8 +67,23 @@ def may_import_layer(user) -> bool:
 
 
 def may_manage_domains(user) -> bool:
-    """Map domains — their items and their clearances — are superusers' alone."""
-    return bool(getattr(user, "is_authenticated", False) and user.is_superuser)
+    """Map domains — their items and their clearances — are a real superuser's
+    on the Superuser plan (2026-10-02, crown 41), as a bucket's clearances
+    (``vault.clearances.may_manage``) and a wiki topic's are. The superuser
+    bit alone opened every door of the Domains tab, so a superuser off the
+    plan kept any map item to any clearance. On a host that sells no plan,
+    being an active superuser is the rule."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    if not getattr(user, "is_superuser", False) or not getattr(user, "is_active", False):
+        return False
+    from django.apps import apps
+
+    if not apps.is_installed("toto.subscriptions"):
+        return True
+    from toto.subscriptions.models import superuser_plan_active
+
+    return superuser_plan_active(user)
 
 
 # ---------------------------------------------------------------------------

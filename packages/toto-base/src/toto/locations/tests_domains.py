@@ -6,10 +6,12 @@ through the session (Post/Redirect/Get); every change on the audit chain.
 What the domains then hide is `tests_more_clearances`.
 """
 
+import io
 from unittest import skipUnless
 
 from django.apps import apps
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
@@ -50,6 +52,13 @@ class DomainsTestCase(TestCase):
                                                      geometry="POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))")
             cls.zone = Zone.objects.create(name="Harbour",
                                            geometry="MULTIPOLYGON(((0 0, 1 0, 1 1, 0 1, 0 0)))")
+        # The tab is Superuser-plan functionality (2026-10-02, PlanTests):
+        # `bootstrap_plans` puts `root` on the plan, and `bare_root`, made
+        # after, is a superuser without it.
+        if apps.is_installed("toto.subscriptions"):
+            call_command("bootstrap_plans", stdout=io.StringIO())
+            cls.root = User.objects.get(pk=cls.root.pk)
+        cls.bare_root = User.objects.create_superuser("bareroot", "b@example.org", "x")
 
     def setUp(self):
         self.client.force_login(self.root)
@@ -63,6 +72,60 @@ class DomainsTestCase(TestCase):
         for clearance in clearances:
             MapDomainClearance.objects.create(domain=domain, clearance=clearance)
         return domain
+
+
+def off_the_plan_is_refused() -> bool:
+    """Whether this host sells a plan for admins, so that a superuser off it
+    is refused superuser functionality."""
+    if not apps.is_installed("toto.subscriptions"):
+        return False
+    from toto.subscriptions.plans import admin_plan
+
+    return admin_plan() is not None
+
+
+class PlanTests(DomainsTestCase):
+    """Map domains and their clearances are Superuser-plan functionality
+    (2026-10-02, crown 41), as a bucket's clearances and a wiki topic's are:
+    the superuser bit alone opened every door of the tab, so a superuser off
+    the plan kept any map item to any clearance."""
+
+    def test_may_manage_domains_is_a_superuser_on_the_plan(self):
+        self.assertTrue(access.may_manage_domains(self.root))
+        if off_the_plan_is_refused():
+            self.assertFalse(access.may_manage_domains(self.bare_root))
+        inactive = User.objects.create_superuser("gone", "g@example.org", "x", is_active=False)
+        self.assertFalse(access.may_manage_domains(inactive))
+
+    def test_a_superuser_off_the_plan_is_refused_every_door_and_told_why(self):
+        if not off_the_plan_is_refused():
+            self.skipTest("a host that sells no plan for admins: the superuser bit is the rule")
+        domain = self.make()
+        doors = [
+            ("get", reverse("locations:domains"), {}),
+            ("get", reverse("locations:domain_item_search"), {"kind": "address", "q": "Dł"}),
+            ("post", reverse("locations:domain_add"), {"name": "Mine"}),
+            ("post", reverse("locations:domain_items", args=[domain.pk]),
+             {"add": [f"address:{self.address.pk}"]}),
+            ("post", reverse("locations:domain_clearances", args=[domain.pk]),
+             {"clearance": [self.board.pk]}),
+            ("post", reverse("locations:domain_delete", args=[domain.pk]), {}),
+        ]
+        self.client.force_login(self.bare_root)
+        for method, url, data in doors:
+            with self.subTest(url=url):
+                response = getattr(self.client, method)(url, data)
+                self.assertEqual(response.status_code, 403)
+                self.assertIn("This needs a superuser on the Superuser plan.",
+                              response.content.decode())
+        self.assertEqual(list(MapDomain.objects.values_list("name", flat=True)), ["Coastal"])
+        self.assertFalse(domain.clearance_rows.exists())
+        self.assertFalse(domain.address_rows.exists())
+
+    def test_anybody_else_still_hears_the_tab_is_superusers(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("locations:domains"))
+        self.assertContains(response, "Map domains are managed by superusers.", status_code=403)
 
 
 class SuperusersOnlyTests(DomainsTestCase):
@@ -131,6 +194,15 @@ class SuperusersOnlyTests(DomainsTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, 'data-testid="locations-tab-domains"')
         self.assertNotContains(response, url)
+
+    def test_the_tab_shows_a_superuser_off_the_plan_nothing(self):
+        if not off_the_plan_is_refused():
+            self.skipTest("a host that sells no plan for admins: the superuser bit is the rule")
+        self.client.force_login(self.bare_root)
+        response = self.client.get(reverse("locations:people") if HAS_GIS
+                                   else reverse("places:index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'data-testid="locations-tab-domains"')
 
     def test_the_tab_works_without_gis(self):
         """Nothing here draws: every Domains door is exempt from the GIS-off 404."""

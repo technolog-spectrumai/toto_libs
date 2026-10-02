@@ -1,5 +1,6 @@
 """The Domains tab (2026-09-30): superusers group map items into map domains
-and keep the domains to clearances.
+and keep the domains to clearances — superusers on the Superuser plan since
+2026-10-02 (``access.may_manage_domains``).
 
 A map domain (`MapDomain`) holds routes, map layers, addresses, zones,
 territories — and whatever kind an installed app adds (the host's places) —
@@ -60,8 +61,17 @@ NAME_MAX = 120
 DESCRIPTION_MAX = 2000
 
 
+def _refusal(user) -> str:
+    """A superuser off the Superuser plan is told what is missing
+    (2026-10-02, ``access.may_manage_domains``); anybody else hears that
+    map domains are the superusers'."""
+    if getattr(user, "is_superuser", False):
+        return _("This needs a superuser on the Superuser plan.")
+    return _("Map domains are managed by superusers.")
+
+
 def _refused(request):
-    return HttpResponseForbidden(_("Map domains are managed by superusers."))
+    return HttpResponseForbidden(_refusal(request.user))
 
 
 def _ids(values) -> set:
@@ -230,7 +240,7 @@ def domain_item_search(request):
     ``?kind=route&q=coast`` -> ``{"items": [{pk, label, detail}]}``.
     Superusers read every item, so nothing here is gated further."""
     if not may_manage_domains(request.user):
-        return JsonResponse({"error": _("Map domains are managed by superusers.")}, status=403)
+        return JsonResponse({"error": _refusal(request.user)}, status=403)
     kind = MapDomainKind.get(request.GET.get("kind") or "")
     if kind is None:
         return JsonResponse({"error": _("No such kind of item."), "items": []}, status=400)

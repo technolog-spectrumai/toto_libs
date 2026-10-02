@@ -292,8 +292,18 @@ class WritingRuleTests(ClearanceFixture):
         self.assertFalse(access.may_write(AnonymousUser(), self.open))
         self.assertFalse(access.is_staff(AnonymousUser()))
 
-    def test_only_superusers_manage_domains(self):
-        self.assertTrue(access.may_manage_domains(self.root))
+    def test_only_superusers_on_the_plan_manage_domains(self):
+        # Superuser-plan functionality since 2026-10-02 (tests_domains.PlanTests):
+        # `bootstrap_plans` puts the superusers there are on the plan.
+        from django.apps import apps
+
+        if apps.is_installed("toto.subscriptions"):
+            import io
+
+            from django.core.management import call_command
+
+            call_command("bootstrap_plans", stdout=io.StringIO())
+        self.assertTrue(access.may_manage_domains(fresh(self.root)))
         for user in (self.staff, self.member, self.both, self.creator, AnonymousUser(), None):
             with self.subTest(user=str(user)):
                 self.assertFalse(access.may_manage_domains(user))
