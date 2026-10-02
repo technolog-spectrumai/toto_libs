@@ -1,8 +1,14 @@
-"""My account, mounted by the host at ``/account/`` (2026-09-30).
+"""The member's own account, mounted by the host at ``/account/`` (2026-09-30).
 
-Its own module and namespace rather than a route under ``/socialhub/``: the
-page is the member's, reached from the top bar on every page, and its address
-should not move with the socialhub's prefix. See `views/account.py`.
+Since 2026-10-02 (stage 50) the account is a set of tabs on the member's own
+profile, and these are its doors: ``""`` (``account:home``) is the way to that
+page — a redirect to the profile on the tab its address meant, or the page
+drawn in place for an account with no profile yet — and every other path is a
+form's door, which goes back to its tab; ``email/confirm/`` is the link the
+e-mail change mails. Its own module and namespace rather than routes under
+``/socialhub/``: the header links it on every page, mailed links name it, and
+its addresses should not move with the socialhub's prefix. See
+`views/account.py`.
 """
 
 from django.urls import path

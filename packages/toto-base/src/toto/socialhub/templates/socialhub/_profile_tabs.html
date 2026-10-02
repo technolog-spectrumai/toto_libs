@@ -1,0 +1,46 @@
+{% load i18n %}
+{% comment %}The profile's tabs (2026-10-02, stage 50: "use tabs - separate it
+logically"): the owner's seven, or a visitor's three (views/profile.py,
+own_tabs and visitor_tabs). Each tab is a link — so the strip works without
+JavaScript and each tab is an address of its own (?tab=…, with a #section to
+deep-link) — and the active one is aria-current, as on the socialhub's strip
+and the economy's (socialhub/_tabs.html, oya/_economy_tabs.html); it wraps
+onto more lines on a phone. The server draws the active tab alone. The links
+are absolute (page_url): a form drawn again with its errors answers at its
+door's address, where a bare "?tab=" would be a GET on the door.
+
+A tab's classes are whole strings in both branches, for the image's Tailwind
+build, which reads them from this file.{% endcomment %}
+<nav class="flex flex-wrap gap-2" aria-label="{% translate 'Profile' %}" data-testid="profile-tabs">
+  {% for tab in profile_tabs %}
+  <a href="{{ tab.url }}" id="profile-tab-{{ tab.key }}"
+     {% if tab.active %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}
+     class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+    <i class="{{ tab.icon }}" aria-hidden="true"></i>{{ tab.label }}</a>
+  {% endfor %}
+</nav>
+{% if is_own_profile %}
+{% comment %}An old address of a section — /account/#sessions, whose #part the
+browser keeps across /account/'s redirect — lands on the first tab, where that
+section is not: the script sends it on to its own tab, by the tab's own link.
+The map of sections to tabs is views/account.py's SECTION_TABS, handed over as
+JSON; nothing from the address is written into the page.{% endcomment %}
+{{ section_tabs|json_script:"profile-section-tabs" }}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var id = "";
+    try { id = decodeURIComponent((location.hash || "").slice(1)); } catch (e) { return; }
+    if (!id || document.getElementById(id)) { return; }
+    var homes = JSON.parse(document.getElementById("profile-section-tabs").textContent);
+    var tab = Object.prototype.hasOwnProperty.call(homes, id) ? homes[id] : "";
+    var link = tab ? document.getElementById("profile-tab-" + tab) : null;
+    if (link && !link.hasAttribute("aria-current")) {
+      location.replace(link.href.split("#")[0] + "#" + encodeURIComponent(id));
+    }
+  });
+</script>
+{% endif %}

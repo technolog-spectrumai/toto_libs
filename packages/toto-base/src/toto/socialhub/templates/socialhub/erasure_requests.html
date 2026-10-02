@@ -8,7 +8,8 @@
 Superuser plan (views/privacy.py). The members' requests to be erased, each
 with the console command that carries it out — the erase is the console's
 and closes the request itself. The only thing this page does is decline one,
-with a note the member reads on My account (socialhub/erasure.py).{% endcomment %}
+with a note the member reads on their profile, on its Your data tab
+(socialhub/erasure.py).{% endcomment %}
 <section x-data="{ decline: null }" @keydown.escape.window="decline = null"
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'
@@ -121,7 +122,7 @@ with a note the member reads on My account (socialhub/erasure.py).{% endcomment 
           <i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
       </div>
       <label class="block space-y-1">
-        <span class="text-xs font-semibold opacity-70">{% translate "Why — the member reads this on My account" %}</span>
+        <span class="text-xs font-semibold opacity-70">{% translate "Why — the member reads this on their profile" %}</span>
         <textarea name="note" rows="4" required maxlength="500"
           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
           class="w-full rounded-lg border px-3 py-2 text-sm"></textarea>

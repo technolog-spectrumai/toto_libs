@@ -1,0 +1,147 @@
+{% load i18n %}
+{% comment %}The Overview tab (2026-10-02, stage 50): the page every member
+sees — the hero, about, the info grid, member since — for the owner and for
+anybody else, each detail by its own rule (views/profile.py, _overview). On
+the owner's own, what others do not see of it is marked, and their
+communities follow (a visitor has them on a tab of their own); then the
+plugins that sit on the overview (ProfilePlugin.tab).{% endcomment %}
+{% if profile.pk %}
+<!-- Profile Hero -->
+<section
+  :class="darkMode
+    ? 'border-accent-1 bg-bubble-bg-dark'
+    : 'border-accent-2 bg-bubble-bg-light'"
+  class="overflow-hidden rounded-2xl border shadow-sm">
+
+  <div
+    :class="darkMode
+      ? 'border-accent-1 bg-sunken-dark'
+      : 'border-accent-2 bg-sunken-light'"
+    class="border-b px-5 py-5 sm:px-6">
+
+    <div class="flex flex-col gap-5 sm:flex-row sm:items-center">
+      {% if profile.avatar %}
+        <img
+          src="{{ profile.avatar.url }}"
+          alt="{{ profile.display_name }}"
+          :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+          class="h-28 w-28 rounded-2xl border object-cover shadow-sm">
+      {% else %}
+        <div
+          :class="darkMode
+            ? 'border-accent-1 bg-primary-bg-dark'
+            : 'border-accent-2 bg-primary-bg-light'"
+          class="flex h-28 w-28 items-center justify-center rounded-2xl border shadow-sm">
+          <i
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="fa-solid fa-user text-4xl"></i>
+        </div>
+      {% endif %}
+
+      <div class="min-w-0 flex-1">
+        <p
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="text-xs font-semibold uppercase tracking-wide">{% trans "Profile" %}</p>
+
+        <h2 class="mt-1 break-words text-2xl font-bold">
+          {{ profile.display_name }}
+        </h2>
+
+        {% if profile.bio %}
+          <p class="mt-2 max-w-3xl text-sm leading-6 opacity-75">
+            {{ profile.bio }}
+          </p>
+        {% else %}
+          <p class="mt-2 text-sm italic opacity-60">{% trans "No bio provided." %}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Info Grid -->
+  <div class="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4 sm:p-6">
+    {% comment %}The e-mail address and the phone number only where their
+    owner shows them (Edit profile), or to the owner or an administrator
+    (2026-10-01, 37c.25): `contact_access`, the rule the roster and the
+    org-chart API ask too. Both used to show to every signed-in member.{% endcomment %}
+    {% if may_see_email %}
+      <article
+        :class="darkMode
+          ? 'border-accent-1 bg-sunken-dark'
+          : 'border-accent-2 bg-sunken-light'"
+        class="rounded-xl border p-4">
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-envelope"></i>{% trans "Email" %}</p>
+        <p class="mt-2 break-words text-sm font-semibold">
+          {{ profile.email|default:"—" }}
+        </p>
+        {% if not profile.show_email %}
+          <p class="mt-1 text-xs opacity-60">{% trans "Hidden from other members." %}</p>
+        {% endif %}
+      </article>
+    {% endif %}
+
+    {% if may_see_phone %}
+      <article
+        :class="darkMode
+          ? 'border-accent-1 bg-sunken-dark'
+          : 'border-accent-2 bg-sunken-light'"
+        class="rounded-xl border p-4">
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-phone"></i>{% trans "Phone" %}</p>
+        <p class="mt-2 break-words text-sm font-semibold">
+          {{ profile.phone|default:"—" }}
+        </p>
+        {% if not profile.show_phone %}
+          <p class="mt-1 text-xs opacity-60">{% trans "Hidden from other members." %}</p>
+        {% endif %}
+      </article>
+    {% endif %}
+
+    {% comment %}The address is shown only to somebody entitled to it.
+
+    This block used to render to ANY signed-in account, which made the
+    People tab's opt-in meaningless: a viewer refused on the map could read
+    the same address here. `may_see_address` is the same resolver the map
+    uses, so the two cannot disagree. The owner sees theirs in full, and
+    what others see of it: nothing (sharing off), or the area only.{% endcomment %}
+    {% if may_see_address %}
+      <article
+        :class="darkMode
+          ? 'border-accent-1 bg-sunken-dark'
+          : 'border-accent-2 bg-sunken-light'"
+        class="rounded-xl border p-4">
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-location-dot"></i>{% trans "Address" %}</p>
+        <p class="mt-2 break-words text-sm font-semibold">
+          {{ address_shown|default:"—" }}
+        </p>
+        {% if is_own_profile and address_hidden %}
+          <p class="mt-1 text-xs opacity-60">{% trans "Hidden from other members." %}</p>
+        {% elif is_own_profile and address_others_see %}
+          <p class="mt-1 text-xs opacity-60">{% blocktranslate with place=address_others_see %}Other members see the area only: {{ place }}.{% endblocktranslate %}</p>
+        {% endif %}
+      </article>
+    {% endif %}
+
+    <article
+      :class="darkMode
+        ? 'border-accent-1 bg-sunken-dark'
+        : 'border-accent-2 bg-sunken-light'"
+      class="rounded-xl border p-4">
+      <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+        <i class="fa-solid fa-calendar-days"></i>{% trans "Member since" %}</p>
+      <p class="mt-2 text-sm font-semibold">
+        {{ profile.joined_date|date:"F j, Y" }}
+      </p>
+    </article>
+  </div>
+</section>
+
+{% if is_own_profile %}{% include "socialhub/_profile_communities.html" %}{% endif %}
+
+<!-- Plugin Sections -->
+{% for section in profile_plugin_sections %}
+  {{ section.html }}
+{% endfor %}
+{% endif %}

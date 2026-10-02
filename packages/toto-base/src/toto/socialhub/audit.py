@@ -15,11 +15,11 @@ membership flow, the Clearances tab, the ingress, a shell:
 | `SOCIALHUB.APPLICATION_<STATUS>` | the application moves: verified, endorsed, invited, rejected |
 | `SOCIALHUB.APPLICATION_RENEWED` | somebody applies again with the address of an application that lapsed before its applicant got in: a new code and a new week, the community chosen now (2026-10-01) |
 | `SOCIALHUB.REFERENCE_REQUESTED` / `_GIVEN` / `_DECLINED` | a reference asked of a member, and their answer (given = the applicant admitted) |
-| `SOCIALHUB.PROFILE_CHANGED` | a member edits their own profile or time zone on My account — the field NAMES in `fields`, never the values (2026-09-30) |
+| `SOCIALHUB.PROFILE_CHANGED` | a member edits their own profile or time zone on their own profile's tabs (My account until stage 50) — the field NAMES in `fields`, never the values (2026-09-30) |
 | `PRIVACY.NOTICE_ACCEPTED` | an applicant ticks the privacy notice on the membership application — the version and the application, by its id as every application record names it (2026-10-01) |
-| `PRIVACY.EXPORT_REQUESTED` | a member asks for a copy of their data on My account (2026-10-01) |
+| `PRIVACY.EXPORT_REQUESTED` | a member asks for a copy of their data on their profile's Your data tab (2026-10-01) |
 | `PRIVACY.EXPORT_READY` / `_FAILED` | the copy is in their bucket — the rows per table, the files and the vault file's id — or could not be made; the system's, not the member's (2026-10-01) |
-| `PRIVACY.ERASURE_REQUESTED` | a member files a request to have their account erased on My account (2026-10-01) |
+| `PRIVACY.ERASURE_REQUESTED` | a member files a request to have their account erased on their profile's Your data tab (2026-10-01) |
 | `PRIVACY.ERASURE_DONE` / `_DECLINED` | the console's `erase_user` erased them and closed the request (the system's), or a superuser on the plan declined it — with the note's length, not the note (2026-10-01) |
 | `PRIVACY.NOTICE_PUBLISHED` | a new version of the privacy notice is published — its number, the one it replaces, each text's length and whether the platform seeded it (37c.32), never the text (2026-10-01) |
 
@@ -85,7 +85,8 @@ def _person(person) -> dict:
 
 
 def profile_changed(person, fields) -> None:
-    """A member changed their own profile on My account (2026-09-30).
+    """A member changed their own profile (2026-09-30; on their own
+    profile's tabs since 2026-10-02, My account until then).
 
     Called by the view, not a signal: a Person is saved from a dozen places
     (the map pin, the language, the sync) and only this door is "the member

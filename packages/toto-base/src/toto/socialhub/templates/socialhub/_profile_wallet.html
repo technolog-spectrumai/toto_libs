@@ -1,0 +1,13 @@
+{% load i18n %}
+{% comment %}The owner's Wallet tab (2026-10-02, stage 50): the profile plugins
+that sit on it (ProfilePlugin.tab = "wallet") — the member's mana, and the
+wallet where the economy is shown to them — each by its own rules. The tab is
+on the owner's strip only, and only when one of them shows
+(views/profile.py, own_tabs); one with nothing to draw yet (no pools) leaves
+the line below.{% endcomment %}
+{% for section in profile_plugin_sections %}
+  {{ section.html }}
+{% empty %}
+  <p :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+     class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70">{% translate "Nothing here yet." %}</p>
+{% endfor %}

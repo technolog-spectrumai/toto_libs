@@ -1,9 +1,8 @@
 {% extends "oya/base.html" %}
 {% load static %}
 {% load i18n %}
-{% load quota_tags %}
 
-{% block title %}{{ profile.display_name }}{% endblock %}
+{% block title %}{{ profile.display_name }}{% if active_tab_label %} · {{ active_tab_label }}{% endif %}{% endblock %}
 
 {% block start_script %}
 <style>
@@ -11,9 +10,10 @@
     display: none !important;
   }
 </style>
-{% if is_own_profile %}
+{% if is_own_profile and active_tab == "edit" and profile.pk %}
 {% comment %}Leaflet + the classical pin, for the address picker modal. Own
-profile only: nobody else gets a picker, so nobody else pays for the map.
+profile only, and its Edit profile tab: nobody else gets a picker, so nobody
+else pays for the map, and neither do the owner's other tabs.
 {% endcomment %}
 <link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}">
 <script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
@@ -22,9 +22,15 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
 {% endblock %}
 
 {% block content %}
+{% comment %}A member's profile, in tabs (2026-10-02, stage 50: My account and the
+profile became this one page, and each concern got a tab of its own). The
+strip is socialhub/_profile_tabs.html; each tab is a partial, and one is drawn
+per request (views/profile.py, render_profile). Its owner has Overview, Edit
+profile, Account, Security, Wallet, Activity and Your data; anybody else,
+staff and superusers included, Overview, Communities and Activity. The
+owner's account tabs are asked for by is_own_profile here too, though the view
+never makes one active for anybody else.{% endcomment %}
 <section
-  x-data="{ addressModal: false }"
-  @keydown.escape.window="addressModal = false"
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'
     : 'bg-primary-bg-light text-text-main-light'"
@@ -63,13 +69,8 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-users"></i>{% trans "All profiles" %}</a>
         {% if is_own_profile %}
-        <a
-          href="{% url 'gervazy:my_keys' %}"
-          :class="darkMode
-            ? 'border-accent-1 bg-sunken-dark text-text-main-dark'
-            : 'border-accent-2 bg-sunken-light text-text-main-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-          <i class="fa-solid fa-key"></i>{% trans "My Keys" %}</a>
+        {% comment %}My Keys is on the Security tab, beside the key store
+        (stage 50).{% endcomment %}
         <a
           href="{% url 'core:manual' %}"
           :class="darkMode
@@ -81,568 +82,28 @@ profile only: nobody else gets a picker, so nobody else pays for the map.
       </nav>
     </header>
 
-    <!-- Profile Hero -->
-    <section
-      :class="darkMode
-        ? 'border-accent-1 bg-bubble-bg-dark'
-        : 'border-accent-2 bg-bubble-bg-light'"
-      class="overflow-hidden rounded-2xl border shadow-sm">
+    {% if profile_tabs|length > 1 %}{% include "socialhub/_profile_tabs.html" %}{% endif %}
 
-      <div
-        :class="darkMode
-          ? 'border-accent-1 bg-sunken-dark'
-          : 'border-accent-2 bg-sunken-light'"
-        class="border-b px-5 py-5 sm:px-6">
-
-        <div class="flex flex-col gap-5 sm:flex-row sm:items-center">
-          {% if profile.avatar %}
-            <img
-              src="{{ profile.avatar.url }}"
-              alt="{{ profile.display_name }}"
-              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-              class="h-28 w-28 rounded-2xl border object-cover shadow-sm">
-          {% else %}
-            <div
-              :class="darkMode
-                ? 'border-accent-1 bg-primary-bg-dark'
-                : 'border-accent-2 bg-primary-bg-light'"
-              class="flex h-28 w-28 items-center justify-center rounded-2xl border shadow-sm">
-              <i
-                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                class="fa-solid fa-user text-4xl"></i>
-            </div>
-          {% endif %}
-
-          <div class="min-w-0 flex-1">
-            <p
-              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-              class="text-xs font-semibold uppercase tracking-wide">{% trans "Profile" %}</p>
-
-            <h2 class="mt-1 break-words text-2xl font-bold">
-              {{ profile.display_name }}
-            </h2>
-
-            {% if profile.bio %}
-              <p class="mt-2 max-w-3xl text-sm leading-6 opacity-75">
-                {{ profile.bio }}
-              </p>
-            {% else %}
-              <p class="mt-2 text-sm italic opacity-60">{% trans "No bio provided." %}</p>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-
-      <!-- Info Grid -->
-      <div class="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4 sm:p-6">
-        {% comment %}The e-mail address and the phone number only where their
-        owner shows them (My account), or to the owner or an administrator
-        (2026-10-01, 37c.25): `contact_access`, the rule the roster and the
-        org-chart API ask too. Both used to show to every signed-in member.{% endcomment %}
-        {% if may_see_email %}
-          <article
-            :class="darkMode
-              ? 'border-accent-1 bg-sunken-dark'
-              : 'border-accent-2 bg-sunken-light'"
-            class="rounded-xl border p-4">
-            <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-              <i class="fa-solid fa-envelope"></i>{% trans "Email" %}</p>
-            <p class="mt-2 break-words text-sm font-semibold">
-              {{ profile.email|default:"—" }}
-            </p>
-            {% if not profile.show_email %}
-              <p class="mt-1 text-xs opacity-60">{% trans "Hidden from other members." %}</p>
-            {% endif %}
-          </article>
-        {% endif %}
-
-        {% if may_see_phone %}
-          <article
-            :class="darkMode
-              ? 'border-accent-1 bg-sunken-dark'
-              : 'border-accent-2 bg-sunken-light'"
-            class="rounded-xl border p-4">
-            <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-              <i class="fa-solid fa-phone"></i>{% trans "Phone" %}</p>
-            <p class="mt-2 break-words text-sm font-semibold">
-              {{ profile.phone|default:"—" }}
-            </p>
-            {% if not profile.show_phone %}
-              <p class="mt-1 text-xs opacity-60">{% trans "Hidden from other members." %}</p>
-            {% endif %}
-          </article>
-        {% endif %}
-
-        {% comment %}The address is shown only to somebody entitled to it.
-
-        This block used to render to ANY signed-in account, which made the
-        People tab's opt-in meaningless: a viewer refused on the map could read
-        the same address here. `may_see_address` is the same resolver the map
-        uses, so the two cannot disagree.{% endcomment %}
-        {% if may_see_address %}
-          <article
-            :class="darkMode
-              ? 'border-accent-1 bg-sunken-dark'
-              : 'border-accent-2 bg-sunken-light'"
-            class="rounded-xl border p-4">
-            <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-              <i class="fa-solid fa-location-dot"></i>{% trans "Address" %}</p>
-            <p class="mt-2 break-words text-sm font-semibold">
-              {{ address_shown|default:"—" }}
-            </p>
-          </article>
-        {% endif %}
-
-        <article
-          :class="darkMode
-            ? 'border-accent-1 bg-sunken-dark'
-            : 'border-accent-2 bg-sunken-light'"
-          class="rounded-xl border p-4">
-          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-calendar-days"></i>{% trans "Member since" %}</p>
-          <p class="mt-2 text-sm font-semibold">
-            {{ profile.joined_date|date:"F j, Y" }}
-          </p>
-        </article>
-      </div>
-    </section>
-
-    {% if is_own_profile %}
-    {% comment %}Where you live, and who may see it.
-
-    Placed above the language picker on purpose: this is the setting on this
-    page whose wrong value publishes a home address, and it should be the one
-    somebody meets first rather than the one below the flags.{% endcomment %}
-    <section
-      :class="darkMode
-        ? 'border-accent-1 bg-bubble-bg-dark'
-        : 'border-accent-2 bg-bubble-bg-light'"
-      class="mb-6 rounded-2xl border p-5 shadow-sm sm:p-6">
-
-      <h2 class="flex items-center gap-2 text-lg font-bold">
-        <i class="fa-solid fa-map-pin"></i>{% trans "Where you live" %}</h2>
-      <p class="mt-1 text-sm opacity-75">
-        {% blocktrans trimmed %}
-          Whether other members can find you on the People map. Off unless you
-          turn it on, and turning it off removes you straight away.
-        {% endblocktrans %}
-      </p>
-      {% if profile.address %}
-        <p class="mt-2 text-sm">{{ profile.address }}</p>
-        <p class="mt-1 text-xs opacity-60 tabular-nums">{{ profile.address.latitude|floatformat:4 }}, {{ profile.address.longitude|floatformat:4 }}</p>
-      {% else %}
-        <p class="mt-2 text-xs opacity-70">
-          <i class="fa-solid fa-circle-info"></i>
-          {% trans "You have no address on your profile yet, so nothing is shown either way." %}
-        </p>
-      {% endif %}
-      <button type="button" id="open-address-modal" @click="addressModal = true"
-              :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-              class="mt-3 inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-        <i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i>
-        {% if profile.address %}{% trans "Modify my address" %}{% else %}{% trans "Set my address" %}{% endif %}
-      </button>
-
-      <form method="post" action="{% url 'socialhub:set_location_sharing' %}"
-            class="mt-4 flex flex-wrap gap-3">
-        {% csrf_token %}
-        {% for value, label in profile.LOCATION_SHARING_CHOICES %}
-          <button type="submit" name="location_sharing" value="{{ value }}"
-                  :class="darkMode
-                    ? '{% if profile.location_sharing == value %}bg-accent-dark text-primary-bg-dark{% else %}border-accent-1 bg-sunken-dark{% endif %}'
-                    : '{% if profile.location_sharing == value %}bg-accent-light text-primary-bg-light{% else %}border-accent-2 bg-sunken-light{% endif %}'"
-                  class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-            {{ label }}
-          </button>
-        {% endfor %}
-      </form>
-    </section>
-
-    {% get_available_languages as available_languages %}
-    <!-- Language Preference -->
-    <section
-      :class="darkMode
-        ? 'border-accent-1 bg-bubble-bg-dark'
-        : 'border-accent-2 bg-bubble-bg-light'"
-      class="rounded-2xl border p-5 shadow-sm sm:p-6">
-
-      <h2 class="flex items-center gap-2 text-lg font-bold mb-4">
-        <i class="fa-solid fa-language"></i>{% trans "Preferred Language" %}</h2>
-
-      <form method="post" action="{% url 'socialhub:set_preferred_language' %}">
-        {% csrf_token %}
-        <div class="flex flex-wrap gap-3">
-          {% for lang_code, lang_name in available_languages %}
-          {% with "lang/"|add:lang_code|add:".svg" as flag_path %}
-          <button
-            type="submit"
-            name="language"
-            value="{{ lang_code }}"
-            :class="darkMode
-              ? '{% if profile.preferred_language == lang_code %}bg-accent-dark text-primary-bg-dark{% else %}border-accent-1 bg-sunken-dark text-text-main-dark{% endif %}'
-              : '{% if profile.preferred_language == lang_code %}bg-accent-light text-primary-bg-light{% else %}border-accent-2 bg-sunken-light text-text-main-light{% endif %}'"
-            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-            <img src="{% static flag_path %}" alt="{{ lang_name }}" class="h-4 w-6 rounded-sm object-cover">
-            {{ lang_name }}
-          </button>
-          {% endwith %}
-          {% endfor %}
-        </div>
-      </form>
-    </section>
+    <div id="profile-panel" data-tab="{{ active_tab }}" class="space-y-6">
+    {% if is_own_profile and active_tab == "edit" %}
+      {% include "socialhub/_profile_edit.html" %}
+    {% elif is_own_profile and active_tab == "account" %}
+      {% include "socialhub/_profile_account.html" %}
+    {% elif is_own_profile and active_tab == "security" %}
+      {% include "socialhub/_profile_security.html" %}
+    {% elif is_own_profile and active_tab == "wallet" %}
+      {% include "socialhub/_profile_wallet.html" %}
+    {% elif is_own_profile and active_tab == "data" %}
+      {% include "socialhub/_profile_data.html" %}
+    {% elif active_tab == "activity" %}
+      {% include "socialhub/_profile_activity.html" %}
+    {% elif active_tab == "communities" %}
+      {% include "socialhub/_profile_communities.html" %}
+    {% else %}
+      {% include "socialhub/_profile_overview.html" %}
     {% endif %}
-
-    <!-- Communities -->
-    <section
-      :class="darkMode
-        ? 'border-accent-1 bg-bubble-bg-dark'
-        : 'border-accent-2 bg-bubble-bg-light'"
-      class="rounded-2xl border p-5 shadow-sm sm:p-6">
-
-      <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 class="flex items-center gap-2 text-lg font-bold">
-            <i class="fa-solid fa-people-group"></i>{% trans "Communities" %}</h2>
-
-          <p class="mt-1 text-sm opacity-70">{% trans "Communities connected to this profile." %}</p>
-        </div>
-
-        <div
-          :class="darkMode
-            ? 'border-accent-1 bg-sunken-dark'
-            : 'border-accent-2 bg-sunken-light'"
-          class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
-          <i class="fa-solid fa-users"></i>
-          {% blocktranslate trimmed count counter=profile.listed_communities|length %}{{ counter }} community{% plural %}{{ counter }} communities{% endblocktranslate %}
-        </div>
-      </div>
-
-      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {% for community in profile.listed_communities %}
-          <div
-            :class="darkMode
-              ? 'border-accent-1 bg-sunken-dark'
-              : 'border-accent-2 bg-sunken-light'"
-            class="flex items-center gap-2 rounded-xl border p-3 shadow-sm">
-
-            <a
-              href="{% url 'socialhub:community_detail' community.slug %}"
-              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-              class="flex flex-1 min-w-0 items-center gap-2 text-sm font-semibold transition hover:opacity-85">
-              <i class="fa-solid fa-users text-xs"></i>
-              <span class="truncate">{{ community.name }}</span>
-              <i class="fa-solid fa-arrow-right text-xs opacity-50 ml-auto"></i>
-            </a>
-          </div>
-        {% empty %}
-          <div
-            :class="darkMode
-              ? 'border-accent-1 bg-sunken-dark'
-              : 'border-accent-2 bg-sunken-light'"
-            class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70 sm:col-span-2">{% trans "No communities assigned." %}</div>
-        {% endfor %}
-      </div>
-    </section>
-
-    <!-- Plugin Sections -->
-    {% for section in profile_plugin_sections %}
-      {{ section.html }}
-    {% endfor %}
-
-    <!-- Reference Requests -->
-    {% if reference_requests is not None %}
-      <section
-        :class="darkMode
-          ? 'border-accent-1 bg-bubble-bg-dark'
-          : 'border-accent-2 bg-bubble-bg-light'"
-        class="rounded-2xl border p-5 shadow-sm sm:p-6">
-
-        <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 class="flex items-center gap-2 text-lg font-bold">
-              <i class="fa-solid fa-file-signature"></i>{% trans "My Reference Requests" %}</h2>
-
-            <p class="mt-1 text-sm opacity-70">{% trans "Review and respond to pending reference requests." %}</p>
-          </div>
-
-          <div
-            :class="darkMode
-              ? 'border-accent-1 bg-sunken-dark'
-              : 'border-accent-2 bg-sunken-light'"
-            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
-            <i class="fa-solid fa-inbox"></i>
-            {% blocktranslate trimmed count counter=reference_requests|length %}{{ counter }} request{% plural %}{{ counter }} requests{% endblocktranslate %}
-          </div>
-        </div>
-
-        <div class="space-y-3">
-          {% for ref in reference_requests %}
-            <article
-              :class="darkMode
-                ? 'border-accent-1 bg-sunken-dark'
-                : 'border-accent-2 bg-sunken-light'"
-              class="rounded-xl border p-4 shadow-sm">
-
-              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div class="space-y-2 text-sm">
-                  <p class="font-bold">
-                    {{ ref.application.email }}
-                  </p>
-
-                  <div class="flex flex-wrap gap-2 text-xs">
-                    <span
-                      :class="darkMode
-                        ? 'border-accent-1 bg-primary-bg-dark'
-                        : 'border-accent-2 bg-primary-bg-light'"
-                      class="rounded-full border px-3 py-1 font-semibold">
-                      {{ ref.application.community.name }}
-                    </span>
-
-                    <span
-                      :class="darkMode
-                        ? 'border-accent-1 bg-primary-bg-dark'
-                        : 'border-accent-2 bg-primary-bg-light'"
-                      class="rounded-full border px-3 py-1 font-semibold">
-                      {{ ref.get_status_display }}
-                    </span>
-
-                    {# The privacy notice the applicant accepted (2026-10-01); none on applications older than acceptance. #}
-                    {% if ref.application.privacy_version %}
-                      <a href="{% url 'socialhub:privacy_notice_version' ref.application.privacy_version %}"
-                        :class="darkMode
-                          ? 'border-accent-1 bg-primary-bg-dark'
-                          : 'border-accent-2 bg-primary-bg-light'"
-                        class="rounded-full border px-3 py-1 font-semibold hover:underline"
-                        title="{{ ref.application.privacy_accepted_at|date:'DATETIME_FORMAT' }}">
-                        <i class="fa-solid fa-shield-halved"></i> {% blocktranslate with version=ref.application.privacy_version %}Privacy notice v{{ version }} accepted{% endblocktranslate %}
-                      </a>
-                    {% endif %}
-
-                    <span class="rounded-full px-1 py-1 opacity-70">
-                      {% blocktranslate trimmed with date=ref.created_at|date:"F j, Y" %}Sent {{ date }}{% endblocktranslate %}
-                    </span>
-                  </div>
-                </div>
-
-                {% if ref.status == "pending" %}
-                  <div class="flex shrink-0 flex-wrap gap-2">
-                    <form method="post" action="{% url 'socialhub:reference_accept' ref.id %}">
-                      {% csrf_token %}
-                      <button
-                        type="submit"
-                        :class="darkMode
-                          ? 'bg-success-dark text-primary-bg-dark'
-                          : 'bg-success-light text-primary-bg-light'"
-                        class="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-90">
-                        <i class="fa-solid fa-check"></i>{% trans "Accept" %}</button>
-                    </form>
-
-                    <form method="post" action="{% url 'socialhub:reference_reject' ref.id %}">
-                      {% csrf_token %}
-                      <button
-                        type="submit"
-                        :class="darkMode
-                          ? 'bg-warn-dark text-primary-bg-dark'
-                          : 'bg-warn-light text-primary-bg-light'"
-                        class="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-90">
-                        <i class="fa-solid fa-xmark"></i>{% trans "Reject" %}</button>
-                    </form>
-                  </div>
-                {% endif %}
-              </div>
-            </article>
-          {% empty %}
-            <div
-              :class="darkMode
-                ? 'border-accent-1 bg-sunken-dark'
-                : 'border-accent-2 bg-sunken-light'"
-              class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70">{% trans "You haven't submitted any references yet." %}</div>
-          {% endfor %}
-        </div>
-      </section>
-    {% endif %}
-
-  </div>
-
-  {% if is_own_profile %}
-  {% comment %}The address picker. Click the map to place the pin, drag the
-  view, search by name where the host allows geocoding; nothing is saved
-  until Save is pressed, and Cancel discards everything. The map builds
-  lazily on first open — leaflet cannot size itself inside a hidden box.
-  A name search and "Save and look up the address" are charged place
-  lookups (2026-09-28): each is its own priced button, and clicking the map
-  or a plain Save costs nothing.
-  {% endcomment %}
-  <div x-show="addressModal" x-trap="addressModal" x-cloak x-transition.opacity
-       class="fixed inset-0 z-50 flex items-center justify-center p-4"
-       role="dialog" aria-modal="true" aria-labelledby="address-modal-title">
-    <div class="absolute inset-0"
-         :class="darkMode ? 'bg-primary-bg-dark/80' : 'bg-primary-bg-light/80'"
-         @click="addressModal = false"></div>
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
-         class="relative z-10 flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border shadow-xl">
-      <div class="flex items-center justify-between gap-4 border-b border-current/15 px-5 py-4">
-        <h2 id="address-modal-title" class="text-lg font-bold">
-          {% if profile.address %}{% trans "Modify my address" %}{% else %}{% trans "Set my address" %}{% endif %}</h2>
-        <button type="button" @click="addressModal = false"
-                class="inline-flex h-9 w-9 items-center justify-center rounded"
-                aria-label="{% trans 'Close' %}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
-      </div>
-      <form method="post" action="{% url 'socialhub:set_my_address' %}"
-            class="min-h-0 flex-1 overflow-auto p-5">
-        {% csrf_token %}
-        {% if geocoding_enabled %}
-          <div class="relative">
-            <label for="address-search" class="mb-1 block text-sm font-semibold">{% trans "Search for a place" %}</label>
-            <div class="flex flex-wrap items-center gap-2">
-              <input id="address-search" type="search" autocomplete="off"
-                     placeholder="{% trans 'Street, town, landmark…' %}"
-                     class="min-w-0 flex-1 rounded-lg border border-current/30 bg-transparent px-3 py-2 text-sm text-inherit outline-none">
-              <button type="button" id="address-search-go" data-testid="address-search-go"
-                      class="inline-flex items-center gap-1.5 rounded-lg border border-current/30 px-3 py-2 text-sm font-semibold disabled:opacity-40">
-                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>{% trans "Search" %}</button>
-              {% price_hint "locations.geocode" %}
-            </div>
-            <p id="address-search-note" role="status" class="mt-1 hidden text-xs"></p>
-            <ul id="address-search-results"
-                :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-                class="absolute z-20 mt-1 hidden max-h-48 w-full overflow-auto rounded-lg border text-sm shadow-lg"></ul>
-          </div>
-        {% endif %}
-        <div id="address-pick-map" style="height: 300px" class="mt-3 rounded"></div>
-        <p class="mt-2 text-xs opacity-60">
-          {% trans "Click the map to place your pin, then adjust it until it is right. Nothing is saved until you press Save." %}</p>
-        <div class="mt-3 flex gap-3">
-          <label class="text-sm">{% trans "Latitude" %}
-            <input type="number" name="latitude" id="address-lat" step="any" min="-90" max="90" required
-                   value="{{ profile.address.latitude|default_if_none:'' }}"
-                   class="mt-1 w-36 rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none"></label>
-          <label class="text-sm">{% trans "Longitude" %}
-            <input type="number" name="longitude" id="address-lon" step="any" min="-180" max="180" required
-                   value="{{ profile.address.longitude|default_if_none:'' }}"
-                   class="mt-1 w-36 rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none"></label>
-        </div>
-        {% if geocoding_enabled %}
-          <p class="mt-4 text-xs opacity-60">
-            {% trans "Save keeps the pin alone. Looking up its street and town is one place lookup." %}</p>
-        {% endif %}
-        <div class="mt-5 flex flex-wrap items-center justify-end gap-3">
-          <button type="button" @click="addressModal = false"
-                  class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
-          {% comment %}First in the form, so Enter in a coordinate box is the
-             free Save, never the lookup.{% endcomment %}
-          <button type="submit" class="rounded-lg border px-4 py-2 text-sm font-bold">{% trans "Save" %}</button>
-          {% if geocoding_enabled %}
-            <button type="submit" name="lookup_address" value="1" data-testid="save-and-look-up"
-                    class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-bold">
-              {% trans "Save and look up the address" %}{% price_hint "locations.geocode" %}</button>
-          {% endif %}
-        </div>
-      </form>
     </div>
+
   </div>
-
-  <script>
-  (function () {
-    var built = false;
-    var pick = null;
-    var pin = null;
-    document.getElementById('open-address-modal')
-        .addEventListener('click', function () { setTimeout(build, 60); });
-
-    function place(lat, lon) {
-      if (pin) { pick.removeLayer(pin); }
-      pin = L.marker([lat, lon], {icon: classicPin()}).addTo(pick);
-      document.getElementById('address-lat').value = Math.round(lat * 1e6) / 1e6;
-      document.getElementById('address-lon').value = Math.round(lon * 1e6) / 1e6;
-    }
-
-    function build() {
-      if (built) { return; }
-      built = true;
-      var latInput = document.getElementById('address-lat');
-      var lonInput = document.getElementById('address-lon');
-      var start = [latInput.value || 52.2297, lonInput.value || 21.0122];
-      pick = L.map('address-pick-map').setView(start, latInput.value ? 12 : 5);
-      window.totoTileLayer(pick);   // dark with the page (oya/base.html)
-      if (latInput.value && lonInput.value) {
-        place(parseFloat(latInput.value), parseFloat(lonInput.value));
-      }
-      pick.on('click', function (event) {
-        place(event.latlng.lat, event.latlng.lng);
-      });
-      wireSearch();
-    }
-
-    function wireSearch() {
-      var box = document.getElementById('address-search');
-      if (!box) { return; }   // the host allows no geocoding
-      var list = document.getElementById('address-search-results');
-      var button = document.getElementById('address-search-go');
-      var note = document.getElementById('address-search-note');
-      var failed = '{% trans "Could not search right now." as failed %}{{ failed|escapejs }}';
-      // A search is a charged place lookup: it runs on Enter or the Search
-      // button, never per keystroke, and not again while one is running (a
-      // second Enter would pay twice). Enter must not submit the form around
-      // the box either, which would save the pin.
-      box.addEventListener('keydown', function (event) {
-        if (event.key === 'Enter') { event.preventDefault(); run(); }
-      });
-      button.addEventListener('click', run);
-
-      function say(text) {
-        note.textContent = text;
-        note.classList.toggle('hidden', !text);
-      }
-
-      function run() {
-        var query = box.value.trim();
-        if (!query || button.disabled) { return; }
-        button.disabled = true;
-        say('');
-        var body = new FormData();
-        body.append('q', query);
-        fetch('{% url "socialhub:search_address" %}', {
-          method: 'POST', body: body, credentials: 'same-origin',
-          headers: {'Accept': 'application/json', 'X-CSRFToken': '{{ csrf_token }}',
-                    'X-Requested-With': 'XMLHttpRequest'}})
-          .then(function (r) {
-            return r.json().catch(function () { return {}; })
-              .then(function (data) { return {ok: r.ok, data: data}; });
-          })
-          .then(function (answer) {
-            list.textContent = '';
-            if (!answer.ok) {
-              // The server's sentence: out of mana, too many lookups, down.
-              list.classList.add('hidden');
-              say(answer.data.error || failed);
-              return;
-            }
-            var hits = answer.data.results || [];
-            hits.forEach(function (hit) {
-              var item = document.createElement('li');
-              item.textContent = hit.label;
-              item.className = 'cursor-pointer px-3 py-2 hover:opacity-70';
-              item.addEventListener('click', function () {
-                list.classList.add('hidden');
-                var lat = parseFloat(hit.lat), lon = parseFloat(hit.lng);
-                pick.setView([lat, lon], 14);
-                place(lat, lon);
-              });
-              list.appendChild(item);
-            });
-            list.classList.toggle('hidden', !hits.length);
-            if (!hits.length) { say('{% trans "No place found." as none %}{{ none|escapejs }}'); }
-          })
-          .catch(function () {
-            list.classList.add('hidden');
-            say(failed);
-          })
-          .finally(function () { button.disabled = false; });
-      }
-    }
-  })();
-  </script>
-  {% endif %}
 </section>
 {% endblock %}

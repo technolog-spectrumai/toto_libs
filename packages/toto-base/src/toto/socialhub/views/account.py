@@ -1,17 +1,52 @@
-"""My account (2026-09-30): the one page where a member changes their own
-account — reached from the top bar, mounted by the host at ``/account/``.
+"""Your account, on your own profile (2026-09-30; tabs of the profile since
+2026-10-02, stage 50).
 
-It lives in the socialhub because what it edits first is the member's Person
-(profile, avatar, time zone), which the socialhub already shows and edits
-(`views/profile.py`); ``toto.core`` owns the sign-in helpers the later sections
-call, not a page. Its own URL module (`account_urls.py`, namespace
-``account``) so the address is short and stays put if the socialhub's own
-prefix ever moves.
+My account and the profile were two pages until stage 50 (the owner,
+2026-10-02: "merge My account and my profile - use tabs in profile view"; and
+the same evening: "the design of the profile view is not good - use tabs -
+separate it logically"). Now the member's own profile
+(``socialhub:profile_details``, `views/profile.py`) has seven tabs, one
+concern each (``OWN_TABS``):
 
-Own account only, by construction: no view here takes a person, a slug or a
-user id — whatever a form names, the row written is ``request.user``'s. This
-page never creates or deletes an ACCOUNT (console only); it creates the Person
-row on a first save, the way `set_my_address` does.
+* **Overview**, the default: the page others see, the owner's hidden contact
+  details marked, and their communities;
+* **Edit profile**: display name, about you, avatar, phone and the two
+  contact switches; where you live, and who may see it;
+* **Account**: the e-mail address, the password, the time zone, the language;
+* **Security**: where you are signed in (sessions), recent sign-ins, the key
+  store;
+* **Wallet**: the mana and wallet plugins (``ProfilePlugin.tab``);
+* **Activity**: upcoming events, the reference requests to answer, the
+  password-recovery requests;
+* **Your data**: *Download my data* and *Erase my account*.
+
+Anybody else — another member, staff, a superuser — gets the profile's
+public tabs only (``VISITOR_TABS``: Overview, Communities, Activity), each
+section by its own rules; nothing of the owner's account is ever built for
+them, and a tab they may not see is the Overview.
+
+A tab is a link, ``?tab=<name>`` (``TABS``; anything else is the first tab),
+drawn on the server: a request draws the active tab alone, so only its
+queries run. This module holds the tabs' names, the owner's account tabs'
+context and their doors; `views/profile.py` draws the page
+(``render_profile``) and the tabs about the profile itself.
+
+``/account/`` (``account:home``, `account_urls.py`, mounted by the host)
+stays, as the way in: it answers with a redirect to the member's own
+profile on the tab its old address meant (``?page=`` and ``?signins_page=``
+are the Security tab's lists), or — for an account with no profile yet (the
+console makes none) or one whose name made no address — draws the page in
+place; with no profile yet, Edit profile is the first tab and makes one on
+its first save. The doors keep their addresses and each goes back to its own
+tab and section (``own_page_url``); a form with errors is drawn again (400)
+on its tab. The mailed e-mail link, ``/account/email/confirm/?token=…``, is
+unchanged and lands on the Account tab.
+
+Own account only, by construction: no door here takes a person, a slug or a
+user id — whatever a form names, the row written is ``request.user``'s, and
+the tabs are built from ``request.user``, never from the profile shown. This
+page never creates or deletes an ACCOUNT (console only); it creates the
+Person row on a first save, the way `set_my_address` does.
 
 Every successful change is a ``SOCIALHUB.PROFILE_CHANGED`` record naming the
 fields, never their values; a password change is ``AUTH.PASSWORD_CHANGED``
@@ -50,6 +85,8 @@ account goes only by ``erase_user`` at the console, which closes the request.
 from __future__ import annotations
 
 import logging
+import re
+from urllib.parse import urlencode
 
 from django.apps import apps
 from django.conf import settings
@@ -59,8 +96,8 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordChangeForm
 from django.core.paginator import Paginator
 from django.http import Http404
-from django.shortcuts import redirect, render
-from django.urls import reverse
+from django.shortcuts import redirect
+from django.urls import NoReverseMatch, reverse
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy
 from django.views.decorators.debug import sensitive_post_parameters
@@ -78,7 +115,6 @@ from toto.socialhub.forms import (
     TimeZoneForm,
     avatar_max_bytes,
 )
-from toto.ui import PageProcessor
 
 log = logging.getLogger("toto.socialhub")
 
@@ -89,6 +125,130 @@ def own_person(user) -> Person:
     if person is None:
         person = Person(user=user, display_name=user.get_username())
     return person
+
+
+# ---------------------------------------------------------------------------
+# The tabs (2026-10-02, stage 50)
+# ---------------------------------------------------------------------------
+
+#: The tabs of one's own profile, in the strip's order. The first is the
+#: default — the page others see — and has no ``?tab=``.
+OWN_TABS = ("overview", "edit", "account", "security", "wallet", "activity", "data")
+#: Somebody else's profile, whoever looks — staff and superusers too: what
+#: may be seen of it, and no tab of their account.
+VISITOR_TABS = ("overview", "communities", "activity")
+#: Every tab's name. A value not named here is the page's first tab, so
+#: nothing a request sends is echoed back.
+TABS = OWN_TABS + ("communities",)
+DEFAULT_TAB = "overview"
+#: The first tab of an account with no profile yet (the console makes none):
+#: the form whose first save makes one. The tabs about a profile wait for it.
+NO_PROFILE_TABS = ("edit", "account", "security", "data")
+TAB_PARAM = "tab"
+
+#: Each tab's name and icon on the strip (socialhub/_profile_tabs.html).
+TAB_LABELS = {
+    "overview": (gettext_lazy("Overview"), "fa-solid fa-id-card"),
+    "edit": (gettext_lazy("Edit profile"), "fa-solid fa-pen-to-square"),
+    "account": (gettext_lazy("Account"), "fa-solid fa-user-gear"),
+    "security": (gettext_lazy("Security"), "fa-solid fa-shield-halved"),
+    "wallet": (gettext_lazy("Wallet"), "fa-solid fa-wallet"),
+    "activity": (gettext_lazy("Activity"), "fa-solid fa-calendar-check"),
+    "data": (gettext_lazy("Your data"), "fa-solid fa-box-archive"),
+    "communities": (gettext_lazy("Communities"), "fa-solid fa-people-group"),
+}
+
+#: The tab each section's anchor is on, on one's own profile: the doors go
+#: back to it, and the page's own script takes an old ``/account/#section``
+#: address there.
+SECTION_TABS = {
+    "profile": "edit", "where-you-live": "edit",
+    "email": "account", "password": "account", "timezone": "account", "language": "account",
+    "sessions": "security", "signins": "security", "keystore": "security",
+    "references": "activity",
+    "data": "data", "erasure": "data",
+}
+
+#: A page number as the lists take it: digits, and not too many of them.
+_PAGE_NUMBER = re.compile(r"[1-9][0-9]{0,8}")
+
+
+def page_number(value) -> str:
+    """``value`` when it is a page number, else "" — never other text."""
+    value = str(value or "").strip()
+    return value if _PAGE_NUMBER.fullmatch(value) else ""
+
+
+def tab_from(query, *, legacy=False) -> str:
+    """The tab ``query`` (a QueryDict, or a dict) asks for — one of ``TABS``
+    — or "" when it names none; never other text. Whether the page shows that
+    tab to this viewer is the page's to say (`views/profile.py`).
+
+    ``legacy`` is ``/account/``'s own reading: its Sessions and Recent
+    sign-ins lists paged on ``?page=`` and ``?signins_page=``, so a page of
+    either without a tab means the Security tab.
+    """
+    tab = query.get(TAB_PARAM, "")
+    if tab in TABS:
+        return tab
+    if legacy and (page_number(query.get("page"))
+                   or page_number(query.get(SIGNINS_PAGE_PARAM))):
+        return "security"
+    return ""
+
+
+def first_tab_of(person) -> str:
+    """The first tab of ``person``'s own page: the Overview, or — with no
+    profile saved yet — Edit profile."""
+    return DEFAULT_TAB if person is not None and person.pk else NO_PROFILE_TABS[0]
+
+
+def profile_address(person):
+    """``person``'s profile page, or None while there is none to link to: no
+    Person yet, an unsaved one (``own_person`` leaves one on the user), or
+    one whose name made no slug."""
+    if person is not None and person.pk and person.slug:
+        try:
+            return reverse("socialhub:profile_details", args=[person.slug])
+        except NoReverseMatch:
+            return None
+    return None
+
+
+def page_url_of(person) -> str:
+    """The address of the page ``person``'s owner has as theirs: the
+    profile, or ``/account/`` while there is none."""
+    return profile_address(person) or reverse("account:home")
+
+
+def own_page_url(user, tab="", anchor="", **query) -> str:
+    """The member's own page on ``tab``, at ``#anchor`` — where every door
+    goes back to. Built from the user and constants only, so it can never
+    send anybody elsewhere; ``query`` carries values a caller has checked."""
+    person = getattr(user, "community_profile", None)
+    params = {}
+    if tab in TABS and tab != first_tab_of(person):
+        params[TAB_PARAM] = tab
+    params.update((key, value) for key, value in query.items() if value)
+    url = page_url_of(person)
+    if params:
+        url += "?" + urlencode(params)
+    if anchor:
+        url += "#" + anchor
+    return url
+
+
+def tab_url(page_url, tab, first) -> str:
+    """``tab`` on the page at ``page_url``, whose first tab is ``first``."""
+    return page_url if tab == first else f"{page_url}?{urlencode({TAB_PARAM: tab})}"
+
+
+def profile_tabs(page_url, active, shown):
+    """The strip: each tab shown — its key, name, icon and address on
+    ``page_url`` (the first tab's is the page's own)."""
+    return [{"key": key, "label": TAB_LABELS[key][0], "icon": TAB_LABELS[key][1],
+             "active": key == active, "url": tab_url(page_url, key, shown[0])}
+            for key in shown]
 
 
 #: Sessions shown per page of the Sessions section.
@@ -223,27 +383,23 @@ def _erasure(request):
             "may_handle": may_publish(request.user)}
 
 
-def _page(request, *, profile_form=None, timezone_form=None, password_form=None,
-          email_form=None, key_store_form=None, status=200):
-    person = own_person(request.user)
-    sessions = _sessions_page(request)
-    signins = _signins_page(request)
-    # Each list pages on its own parameter and carries the other's along, so
-    # paging one does not send the other back to its first page.
-    sessions_query = ""
-    if signins is not None and signins.number > 1:
-        sessions_query = f"&{SIGNINS_PAGE_PARAM}={signins.number}"
-    signins_query = f"&page={sessions.number}" if sessions.number > 1 else ""
-    context = {
-        "page_obj": sessions,
-        "is_paginated": sessions.has_other_pages(),
-        "sessions": sessions.object_list,
-        "sessions_query": sessions_query + "#sessions",
-        "signins_page": signins,
-        "signins_paginated": bool(signins) and signins.has_other_pages(),
-        "signins_query": signins_query + "#signins",
-        "signins_page_param": SIGNINS_PAGE_PARAM,
-        "signins_days": SIGNINS_DAYS,
+def _edit_tab(request, person, *, profile_form=None, **_):
+    """Edit profile: the profile form, and where you live — the address
+    picker, whose place search is offered where the host geocodes."""
+    from toto.locations.geocode import geocoding_enabled, geocoding_settings
+
+    return {
+        "profile_form": profile_form or AccountProfileForm(instance=person),
+        "avatar_max_mb": avatar_max_bytes() // (1024 * 1024),
+        "geocoding_enabled": geocoding_enabled(geocoding_settings()),
+    }
+
+
+def _account_tab(request, person, *, timezone_form=None, password_form=None,
+                 email_form=None, **_):
+    """The e-mail address, the password, the time zone (and the language,
+    which the page draws from the Person)."""
+    return {
         # A federated account signs in at its provider and has no password
         # here to change: the section says so instead of offering a form
         # whose "current password" nothing could ever match.
@@ -254,33 +410,103 @@ def _page(request, *, profile_form=None, timezone_form=None, password_form=None,
         "email_form": email_form or AccountEmailForm(user=request.user),
         "email_pending": email_change.pending_for(request.user),
         "email_link_hours": email_change.LINK_HOURS,
-        "person": person,
-        "profile_form": profile_form or AccountProfileForm(instance=person),
         "timezone_form": timezone_form or TimeZoneForm(
             initial={"timezone": person.timezone}),
         "platform_time_zone": settings.TIME_ZONE,
-        "avatar_max_mb": avatar_max_bytes() // (1024 * 1024),
-        "key_store": _key_store(request, key_store_form),
-        "data_export": _data_export(request),
-        "erasure": _erasure(request),
     }
-    context = PageProcessor().decorate(context, request)
-    return render(request, "socialhub/account.html", context, status=status)
+
+
+def _security_tab(request, person, *, key_store_form=None, **_):
+    """Sessions, recent sign-ins and the key store."""
+    sessions = _sessions_page(request)
+    signins = _signins_page(request)
+    # Each list pages on its own parameter and carries the other's along, so
+    # paging one does not send the other back to its first page; both carry
+    # the tab, so a page of either stays on it.
+    sessions_query = signins_query = f"&{TAB_PARAM}=security"
+    if signins is not None and signins.number > 1:
+        sessions_query += f"&{SIGNINS_PAGE_PARAM}={signins.number}"
+    if sessions.number > 1:
+        signins_query += f"&page={sessions.number}"
+    return {
+        "page_obj": sessions,
+        "is_paginated": sessions.has_other_pages(),
+        "sessions": sessions.object_list,
+        "sessions_query": sessions_query + "#sessions",
+        "signins_page": signins,
+        "signins_paginated": bool(signins) and signins.has_other_pages(),
+        "signins_query": signins_query + "#signins",
+        "signins_page_param": SIGNINS_PAGE_PARAM,
+        "signins_days": SIGNINS_DAYS,
+        "key_store": _key_store(request, key_store_form),
+    }
+
+
+def _data_tab(request, person, **_):
+    """Download my data and Erase my account."""
+    return {"data_export": _data_export(request), "erasure": _erasure(request)}
+
+
+#: The tabs of one's own account, built here from ``request.user``; the
+#: page's other tabs are about the profile (`views/profile.py`).
+_TAB_CONTEXT = {"edit": _edit_tab, "account": _account_tab,
+                "security": _security_tab, "data": _data_tab}
+
+
+def tab_context(request, tab, person, **forms):
+    """One account tab of one's own page: ``request.user``'s, whatever page
+    shows it, and nobody else's — the profile view asks for these on the
+    owner's page alone.
+
+    ``person`` is their Person as the page shows it (unsaved while they have
+    none); ``forms`` are the bound forms a door draws again with their errors.
+    Only the tab asked for is built, so only its queries run — the Your data
+    tab's closes an export no worker will finish, as it looks.
+    """
+    build = _TAB_CONTEXT.get(tab)
+    return build(request, person, **forms) if build else {}
+
+
+def _page(request, *, tab="", status=200, **forms):
+    """One's own page drawn at this address rather than the profile's: a
+    door's form that came back with errors (400, on that form's tab), or
+    ``/account/`` for an account with no profile to go to."""
+    from toto.socialhub.views.profile import render_own_profile
+
+    return render_own_profile(request, tab=tab, status=status, **forms)
 
 
 @login_required
 def account(request):
-    return _page(request)
+    """``/account/``, the way to one's own page (2026-10-02, stage 50).
+
+    A member with a profile is sent to it, on the tab the address meant:
+    ``?tab=`` from ``TABS``, and the Security tab's list pages as digits —
+    nothing else is carried, so the redirect goes nowhere a request chose. A
+    browser keeps an old address's ``#section`` across the redirect, and the
+    page's own script takes it to its tab. With no profile to go to (none
+    yet, or a name that made no slug), the page is drawn here.
+    """
+    tab = tab_from(request.GET, legacy=True)
+    if profile_address(getattr(request.user, "community_profile", None)) is None:
+        return _page(request, tab=tab)
+    pages = {}
+    if tab == "security":
+        pages = {"page": page_number(request.GET.get("page")),
+                 SIGNINS_PAGE_PARAM: page_number(request.GET.get(SIGNINS_PAGE_PARAM))}
+    return redirect(own_page_url(request.user, tab, **pages))
 
 
 @require_POST
 @login_required
 def account_profile(request):
+    """Edit profile's form (back to that tab). The first save of an account
+    with no profile makes one, and lands on the new profile's Edit tab."""
     person = own_person(request.user)
     old_avatar = person.avatar.name if person.pk and person.avatar else ""
     form = AccountProfileForm(request.POST, request.FILES, instance=person)
     if not form.is_valid():
-        return _page(request, profile_form=form, status=400)
+        return _page(request, tab="edit", profile_form=form, status=400)
     person = form.save()
     changed = list(form.changed_data)
     if "avatar" in changed and old_avatar and old_avatar != person.avatar.name:
@@ -292,7 +518,7 @@ def account_profile(request):
             log.warning("account: could not delete old avatar %s", old_avatar)
     audit.profile_changed(person, changed)
     messages.success(request, _("Your profile is saved."))
-    return redirect("account:home")
+    return redirect(own_page_url(request.user, "edit", "profile"))
 
 
 @require_POST
@@ -300,7 +526,7 @@ def account_profile(request):
 def account_timezone(request):
     form = TimeZoneForm(request.POST)
     if not form.is_valid():
-        return _page(request, timezone_form=form, status=400)
+        return _page(request, tab="account", timezone_form=form, status=400)
     person = own_person(request.user)
     zone = form.cleaned_data["timezone"]
     if person.timezone != zone:
@@ -315,7 +541,7 @@ def account_timezone(request):
         messages.success(request, _("Times are now shown in %(zone)s.") % {"zone": zone})
     else:
         messages.success(request, _("Times are now shown in the platform's time zone."))
-    return redirect("account:home")
+    return redirect(own_page_url(request.user, "account", "timezone"))
 
 
 def _password_changed_on_chain(user, request, ended):
@@ -374,7 +600,7 @@ def account_password(request):
     if not user.has_usable_password():
         messages.error(request, _("Your account signs in through another service; "
                                   "change your password there."))
-        return redirect("account:home")
+        return redirect(own_page_url(user, "account", "password"))
     # The current password is a password guess like any at the sign-in form
     # (2026-10-01): a borrowed or stolen session must not get unlimited tries
     # at it. PasswordChangeForm checks it with check_password, which no
@@ -382,14 +608,14 @@ def account_password(request):
     held = _password_guess_refused(request, user)
     if held is not None:
         messages.error(request, held.message)
-        return redirect(f"{reverse('account:home')}#password")
+        return redirect(own_page_url(user, "account", "password"))
     form = PasswordChangeForm(user, request.POST)
     if not form.is_valid():
         if form.has_error("old_password"):
             _password_guess_failed(request, user)
         else:
             _password_not_a_guess(request)
-        return _page(request, password_form=form, status=400)
+        return _page(request, tab="account", password_form=form, status=400)
     _password_not_a_guess(request)
     form.save()
     old_key = request.session.session_key
@@ -405,7 +631,7 @@ def account_password(request):
                                     "were ended; sign in there again with the new one."))
     else:
         messages.success(request, _("Your password is changed."))
-    return redirect("account:home")
+    return redirect(own_page_url(user, "account", "password"))
 
 
 def _on_chain(name, user, request, **values):
@@ -432,13 +658,13 @@ def account_session_end(request, session_id):
             pk=session_id, session_key=current).exists():
         messages.info(request, _("That is the session you are using now; "
                                  "sign out to end it."))
-        return redirect("account:home")
+        return redirect(own_page_url(request.user, "security", "sessions"))
     row = end_session(request.user, session_id, request=request)
     if row is None:
         raise Http404
     _on_chain("on_session_ended", request.user, request, kind=row.kind, session_id=row.pk)
     messages.success(request, _("That session is ended; it has to sign in again."))
-    return redirect("account:home")
+    return redirect(own_page_url(request.user, "security", "sessions"))
 
 
 @require_POST
@@ -452,7 +678,7 @@ def account_sessions_end_others(request):
                                     "you are signed in here only."))
     else:
         messages.info(request, _("There was no other session to end."))
-    return redirect("account:home")
+    return redirect(own_page_url(request.user, "security", "sessions"))
 
 
 @sensitive_post_parameters("password")
@@ -467,28 +693,28 @@ def account_email(request):
     if not request.user.has_usable_password():
         messages.error(request, _("Your account signs in through another service; "
                                   "change your e-mail address there."))
-        return redirect("account:home")
+        return redirect(own_page_url(request.user, "account", "email"))
     if email_change.throttled(request.user):
         messages.error(request, _("You have asked for a new address too often. "
                                   "Try again in an hour."))
-        return redirect(f"{reverse('account:home')}#email")
+        return redirect(own_page_url(request.user, "account", "email"))
     held = _password_guess_refused(request, request.user)
     if held is not None:
         messages.error(request, held.message)
-        return redirect(f"{reverse('account:home')}#email")
+        return redirect(own_page_url(request.user, "account", "email"))
     form = AccountEmailForm(request.POST, user=request.user)
     if not form.is_valid():
         if form.has_error("password"):
             _password_guess_failed(request, request.user)
         else:
             _password_not_a_guess(request)
-        return _page(request, email_form=form, status=400)
+        return _page(request, tab="account", email_form=form, status=400)
     _password_not_a_guess(request)
     address = form.cleaned_data["new_email"]
     if email_change.throttled(request.user, address):
         messages.error(request, _("That address has been sent enough links for today. "
                                   "Try again tomorrow."))
-        return redirect(f"{reverse('account:home')}#email")
+        return redirect(own_page_url(request.user, "account", "email"))
     if email_change.request_change(request.user, address, request=request):
         messages.success(request, _("A link is on its way to %(address)s. Open it while "
                                     "signed in here to use that address; until then "
@@ -496,7 +722,7 @@ def account_email(request):
     else:
         messages.error(request, _("The confirmation mail could not be sent. Try again "
                                   "later, or tell an administrator."))
-    return redirect("account:home")
+    return redirect(own_page_url(request.user, "account", "email"))
 
 
 #: What the member is told when a link is refused, by outcome.
@@ -533,7 +759,7 @@ def account_email_confirm(request):
                          % {"address": request.user.email})
     else:
         messages.error(request, EMAIL_REFUSALS[outcome])
-    return redirect(f"{reverse('account:home')}#email")
+    return redirect(own_page_url(request.user, "account", "email"))
 
 
 @sensitive_post_parameters("passphrase", "passphrase2")
@@ -558,27 +784,27 @@ def account_key_store(request):
 
     form = KeyStoreForm(request.POST)
     if not form.is_valid():
-        return _page(request, key_store_form=form, status=400)
+        return _page(request, tab="security", key_store_form=form, status=400)
     try:
         box = create_personal_strongbox(request.user, form.cleaned_data["passphrase"],
                                         request=request)
     except KeyStoreExists:
         messages.error(request, _("You already have a key store; nothing was changed."))
-        return redirect(f"{reverse('account:home')}#keystore")
+        return redirect(own_page_url(request.user, "security", "keystore"))
     except KeyStoreRefused:
         messages.error(request, _("Your account already has a store that your sealed "
                                   "files depend on, so a new one cannot be made here. "
                                   "Ask an administrator."))
-        return redirect(f"{reverse('account:home')}#keystore")
+        return redirect(own_page_url(request.user, "security", "keystore"))
     except Exception:  # noqa: BLE001 - never echo what the crypto layer said
         log.exception("account: key store creation failed for user %s", request.user.pk)
         messages.error(request, _("The key store could not be created. Nothing was saved; "
                                   "try again later."))
-        return redirect(f"{reverse('account:home')}#keystore")
+        return redirect(own_page_url(request.user, "security", "keystore"))
     _on_chain("on_key_store_created", request.user, request, strongbox_id=box.pk)
     messages.success(request, _("Your key store is ready. Keep the passphrase somewhere "
                                 "safe: it is stored nowhere and cannot be recovered."))
-    return redirect(f"{reverse('account:home')}#keystore")
+    return redirect(own_page_url(request.user, "security", "keystore"))
 
 
 @require_POST
@@ -597,7 +823,7 @@ def account_data_export(request):
     else:
         messages.success(request, _("Your data is being prepared. The copy will be in your "
                                     "personal bucket, and linked here, when it is ready."))
-    return redirect(f"{reverse('account:home')}#data")
+    return redirect(own_page_url(request.user, "data", "data"))
 
 
 @require_POST
@@ -610,7 +836,7 @@ def account_erasure_request(request):
 
     if request.POST.get("confirm") != "yes":
         messages.error(request, _("Confirm that you have read what the request does."))
-        return redirect(f"{reverse('account:home')}#erasure")
+        return redirect(own_page_url(request.user, "data", "erasure"))
     try:
         erasure.file_request(request.user, request=request)
     except erasure.Refused as exc:
@@ -619,4 +845,4 @@ def account_erasure_request(request):
         messages.success(request, _("Your request is filed. An operator carries it out at the "
                                     "server's console; until then your account works as "
                                     "before."))
-    return redirect(f"{reverse('account:home')}#erasure")
+    return redirect(own_page_url(request.user, "data", "erasure"))

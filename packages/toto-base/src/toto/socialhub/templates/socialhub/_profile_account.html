@@ -1,0 +1,122 @@
+{% load i18n static tz %}
+{% comment %}The owner's Account tab (2026-10-02, stage 50): the e-mail
+address, the password and the time zone, as My account had them, and the
+language, which was on the profile. Each section its own form posting to its
+own door (views/account.py; the language's is the socialhub's), each coming
+back here to its own #section — so saving the time zone can never resubmit
+anything else.{% endcomment %}
+
+<!-- E-mail address -->
+<section id="email"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="mb-2 flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-envelope" aria-hidden="true"></i>{% translate "E-mail address" %}</h2>
+  <p class="mb-4 text-sm opacity-70">
+    {% if request.user.email %}{% blocktranslate with address=request.user.email %}Your account's address is {{ address }}. Notices about your account and password-reset links go there.{% endblocktranslate %}{% else %}{% translate "Your account has no e-mail address yet, so it gets no notices and cannot reset a forgotten password." %}{% endif %}
+  </p>
+  {% if has_password %}
+  {% if email_pending %}
+  <div :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+       class="mb-4 flex items-start gap-2 rounded-xl border p-3 text-sm">
+    <i class="fa-solid fa-hourglass-half mt-0.5" aria-hidden="true"></i>
+    <span>{% blocktranslate with address=email_pending.new_email %}A confirmation link was sent to {{ address }}. Open it while signed in here to switch; asking again sends a new link and the old one stops working.{% endblocktranslate %}</span>
+  </div>
+  {% endif %}
+  <p class="mb-4 text-sm opacity-70">{% blocktranslate count hours=email_link_hours %}We mail a link to the new address; it works once, for {{ hours }} hour, and only for you signed in. Your old address is told when the change is made.{% plural %}We mail a link to the new address; it works once, for {{ hours }} hours, and only for you signed in. Your old address is told when the change is made.{% endblocktranslate %}</p>
+
+  <form method="post" action="{% url 'account:email' %}" class="space-y-4">
+    {% csrf_token %}
+    {% include "oya/_form_fields.html" with form=email_form %}
+    <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+      <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>{% translate "Send confirmation link" %}</button>
+  </form>
+  {% else %}
+  <p class="text-sm opacity-70">{% translate "Your account signs in through another service; change your e-mail address there." %}</p>
+  {% endif %}
+</section>
+
+<!-- Password -->
+<section id="password"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="mb-2 flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-key" aria-hidden="true"></i>{% translate "Password" %}</h2>
+  {% if has_password %}
+  <p class="mb-4 text-sm opacity-70">{% blocktranslate %}You stay signed in here. Every other sign-in of yours — other browsers and the desktop apps — is ended, and a notice is mailed to your address.{% endblocktranslate %}</p>
+
+  <form method="post" action="{% url 'account:password' %}" class="space-y-4">
+    {% csrf_token %}
+    {% include "oya/_form_fields.html" with form=password_form %}
+    <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+      <i class="fa-solid fa-key" aria-hidden="true"></i>{% translate "Change password" %}</button>
+  </form>
+  {% else %}
+  <p class="text-sm opacity-70">{% translate "Your account signs in through another service; change your password there." %}</p>
+  {% endif %}
+</section>
+
+<!-- Time zone -->
+<section id="timezone"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="mb-2 flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-clock" aria-hidden="true"></i>{% translate "Time zone" %}</h2>
+  <p class="mb-4 text-sm opacity-70">
+    {% get_current_timezone as current_zone %}{% now "Y-m-d H:i" as now_here %}
+    {% blocktranslate with now=now_here zone=current_zone %}Every page shows times in this zone. For you it is now {{ now }} ({{ zone }}).{% endblocktranslate %}
+    {% blocktranslate with zone=platform_time_zone %}Leave it on the default to follow the platform ({{ zone }}).{% endblocktranslate %}
+  </p>
+
+  <form method="post" action="{% url 'account:timezone' %}" class="space-y-4">
+    {% csrf_token %}
+    {% include "oya/_form_fields.html" with form=timezone_form %}
+    <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+      <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>{% translate "Save time zone" %}</button>
+  </form>
+</section>
+
+{% if profile.pk %}
+{% comment %}The language the platform speaks to the member, which follows
+them from browser to browser — on the profile until stage 50. Its door
+(socialhub:set_preferred_language) needs a profile, so the section waits for
+one. The hidden tab brings it back here: behind the cloud's nginx the
+browser's Referer names no page.{% endcomment %}
+{% get_available_languages as available_languages %}
+<section id="language"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+  <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-language" aria-hidden="true"></i>{% translate "Preferred Language" %}</h2>
+
+  <form method="post" action="{% url 'socialhub:set_preferred_language' %}">
+    {% csrf_token %}
+    <input type="hidden" name="tab" value="account">
+    <div class="flex flex-wrap gap-3">
+      {% for lang_code, lang_name in available_languages %}
+      {% with "lang/"|add:lang_code|add:".svg" as flag_path %}
+      <button
+        type="submit"
+        name="language"
+        value="{{ lang_code }}"
+        {% if profile.preferred_language == lang_code %}aria-pressed="true"{% else %}aria-pressed="false"{% endif %}
+        :class="darkMode
+          ? '{% if profile.preferred_language == lang_code %}bg-accent-dark text-primary-bg-dark{% else %}border-accent-1 bg-sunken-dark text-text-main-dark{% endif %}'
+          : '{% if profile.preferred_language == lang_code %}bg-accent-light text-primary-bg-light{% else %}border-accent-2 bg-sunken-light text-text-main-light{% endif %}'"
+        class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <img src="{% static flag_path %}" alt="" class="h-4 w-6 rounded-sm object-cover">
+        {{ lang_name }}
+      </button>
+      {% endwith %}
+      {% endfor %}
+    </div>
+  </form>
+</section>
+{% endif %}

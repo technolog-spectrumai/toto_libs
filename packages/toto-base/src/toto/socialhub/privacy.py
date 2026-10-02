@@ -81,7 +81,7 @@ An application that is not completed is deleted after [period]. Your account dat
 
 6. Your rights
 
-You have the right to access your data and receive a copy of it, to have it corrected, to have it erased, to restrict or object to its processing, and to data portability. You can download a copy of your data from My account and ask for erasure there; we answer within one month. You also have the right to lodge a complaint with a supervisory authority — in Poland, the President of the Personal Data Protection Office (Prezes Urzędu Ochrony Danych Osobowych, ul. Stawki 2, 00-193 Warszawa).
+You have the right to access your data and receive a copy of it, to have it corrected, to have it erased, to restrict or object to its processing, and to data portability. You can download a copy of your data on your profile, on its Your data tab, and ask for erasure there; we answer within one month. You also have the right to lodge a complaint with a supervisory authority — in Poland, the President of the Personal Data Protection Office (Prezes Urzędu Ochrony Danych Osobowych, ul. Stawki 2, 00-193 Warszawa).
 
 7. Automated decisions
 
@@ -122,7 +122,7 @@ Niedokończony wniosek usuwamy po [okres]. Dane konta przechowujemy, dopóki jes
 
 6. Twoje prawa
 
-Masz prawo dostępu do swoich danych i otrzymania ich kopii, ich sprostowania, usunięcia, ograniczenia przetwarzania, wniesienia sprzeciwu oraz przenoszenia danych. Kopię swoich danych pobierzesz w zakładce Moje konto i tam też złożysz wniosek o usunięcie; odpowiadamy w ciągu miesiąca. Masz też prawo wnieść skargę do organu nadzorczego — Prezesa Urzędu Ochrony Danych Osobowych (ul. Stawki 2, 00-193 Warszawa).
+Masz prawo dostępu do swoich danych i otrzymania ich kopii, ich sprostowania, usunięcia, ograniczenia przetwarzania, wniesienia sprzeciwu oraz przenoszenia danych. Kopię swoich danych pobierzesz na swoim profilu, w zakładce „Twoje dane”, i tam też złożysz wniosek o usunięcie; odpowiadamy w ciągu miesiąca. Masz też prawo wnieść skargę do organu nadzorczego — Prezesa Urzędu Ochrony Danych Osobowych (ul. Stawki 2, 00-193 Warszawa).
 
 7. Zautomatyzowane decyzje
 

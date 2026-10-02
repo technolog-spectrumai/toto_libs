@@ -1,0 +1,128 @@
+{% load i18n %}
+{% comment %}The Activity tab (2026-10-02, stage 50): the plugins that sit on it
+(ProfilePlugin.tab = "activity") — the upcoming events, which every viewer
+sees by the calendar's rule, and on the owner's own the password-recovery
+requests they may answer — and, on the owner's own, the reference requests
+to answer, placed between them (views/profile.py, REFERENCES_ORDER). A
+visitor's tab has the plugins alone, and is on the strip only when one of
+them shows to them.{% endcomment %}
+{% for section in sections_before %}
+  {{ section.html }}
+{% endfor %}
+
+{% if profile.pk and reference_requests is not None %}
+<!-- Reference Requests -->
+<section id="references"
+  :class="darkMode
+    ? 'border-accent-1 bg-bubble-bg-dark'
+    : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+  <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <h2 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-file-signature"></i>{% trans "My Reference Requests" %}</h2>
+
+      <p class="mt-1 text-sm opacity-70">{% trans "Review and respond to pending reference requests." %}</p>
+    </div>
+
+    <div
+      :class="darkMode
+        ? 'border-accent-1 bg-sunken-dark'
+        : 'border-accent-2 bg-sunken-light'"
+      class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
+      <i class="fa-solid fa-inbox"></i>
+      {% blocktranslate trimmed count counter=reference_requests|length %}{{ counter }} request{% plural %}{{ counter }} requests{% endblocktranslate %}
+    </div>
+  </div>
+
+  <div class="space-y-3">
+    {% for ref in reference_requests %}
+      <article
+        :class="darkMode
+          ? 'border-accent-1 bg-sunken-dark'
+          : 'border-accent-2 bg-sunken-light'"
+        class="rounded-xl border p-4 shadow-sm">
+
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div class="space-y-2 text-sm">
+            <p class="break-words font-bold">
+              {{ ref.application.email }}
+            </p>
+
+            <div class="flex flex-wrap gap-2 text-xs">
+              <span
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark'
+                  : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-full border px-3 py-1 font-semibold">
+                {{ ref.application.community.name }}
+              </span>
+
+              <span
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark'
+                  : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-full border px-3 py-1 font-semibold">
+                {{ ref.get_status_display }}
+              </span>
+
+              {# The privacy notice the applicant accepted (2026-10-01); none on applications older than acceptance. #}
+              {% if ref.application.privacy_version %}
+                <a href="{% url 'socialhub:privacy_notice_version' ref.application.privacy_version %}"
+                  :class="darkMode
+                    ? 'border-accent-1 bg-primary-bg-dark'
+                    : 'border-accent-2 bg-primary-bg-light'"
+                  class="rounded-full border px-3 py-1 font-semibold hover:underline"
+                  title="{{ ref.application.privacy_accepted_at|date:'DATETIME_FORMAT' }}">
+                  <i class="fa-solid fa-shield-halved"></i> {% blocktranslate with version=ref.application.privacy_version %}Privacy notice v{{ version }} accepted{% endblocktranslate %}
+                </a>
+              {% endif %}
+
+              <span class="rounded-full px-1 py-1 opacity-70">
+                {% blocktranslate trimmed with date=ref.created_at|date:"F j, Y" %}Sent {{ date }}{% endblocktranslate %}
+              </span>
+            </div>
+          </div>
+
+          {% if ref.status == "pending" %}
+            <div class="flex shrink-0 flex-wrap gap-2">
+              <form method="post" action="{% url 'socialhub:reference_accept' ref.id %}">
+                {% csrf_token %}
+                <button
+                  type="submit"
+                  :class="darkMode
+                    ? 'bg-success-dark text-primary-bg-dark'
+                    : 'bg-success-light text-primary-bg-light'"
+                  class="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-90">
+                  <i class="fa-solid fa-check"></i>{% trans "Accept" %}</button>
+              </form>
+
+              <form method="post" action="{% url 'socialhub:reference_reject' ref.id %}">
+                {% csrf_token %}
+                <button
+                  type="submit"
+                  :class="darkMode
+                    ? 'bg-warn-dark text-primary-bg-dark'
+                    : 'bg-warn-light text-primary-bg-light'"
+                  class="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-90">
+                  <i class="fa-solid fa-xmark"></i>{% trans "Reject" %}</button>
+              </form>
+            </div>
+          {% endif %}
+        </div>
+      </article>
+    {% empty %}
+      <div
+        :class="darkMode
+          ? 'border-accent-1 bg-sunken-dark'
+          : 'border-accent-2 bg-sunken-light'"
+        class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70">{% trans "You haven't submitted any references yet." %}</div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% for section in sections_after %}
+  {{ section.html }}
+{% endfor %}

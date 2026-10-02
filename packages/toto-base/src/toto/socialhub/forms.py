@@ -258,7 +258,7 @@ class CommunityNewsPostForm(forms.ModelForm):
 
 
 # ---------------------------------------------------------------------------
-# My account (2026-09-30)
+# Your account, on your own profile (2026-09-30; its tabs since 2026-10-02)
 # ---------------------------------------------------------------------------
 
 #: What an avatar may be, by what Pillow finds INSIDE the file, and the
@@ -364,7 +364,7 @@ def clean_avatar_upload(avatar):
     a raster image, since there is no image scanner, and will screen it the
     day there is one without this changing. What is stored is the picture
     drawn again without its metadata (``reencode_avatar``), under a name of
-    ours. My account's profile form and the admin's Person form both clean
+    ours. The own profile's edit form and the admin's Person form both clean
     an avatar here."""
     from django.core.files.uploadedfile import SimpleUploadedFile, UploadedFile
 
@@ -415,7 +415,8 @@ def clean_avatar_upload(avatar):
 
 
 class AccountProfileForm(forms.ModelForm):
-    """The member's own profile, on My account. Four fields, the two switches
+    """The member's own profile — the form on their profile's Edit profile
+    tab (stage 50; My account's until then). Four fields, the two switches
     saying whether other members see the e-mail address and the phone number
     (2026-10-01, 37c.25; off by default, `contact_access`), and nothing that
     decides access: communities, clearances, the patron and the map switch
