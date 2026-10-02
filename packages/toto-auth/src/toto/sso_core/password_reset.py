@@ -106,10 +106,67 @@ def _email_send_mode():
     return None
 
 
+#: Reset mails one client address may cause in an hour (0 turns it off).
+RESET_MAILS_PER_ADDRESS_PER_HOUR = 60
+
+
+def _reset_mail_allowed(user, request) -> bool:
+    """Whether a reset mail may go to ``user`` now (stage 51).
+
+    The cooldown in ``auth_cooldown`` lives in the visitor's session, so a
+    client that sends no cookie mailed a member as often as it liked. This
+    one is in the shared cache: one mail per account per
+    RESET_REQUEST_COOLDOWN_SECONDS, keyed on the account and its password
+    hash (a reset that went through starts a fresh one), and
+    RESET_MAILS_PER_ADDRESS_PER_HOUR mails per client address. Counted only
+    for an account a mail would reach, so the answer stays the same generic
+    page for any address typed. A cooldown of 0 turns both off; the limiter
+    fails open when the cache cannot answer.
+    """
+    import hashlib
+
+    from django.conf import settings
+
+    from toto.core import ratelimit
+    from toto.core.auth_cooldown import reset_request_cooldown_seconds
+    from toto.core.client_ip import client_ip
+
+    cooldown = reset_request_cooldown_seconds()
+    if cooldown <= 0 or request is None:
+        return True
+    tag = hashlib.sha256(f"{user.pk}:{user.password}".encode()).hexdigest()[:32]
+    if not ratelimit.hold(f"reset:mail:to:{tag}", seconds=cooldown):
+        return False
+    try:
+        per_address = max(0, int(getattr(settings, "RESET_MAILS_PER_ADDRESS_PER_HOUR",
+                                          RESET_MAILS_PER_ADDRESS_PER_HOUR)))
+    except (TypeError, ValueError):
+        per_address = RESET_MAILS_PER_ADDRESS_PER_HOUR
+    address = client_ip(request)
+    if per_address and address:
+        if not ratelimit.hit(f"reset:mail:from:{address}", limit=per_address,
+                             window=3600).allowed:
+            return False
+    return True
+
+
 class _ResetForm(PasswordResetForm):
     """Django's reset form, each mail in its recipient's language
     (2026-10-02): the account's chosen language, else the platform's — never
-    the language of whoever typed the address into the form."""
+    the language of whoever typed the address into the form.
+
+    And each account mailed only as ``_reset_mail_allowed`` lets it (stage
+    51): ``get_users`` is what both ``save()`` and ``_send_inline`` loop over.
+    """
+
+    def __init__(self, *args, request=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.request = request
+
+    def get_users(self, email):
+        for user in super().get_users(email):
+            if _reset_mail_allowed(user, self.request):
+                yield user
 
     def send_mail(self, subject_template_name, email_template_name, context,
                   from_email, to_email, html_email_template_name=None):
@@ -252,7 +309,7 @@ def password_reset_view(request):
                       processor.decorate(context, request))
 
     # ---- flow 1: the email form -------------------------------------------
-    form = _ResetForm(request.POST or None)
+    form = _ResetForm(request.POST or None, request=request)
     context = {"flow": "email", "form": form, "page_title": "Reset Password",
                "error": None}
 

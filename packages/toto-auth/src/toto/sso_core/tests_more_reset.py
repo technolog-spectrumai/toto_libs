@@ -8,7 +8,7 @@ the pages in between.
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.core import mail
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
@@ -39,6 +39,38 @@ class EmailFlowTests(TestCase):
         self.assertEqual(second.status_code, 200)
         self.assertIn("wait", second.context["error"])
         self.assertEqual(len(mail.outbox), 1)
+
+    def test_cookieless_clients_get_one_mail_per_account_per_cooldown(self):
+        # Stage 51: the cooldown lived in the session alone, so a client that
+        # sent no cookie mailed a member as often as it liked.
+        from django.core.cache import cache
+
+        cache.clear()
+        for _ in range(3):
+            response = Client().post(reverse("sso:password_reset"), {"email": "ada@x.test"})
+            self.assertRedirects(response, reverse("sso:password_reset_done"),
+                                 fetch_redirect_response=False)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_a_changed_password_lets_the_next_reset_through(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        Client().post(reverse("sso:password_reset"), {"email": "ada@x.test"})
+        self.user.set_password("new-password")
+        self.user.save()
+        Client().post(reverse("sso:password_reset"), {"email": "ada@x.test"})
+        self.assertEqual(len(mail.outbox), 2)
+
+    @override_settings(RESET_MAILS_PER_ADDRESS_PER_HOUR=2)
+    def test_one_address_mails_only_so_many_accounts_an_hour(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        for n in range(3):
+            User.objects.create_user(f"m{n}", f"m{n}@x.test", "pw")
+            Client().post(reverse("sso:password_reset"), {"email": f"m{n}@x.test"})
+        self.assertEqual(len(mail.outbox), 2)
 
     def test_a_federated_account_is_never_sent_a_reset(self):
         federated = User.objects.create_user("oidc_sub-1", "fed@x.test")
