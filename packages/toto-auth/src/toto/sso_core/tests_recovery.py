@@ -428,7 +428,10 @@ class RedeemTests(RecoveryBase):
         record = AuditRecord.objects.get(action="AUTH.PASSWORD_RESET")
         self.assertEqual(record.object_id, str(self.user.pk))
         self.assertEqual(record.metadata, {"flow": "recovery", "sessions_ended": 0})
-        self.assertIn("[uuid]", record.request_source["path"])
+        # The route captures the link as <uuid:token>, so the path secrets'
+        # rule cuts it as [token] before the UUID pattern would see it
+        # (toto.audit.services._scrub_path, 37c.25); it read [uuid] before.
+        self.assertIn("recover/[token]/", record.request_source["path"])
 
     def test_the_plain_token_never_reaches_the_audit_trail(self):
         # request_source captures the request PATH — which for the recover
