@@ -48,7 +48,7 @@
   <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
     <li>Modules are grouped into categories; you can collapse or expand the groups.</li>
     <li>Only modules installed on this server appear — the same rule applies to this manual.</li>
-    <li>Use the theme switch in the header to toggle between light and dark mode.</li>
+    <li>The sun or moon icon in the header switches between light and dark mode.</li>
   </ul>
 </section>
 
@@ -60,15 +60,26 @@
   <h2 class="flex items-center gap-2 text-lg font-bold">
     <i class="fa-solid fa-users"></i>Profile &amp; communities (SocialHub)</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
-    Open <span class="font-semibold">My Profile</span> from the header to see your member page:
-    your details, the communities you belong to, and your reference activity.
+    Open <span class="font-semibold">Profile</span> from the header to see your member page. Its tabs keep each
+    part apart. <span class="font-semibold">Overview</span> is what other members see: your details and the
+    communities you belong to, with what you hide from others marked as hidden.
+    Your own page also has tabs that nobody else sees, administrators included:
+    <span class="font-semibold">Edit profile</span>,
+    <span class="font-semibold">Account</span> (your e-mail address, password, time zone and language),
+    <span class="font-semibold">Security</span> (where you are signed in, your recent sign-ins and your key store),
+    <span class="font-semibold">Wallet</span> (your mana)
+    and <span class="font-semibold">Your data</span> (a copy of your data, and a request to erase your account).
+    <span class="font-semibold">Activity</span> holds your upcoming events and the requests waiting for your answer;
+    on another member's profile it shows only those of their upcoming events you may see, beside
+    <span class="font-semibold">Overview</span> and <span class="font-semibold">Communities</span>.
     The <a href="{% url 'socialhub:profile_list' %}" class="font-semibold underline hover:opacity-80">SocialHub</a>
     lists all member profiles and communities.
   </p>
   <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
-    <li><span class="font-semibold">Language</span> — on your own profile, pick your preferred language (Polish or English). The whole interface switches immediately and the choice is remembered.</li>
+    <li><span class="font-semibold">Edit profile</span> — your display name, a few words about you, your avatar and phone, and whether other members see your phone number and e-mail address (both hidden until you switch them on); below them, where you live and whether the People map shows you.</li>
+    <li><span class="font-semibold">Language</span> — on the Account tab, pick your preferred language (Polish or English). The whole interface switches immediately and the choice is remembered.</li>
     <li><span class="font-semibold">Communities</span> — browse communities and apply for membership. An application may require a verification code and references from existing members.</li>
-    <li><span class="font-semibold">References</span> — when someone names you as a reference, the request appears on your profile; accept or reject it there.</li>
+    <li><span class="font-semibold">References</span> — when someone names you as a reference, the request appears on the Activity tab of your profile; accept or reject it there.</li>
   </ul>
 </section>
 {% endif %}
@@ -123,7 +134,7 @@
     <i class="fa-solid fa-key"></i>My Keys (encryption)</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
     The <a href="{% url 'gervazy:my_keys' %}" class="font-semibold underline hover:opacity-80">My Keys</a> page
-    (linked from your profile) manages the encryption keys that protect your data at rest.
+    (linked from the Security tab of your profile) manages the encryption keys that protect your data at rest.
     Files in the storage can be encrypted and decrypted with these keys — without them the
     server stores only unreadable ciphertext.
   </p>

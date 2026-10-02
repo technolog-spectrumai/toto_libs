@@ -48,7 +48,7 @@
   <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
     <li>Moduły są pogrupowane w kategorie; grupy można zwijać i rozwijać.</li>
     <li>Widoczne są tylko moduły zainstalowane na tym serwerze — ta sama zasada dotyczy tego podręcznika.</li>
-    <li>Przełącznik motywu w nagłówku zmienia tryb jasny/ciemny.</li>
+    <li>Ikona słońca lub księżyca w nagłówku przełącza tryb jasny i ciemny.</li>
   </ul>
 </section>
 
@@ -60,15 +60,26 @@
   <h2 class="flex items-center gap-2 text-lg font-bold">
     <i class="fa-solid fa-users"></i>Profil i społeczności (Portal społeczny)</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
-    Otwórz <span class="font-semibold">Mój profil</span> z nagłówka, aby zobaczyć swoją stronę członkowską:
-    dane, społeczności, do których należysz, oraz aktywność referencyjną.
+    Otwórz <span class="font-semibold">Profil</span> z nagłówka, aby zobaczyć swoją stronę członkowską. Jej zakładki
+    rozdzielają sprawy. <span class="font-semibold">Przegląd</span> to to, co widzą inni członkowie: Twoje dane
+    i społeczności, do których należysz, a to, co ukrywasz przed innymi, jest oznaczone jako ukryte.
+    Twoja strona ma też zakładki, których nie widzi nikt poza Tobą, także administratorzy:
+    <span class="font-semibold">Edytuj profil</span>,
+    <span class="font-semibold">Konto</span> (adres e-mail, hasło, strefa czasowa i język),
+    <span class="font-semibold">Bezpieczeństwo</span> (gdzie jesteś zalogowany, ostatnie logowania i magazyn kluczy),
+    <span class="font-semibold">Portfel</span> (Twoja mana)
+    oraz <span class="font-semibold">Twoje dane</span> (kopia Twoich danych i prośba o usunięcie konta).
+    <span class="font-semibold">Aktywność</span> zawiera Twoje nadchodzące wydarzenia i prośby czekające na Twoją odpowiedź;
+    na profilu innego członka pokazuje tylko te jego nadchodzące wydarzenia, które możesz zobaczyć, obok zakładek
+    <span class="font-semibold">Przegląd</span> i <span class="font-semibold">Społeczności</span>.
     <a href="{% url 'socialhub:profile_list' %}" class="font-semibold underline hover:opacity-80">Portal społeczny</a>
     zawiera listę wszystkich profili członków i społeczności.
   </p>
   <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
-    <li><span class="font-semibold">Język</span> — na własnym profilu wybierz preferowany język (polski lub angielski). Cały interfejs przełącza się natychmiast, a wybór zostaje zapamiętany.</li>
+    <li><span class="font-semibold">Edytuj profil</span> — wyświetlana nazwa, kilka słów o sobie, awatar i telefon oraz to, czy inni członkowie widzą Twój numer telefonu i adres e-mail (oba ukryte, dopóki ich nie włączysz); pod nimi: gdzie mieszkasz i czy pokazuje Cię mapa osób.</li>
+    <li><span class="font-semibold">Język</span> — w zakładce Konto wybierz preferowany język (polski lub angielski). Cały interfejs przełącza się natychmiast, a wybór zostaje zapamiętany.</li>
     <li><span class="font-semibold">Społeczności</span> — przeglądaj społeczności i składaj wnioski o członkostwo. Wniosek może wymagać kodu weryfikacyjnego oraz referencji od obecnych członków.</li>
-    <li><span class="font-semibold">Referencje</span> — gdy ktoś wskaże Cię jako osobę polecającą, prośba pojawi się na Twoim profilu; tam ją akceptujesz lub odrzucasz.</li>
+    <li><span class="font-semibold">Referencje</span> — gdy ktoś wskaże Cię jako osobę polecającą, prośba pojawi się w zakładce Aktywność Twojego profilu; tam ją akceptujesz lub odrzucasz.</li>
   </ul>
 </section>
 {% endif %}
@@ -125,7 +136,7 @@
     <i class="fa-solid fa-key"></i>Moje klucze (szyfrowanie)</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
     Strona <a href="{% url 'gervazy:my_keys' %}" class="font-semibold underline hover:opacity-80">Moje klucze</a>
-    (dostępna z Twojego profilu) służy do zarządzania kluczami szyfrującymi, które chronią Twoje dane.
+    (dostępna w zakładce Bezpieczeństwo Twojego profilu) służy do zarządzania kluczami szyfrującymi, które chronią Twoje dane.
     Pliki w przechowywaniu można nimi szyfrować i odszyfrowywać — bez kluczy serwer przechowuje
     wyłącznie nieczytelny szyfrogram.
   </p>

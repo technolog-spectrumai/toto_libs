@@ -112,23 +112,121 @@ those apps; each adds the clearance through its app's own door, which writes
 the app's own audit record, inside the same transaction as the clearance. Never the membership
 application: it names communities, and a community grants no reading.
 
-## My account
+## Your profile, in tabs — your account on it
 
-Since 2026-09-30 a signed-in member has one page for their own account,
-**My account**, reached from the top bar (`oya/header.html`) and mounted by the
-host at `/account/` (`account_urls.py`, namespace `account`; views in
-`views/account.py`). It lives here because what it edits first is the member's
-`Person`, which this app already shows; `toto.core` keeps the sign-in helpers
-the later sections call. Its own URL module so the address stays short and
-does not move with the socialhub's prefix. Free on every plan (`account` is in
-the subscription gate's `ALWAYS_FREE`).
+A member's account has been theirs to change on the web since 2026-09-30,
+first on a page of its own, My account (`/account/`). Since 2026-10-02 (stage
+50; the owner: "merge My account and my profile - use tabs in profile view",
+and the same evening "the design of the profile view is not good - use tabs -
+separate it logically") it lives on the member's own profile,
+`/socialhub/profiles/<slug>/` (`views/profile.py`), as tabs, one concern each.
 
-Each section is its own form posting to its own door, own account only by
-construction — no view takes a person, a slug or a user id, and the page never
-creates or deletes an account (console only; a first save creates the
-`Person` row, as the map pin does):
+**Your own profile** has seven (`OWN_TABS` in `views/account.py`):
 
-- **Profile** (`/account/profile/`, `AccountProfileForm`): display name, about
+| Tab | `?tab=` | Holds |
+|---|---|---|
+| **Overview** | (none: the default) | what others see — the hero, about you, the info grid (your own contact details and address marked where others do not see them), member since — and your communities |
+| **Edit profile** | `edit` | the profile form (display name, about you, avatar, phone, the two contact switches) and *Where you live* (the address picker, who may see it); Leaflet, the pin and the picker's modal load on this tab alone |
+| **Account** | `account` | the e-mail address (with a change waiting for its link), the password, the time zone, the language — or, for an account that signs in elsewhere, where to change them |
+| **Security** | `security` | sessions (end one, sign out everywhere else), recent sign-ins (`toto.audit`), the key store and the link to My keys (`toto.gervazy`) |
+| **Wallet** | `wallet` | the profile plugins that sit on it: mana, and the wallet where the economy is shown to the member (`ProfilePlugin.tab`) |
+| **Activity** | `activity` | the upcoming events, *My Reference Requests* (accept or reject), the password-recovery requests to answer |
+| **Your data** | `data` | *Download my data*, *Erase my account* (the request, behind its dialog), and for a superuser on the plan the erasure requests' list |
+
+**Somebody else's profile** — another member's, for a member, staff, or a
+superuser with or without the Superuser plan alike — has three
+(`VISITOR_TABS`): **Overview** (the same page, each detail by its own rule:
+the contact details by `contact_access.py`, the address by
+`toto.locations.people_access`), **Communities** (`?tab=communities`; on
+one's own it is part of the Overview) and **Activity** (the plugins on it,
+each by its own rules: the upcoming events by the calendar's, the recovery
+cards the owner's alone). No Edit profile, Account, Security, Wallet or Your
+data tab ever appears there, and nothing of the owner's account is built for
+the viewer: `tab_context` is asked on the owner's page alone, from
+`request.user`, never from the profile shown. A tab a viewer is not shown is
+the Overview, whatever the address asks for — no 403, nothing to refuse.
+Administrators keep their own tools: the Django admin, the audit pages, the
+erasure requests' list and the console.
+
+**The tabs.** `TABS` in `views/account.py` is every tab's name; any other
+`?tab=` is the page's first tab. Each request draws the active tab alone, so
+only its queries run — the Your data tab closes an export no worker will
+finish as it looks, which a visit to another tab does not. A tab with nothing
+to show is left off the strip: Wallet where no plugin there would show (a
+host without the economy), a visitor's Activity where none shows to them
+(`ProfilePlugin.shows_on_tab`, each plugin's own `is_visible`, nothing drawn).
+The strip (`templates/socialhub/_profile_tabs.html`) is a `<nav>` of links,
+the active one `aria-current="page"`, drawn like the socialhub's and the
+economy's strips and wrapping on a phone: it works without JavaScript and
+every tab has an address, deep links with a `#section` included
+(`?tab=security#sessions`). Each tab is a partial: `_profile_overview.html`,
+`_profile_edit.html`, `_profile_account.html`, `_profile_security.html`,
+`_profile_wallet.html`, `_profile_activity.html`, `_profile_data.html`,
+`_profile_communities.html` (the visitor's tab, and part of one's own
+Overview). One's own pages are sent `no-store` (`add_never_cache_headers`):
+sessions, addresses and contact details are kept by no cache, the back
+button's included. The page, its tabs and its doors are free on every plan
+(`socialhub` and `account` are in the subscription gate's `ALWAYS_FREE`).
+
+**Plugins.** `ProfilePlugin.tab` names the tab a plugin's section is on:
+`overview` (the default), `wallet` or `activity` (`PLUGIN_TABS`; any other
+name is the overview). The economy's mana and wallet plugins sit on Wallet,
+the events' upcoming events and `sso_core`'s recovery cards on Activity. A
+page asks the active tab's plugins alone (`ProfilePlugin.render_tab`); a
+section that draws nothing (mana before the pools exist) is left out, and
+the Wallet tab then says there is nothing yet. The reference requests sit
+among the Activity tab's plugins by order (`views/profile.py`,
+`REFERENCES_ORDER`): after the upcoming events, before the recovery cards,
+which copy their shape.
+
+**The way in.** The header's one entry for it reads *Profile* and goes to
+`/account/` (`account:home`, `account_urls.py`, mounted by the host), which
+answers with a redirect to the member's profile on the tab its address meant:
+`?tab=` from `TABS`, and the Security tab's lists' `?page=` and
+`?signins_page=` as digits — a page of either without a tab means that tab —
+and nothing else, so it sends nobody anywhere a request chose. An old
+`/account/#sessions` keeps its `#sessions` across the redirect (the browser
+does), and the page's own script takes a section's anchor to its tab
+(`SECTION_TABS`, handed over as JSON). An account with no profile to go to —
+no `Person` yet (`create_user`, `bootstrap_users` and `createsuperuser` make
+none), or one whose name made no slug — gets the page drawn at `/account/`
+itself. With no `Person` yet its tabs are Edit profile (first, saying the
+profile is made by the first save), Account (no language until there is a
+profile for it), Security and Your data; the tabs about a profile wait for
+one. `/sso/my-profile/` (`sso_master`) goes to the profile, or to `/account/`
+when there is none.
+
+**The doors.** The forms post where they always did (`account_urls.py`: the
+same paths, names and methods; `require_POST`, sign-in, CSRF), and each acts
+on `request.user` alone — no door takes a person, a slug or a user id, and the
+page never creates or deletes an account (console only; a first save creates
+the `Person` row, as the map pin does). Each goes back to its own tab and
+section (`own_page_url`), where its message shows: the profile form to
+`?tab=edit#profile`, the account's to `?tab=account#…`, `security`, `data`;
+a reference request's Accept and Reject (`views/application.py`) to
+`?tab=activity#references`, a recovery card's to `?tab=activity`
+(`sso_core.password_reset`). A form with errors is drawn again (400) on its
+tab with the form bound, at the door's address — so every link on the page
+is absolute (`page_url`, and `oya/partials/_server_pagination.html`'s
+`base_url`): a relative `?tab=` there would be a GET on the door, which
+answers 405. The socialhub's own doors on the page — the language, the map
+sharing and the pin — take the tab the form posts (`tab`, from `OWN_TABS`
+only) and go back to it; a form without one (another page, a script) keeps
+the Referer rule, a page on this site or the door's own landing page
+(`core.safe_next`). The tab is posted rather than read off the Referer:
+behind the cloud's nginx (`Referrer-Policy: strict-origin`) the browser sends
+no path, and these doors used to land on the welcome page.
+
+It lives here because what the account edits first is the member's `Person`,
+which this app already shows; `toto.core` keeps the sign-in helpers the later
+sections call. The doors keep a URL module of their own so their addresses
+stay short — the header and mailed links name them — and do not move with the
+socialhub's prefix.
+
+### The Edit profile tab
+
+- **Profile** (`/account/profile/`, `AccountProfileForm`, multipart;
+  back to `#profile`): display name, about
   you, avatar and phone, and whether other members see the phone number and
   the e-mail address (two switches, off by default — [Data
   protection](#data-protection-rodo--gdpr)) — nothing that decides access
@@ -151,25 +249,17 @@ creates or deletes an account (console only; a first save creates the
   name with the extension of what is inside, never the member's filename, and
   the picture it replaces or clears is deleted from storage. The admin's
   Person form cleans an avatar the same way (`forms.clean_avatar_upload`).
-- **Time zone** (`/account/timezone/`): `Person.timezone`, an IANA name
-  validated against `zoneinfo` (blank = the platform's `TIME_ZONE`).
-  `toto.core.middleware.ProfileTimezoneMiddleware`, placed after
-  `ProfileLanguageMiddleware`, activates it for each request and deactivates
-  it after, so every page shows times in the member's zone; a name this
-  Python no longer knows falls back to the default.
-- **Password** (`/account/password/`, 2026-09-30): Django's
-  `PasswordChangeForm` — the current password, then the new one twice through
-  `AUTH_PASSWORD_VALIDATORS`. This session stays signed in
-  (`update_session_auth_hash`, which also gives it a new key) and every other
-  session of the member is ended, desktop tokens included
-  (`toto.core.user_sessions.end_other_sessions`; a token that escaped the sweep
-  is still refused by its session-hash check, `toto.api.tokens`). Recorded as
-  `AUTH.PASSWORD_CHANGED` with the number of sessions ended, and the member is
-  mailed a "your password was changed" notice through
-  `toto.core.notices.send_notice` — synchronous and fail-safe; a failed mail
-  never fails the change. An account that signs in elsewhere (no usable
-  password) is told so instead of shown the form.
-- **E-mail address** (`/account/email/`, 2026-09-30; `email_change.py`):
+- **Where you live** (`socialhub:set_location_sharing`, `set_my_address`,
+  `search_address`; back to `#where-you-live`): whether the People map shows
+  the member and at what precision, and the pin, placed in a modal with
+  Leaflet (drawn on this tab alone). Its own doors rather than fields of the
+  profile form: the one setting whose wrong value publishes a home address
+  must not change as a side effect of saving something else.
+
+### The Account tab
+
+- **E-mail address** (`/account/email/`, 2026-09-30; `email_change.py`; back
+  to `#email`, the mailed link too):
   the member types a new address and nothing about the account changes yet.
   A random token is mailed to the NEW address (`send_notice(...,
   "email_change_confirm", to=new)`) and only its SHA-256 is kept, on a
@@ -192,7 +282,34 @@ creates or deletes an account (console only; a first save creates the
   an hour per member and 3 links a day per address (`toto.core.ratelimit`);
   the link acts only while the account still has the address it had when
   asked; and a confirmed change ends the member's other sessions.
-- **Sessions** (`/account/sessions/…`, 2026-09-30): where the member is signed
+- **Password** (`/account/password/`, 2026-09-30; back to `#password`): Django's
+  `PasswordChangeForm` — the current password, then the new one twice through
+  `AUTH_PASSWORD_VALIDATORS`. This session stays signed in
+  (`update_session_auth_hash`, which also gives it a new key) and every other
+  session of the member is ended, desktop tokens included
+  (`toto.core.user_sessions.end_other_sessions`; a token that escaped the sweep
+  is still refused by its session-hash check, `toto.api.tokens`). Recorded as
+  `AUTH.PASSWORD_CHANGED` with the number of sessions ended, and the member is
+  mailed a "your password was changed" notice through
+  `toto.core.notices.send_notice` — synchronous and fail-safe; a failed mail
+  never fails the change. An account that signs in elsewhere (no usable
+  password) is told so instead of shown the form.
+- **Time zone** (`/account/timezone/`, back to `#timezone`): `Person.timezone`, an IANA name
+  validated against `zoneinfo` (blank = the platform's `TIME_ZONE`).
+  `toto.core.middleware.ProfileTimezoneMiddleware`, placed after
+  `ProfileLanguageMiddleware`, activates it for each request and deactivates
+  it after, so every page shows times in the member's zone; a name this
+  Python no longer knows falls back to the default.
+- **Language** (`socialhub:set_preferred_language`; back to `#language`):
+  `Person.preferred_language`, which `toto.core`'s `ProfileLanguageMiddleware`
+  activates for the member in any browser that has no language of its own
+  picked (the header's ENG / PL list picks one for the browser). On the
+  profile itself until stage 50; its door needs a profile, so the section
+  waits for one.
+
+### The Security tab
+
+- **Sessions** (`/account/sessions/…`, 2026-09-30; back to `#sessions`): where the member is signed
   in now — browsers and desktop/API tokens — from `toto.core.models.UserSession`,
   a row per sign-in written on `user_logged_in` (Django's session table has no
   user column) and removed on `user_logged_out` or when ended here. Each shows
@@ -223,7 +340,8 @@ creates or deletes an account (console only; a first save creates the
   person's address or browser. Paged on its own `?signins_page=` — the
   Sessions list has `?page=`; `oya/partials/_server_pagination.html` takes a
   `page_param` for that — and each list's link carries the other's page.
-- **Key store** (`/account/key-store/`, 2026-10-01; `toto.gervazy.personal`):
+- **Key store** (`/account/key-store/`, 2026-10-01; `toto.gervazy.personal`;
+  back to `#keystore`):
   the member creates their own personal key store — a gervazy strongbox
   named `strongbox` (the name the desktop app's `GET /vault/api/strongbox/`
   already gives it) with its master key and first data key, made by
@@ -242,8 +360,13 @@ creates or deletes an account (console only; a first save creates the
   a log), and cannot be recovered. `AUTH.KEY_STORE_CREATED` carries the
   box's id only; gervazy's `CryptoAuditLog` gets a
   `create_personal_strongbox` row naming the box. The section shows the
-  form, "exists but has no keys yet", or "ready", with a link to My keys.
-- **Your data** (`/account/data-export/`, 2026-10-01, RODO art. 15 and 20;
+  form, "exists but has no keys yet", or "ready", and the link to My keys
+  (the profile's header had it until stage 50).
+
+### The Your data tab
+
+- **Your data** (`/account/data-export/`, 2026-10-01, RODO art. 15 and 20; back
+  to `#data`;
   `data_export.py`): *Download my data* queues a copy of everything the
   platform holds about the member — the zip `toto.core.personal_data`
   builds, the same one the console's `export_user` writes — into their own
@@ -268,7 +391,7 @@ creates or deletes an account (console only; a first save creates the
   button, and that the copy also holds the audit records others made about
   the member (`toto.core.personal_data`, without their address and browser).
 - **Erase my account** (`/account/erasure-request/`, 2026-10-01, RODO art.
-  17; `erasure.py`): the member FILES an `ErasureRequest` after a
+  17; `erasure.py`; back to `#erasure`): the member FILES an `ErasureRequest` after a
   confirmation saying an operator carries it out at the console and what is
   kept (the audit chain, the ledger, rows others need, backups). Nothing on
   the web erases: a superuser on the Superuser plan sees the list at
@@ -325,15 +448,17 @@ platform their data, and the rest in `toto.core`:
 - **Accepted by new applicants only**, recorded with its version on the
   application and carried to the person as a `PrivacyAcceptance` on
   admission — [below](#privacy-notice). Members from before are not asked.
-- **A copy of one's data** (art. 15 and 20): *Download my data* on My
-  account queues it into the member's own bucket ([Your data](#my-account));
+- **A copy of one's data** (art. 15 and 20): *Download my data*, on the
+  member's own profile, queues it into their own bucket ([Your
+  data](#the-your-data-tab));
   the console's `export_user` (`toto.core.personal_data`) writes the same zip
   for anybody else.
-- **Erasure** (art. 17) is *filed* on My account and *carried out* only at
-  the console, by `toto.core`'s `erase_user` ([Erase my account](#my-account)).
+- **Erasure** (art. 17) is *filed* on the member's own profile and
+  *carried out* only at the console, by `toto.core`'s `erase_user` ([Erase my
+  account](#the-your-data-tab)).
 - **Contact details hidden by default** (2026-10-01, 37c.25): other members
   see a member's e-mail address and phone number only when the member
-  switched them on (My account, Profile: `Person.show_email`,
+  switched them on (the Edit profile tab of their own profile: `Person.show_email`,
   `Person.show_phone`, both off). The member always sees their own and an
   administrator — a superuser on the Superuser plan — keeps seeing both; the
   profile, the roster and the data-mesh org chart all ask
@@ -538,7 +663,7 @@ added to or taken out of a community (`MEMBER_ADDED`/`_REMOVED`) or given or
 losing a clearance (`CLEARANCE_MEMBER_ADDED`/`_REMOVED`), from either side of
 the relation and through a `clear()`; senior members; privileges; an application submitted and
 each of its steps, and renewed after it lapsed (`APPLICATION_RENEWED`); a reference asked for, given (the applicant admitted) or
-declined; a member's own profile or time zone changed on My account
+declined; a member's own profile or time zone changed on their profile
 (`PROFILE_CHANGED`, the field names only); a privacy notice version published
 (`PRIVACY.NOTICE_PUBLISHED`) and accepted by an applicant
 (`PRIVACY.NOTICE_ACCEPTED`); a copy of a member's data asked for, filed or
