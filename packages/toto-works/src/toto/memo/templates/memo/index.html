@@ -15,8 +15,8 @@
 {% block content %}
 {% if is_authenticated %}
 <script>
-  window._newFileBuckets = JSON.parse(`{{ buckets_json|escapejs }}`);
-  window._newFileDirectories = JSON.parse(`{{ directories_json|escapejs }}`);
+  window._newFileBuckets = JSON.parse("{{ buckets_json|escapejs }}");
+  window._newFileDirectories = JSON.parse("{{ directories_json|escapejs }}");
 </script>
 {% endif %}
 <section

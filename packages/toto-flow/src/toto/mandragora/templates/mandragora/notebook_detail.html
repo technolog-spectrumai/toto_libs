@@ -521,7 +521,7 @@ function createAceEditor(elementId, initialValue) {
 
 document.addEventListener("DOMContentLoaded", () => {
   {% for cell in cells %}{% if cell.cell_type == "code" %}
-  window.NotebookEditors["{{ cell.id }}"] = createAceEditor("editor-{{ cell.id }}", `{{ cell.content|escapejs }}`);
+  window.NotebookEditors["{{ cell.id }}"] = createAceEditor("editor-{{ cell.id }}", "{{ cell.content|escapejs }}");
   if (window.FunctionalZones) {
     const zoneId = "notebook-cell-{{ cell.id }}";
     window.FunctionalZones.registerZone({

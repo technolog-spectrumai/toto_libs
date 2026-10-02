@@ -14,7 +14,7 @@
 </style>
 
 <script>
-  window._weatherAddresses = JSON.parse(`{{ addresses_json|escapejs }}`);
+  window._weatherAddresses = JSON.parse("{{ addresses_json|escapejs }}");
   window._weatherUrls = {
     refresh:       "{% url 'weather:api_refresh' %}",
     current:       "{% url 'weather:api_current' %}",
@@ -24,8 +24,8 @@
     exportLayers:  "{% url 'weather:api_export_layers' %}",
     csrfToken:     "{{ csrf_token }}",
   };
-  window._exportBuckets     = JSON.parse(`{{ buckets_json|escapejs }}`);
-  window._exportDirectories = JSON.parse(`{{ directories_json|escapejs }}`);
+  window._exportBuckets     = JSON.parse("{{ buckets_json|escapejs }}");
+  window._exportDirectories = JSON.parse("{{ directories_json|escapejs }}");
 
   function weatherApp() {
     return {
