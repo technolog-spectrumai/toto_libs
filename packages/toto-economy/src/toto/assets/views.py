@@ -921,7 +921,7 @@ def wallet_pin_set(request):
 @login_required
 def wallet_pin_verify(request):
     import json as _json
-    from toto.assets.wallet_pin import check_wallet_pin, mark_session_verified
+    from toto.assets.wallet_pin import attempt_wallet_pin, mark_session_verified, pin_locked_response
     if request.method != 'POST':
         return JsonResponse({'ok': False}, status=405)
     try:
@@ -931,7 +931,10 @@ def wallet_pin_verify(request):
         return JsonResponse({'ok': False, 'error': 'Invalid request.'}, status=400)
     if not raw_pin:
         return JsonResponse({'ok': False, 'error': 'PIN is required.'})
-    if check_wallet_pin(request.user, raw_pin):
+    right, locked = attempt_wallet_pin(request.user, raw_pin, request.session)
+    if locked:
+        return pin_locked_response(locked)
+    if right:
         mark_session_verified(request.session)
         return JsonResponse({'ok': True})
     return JsonResponse({'ok': False, 'error': 'Incorrect PIN.'})

@@ -113,6 +113,112 @@ def check_wallet_pin(user, raw_pin: str) -> bool:
         return False
 
 
+# ── Attempt limit (stage 51) ──────────────────────────────────────────────────
+# A check used to count nothing: 10^4 tries open a four-digit PIN, and a hit
+# marks the session verified for five minutes, which is what a bourse accept
+# takes in place of a pin_token. Now, per member and in the shared cache
+# (toto.core.ratelimit, as the sign-in lockout counts), WALLET_PIN_LOCK_AFTER
+# wrong PINs lock both doors for WALLET_PIN_LOCK_SECONDS, doubling with each
+# further lock up to WALLET_PIN_LOCK_MAX_SECONDS. While locked even the right
+# PIN is refused, and the lock ends the session mark and the member's tokens.
+# A try is counted before the PIN is compared, so tries sent together cannot
+# all slip in before the first failure is counted. Fail open, like the
+# limiter: a cache that cannot answer counts nothing.
+
+PIN_LOCK_DEFAULTS = {
+    "WALLET_PIN_LOCK_AFTER": 5,
+    "WALLET_PIN_LOCK_SECONDS": 60,
+    "WALLET_PIN_LOCK_MAX_SECONDS": 86400,
+}
+_LOCKS_WINDOW = 7 * 86400     # the growth is forgotten a week after the last lock
+_TRIES_WINDOW = 86400         # wrong PINs are forgotten a day after the last one
+
+
+def _lock_setting(name: str) -> int:
+    try:
+        return max(1, int(getattr(settings, name, PIN_LOCK_DEFAULTS[name])))
+    except (TypeError, ValueError):
+        return PIN_LOCK_DEFAULTS[name]
+
+
+def _keys(user) -> tuple[str, str, str]:
+    """(the tries of this lock round, the round counter, the lock)."""
+    from toto.core import ratelimit
+
+    base = f"wallet-pin:{user.pk}"
+    rounds = ratelimit.peek(f"{base}:rounds")
+    return f"{base}:tries:{rounds}", f"{base}:rounds", f"{base}:lock"
+
+
+def _drop_tokens(user) -> None:
+    with _PIN_TOKENS_LOCK:
+        for token in [k for k, (uid, _) in _PIN_TOKENS.items() if uid == user.pk]:
+            del _PIN_TOKENS[token]
+
+
+def _lock(user, tries_key: str, rounds_key: str, lock_key: str) -> None:
+    """Lock once per round, for longer each round."""
+    from toto.core import ratelimit
+
+    if not ratelimit.hold(f"{tries_key}:locked", seconds=_TRIES_WINDOW):
+        return                                    # this round is locked already
+    rounds = ratelimit.count(rounds_key, window=_LOCKS_WINDOW) or 1
+    seconds = min(_lock_setting("WALLET_PIN_LOCK_SECONDS") * 2 ** min(rounds - 1, 30),
+                  _lock_setting("WALLET_PIN_LOCK_MAX_SECONDS"))
+    ratelimit.hold(lock_key, seconds=seconds, replace=True)
+    _drop_tokens(user)
+
+
+def pin_locked_for(user) -> int:
+    """Seconds left on this member's PIN lock, 0 when there is none."""
+    import math
+
+    from toto.core import ratelimit
+
+    until = ratelimit.held_until(_keys(user)[2])
+    return max(1, math.ceil(until - time.time())) if until else 0
+
+
+def attempt_wallet_pin(user, raw_pin: str, session=None) -> tuple[bool, int]:
+    """Check a PIN under the attempt limit: (right, seconds locked).
+
+    Seconds locked is non-zero when the PIN was not compared at all because
+    the member's PINs are locked; the session mark is cleared then.
+    """
+    from toto.core import ratelimit
+
+    tries_key, rounds_key, lock_key = _keys(user)
+    locked = pin_locked_for(user)
+    if not locked:
+        tries = ratelimit.count(tries_key, window=_TRIES_WINDOW)
+        if tries is not None and tries > _lock_setting("WALLET_PIN_LOCK_AFTER"):
+            _lock(user, tries_key, rounds_key, lock_key)  # sent past the limit together
+            locked = pin_locked_for(user) or 1
+    if locked:
+        if session is not None:
+            clear_session(session)
+        return False, locked
+
+    if check_wallet_pin(user, raw_pin):
+        ratelimit.forget(tries_key)
+        return True, 0
+    if (ratelimit.peek(tries_key) >= _lock_setting("WALLET_PIN_LOCK_AFTER")):
+        _lock(user, tries_key, rounds_key, lock_key)
+        if session is not None:
+            clear_session(session)
+    return False, 0
+
+
+def pin_locked_response(seconds: int):
+    """The doors' one answer while the PINs are locked: 429 with Retry-After."""
+    from django.http import JsonResponse
+
+    response = JsonResponse({"ok": False, "locked": True, "retry_after": seconds,
+                             "error": "Too many wrong PINs. Try again later."}, status=429)
+    response["Retry-After"] = str(seconds)
+    return response
+
+
 def mark_session_verified(session) -> None:
     session[_SESSION_KEY_OK] = True
     session[_SESSION_KEY_EXP] = time.time() + _SESSION_TTL

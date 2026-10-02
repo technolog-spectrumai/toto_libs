@@ -171,12 +171,17 @@ class PinVerifyApiView(CorsApiView):
         if not raw_pin:
             return JsonResponse({"ok": False, "error": "PIN is required."})
 
-        from toto.assets.wallet_pin import check_wallet_pin, has_wallet_pin, mark_session_verified, issue_pin_token
+        from toto.assets.wallet_pin import (
+            attempt_wallet_pin, has_wallet_pin, issue_pin_token, mark_session_verified,
+            pin_locked_response)
 
         if not has_wallet_pin(request.user):
             return JsonResponse({"ok": False, "error": "No wallet PIN set. Set one via the portal first.", "no_pin": True})
 
-        if check_wallet_pin(request.user, raw_pin):
+        right, locked = attempt_wallet_pin(request.user, raw_pin, request.session)
+        if locked:
+            return pin_locked_response(locked)
+        if right:
             mark_session_verified(request.session)
             token = issue_pin_token(request.user)
             return JsonResponse({"ok": True, "pin_token": token})

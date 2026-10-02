@@ -224,6 +224,90 @@ class PinApiTests(TestCase):
         self.assertEqual(wallet_pin._PIN_TOKENS, {})
 
 
+class PinLockoutTests(TestCase):
+    """Stage 51: a PIN check counted nothing, so 10^4 four-digit tries opened
+    the wallet and its session mark let a forged bourse accept through. Five
+    wrong PINs now lock both doors for a growing time; while locked even the
+    right PIN is refused (429, Retry-After) and the session mark is cleared."""
+
+    API = "/assets/api/wallet/pin/verify/"
+
+    def setUp(self):
+        from django.core.cache import cache
+        from toto.core.models import Platform
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        self.addCleanup(wallet_pin._PIN_TOKENS.clear)
+        Platform.objects.get_or_create(
+            site_name="Test", defaults={"author": "t", "publication_year": 2026, "active": True})
+        self.ada = User.objects.create_user("ada", password="pw")
+        wallet_pin.set_wallet_pin(self.ada, "4821")
+        self.client.force_login(self.ada)
+
+    def post(self, url, pin):
+        return self.client.post(url, json.dumps({"pin": pin}), content_type="application/json")
+
+    def test_six_wrong_pins_lock_the_api_door_even_for_the_right_one(self):
+        for n in range(6):
+            self.post(self.API, f"000{n}")
+        right = self.post(self.API, "4821")
+        self.assertEqual(right.status_code, 429)
+        self.assertGreaterEqual(int(right["Retry-After"]), 1)
+        self.assertFalse(right.json()["ok"])
+        self.assertNotIn("pin_token", right.json())
+        self.assertFalse(wallet_pin.session_is_verified(self.client.session))
+        self.assertEqual(wallet_pin._PIN_TOKENS, {})
+
+    @override_settings(ECONOMY_STAFF_ONLY=False)   # zenobia keeps /assets/ to operators
+    def test_the_portal_check_shares_the_count(self):
+        url = reverse("assets:wallet_pin_verify")
+        for n in range(3):
+            self.post(url, f"000{n}")
+        for n in range(3):
+            self.post(self.API, f"111{n}")
+        right = self.post(url, "4821")
+        self.assertEqual(right.status_code, 429)
+        self.assertFalse(wallet_pin.session_is_verified(self.client.session))
+
+    def test_a_lock_clears_a_session_already_verified(self):
+        self.assertEqual(self.post(self.API, "4821").json()["ok"], True)
+        self.assertTrue(wallet_pin.session_is_verified(self.client.session))
+        for n in range(5):
+            self.post(self.API, f"000{n}")
+        self.assertFalse(wallet_pin.session_is_verified(self.client.session))
+
+    def test_fewer_wrong_pins_then_the_right_one_pass_and_start_afresh(self):
+        for n in range(4):
+            self.assertEqual(self.post(self.API, f"000{n}").status_code, 200)
+        self.assertTrue(self.post(self.API, "4821").json()["ok"])
+        for n in range(4):
+            self.post(self.API, f"000{n}")
+        self.assertTrue(self.post(self.API, "4821").json()["ok"])
+
+    def test_the_lock_ends_and_the_next_one_lasts_longer(self):
+        with mock.patch("toto.assets.wallet_pin.time.time", return_value=1_000_000.0), \
+                mock.patch("toto.core.ratelimit.time.time", return_value=1_000_000.0):
+            for n in range(5):
+                self.post(self.API, f"000{n}")
+            first = int(self.post(self.API, "4821")["Retry-After"])
+        later = 1_000_000.0 + first + 1
+        with mock.patch("toto.assets.wallet_pin.time.time", return_value=later), \
+                mock.patch("toto.core.ratelimit.time.time", return_value=later):
+            for n in range(5):
+                self.post(self.API, f"000{n}")
+            second = int(self.post(self.API, "4821")["Retry-After"])
+        self.assertGreater(second, first)
+
+    def test_another_members_count_is_their_own(self):
+        bob = User.objects.create_user("bob", password="pw")
+        wallet_pin.set_wallet_pin(bob, "1357")
+        for n in range(6):
+            self.post(self.API, f"000{n}")
+        self.client.force_login(bob)
+        self.assertTrue(self.post(self.API, "1357").json()["ok"])
+
+
 class WalletReadApiTests(TestCase):
     def setUp(self):
         self.ada = User.objects.create_user("ada", password="pw")
