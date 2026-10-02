@@ -83,6 +83,13 @@ class MembershipApplicationForm(forms.ModelForm):
     def clean_username(self):
         username = self.cleaned_data["username"].strip()
         taken = User.objects.filter(username__iexact=username)
+        # Nor another account's e-mail address (2026-10-02, the crown bug
+        # hunt): its owner typing their address where the username goes would
+        # be trying THIS account, whose "Recent sign-ins" would show them
+        # their address and browser. The applicant's own address is theirs.
+        email = (self.cleaned_data.get("email") or "").strip()
+        if username.casefold() != email.casefold():
+            taken = taken | User.objects.filter(email__iexact=username)
         if self.renewing is not None:
             from toto.socialhub.applications import applicant_account
 

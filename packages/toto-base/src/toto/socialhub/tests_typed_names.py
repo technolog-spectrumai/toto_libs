@@ -154,3 +154,47 @@ class ApprovalMailTests(TestCase):
         sent = self.accept()
         self.assertRegex(sent.body, r"\bcedar_newbie\b")
         self.assertNotRegex(sent.body, r"\belder\b")
+
+
+class NoUsernameIsAnotherAccountsAddressTests(TestCase):
+    """And the squat itself: a username that is another account's e-mail
+    address is refused at the application, and an address that is another
+    account's username at the e-mail change — whoever types the address at
+    the sign-in would be trying the other account. One's own address stays
+    a username one may choose."""
+
+    def setUp(self):
+        from toto.socialhub.models import PrivacyNotice
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        Platform.objects.get_or_create(active=True, defaults={
+            "site_name": "Test", "author": "t", "publication_year": 2026})
+        PrivacyNotice.objects.create(version=1, text_pl="Informacja", text_en="Notice")
+        self.guild = Community.objects.create(name="Cedar Guild", slug="cedar")
+        self.bob = User.objects.create_user("bob", "bob@example.org", "Bob-pw-2026")
+
+    def apply(self, username, email):
+        return self.client.post(reverse("socialhub:membership_application"), {
+            "username": username, "email": email, "community": self.guild.pk,
+            "privacy_version": 1, "privacy_accept": "on"})
+
+    def test_an_applicant_cannot_take_a_members_address_as_username(self):
+        response = self.apply("Bob@Example.org", "eve@example.org")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("username", response.context["form"].errors)
+        self.assertFalse(User.objects.filter(username__iexact="bob@example.org").exists())
+
+    def test_an_applicant_may_sign_in_with_their_own_address(self):
+        response = self.apply("eve@example.org", "eve@example.org")
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(User.objects.filter(username="eve@example.org").exists())
+
+    def test_a_member_cannot_move_to_an_address_that_is_another_accounts_username(self):
+        User.objects.create_user("carol@example.org", "carol@elsewhere.example", "pw")
+        self.client.force_login(self.bob)
+        response = self.client.post(reverse("account:email"), {
+            "new_email": "Carol@example.org", "password": "Bob-pw-2026"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("new_email", response.context["email_form"].errors)
+        self.assertEqual(mail.outbox, [])

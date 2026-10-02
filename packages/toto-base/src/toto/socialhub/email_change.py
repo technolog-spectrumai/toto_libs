@@ -95,7 +95,8 @@ def _hash(token: str) -> str:
 
 
 def address_taken(address: str, user) -> bool:
-    """Whether ``address`` is some OTHER account's, person's or applicant's."""
+    """Whether ``address`` is some OTHER account's (as its address or its
+    username), person's or applicant's."""
     from django.contrib.auth import get_user_model
 
     from toto.people.models import Person
@@ -104,7 +105,13 @@ def address_taken(address: str, user) -> bool:
     address = (address or "").strip()
     if not address:
         return False
-    if get_user_model().objects.filter(email__iexact=address).exclude(pk=user.pk).exists():
+    accounts = get_user_model().objects.exclude(pk=user.pk)
+    if accounts.filter(email__iexact=address).exists():
+        return True
+    # Nor another account's username (2026-10-02, the crown bug hunt): the
+    # member typing their new address at the sign-in would be trying that
+    # account, and its "Recent sign-ins" would show them.
+    if accounts.filter(username__iexact=address).exists():
         return True
     if Person.objects.filter(email__iexact=address).exclude(user_id=user.pk).exists():
         return True
