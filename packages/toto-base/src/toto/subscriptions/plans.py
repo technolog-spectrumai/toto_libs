@@ -142,7 +142,9 @@ def _problems(raw: dict, path: Path) -> list[str]:
     unknown_top = set(raw) - _ALLOWED_TOP
     if unknown_top:
         found.append(f"unknown top-level key(s): {sorted(unknown_top)}")
-    if raw.get("version") != _SCHEMA_VERSION:
+    # `type(...) is int`, not equality alone: YAML's `true` is a bool, and
+    # True == 1 in Python, so `version: true` read as version 1 (41.4b).
+    if type(raw.get("version")) is not int or raw.get("version") != _SCHEMA_VERSION:
         found.append(f"version must be {_SCHEMA_VERSION}, got {raw.get('version')!r}")
 
     plans = raw.get("plans")
@@ -174,8 +176,11 @@ def _problems(raw: dict, path: Path) -> list[str]:
 
         if not entry.get("name"):
             found.append(f"{where}: name is required")
+        # A bool is an int in Python, so isinstance let `units: true` through
+        # as a plan costing 1 unit, and `order: yes` (41.4b).
         for numeric in ("units", "order"):
-            if numeric in entry and not isinstance(entry[numeric], int):
+            if numeric in entry and (not isinstance(entry[numeric], int)
+                                     or isinstance(entry[numeric], bool)):
                 found.append(f"{where}: {numeric} must be a whole number")
         for flag in ("default", *_ADMIN_FLAGS, "all_features"):
             if flag in entry and not isinstance(entry[flag], bool):

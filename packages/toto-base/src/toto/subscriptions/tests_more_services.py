@@ -11,7 +11,7 @@ prices nothing. Run under the host settings, like ``tests_eligibility``:
 
 from datetime import datetime, timedelta, timezone as dt_timezone
 from decimal import Decimal
-from unittest import mock, skip
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
@@ -289,15 +289,22 @@ class EligibilityEdgeTests(ServiceCase):
                          ["Harbour", "toto"])
         self.assertEqual(services.offering_communities(AnonymousUser(), plans.plan("standard")), [])
 
-    @skip("suspected bug: offering_communities asks only the person's own communities, "
-          "while is_eligible walks up to their parents (2026-09-26) — an offer made to "
-          "`toto` reaches a `toto-dev` member but the card's 'Offered through' line "
-          "names nobody")
+    # Skipped as a suspected bug until 2026-10-02 (41.4b): offering_communities
+    # asked only the person's own communities, while is_eligible walks up to
+    # their parents (2026-09-26), so the card's "Offered through" line named
+    # nobody for an inherited offer.
     def test_an_inherited_offer_names_the_community_that_made_it(self):
         CommunityPlanOffer.objects.create(community=self.toto, plan_key="standard")
         user = member("junior", self.dev)
         self.assertTrue(services.is_eligible(user, "standard"))
         self.assertEqual(services.offering_communities(user, plans.plan("standard")), ["toto"])
+
+    def test_every_community_that_offers_it_up_the_tree_is_named_once(self):
+        CommunityPlanOffer.objects.create(community=self.toto, plan_key="standard")
+        CommunityPlanOffer.objects.create(community=self.dev, plan_key="standard")
+        user = member("both", self.dev, self.toto)
+        self.assertEqual(services.offering_communities(user, plans.plan("standard")),
+                         ["toto", "toto-dev"])
 
 
 class SubscribeTests(ServiceCase):

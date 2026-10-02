@@ -269,6 +269,9 @@ def offering_communities(user, plan) -> list:
     What the card's "offered through …" line says. Empty for the default plan
     and for staff seeing a plan nobody offers — the template says so rather
     than implying the plan is public. Never a clearance, which offers nothing.
+    The same communities `is_eligible` reads (41.4b): the person's own and
+    their ancestors, so an offer `toto` makes names `toto` on the card of a
+    `toto-dev` member — it named nobody, while the plan was theirs to buy.
     """
     person = getattr(user, "community_profile", None) \
         if getattr(user, "is_authenticated", False) else None
@@ -276,7 +279,7 @@ def offering_communities(user, plan) -> list:
         return []
     return sorted(
         CommunityPlanOffer.objects
-        .filter(plan_key=plan.key, community__in=person.communities.all())
+        .filter(plan_key=plan.key, community_id__in=_community_ids_with_parents(person))
         .values_list("community__name", flat=True))
 
 

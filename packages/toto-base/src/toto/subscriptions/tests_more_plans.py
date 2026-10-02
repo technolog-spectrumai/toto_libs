@@ -11,7 +11,6 @@ admins leaves out of the public ladder, and what a card may promise.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest import skip
 
 from django.test import SimpleTestCase, override_settings
 
@@ -49,12 +48,21 @@ class KeyShapeTests(ValidationTestCase):
     def test_a_stipend_may_be_declared_on_a_paid_plan(self):
         self.assertEqual(self.problems(ladder("  - key: pay\n    name: Pay\n    units: -50\n")), [])
 
-    @skip("suspected bug: plans._problems checks numbers with isinstance(value, int), "
-          "and a YAML boolean is an int in Python, so `units: true` passes validation "
-          "and becomes a plan costing 1 unit (likewise `order: yes`)")
+    # Skipped as a suspected bug until 2026-10-02 (41.4b): plans._problems
+    # checked numbers with isinstance(value, int), and a YAML boolean is an
+    # int in Python, so `units: true` became a plan costing 1 unit.
     def test_a_boolean_is_not_a_whole_number(self):
         self.assertRejected(ladder("  - key: odd\n    name: Odd\n    units: true\n"),
                             "units must be a whole number")
+        self.assertRejected(ladder("  - key: odd\n    name: Odd\n    order: yes\n"),
+                            "order must be a whole number")
+
+    def test_a_boolean_is_not_the_version(self):
+        self.assertRejected(GOOD.replace("version: 1", "version: true"), "version must be 1")
+
+    def test_zero_and_negative_whole_numbers_still_validate(self):
+        self.assertEqual(self.problems(ladder("  - key: odd\n    name: Odd\n    units: 0\n"
+                                              "    order: -1\n")), [])
 
 
 class RetiredMapTests(ValidationTestCase):
