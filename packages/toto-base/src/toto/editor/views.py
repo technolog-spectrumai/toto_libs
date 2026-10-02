@@ -278,6 +278,23 @@ class MarkdownFileDisplayView(BaseFileDisplayView):
     save_url_name = "editor:markdown_save"
     delete_url_name = "editor:markdown_delete"
 
+    def get_extra_context(self, vault_file) -> dict:
+        """The toolbar's Play: the file read like a GitHub README (2026-10-02).
+
+        Asked of the vault's Play registry, never reversed here — the reader
+        is the host's (zenobia's toto.htmlview), and a host without one simply
+        has no button. Opens in a new tab: an unsaved buffer stays where it is.
+        """
+        from django.urls import NoReverseMatch
+
+        from toto.vault.plugins import VaultPlayPlugin
+
+        plugin = VaultPlayPlugin.for_file_type(vault_file.file_type)
+        try:
+            return {"play_url": plugin.get_play_url(vault_file) if plugin else ""}
+        except NoReverseMatch:
+            return {"play_url": ""}
+
 
 class JsonFileDisplayView(BaseFileDisplayView):
     ace_mode = "json"

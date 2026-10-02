@@ -136,6 +136,16 @@
         </button>
         {% endif %}
 
+        {% if play_url %}
+        {% comment %}Play: a Markdown file read like a GitHub README (2026-10-02),
+        in a new tab so the buffer here is untouched. It shows the SAVED file.{% endcomment %}
+        <a href="{{ play_url }}" target="_blank" rel="noopener" id="play-file"
+           title="{% trans 'Play' %}" aria-label="{% trans 'Play' %}" class="toolbar-btn border">
+          <i class="fa-solid fa-play" aria-hidden="true"></i>
+          <span class="sr-only">{% trans "Play" %}</span>
+        </a>
+        {% endif %}
+
         {% if pdf_url %}
         {% comment %}The PDF, which is the half a browser cannot do: WeasyPrint
         renders it, in toto.aralia, on a worker. Absent aralia there is no

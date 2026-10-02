@@ -872,6 +872,7 @@
           this.actionsModal = false;
           this.$nextTick(() => {
             if (name === 'edit')         window.location.href = item.editor_url;
+            else if (name === 'play')    window.location.href = item.play_url;
             else if (name === 'service') this.openServices(item);
             else if (name === 'move')    this.openMove(item);
             else if (name === 'rename')  this.openRename(item);
@@ -1366,8 +1367,10 @@
                           @click.stop="window.location.href = item.play_url"
                           :class="darkMode ? 'text-green-400 hover:bg-green-400/15' : 'text-green-600 hover:bg-green-600/15'"
                           class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          :title="`{% trans 'Play' %} ${item.title}`">
-                    <i class="fa-solid fa-play text-xs"></i>
+                          :title="`{% trans 'Play' %} ${item.title}`"
+                          :aria-label="`{% trans 'Play' %} ${item.title}`">
+                    <i class="fa-solid fa-play text-xs" aria-hidden="true"></i>
+                    <span class="sr-only">{% trans "Play" %}</span>
                   </button>
 
                   <!-- Delete trash — owner only, revealed on row hover -->
@@ -1493,8 +1496,10 @@
                     <!-- Play — enabled when plugin registered, disabled (owner-only) when not -->
                     <button x-show="item.play_url"
                             @click.stop="window.location.href = item.play_url"
-                            class="rounded-lg border border-green-400/40 px-2 py-1 text-xs text-green-500 hover:opacity-80 transition" title="{% trans "Play" %}">
-                      <i class="fa-solid fa-play"></i>
+                            class="rounded-lg border border-green-400/40 px-2 py-1 text-xs text-green-500 hover:opacity-80 transition" title="{% trans "Play" %}"
+                            aria-label="{% trans "Play" %}">
+                      <i class="fa-solid fa-play" aria-hidden="true"></i>
+                      <span class="sr-only">{% trans "Play" %}</span>
                     </button>
                     <!-- Delete -->
                     <button x-show="item.owner === currentUser"
@@ -2242,6 +2247,14 @@
           </h2>
 
           <div class="flex flex-col gap-1.5">
+            <!-- Play: the file's player or reader (a Markdown file read like a
+                 GitHub README, 2026-10-02) — the same link as the row's button -->
+            <button x-show="actionsItem && actionsItem.play_url"
+                    @click="chooseAction('play')"
+                    :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
+                    class="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-semibold text-left transition">
+              <i class="fa-solid fa-play w-5 text-center opacity-70"></i>{% trans "Play" %}
+            </button>
             <!-- Edit in editor -->
             <button x-show="actionsItem && actionsItem.editor_url"
                     @click="chooseAction('edit')"

@@ -128,6 +128,15 @@ pks. Panel: `/vault/transfers/`.
 | `BUILD_WORKFLOWS` off | refresh + transfer dispatch refuse by name |
 | `BUILD_ANTIVIRUS` off | scans degrade to clean-but-unscanned (façade) |
 
+## Play: a file's player or reader (2026-10-02: Markdown)
+
+`VaultPlayPlugin` (keyed by file type) gives a file its **Play** button — the
+file list's row and card, the per-file actions chooser and, for Markdown, the
+editor's toolbar (`toto.editor`, opened in a new tab). A **Markdown** file
+plays as a read-only page that renders it the way GitHub renders a README;
+the reader is the host's (zenobia: `toto.htmlview`, `/htmlview/markdown/<pk>/`),
+so a host without one has no button. An encrypted file never has one.
+
 ## File types: accepted and refused (2026-09-30)
 
 A file's type is `VaultFile.detect_type(mime, filename)`: the extension
