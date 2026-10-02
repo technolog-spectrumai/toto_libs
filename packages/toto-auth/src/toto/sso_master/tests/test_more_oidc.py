@@ -72,6 +72,11 @@ def _basic(client_id, secret):
 
 
 @FAST_HASHING
+# The signing key is sealed and opened with SSO_VAULT_PASSWORD, which the
+# provider's harness sets and a host's settings read from its environment —
+# empty under a host's test run, where minting the key refused (2026-10-02,
+# 41.4) — so the class names its own.
+@override_settings(SSO_VAULT_PASSWORD="oidc-end-to-end-vault-passphrase")
 class OidcEndToEndTests(TestCase):
     """authorize → token → id_token verified with the JWKS → userinfo."""
 

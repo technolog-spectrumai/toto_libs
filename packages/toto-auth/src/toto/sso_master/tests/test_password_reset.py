@@ -230,7 +230,10 @@ class PasswordResetTicketFallbackTests(TestCase):
         self.assertContains(response, reverse("sso:password_reset"))
 
     def test_core_login_page_shows_forgot_password_link(self):
-        response = self.client.get(reverse("core:login"))
+        # Followed: a host whose one front door is sso:login sends a visitor
+        # asking for core:login there (zenobia's sign-in gate does), and the
+        # page they land on is the one that must offer the link (41.4).
+        response = self.client.get(reverse("core:login"), follow=True)
         self.assertContains(response, reverse("sso:password_reset"))
 
 
@@ -247,7 +250,10 @@ class PasswordResetAvailableTests(TestCase):
         self.assertContains(response, reverse("sso:password_reset"))
 
     def test_core_login_page_shows_forgot_password_link(self):
-        response = self.client.get(reverse("core:login"))
+        # Followed: a host whose one front door is sso:login sends a visitor
+        # asking for core:login there (zenobia's sign-in gate does), and the
+        # page they land on is the one that must offer the link (41.4).
+        response = self.client.get(reverse("core:login"), follow=True)
         self.assertContains(response, reverse("sso:password_reset"))
 
 

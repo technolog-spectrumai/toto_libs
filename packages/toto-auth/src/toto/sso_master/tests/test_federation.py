@@ -7,7 +7,7 @@ reverse directly.
 import base64
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, modify_settings
 from django.urls import reverse
 
 from toto.core.models import Platform
@@ -84,6 +84,10 @@ class PlatformInfoApiTests(TestCase):
     def test_missing_credentials_are_refused(self):
         self.assertEqual(self.client.get(self.url).status_code, 401)
 
+    # The view's own answer. A host's PlatformMiddleware sends every request
+    # but the admin's to the maintenance page while no platform is active,
+    # before any view sees it — zenobia's does (2026-10-02, 41.4).
+    @modify_settings(MIDDLEWARE={"remove": "toto.core.middleware.PlatformMiddleware"})
     def test_no_active_platform_is_404_not_500(self):
         self.platform.active = False
         self.platform.save(update_fields=["active"])

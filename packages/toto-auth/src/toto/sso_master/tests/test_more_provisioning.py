@@ -116,6 +116,9 @@ class ServiceGuardTests(TestCase):
         with self.assertRaisesMessage(RuntimeError, "No active Platform"):
             services.get_issuer()
 
+    # The request below names idp.test, which a host's ALLOWED_HOSTS does not
+    # list as the provider's harness ("*") does (2026-10-02, 41.4).
+    @override_settings(ALLOWED_HOSTS=["idp.test"])
     def test_no_domain_and_no_request_cannot_name_an_issuer(self):
         Platform.objects.create(site_name="P", author="T", publication_year=2026,
                                 active=True, domain="")
