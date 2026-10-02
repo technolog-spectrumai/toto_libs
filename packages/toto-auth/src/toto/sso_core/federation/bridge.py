@@ -189,22 +189,21 @@ class FederationBrowser:
         """Follow the redirect to the provider's authorize endpoint.
 
         A trusted client gets a 302 straight back to the consumer. An untrusted
-        one gets the consent page (200) instead, and approving it takes two more
-        hops the browser would make on its own: the consent POST redirects back
-        to /sso/authorize/ with consent=approved, and *that* is what finally
-        issues the code.
+        one gets the consent page (200) instead, and approving it is one more
+        hop: the consent POST itself issues the code and redirects back to the
+        consumer (2026-10-02; it used to redirect to /sso/authorize/ with
+        consent=approved, a GET that any page could make).
         """
         with provider_urlconf():
             response = self.provider.get(self._portal_path(location))
             if approve_consent and response.status_code == 200:
-                approved = self.provider.post(
+                response = self.provider.post(
                     reverse("sso:consent"),
                     {
                         "decision": "approve",
                         "query_string": response.context["query_string"],
                     },
                 )
-                response = self.provider.get(self._portal_path(approved["Location"]))
         return response
 
     def callback(self, location):

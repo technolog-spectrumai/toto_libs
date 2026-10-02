@@ -13,7 +13,7 @@ import json
 import unittest
 from datetime import timedelta
 from unittest import mock
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import jwt
 from django.contrib.auth import get_user_model
@@ -296,17 +296,48 @@ class ConsentTests(TestCase):
         self.assertEqual(response.context["scope_items"], ["openid", "email"])
         self.assertFalse(SSOAuthorizationCode.objects.exists())
 
-    def test_approving_returns_to_authorize_which_then_issues_a_code(self):
-        query_string = "&".join(f"{k}={v}" for k, v in self.query.items())
-        approve = self.client.post(reverse("sso:consent"),
-                                   {"decision": "approve", "query_string": query_string})
-        self.assertEqual(approve.status_code, 302)
-        self.assertTrue(approve["Location"].endswith("&consent=approved"))
+    def approve(self, client=None, **changes):
+        query = {**self.query, **changes}
+        return (client or self.client).post(reverse("sso:consent"), {
+            "decision": "approve", "query_string": urlencode(query)})
 
-        issued = self.client.get(approve["Location"])
+    def test_approving_issues_the_code_from_the_post_itself(self):
+        # The approval is the POST (2026-10-02): it used to redirect to
+        # /sso/authorize/?…&consent=approved, which then issued the code.
+        issued = self.approve()
         self.assertEqual(issued.status_code, 302)
         self.assertTrue(issued["Location"].startswith(REDIRECT + "?"))
+        self.assertEqual(parse_qs(urlparse(issued["Location"]).query)["state"], ["s"])
         self.assertEqual(SSOAuthorizationCode.objects.get().user, self.user)
+
+    def test_consent_approved_in_a_link_is_only_the_consent_screen(self):
+        # A GET any page can make a signed-in member's browser send — an <img>
+        # is enough — handed a code to a client the member never approved.
+        response = self.client.get(reverse("sso:authorize"), {**self.query, "consent": "approved"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["scope_items"], ["openid", "email"])
+        self.assertFalse(SSOAuthorizationCode.objects.exists())
+
+    def test_the_approval_needs_the_forms_csrf_token(self):
+        browser = Client(enforce_csrf_checks=True)
+        browser.force_login(self.user)
+        self.assertEqual(self.approve(browser).status_code, 403)
+        self.assertFalse(SSOAuthorizationCode.objects.exists())
+        screen = browser.get(reverse("sso:authorize"), self.query)
+        token = screen.context["csrf_token"]
+        issued = browser.post(reverse("sso:consent"), {
+            "decision": "approve", "query_string": screen.context["query_string"],
+            "csrfmiddlewaretoken": str(token)})
+        self.assertEqual(issued.status_code, 302)
+        self.assertEqual(SSOAuthorizationCode.objects.get().user, self.user)
+
+    def test_an_approval_is_checked_as_the_request_itself(self):
+        _party("other", trusted=False, scopes="openid", active=False)
+        for changes in ({"redirect_uri": "https://evil.test/cb"}, {"scope": "openid roles"},
+                        {"client_id": "other"}, {"response_type": "token"}):
+            with self.subTest(**changes):
+                self.assertEqual(self.approve(**changes).status_code, 400)
+        self.assertFalse(SSOAuthorizationCode.objects.exists())
 
     def test_denying_is_a_403_and_no_code(self):
         response = self.client.post(reverse("sso:consent"), {"decision": "deny"})

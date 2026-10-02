@@ -4,7 +4,7 @@ from urllib.parse import urlencode, urlparse
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.http import HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
+from django.http import HttpResponseBadRequest, HttpResponseForbidden, JsonResponse, QueryDict
 from django.shortcuts import redirect, render
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
@@ -105,15 +105,23 @@ def jwks(request):
 @login_required
 @require_GET
 def authorize(request):
-    response_type = request.GET.get("response_type")
-    client_id = request.GET.get("client_id")
-    redirect_uri = request.GET.get("redirect_uri")
-    scope = request.GET.get("scope", "")
-    state = request.GET.get("state")
-    nonce = request.GET.get("nonce")
-    consent = request.GET.get("consent")
-    code_challenge = request.GET.get("code_challenge")
-    code_challenge_method = request.GET.get("code_challenge_method")
+    """The authorization endpoint: a trusted client gets its code at once,
+    any other the consent screen, whose Allow is a POST to ``consent``."""
+    return _authorize(request, request.GET, approved=False)
+
+
+def _authorize(request, params, *, approved):
+    """Check an authorization request — the query string a client sent, or
+    the copy of it the consent screen posts back — and answer it. Every check
+    runs again for an approval: the posted copy is held to the same rules."""
+    response_type = params.get("response_type")
+    client_id = params.get("client_id")
+    redirect_uri = params.get("redirect_uri")
+    scope = params.get("scope", "")
+    state = params.get("state")
+    nonce = params.get("nonce")
+    code_challenge = params.get("code_challenge")
+    code_challenge_method = params.get("code_challenge_method")
 
     if response_type != "code":
         return HttpResponseBadRequest("Only response_type=code is supported.")
@@ -146,7 +154,11 @@ def authorize(request):
     if client.client_type == SSORelyingParty.PUBLIC and not code_challenge:
         return HttpResponseBadRequest("Public clients must use PKCE.")
 
-    if client.trusted or consent == "approved":
+    # Only the consent screen's POST approves (2026-10-02): `consent=approved`
+    # in this query string used to be enough, so any page could send a
+    # signed-in member's browser to /sso/authorize/?…&consent=approved — an
+    # <img> does — and the client got a code its member never agreed to.
+    if client.trusted or approved:
         return issue_authorization_code(
             request=request,
             client=client,
@@ -175,11 +187,15 @@ def authorize(request):
 @login_required
 @require_POST
 def consent(request):
+    """The consent screen's answer: a POST carrying the CSRF token, as every
+    form does. Allow issues the code here, from the request the screen
+    carried (2026-10-02) — it redirected to /sso/authorize/ with
+    ``consent=approved`` added, a GET any page could make."""
     decision = request.POST.get("decision")
     query_string = request.POST.get("query_string", "")
     if decision != "approve":
         return HttpResponseForbidden("Consent denied.")
-    return redirect(f"{reverse('sso:authorize')}?{query_string}&consent=approved")
+    return _authorize(request, QueryDict(query_string), approved=True)
 
 
 def issue_authorization_code(*, request, client, redirect_uri, scope, state, nonce, code_challenge=None, code_challenge_method=None):
