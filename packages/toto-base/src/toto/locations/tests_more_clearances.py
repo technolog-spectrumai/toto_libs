@@ -379,6 +379,26 @@ class DetailPageTests(ClearanceFixture):
         self.assertIsNone(dict(self.page(self.stranger, "territory", self.open_territory)
                                .context["fields"])["Capital"])
 
+    def test_the_route_and_zone_pages_print_nothing_their_json_leaves_out(self):
+        """2026-10-02, crown 41: the JSON above was right, and the HTML beside
+        it printed a route's ends and a zone's territory straight from the
+        relation — "Kept St" with a link to it, "Inside KeptLand"."""
+        self.other_kinds()
+        Route.objects.filter(pk=self.open.pk).update(start_address=self.kept_address,
+                                                     end_address=self.open_address)
+        route_url = reverse("locations:route_detail", args=[self.open.pk])
+        zone_url = reverse("locations:zone_detail", args=[self.open_zone.pk])
+        self.client.force_login(self.stranger)
+        route_page = self.client.get(route_url)
+        self.assertNotContains(route_page, "Kept St")
+        self.assertNotContains(route_page, reverse("locations:address_detail",
+                                                   args=[self.kept_address.pk]))
+        self.assertContains(route_page, "Open St")
+        self.assertNotContains(self.client.get(zone_url), "KeptLand")
+        self.client.force_login(self.member)
+        self.assertContains(self.client.get(route_url), "Kept St")
+        self.assertContains(self.client.get(zone_url), "KeptLand")
+
     def test_a_chain_page_draws_and_counts_only_the_readable_routes(self):
         chain = RouteChain.objects.create(name="Coast")
         Route.objects.filter(pk__in=[self.open.pk, self.kept.pk]).update(route_chain=chain)

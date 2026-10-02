@@ -152,6 +152,9 @@
 {% endblock %}
 
 {% block locations_end_script %}
+{# The metadata as DATA (2026-10-02, crown 41): inside setValue(`…`) a value holding ${…} #}
+{# ran in every reader's browser — escapejs is for a quoted string, not a template literal. #}
+{{ metadata_json|json_script:"location-metadata" }}
 <script>
 (function () {
   const darkMode = localStorage.getItem("darkMode") === "true";
@@ -181,7 +184,7 @@
   const editor = ace.edit("meta-editor");
   editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
   editor.session.setMode("ace/mode/json");
-  editor.setValue(`{{ metadata_json|escapejs }}`, -1);
+  editor.setValue(JSON.parse(document.getElementById("location-metadata").textContent) || "", -1);
   editor.setOptions({ fontSize: "14px", showPrintMargin: false, useSoftTabs: true, tabSize: 2 });
 
   const CONVERT_URL = "{{ metadata_convert_url }}";

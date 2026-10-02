@@ -269,6 +269,19 @@ def route_payload(route, user=None):
     }
 
 
+def route_rows(user, routes):
+    """``[{"route", "start", "end"}]``: each route with the ends ``user`` may
+    read (``readable_or_none``) — what a page prints beside a route, by the
+    rule ``route_payload`` keeps for its JSON (2026-10-02, crown 41: the
+    pages printed both ends from the relation, a hidden home's street and a
+    kept domain's address included)."""
+    from .access import readable_or_none
+
+    return [{"route": route,
+             "start": readable_or_none(user, route.start_address),
+             "end": readable_or_none(user, route.end_address)} for route in routes]
+
+
 def travel_payload(travel, user=None):
     from .access import readable_or_none
 
@@ -436,26 +449,32 @@ def locations_all(request):
         .select_related("bucket")
         .order_by("-uploaded_at")[:300]
     )
+    map_layers = [
+        map_layer_payload(layer)
+        for layer in readable_layers(request.user, MapLayer.objects.filter(is_active=True))
+        .prefetch_related("polygons")
+        .order_by("name")
+    ]
+    vault_files = [
+        {
+            "id": f.id,
+            "title": f.title,
+            "bucket": f.bucket.name if f.bucket else "—",
+            "uploaded_at": f.uploaded_at.strftime("%Y-%m-%d %H:%M"),
+            "is_encrypted": f.is_encrypted,
+        }
+        for f in vault_geojson_files
+    ]
 
+    # The page hands each list to its scripts as a json_script block
+    # (2026-10-02, crown 41); the *_json strings stay for whoever reads them.
     context = {
         "locations": locations,
         "locations_json": json.dumps(locations),
-        "map_layers_json": json.dumps([
-            map_layer_payload(layer)
-            for layer in readable_layers(request.user, MapLayer.objects.filter(is_active=True))
-            .prefetch_related("polygons")
-            .order_by("name")
-        ]),
-        "vault_files_json": json.dumps([
-            {
-                "id": f.id,
-                "title": f.title,
-                "bucket": f.bucket.name if f.bucket else "—",
-                "uploaded_at": f.uploaded_at.strftime("%Y-%m-%d %H:%M"),
-                "is_encrypted": f.is_encrypted,
-            }
-            for f in vault_geojson_files
-        ]),
+        "map_layers": map_layers,
+        "map_layers_json": json.dumps(map_layers),
+        "vault_files": vault_files,
+        "vault_files_json": json.dumps(vault_files),
         # The map's web search is a charged place lookup; a host that makes
         # no outbound calls renders none, and Enter keeps meaning "the first
         # match on this map".
@@ -487,7 +506,7 @@ def address_detail(request, pk):
 
 @login_required
 def zone_detail(request, pk):
-    from .access import readable_addresses, readable_routes
+    from .access import readable_addresses, readable_or_none, readable_routes
 
     zone = _readable_or_404(request, Zone.objects.select_related("territory"), pk)
 
@@ -546,14 +565,20 @@ def zone_detail(request, pk):
         addresses = Address.objects.none()
         routes = Route.objects.none()
 
+    payload = zone_payload(zone, request.user)
     context = {
         "zone": zone,
-        "zone_payload_json": json.dumps(zone_payload(zone, request.user)),
+        # What the page prints, by the rule its JSON keeps (2026-10-02,
+        # crown 41): the territory and each route's ends a reader may read.
+        "zone_territory": readable_or_none(request.user, zone.territory),
+        "zone_payload": payload,
+        "zone_payload_json": json.dumps(payload),
 
         "campaigns": campaigns,
         "missions": missions,
         "addresses": addresses,
         "routes": routes,
+        "route_rows": route_rows(request.user, routes),
     }
 
     return render(
@@ -570,9 +595,17 @@ def route_detail(request, pk):
 
     from toto.locations.plugins.url_plugins import LocationUrlPlugin
 
+    payload = route_payload(route, request.user)
+    row, = route_rows(request.user, [route])
     context = {
         "route": route,
-        "route_payload_json": json.dumps(route_payload(route, request.user)),
+        # The ends the page prints, by the rule its JSON keeps (2026-10-02,
+        # crown 41): it printed both from the relation, so a hidden home's
+        # street, with a link to it, reached every reader of the route.
+        "route_start": row["start"],
+        "route_end": row["end"],
+        "route_payload": payload,
+        "route_payload_json": json.dumps(payload),
         "travel_create_url": LocationUrlPlugin.get_url("travel_create"),
     }
 
@@ -799,18 +832,24 @@ def _resolve_route_places(user, form):
         raise ValueError(" ".join(missing))
 
 
-def _route_end_name(form, side, address_labels):
-    """What the default route name calls one end."""
+def _route_end_name(form, side, address_labels, private=frozenset()):
+    """What the default route name calls one end — and the map's marker,
+    which passes no ``private``. A saved address in ``private`` (somebody's
+    home, ``access.home_pin_ids``) is "A private address" in the name
+    (2026-10-02, crown 41): the name is saved with the route and read by
+    everyone who reads the route, after its person stops sharing too."""
     if _is_resolved(form, side):
         return form[f"{side}_query"]
     if not form[f"{side}_query"] and form[f"{side}_address"] in address_labels:
+        if form[f"{side}_address"] in private:
+            return _("A private address")
         return address_labels[form[f"{side}_address"]]
     return f"{form[f'{side}_lat']}, {form[f'{side}_lng']}"
 
 
 @login_required
 def route_search(request):
-    from .access import readable_addresses
+    from .access import home_pin_ids, readable_addresses
 
     addresses = list(
         readable_addresses(request.user)
@@ -875,6 +914,9 @@ def route_search(request):
 
     start_name = _route_end_name(form, "start", address_labels)
     end_name = _route_end_name(form, "end", address_labels)
+    homes = {str(pk) for pk in home_pin_ids(addresses)}
+    route_name = (f"{_route_end_name(form, 'start', address_labels, homes)} → "
+                  f"{_route_end_name(form, 'end', address_labels, homes)}")
 
     context = {
         "form": form,
@@ -883,7 +925,7 @@ def route_search(request):
         "selected_mode": selected_mode,
         "route": route,
         "route_json": json.dumps(route),
-        "route_name": f"{start_name} → {end_name}"[:200],
+        "route_name": route_name[:200],
         # What the map's two markers say: the place's label, else the name.
         "point_labels": {
             "start": form["start_label"] if _is_resolved(form, "start") else start_name,

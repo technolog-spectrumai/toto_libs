@@ -406,22 +406,45 @@
   </div>
 </div>
 
+{% comment %} What the server hands this page's scripts is DATA (2026-10-02, crown 41).
+   The form's values come from the address bar: written into Number("…") with
+   HTML escaping only, a link ending start_lat=\&start_lng=+alert(1))],// ran,
+   and the routed line sat inside JSON.parse(`…`), where ${…} runs. The theme's
+   colours too, built stylesheet or not: the route modes read them from the
+   Play CDN's tailwind.config, which the built stylesheet (37c.15) never
+   writes, so car, bicycle, foot and transit drew alike. {% endcomment %}
 {{ point_labels|json_script:"route-point-labels" }}
+{{ route|json_script:"route-feature" }}
+{{ form|json_script:"route-search-form" }}
+{{ theme.theme.colors|json_script:"locations-theme-colors" }}
 <script>
-  const routeFeature = JSON.parse(`{{ route_json|escapejs }}`);
+  function routeData(id, fallback) {
+    const element = document.getElementById(id);
+    if (!element) return fallback;
+    try {
+      const value = JSON.parse(element.textContent);
+      return value === null || value === "" ? fallback : value;
+    } catch (error) {
+      return fallback;
+    }
+  }
+
+  const routeFeature = routeData("route-feature", null);
+  const routeForm = routeData("route-search-form", {});
 
   const formPoints = {
-    start: [Number("{{ form.start_lat }}"), Number("{{ form.start_lng }}")],
-    end: [Number("{{ form.end_lat }}"), Number("{{ form.end_lng }}")]
+    start: [Number(routeForm.start_lat), Number(routeForm.start_lng)],
+    end: [Number(routeForm.end_lat), Number(routeForm.end_lng)]
   };
 
   const pointLabels = JSON.parse(document.getElementById("route-point-labels").textContent);
 
-  const currentMode = "{{ form.mode }}";
+  const currentMode = String(routeForm.mode || "");
   let routeMap = null;
 
   function routeThemeColor(isDark, mode = currentMode) {
-    const colors = window.tailwind?.config?.theme?.extend?.colors || {};
+    const theme = routeData("locations-theme-colors", {});
+    const colors = theme && typeof theme === "object" ? theme : {};
 
     const modeColors = {
       car: isDark ? "accent-dark" : "accent-light",

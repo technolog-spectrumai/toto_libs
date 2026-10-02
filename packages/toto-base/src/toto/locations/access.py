@@ -188,6 +188,21 @@ def home_hidden(user, address) -> bool:
             and not openers.filter(address=address).exists())
 
 
+def home_pin_ids(addresses) -> set:
+    """The pks of those of ``addresses`` (rows or pks) that are somebody's
+    home, shared or not — for what must never be named after one: a route's
+    default name is saved with the route, shown to whoever reads the route,
+    and outlives its person's switch (2026-10-02, crown 41)."""
+    from django.apps import apps
+
+    if not apps.is_installed("toto.people"):
+        return set()
+    from toto.people.models import Person
+
+    pks = {getattr(address, "pk", address) for address in addresses}
+    return set(Person.objects.filter(address__in=pks).values_list("address_id", flat=True))
+
+
 def readable_zones(user, queryset=None):
     from .models import Zone
 

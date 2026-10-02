@@ -11,8 +11,11 @@
 {% endblock %}
 
 {% block locations_content %}
+{# The route as DATA (2026-10-02, crown 41): inside JSON.parse(`…`) a name or note #}
+{# holding ${…} ran — escapejs is for a quoted string, not a template literal. #}
+{{ route_payload|json_script:"route-payload" }}
 <script>
-  window.routePayload = JSON.parse(`{{ route_payload_json|escapejs }}`);
+  window.routePayload = JSON.parse(document.getElementById("route-payload").textContent);
 </script>
 
 <div
@@ -422,13 +425,17 @@
                 {% trans "Start" %}
               </span>
 
-              {% if route.start_address %}
+              {# The end this reader may read, as the page's JSON has it (2026-10-02): #}
+              {# the relation itself named a hidden home's street, and linked to it. #}
+              {% if route_start %}
                 <a
-                  href="{% url 'locations:address_detail' route.start_address.pk %}"
+                  href="{% url 'locations:address_detail' route_start.pk %}"
                   :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                   class="mt-1 inline-block font-semibold underline-offset-4 hover:underline hover:opacity-80">
-                  {{ route.start_address }}
+                  {{ route_start }}
                 </a>
+              {% elif route.start_address_id %}
+                <span class="mt-1 block opacity-60">{% trans "A private address" %}</span>
               {% else %}
                 <span class="mt-1 block opacity-60">{% trans "Not set" %}</span>
               {% endif %}
@@ -441,13 +448,15 @@
                 {% trans "End" %}
               </span>
 
-              {% if route.end_address %}
+              {% if route_end %}
                 <a
-                  href="{% url 'locations:address_detail' route.end_address.pk %}"
+                  href="{% url 'locations:address_detail' route_end.pk %}"
                   :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                   class="mt-1 inline-block font-semibold underline-offset-4 hover:underline hover:opacity-80">
-                  {{ route.end_address }}
+                  {{ route_end }}
                 </a>
+              {% elif route.end_address_id %}
+                <span class="mt-1 block opacity-60">{% trans "A private address" %}</span>
               {% else %}
                 <span class="mt-1 block opacity-60">{% trans "Not set" %}</span>
               {% endif %}
@@ -562,6 +571,14 @@
       bounds.push(routeLayer.getBounds());
     }
 
+    // A popup given a string renders it as HTML; the address's label is a
+    // member's text, so it goes in as text (2026-10-02, crown 41).
+    function popupText(text) {
+      const box = document.createElement("div");
+      box.textContent = text || "";
+      return box;
+    }
+
     [payload?.start_address, payload?.end_address].forEach((address) => {
       if (!address?.geometry) return;
 
@@ -573,7 +590,7 @@
             fillOpacity: 0.85
           });
         }
-      }).bindPopup(address.label).addTo(map);
+      }).bindPopup(popupText(address.label)).addTo(map);
 
       bounds.push(marker.getBounds());
     });

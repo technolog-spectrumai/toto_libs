@@ -176,7 +176,11 @@
       const layer = p.approx
         ? L.circle([p.lat, p.lon], {radius: 900, weight: 1, opacity: 0.6, fillOpacity: 0.15})
         : L.marker([p.lat, p.lon]);
-      layer.addTo(map).bindPopup(p.name + " — " + p.km + " km");
+      // As text (2026-10-02, crown 41): a popup given a string renders it as
+      // HTML, and a display name is whatever its member typed.
+      const label = document.createElement("div");
+      label.textContent = p.name + " — " + p.km + " km";
+      layer.addTo(map).bindPopup(label);
     });
   })();
 </script>

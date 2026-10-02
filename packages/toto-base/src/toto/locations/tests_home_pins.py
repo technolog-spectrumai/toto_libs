@@ -13,13 +13,15 @@ resident's Off hid the pin somebody chose to share.
     manage.py test toto.locations.tests_home_pins
 """
 
+from unittest import mock, skipUnless
+
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
 from toto.core.models import Platform
 from toto.locations import access
-from toto.locations.models import Address
+from toto.locations.models import HAS_GIS, Address
 from toto.people.models import LocationSharing, Person
 
 User = get_user_model()
@@ -207,3 +209,115 @@ class TheEventsPickerTests(HomePinCase):
     def test_the_person_may_still_hold_an_event_at_home(self):
         self.client.force_login(self.ann_user)
         self.assertContains(self.client.get(reverse("events:event_create")), "Hidden Lane")
+
+
+@skipUnless(HAS_GIS, "routes draw on geometry; their pages 404 without GIS")
+class RoutePageTests(HomePinCase):
+    """A route's page names its ends by the rule its JSON keeps (2026-10-02,
+    crown 41): the JSON went through ``readable_or_none`` and left a hidden
+    home out, while the page printed the street from the relation and linked
+    to it — to every member who may read the route. Ann saved a route from
+    her home; her switch is Off."""
+
+    def setUp(self):
+        super().setUp()
+        from django.contrib.gis.geos import LineString, MultiLineString
+
+        from toto.locations.models import Route
+
+        self.route = Route.objects.create(
+            name="Morning walk", created_by=self.ann_user,
+            geometry=MultiLineString(LineString((21.0122, 52.2297), (21.0, 52.25)), srid=4326),
+            start_address=self.home, end_address=self.shop)
+
+    def page(self, user):
+        self.client.force_login(user)
+        response = self.client.get(reverse("locations:route_detail", args=[self.route.pk]))
+        self.assertEqual(response.status_code, 200)
+        return response
+
+    def test_the_page_keeps_a_hidden_home_from_everybody_else(self):
+        for user in (self.viewer, self.root):
+            with self.subTest(user=user.username):
+                page = self.page(user)
+                self.assertNotContains(page, "Hidden Lane")
+                self.assertNotContains(page, reverse("locations:address_detail",
+                                                     args=[self.home.pk]))
+                self.assertContains(page, "Market Square")
+                self.assertContains(page, "A private address")
+
+    def test_the_person_and_an_exact_share_still_name_it(self):
+        self.assertContains(self.page(self.ann_user), "Hidden Lane")
+        self.share(LocationSharing.EXACT)
+        self.assertContains(self.page(self.viewer), "Hidden Lane")
+
+    def test_an_end_that_was_never_set_still_says_so(self):
+        from toto.locations.models import Route
+
+        Route.objects.filter(pk=self.route.pk).update(start_address=None)
+        page = self.page(self.viewer)
+        self.assertContains(page, "Not set")
+        self.assertNotContains(page, "A private address")
+
+    def test_the_zone_pages_route_list_keeps_it_too(self):
+        """The zone page lists its routes "start → end" the same way (a host
+        with toto.kanban fills it; the rows are drawn here as it would)."""
+        from django.template.loader import render_to_string
+
+        from toto.locations import views
+        from toto.locations.models import Zone
+        from toto.ui import PageProcessor
+
+        zone = Zone.objects.create(name="Centre", geometry="MULTIPOLYGON(((0 0, 1 0, 1 1, 0 1, 0 0)))")
+        for user, shown in ((self.viewer, False), (self.ann_user, True)):
+            with self.subTest(user=user.username):
+                request = RequestFactory().get("/")
+                request.user = user
+                html = render_to_string("locations/zone_detail.html", PageProcessor().decorate({
+                    "zone": zone, "zone_payload": {}, "campaigns": [], "missions": [],
+                    "addresses": [], "routes": [self.route],
+                    "route_rows": views.route_rows(user, [self.route]),
+                }, request), request=request)
+                self.assertEqual("Hidden Lane" in html, shown)
+                self.assertIn("Market Square", html)
+
+
+@skipUnless(HAS_GIS, "route search draws on geometry; it 404s without GIS")
+class RouteNameTests(HomePinCase):
+    """The route search's default name is never built from a home pin's
+    label (2026-10-02, crown 41). It is saved with the route and shown to
+    every member who may read the route — after its person stops sharing
+    too — so a route from Ann's home was called "Hidden Lane 7, Town → …"."""
+
+    FEATURE = {"type": "Feature", "properties": {"mode": "car", "distance_km": 3.1,
+                                                 "duration_min": 8.0},
+               "geometry": {"type": "LineString", "coordinates": [[21.0122, 52.2297],
+                                                                  [21.0, 52.25]]}}
+
+    def search(self, user, start, end):
+        self.client.force_login(user)
+        with mock.patch("toto.locations.views.fetch_traversable_route",
+                        return_value=self.FEATURE):
+            response = self.client.get(reverse("locations:route_search"), {
+                "mode": "car", "start_address": start.pk, "end_address": end.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["error"], "")
+        return response
+
+    def test_a_home_pin_end_is_named_a_private_address(self):
+        page = self.search(self.ann_user, self.home, self.shop)
+        self.assertEqual(page.context["route_name"], "A private address → Market Square, Town")
+        self.assertNotContains(page, 'value="Hidden Lane')
+        # Ann's own map still marks her end with what she reads.
+        self.assertEqual(page.context["point_labels"]["start"], "Hidden Lane 7, Town")
+
+    def test_a_shared_home_pin_is_not_named_either(self):
+        self.share(LocationSharing.EXACT)
+        page = self.search(self.viewer, self.shop, self.home)
+        self.assertEqual(page.context["route_name"], "Market Square, Town → A private address")
+
+    def test_other_addresses_still_name_the_route(self):
+        other = Address.objects.create(street="Long Street", building="3", locality_name="Town",
+                                       latitude=52.24, longitude=21.01)
+        page = self.search(self.viewer, self.shop, other)
+        self.assertEqual(page.context["route_name"], "Market Square, Town → Long Street 3, Town")
