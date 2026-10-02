@@ -70,10 +70,13 @@ class ProfileEventsCase(TestCase):
         cls.planning.organizers.add(cls.guest)
 
     def page(self, viewer):
+        """The guest's profile on its Activity tab, where the upcoming events
+        are since 2026-10-02 (stage 50: the profile in tabs)."""
         self.client.force_login(viewer)
         response = self.client.get(
-            reverse("socialhub:profile_details", args=[self.guest.slug]))
+            reverse("socialhub:profile_details", args=[self.guest.slug]) + "?tab=activity")
         self.assertEqual(response.status_code, 200)
+        self.assertIn('id="profile-panel" data-tab="activity"', response.content.decode())
         return response.content.decode()
 
     def lists(self, viewer):
@@ -122,3 +125,21 @@ class PeopleOfTheEventTests(ProfileEventsCase):
         html = self.page(self.guest_user)
         self.assertIn(DINNER, html)
         self.assertIn(PLANNING, html)
+
+
+class TabTests(ProfileEventsCase):
+    """The section is on the profile's Activity tab (2026-10-02, stage 50),
+    the member's own and a visitor's alike; the Overview names no event."""
+
+    def test_the_events_are_on_the_activity_tab_alone(self):
+        self.assertEqual(ProfilePlugin.get("upcoming_events").get_tab(), "activity")
+        for viewer in (self.guest_user, self.stranger_user):
+            with self.subTest(viewer=viewer.username):
+                self.client.force_login(viewer)
+                overview = self.client.get(
+                    reverse("socialhub:profile_details", args=[self.guest.slug])).content.decode()
+                self.assertNotIn(FAIR, overview)
+                self.assertNotIn('id="upcoming-events"', overview)
+                html = self.page(viewer)
+                self.assertIn(FAIR, html)
+                self.assertIn('id="upcoming-events"', html)

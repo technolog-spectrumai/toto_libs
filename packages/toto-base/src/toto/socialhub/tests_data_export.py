@@ -1,4 +1,5 @@
-"""*Download my data* on My account (2026-10-01, RODO): the button queues a
+"""*Download my data* (2026-10-01, RODO; on the own profile's Your data tab
+since 2026-10-02, stage 50): the button queues a
 job, the job files the zip in the member's personal bucket, the page shows
 how it went and links it.
 
@@ -45,7 +46,8 @@ class DataExportTestCase(TestCase):
                                 publication_year=2026, active=True)
         self.ada = User.objects.create_user("ada", "ada@example.test", "Correct-horse-9")
         self.bob = User.objects.create_user("bob", "bob@example.test", "Correct-horse-8")
-        Person.objects.create(user=self.ada, display_name="Ada")
+        person = Person.objects.create(user=self.ada, display_name="Ada")
+        self.data_tab = reverse("socialhub:profile_details", args=[person.slug]) + "?tab=data"
         self.client.force_login(self.ada)
         worker = mock.patch.object(data_export, "worker_available", return_value=True)
         worker.start()
@@ -57,6 +59,9 @@ class DataExportTestCase(TestCase):
     def press(self, **data):
         return self.client.post(reverse("account:data_export"), data)
 
+    def page(self):
+        return self.client.get(reverse("account:home") + "?tab=data", follow=True)
+
     def messages(self, response):
         return [str(m) for m in get_messages(response.wsgi_request)]
 
@@ -64,8 +69,7 @@ class DataExportTestCase(TestCase):
 class RequestTests(DataExportTestCase):
     def test_the_button_queues_one_export_of_their_own(self):
         response = self.press(user=self.bob.pk)
-        self.assertRedirects(response, reverse("account:home") + "#data",
-                             fetch_redirect_response=False)
+        self.assertRedirects(response, self.data_tab + "#data", fetch_redirect_response=False)
         export = DataExport.objects.get()
         self.assertEqual((export.user, export.status, export.task_id),
                          (self.ada, DataExport.PENDING, "task-1"))
@@ -177,7 +181,7 @@ class BuildTests(DataExportTestCase):
 
 class PageTests(DataExportTestCase):
     def test_the_section_offers_the_button(self):
-        response = self.client.get(reverse("account:home"))
+        response = self.page()
         self.assertContains(response, reverse("account:data_export"))
         self.assertContains(response, "Download my data")
 
@@ -185,7 +189,7 @@ class PageTests(DataExportTestCase):
         export = DataExport.objects.create(user=self.ada)
         build_data_export(export.pk)
         export.refresh_from_db()
-        response = self.client.get(reverse("account:home"))
+        response = self.page()
         self.assertContains(response, export.output.get_public_url())
         self.assertNotContains(response, f'action="{reverse("account:data_export")}"')
         self.assertContains(response, "You can ask for a new copy after")
@@ -194,6 +198,6 @@ class PageTests(DataExportTestCase):
         export = DataExport.objects.create(user=self.bob)
         build_data_export(export.pk)
         export.refresh_from_db()
-        response = self.client.get(reverse("account:home"))
+        response = self.page()
         self.assertNotContains(response, export.output.get_public_url())
         self.assertContains(response, f'action="{reverse("account:data_export")}"')

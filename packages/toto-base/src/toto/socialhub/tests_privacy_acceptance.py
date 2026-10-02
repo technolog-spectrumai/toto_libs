@@ -147,7 +147,10 @@ class AdmissionTests(AcceptanceCase):
             application=MembershipApplication.objects.get(email="other@example.com"),
             referrer=self.referrer)
         self.client.force_login(self.referrer.user)
-        page = self.client.get(reverse("socialhub:profile_details", args=[self.referrer.slug]))
+        # The reference requests: the Activity tab of the referrer's own
+        # profile (stage 50).
+        page = self.client.get(reverse("socialhub:profile_details", args=[self.referrer.slug])
+                               + "?tab=activity")
         self.assertContains(page, reverse("socialhub:privacy_notice_version", args=[1]))
         self.assertContains(page, "Privacy notice v1 accepted")
 
@@ -157,8 +160,11 @@ class ExistingMemberTests(AcceptanceCase):
         user = User.objects.create_user("elder", "elder@example.com", "pw")
         Person.objects.create(user=user, display_name="Elder")
         self.assertTrue(self.client.login(username="elder", password="pw"))
-        response = self.client.get(reverse("account:home"))
+        # /account/ leads to the elder's own profile, which opens (stage 50).
+        response = self.client.get(reverse("account:home"), follow=True)
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.redirect_chain[-1][0],
+                         reverse("socialhub:profile_details", args=["elder"]))
         self.assertFalse(PrivacyAcceptance.objects.exists())
 
 

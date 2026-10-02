@@ -1,4 +1,5 @@
-"""My account, the recent sign-ins section (2026-09-30): the member's own
+"""Your account, the recent sign-ins section (2026-09-30; on the own
+profile's Security tab since 2026-10-02, stage 50): the member's own
 ``AUTH.*`` records of the last 30 days, read through
 ``toto.audit.queries.member_auth_records`` — own records only, guesses at
 their name included, another member's never — paged on ``?signins_page=``.
@@ -33,11 +34,15 @@ class SigninsTestCase(TestCase):
                                 publication_year=2026, active=True)
         self.user = User.objects.create_user("ada", "ada@example.test", PW)
         self.other = User.objects.create_user("bob", "bob@example.test", PW)
-        Person.objects.create(user=self.user, display_name="Ada")
+        person = Person.objects.create(user=self.user, display_name="Ada")
+        self.profile_url = reverse("socialhub:profile_details", args=[person.slug])
         self.client.force_login(self.user)
 
     def page(self, query=""):
-        response = self.client.get(reverse("account:home") + query)
+        """The Security tab, by the way old addresses come (/account/):
+        ``query`` is what such an address carried."""
+        response = self.client.get(reverse("account:home") + (query or "?tab=security"),
+                                   follow=True)
         self.assertEqual(response.status_code, 200)
         return response, response.context["signins_page"].rows
 
@@ -149,7 +154,11 @@ class PageTests(SigninsTestCase):
         response, rows = self.page()
         self.assertEqual(len(rows), SIGNINS_PER_PAGE)
         self.assertContains(response, "?signins_page=2")
-        # The Sessions list's ?page= does not move this one.
+        # The link is the page's own address and keeps the tab (stage 50).
+        self.assertContains(
+            response, f'href="{self.profile_url}?signins_page=2&amp;tab=security#signins"')
+        # The Sessions list's ?page= does not move this one; either page on
+        # /account/ means the Security tab.
         _, rows = self.page("?page=2")
         self.assertEqual(len(rows), SIGNINS_PER_PAGE)
         _, rows = self.page("?signins_page=2")
@@ -158,8 +167,12 @@ class PageTests(SigninsTestCase):
     def test_the_other_members_page_is_not_reachable_by_any_parameter(self):
         # No view takes a user: the section is always request.user's.
         self.fail("bob", address="203.0.113.99")
-        response, _ = self.page("?user=%d&username=bob" % self.other.pk)
+        response, _ = self.page("?tab=security&user=%d&username=bob" % self.other.pk)
         self.assertNotContains(response, "203.0.113.99")
+        # /account/ carries none of it on to the page.
+        landed = self.client.get(reverse("account:home")
+                                 + "?tab=security&user=%d&username=bob" % self.other.pk)
+        self.assertEqual(landed["Location"], self.profile_url + "?tab=security")
 
     def test_audit_pages_stay_staff_only(self):
         response = self.client.get(reverse("audit:index"))
@@ -181,4 +194,19 @@ class PaginationPartialTests(TestCase):
                                  "page_param": "signins_page"})
         self.assertIn("?signins_page=3", html)
         self.assertNotIn("?page=", html)
+
+    def test_a_base_url_goes_before_each_link(self):
+        """Drawn again at a door's address, a bare "?page=2" would be a GET on
+        the door (2026-10-02)."""
+        from django.core.paginator import Paginator
+        from django.template.loader import render_to_string
+
+        page = Paginator(list(range(30)), 10).get_page(2)
+        html = render_to_string("oya/partials/_server_pagination.html",
+                                {"page_obj": page, "is_paginated": True,
+                                 "base_url": "/socialhub/profiles/ada/",
+                                 "extra_query": "&tab=security"})
+        self.assertIn('href="/socialhub/profiles/ada/?page=1&amp;tab=security"', html)
+        self.assertIn('href="/socialhub/profiles/ada/?page=3&amp;tab=security"', html)
+        self.assertNotIn('href="?', html)
 

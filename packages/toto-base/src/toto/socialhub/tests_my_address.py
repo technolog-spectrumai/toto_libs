@@ -246,10 +246,13 @@ class SearchAddressTests(AddressTestCase):
 
 @override_settings(LOCATIONS_GEOCODING=GEOCODING_OFF)
 class PageTests(AddressTestCase):
+    """The picker is on the Edit profile tab of one's own profile (stage 50);
+    on somebody else's profile no tab has it."""
+
     def test_the_own_profile_page_offers_the_picker(self):
         person = Person.objects.create(user=self.user, display_name="Pinner")
         response = self.client.get(reverse("socialhub:profile_details",
-                                           args=[person.slug]))
+                                           args=[person.slug]) + "?tab=edit")
         self.assertContains(response, "Set my address")
         self.assertContains(response, "address-pick-map")
         # Geocoding is off on this host: no search box renders. Asserted on
@@ -261,14 +264,14 @@ class PageTests(AddressTestCase):
         other = User.objects.create_user("other", password="pw")
         person = Person.objects.create(user=other, display_name="Other")
         response = self.client.get(reverse("socialhub:profile_details",
-                                           args=[person.slug]))
+                                           args=[person.slug]) + "?tab=edit")
         self.assertNotContains(response, "Set my address")
         self.assertNotContains(response, "address-pick-map")
 
     def test_without_geocoding_there_is_nothing_to_pay_for(self):
         person = Person.objects.create(user=self.user, display_name="Pinner")
         response = self.client.get(reverse("socialhub:profile_details",
-                                           args=[person.slug]))
+                                           args=[person.slug]) + "?tab=edit")
         self.assertNotContains(response, 'data-testid="save-and-look-up"')
         self.assertNotContains(response, 'data-testid="address-search-go"')
 
@@ -277,7 +280,7 @@ class PageTests(AddressTestCase):
         person = Person.objects.create(user=self.user, display_name="Pinner")
         with mock.patch(URLOPEN) as opened:
             response = self.client.get(reverse("socialhub:profile_details",
-                                               args=[person.slug]))
+                                               args=[person.slug]) + "?tab=edit")
         opened.assert_not_called()
         self.assertContains(response, "Search for a place")
         self.assertContains(response, 'data-testid="address-search-go"')
@@ -290,7 +293,7 @@ class PageTests(AddressTestCase):
     def test_the_picker_map_follows_dark_mode(self):
         person = Person.objects.create(user=self.user, display_name="Pinner")
         response = self.client.get(reverse("socialhub:profile_details",
-                                           args=[person.slug]))
+                                           args=[person.slug]) + "?tab=edit")
         self.assertContains(response, "window.totoTileLayer(pick)")
 
     def test_with_an_address_the_button_says_modify(self):
@@ -298,5 +301,5 @@ class PageTests(AddressTestCase):
             user=self.user, display_name="Pinner",
             address=Address.objects.create(latitude=52.0, longitude=21.0))
         response = self.client.get(reverse("socialhub:profile_details",
-                                           args=[person.slug]))
+                                           args=[person.slug]) + "?tab=edit")
         self.assertContains(response, "Modify my address")

@@ -260,10 +260,12 @@ TRAPPED = {
     "vault/manage/_connect_modal.html": ["open"],
     "vault/trash.html": ["modal === 'purge'", "modal === 'empty'"],
     "vault/partials/_bulk_modals.html": ["bulkModal === 'trash'", "bulkModal === 'move'"],
-    "socialhub/account.html": ["confirming"],
+    # The erasure dialog, on the profile's Your data tab since stage 50.
+    "socialhub/_profile_data.html": ["confirming"],
     "socialhub/clearances.html": ["open"],
     "socialhub/erasure_requests.html": ["decline"],
-    "socialhub/profile_details.html": ["addressModal"],
+    # The address picker, on the profile's Edit profile tab since stage 50.
+    "socialhub/_profile_edit.html": ["addressModal"],
 }
 
 #: Where a modal's Escape handler is when it is not in the modal's own

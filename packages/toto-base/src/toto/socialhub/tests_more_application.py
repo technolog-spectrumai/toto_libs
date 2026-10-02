@@ -206,9 +206,11 @@ class ReferenceAnswerTests(FlowCase):
 
     def test_accepting_admits_the_applicant_and_mails_them(self):
         response = self.answer("accept", self.referrer.user)
+        # Back to the reference requests: the Activity tab of the referrer's
+        # own profile (stage 50).
         self.assertRedirects(response, reverse("socialhub:profile_details",
-                                               args=[self.referrer.slug]),
-                             fetch_redirect_response=False)
+                                               args=[self.referrer.slug])
+                             + "?tab=activity#references", fetch_redirect_response=False)
         self.ref.refresh_from_db()
         self.assertEqual(self.ref.status, "accepted")
         self.assertIsNotNone(self.ref.responded_at)
@@ -243,7 +245,10 @@ class ReferenceAnswerTests(FlowCase):
         self.assertFalse(self.guild.members.filter(user=member).exists())
 
     def test_declining_keeps_the_applicant_out_and_says_so(self):
-        self.answer("reject", self.referrer.user)
+        response = self.answer("reject", self.referrer.user)
+        self.assertRedirects(response, reverse("socialhub:profile_details",
+                                               args=[self.referrer.slug])
+                             + "?tab=activity#references", fetch_redirect_response=False)
         self.ref.refresh_from_db()
         self.assertEqual(self.ref.status, "declined")
         self.applicant.refresh_from_db()

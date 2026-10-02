@@ -1,7 +1,9 @@
-"""My account, the e-mail section (2026-09-30): a new address is asked for,
-a single-use link is mailed to it, and only that member opening it signed in,
-within a day, moves the account; the old address is told. Both steps are on
-the chain with the addresses masked.
+"""Your account, the e-mail section (2026-09-30; on the own profile's Account
+tab since 2026-10-02, stage 50): a new address is asked for, a single-use
+link is mailed to it, and only that member opening it signed in, within a
+day, moves the account; the old address is told. Both steps are on the chain
+with the addresses masked. The link is the one mailed before stage 50 too,
+and lands on the Account tab.
 """
 
 from __future__ import annotations
@@ -41,7 +43,14 @@ class EmailTestCase(TestCase):
                                 publication_year=2026, active=True)
         self.user = User.objects.create_user("ada", OLD, "Correct-horse-9")
         self.person = Person.objects.create(user=self.user, display_name="Ada", email=OLD)
+        self.profile_url = reverse("socialhub:profile_details", args=[self.person.slug])
+        #: Where the e-mail doors go back to: the Account tab, at the section.
+        self.back = self.profile_url + "?tab=account#email"
         self.client.force_login(self.user)
+
+    def page(self, tab="account", client=None):
+        """The own page on ``tab``, by the way the header goes (/account/)."""
+        return (client or self.client).get(f"{reverse('account:home')}?tab={tab}", follow=True)
 
     def ask(self, address=NEW, password="Correct-horse-9"):
         return self.client.post(reverse("account:email"),
@@ -65,7 +74,7 @@ class EmailTestCase(TestCase):
 class RequestTests(EmailTestCase):
     def test_the_section_posts_to_its_own_door(self):
         self.assertEqual(reverse("account:email"), "/account/email/")
-        response = self.client.get(reverse("account:home"))
+        response = self.page()
         self.assertContains(response, 'id="email"')
         self.assertContains(response, 'action="/account/email/"')
         self.assertContains(response, 'name="new_email"')
@@ -75,7 +84,7 @@ class RequestTests(EmailTestCase):
 
     def test_the_link_goes_to_the_new_address_only(self):
         response = self.ask()
-        self.assertRedirects(response, reverse("account:home"), fetch_redirect_response=False)
+        self.assertRedirects(response, self.back, fetch_redirect_response=False)
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, [NEW])
         self.assertEqual(mail.outbox[0].extra_headers["X-Toto-Notice"], "email_change_confirm")
@@ -90,7 +99,7 @@ class RequestTests(EmailTestCase):
         self.assertEqual(row.new_email, NEW)
         # Only the token's hash is kept.
         self.assertNotIn(self.token(), row.token_hash)
-        self.assertContains(self.client.get(reverse("account:home")), NEW)
+        self.assertContains(self.page(), NEW)
 
     def test_the_request_is_on_the_chain_masked(self):
         self.ask()
@@ -143,9 +152,11 @@ class ConfirmTests(EmailTestCase):
     def test_the_link_applies_once(self):
         self.ask()
         link = self.link()
+        # The mailed link, as mailed: the same door it was before stage 50,
+        # landing on the Account tab.
+        self.assertTrue(link.startswith("/account/email/confirm/?token="))
         response = self.client.get(link)
-        self.assertRedirects(response, reverse("account:home") + "#email",
-                             fetch_redirect_response=False)
+        self.assertRedirects(response, self.back, fetch_redirect_response=False)
         self.assertEqual(self.address(), NEW)
         self.person.refresh_from_db()
         self.assertEqual(self.person.email, NEW)
@@ -253,8 +264,7 @@ class ReviewTests(EmailTestCase):
             self.ask(f"ada{n}@example.org")
         sent = len(mail.outbox)
         response = self.ask("ada.more@example.org")
-        self.assertRedirects(response, reverse("account:home") + "#email",
-                             fetch_redirect_response=False)
+        self.assertRedirects(response, self.back, fetch_redirect_response=False)
         self.assertEqual(len(mail.outbox), sent)
         self.assertNotEqual(PendingEmailChange.objects.get(user=self.user).new_email,
                             "ada.more@example.org")
@@ -281,12 +291,12 @@ class ReviewTests(EmailTestCase):
 
         other = Client()
         other.force_login(self.user)
-        self.assertEqual(other.get(reverse("account:home")).status_code, 200)
+        self.assertEqual(other.get(self.profile_url).status_code, 200)
         self.ask()
         self.client.get(self.link())
         self.assertEqual(self.address(), NEW)
-        self.assertEqual(other.get(reverse("account:home")).status_code, 302)
-        self.assertEqual(self.client.get(reverse("account:home")).status_code, 200)
+        self.assertEqual(other.get(self.profile_url).status_code, 302)
+        self.assertEqual(self.client.get(self.profile_url).status_code, 200)
         record = AuditRecord.objects.get(action="AUTH.EMAIL_CHANGED")
         self.assertEqual(record.metadata["sessions_ended"], 1)
 
@@ -306,7 +316,7 @@ class PasswordTests(EmailTestCase):
     (and with it every password reset) away from its owner."""
 
     def test_the_current_password_is_asked_for(self):
-        self.assertContains(self.client.get(reverse("account:home")), 'name="password"')
+        self.assertContains(self.page(), 'name="password"')
         for wrong in ("", "not-my-password"):
             with self.subTest(wrong=wrong):
                 self.assertEqual(self.ask(password=wrong).status_code, 400)
@@ -329,7 +339,7 @@ class LabelTests(EmailTestCase):
     def test_the_sign_ins_list_names_both_steps(self):
         self.ask()
         self.client.get(self.link())
-        page = self.client.get(reverse("account:home")).content.decode()
+        page = self.page("security").content.decode()
         self.assertIn("New e-mail address asked for", page)
         self.assertIn("E-mail address changed", page)
         self.assertNotIn("AUTH.EMAIL_CHANGE", page)

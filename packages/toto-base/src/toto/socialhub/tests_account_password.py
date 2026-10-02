@@ -1,4 +1,5 @@
-"""My account, the password section (2026-09-30): Django's PasswordChangeForm
+"""Your account, the password section (2026-09-30; on the own profile's
+Account tab since 2026-10-02, stage 50): Django's PasswordChangeForm
 with the host's validators, this session kept, every other session and every
 desktop token ended, ``AUTH.PASSWORD_CHANGED`` on the chain and a notice
 mailed through ``toto.core.notices``.
@@ -33,8 +34,16 @@ class PasswordTestCase(TestCase):
         Platform.objects.create(site_name="Test", author="Tests",
                                 publication_year=2026, active=True)
         self.user = User.objects.create_user("ada", "ada@example.test", OLD)
-        Person.objects.create(user=self.user, display_name="Ada")
+        person = Person.objects.create(user=self.user, display_name="Ada")
+        #: The own profile: 200 for a signed-in session, a login redirect else.
+        self.profile_url = reverse("socialhub:profile_details", args=[person.slug])
+        #: Where the password door goes back to: the Account tab's section.
+        self.back = self.profile_url + "?tab=account#password"
         self.client.force_login(self.user)
+
+    def page(self):
+        """The Account tab, by the way the header goes (/account/)."""
+        return self.client.get(reverse("account:home") + "?tab=account", follow=True)
 
     def change(self, old=OLD, new=NEW, again=None, client=None):
         return (client or self.client).post(reverse("account:password"), {
@@ -66,7 +75,7 @@ class PasswordTestCase(TestCase):
 class PageTests(PasswordTestCase):
     def test_the_section_posts_to_its_own_door(self):
         self.assertEqual(reverse("account:password"), "/account/password/")
-        response = self.client.get(reverse("account:home"))
+        response = self.page()
         self.assertContains(response, 'action="/account/password/"')
         self.assertContains(response, 'name="old_password"')
 
@@ -83,11 +92,11 @@ class PageTests(PasswordTestCase):
         self.user.set_unusable_password()
         self.user.save()
         self.client.force_login(self.user)
-        page = self.client.get(reverse("account:home"))
+        page = self.page()
         self.assertNotContains(page, 'name="old_password"')
         self.assertContains(page, "signs in through another service")
         response = self.change(old="")
-        self.assertRedirects(response, reverse("account:home"), fetch_redirect_response=False)
+        self.assertRedirects(response, self.back, fetch_redirect_response=False)
         self.user.refresh_from_db()
         self.assertFalse(self.user.has_usable_password())
         self.assertFalse(self.records().exists())
@@ -120,18 +129,18 @@ class RefusalTests(PasswordTestCase):
         other = self.other_browser()
         token = self.token()
         self.change(old="not-my-password")
-        self.assertEqual(other.get(reverse("account:home")).status_code, 200)
+        self.assertEqual(other.get(self.profile_url).status_code, 200)
         self.assertEqual(user_for_session_key(token, door="api"), self.user)
 
 
 class SuccessTests(PasswordTestCase):
     def test_the_password_changes_and_this_session_stays(self):
         response = self.change()
-        self.assertRedirects(response, reverse("account:home"), fetch_redirect_response=False)
+        self.assertRedirects(response, self.back, fetch_redirect_response=False)
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password(NEW))
         # Still signed in here, re-signed with the new hash.
-        self.assertEqual(self.client.get(reverse("account:home")).status_code, 200)
+        self.assertEqual(self.client.get(self.profile_url).status_code, 200)
 
     def test_another_session_and_an_old_token_are_ended(self):
         other = self.other_browser()
@@ -141,7 +150,7 @@ class SuccessTests(PasswordTestCase):
         self.assertFalse(SessionStore().exists(other_key))
         self.assertFalse(SessionStore().exists(token))
         self.assertIsNone(user_for_session_key(token, door="api"))
-        self.assertNotEqual(other.get(reverse("account:home")).status_code, 200)
+        self.assertNotEqual(other.get(self.profile_url).status_code, 200)
         # What is left is this session alone.
         self.assertEqual(session_keys_for(self.user), [self.client.session.session_key])
 
@@ -244,8 +253,7 @@ class GuessTests(PasswordTestCase):
             self.assertEqual(self.change(old="not-my-password").status_code, 400)
         # Paused now: even the right password changes nothing here...
         response = self.change()
-        self.assertRedirects(response, reverse("account:home") + "#password",
-                             fetch_redirect_response=False)
+        self.assertRedirects(response, self.back, fetch_redirect_response=False)
         self.assertTrue(self.still_old())
         # ...and the same name from the same address is paused at sign-in too.
         request = RequestFactory().post("/sso/login/", REMOTE_ADDR="127.0.0.1")

@@ -1,4 +1,5 @@
-"""My account, the sessions section (2026-09-30): a ``UserSession`` row per
+"""Your account, the sessions section (2026-09-30; on the own profile's
+Security tab since 2026-10-02, stage 50): a ``UserSession`` row per
 sign-in (``toto.core.user_sessions``), the list (own sessions only, this one
 marked), End one, Sign out everywhere else (a token dies with it), the chain
 records, and the "new sign-in" notice once per new (user agent, address).
@@ -36,7 +37,11 @@ class SessionsTestCase(TestCase):
         Platform.objects.create(site_name="Test", author="Tests",
                                 publication_year=2026, active=True)
         self.user = User.objects.create_user("ada", "ada@example.test", PW)
-        Person.objects.create(user=self.user, display_name="Ada")
+        person = Person.objects.create(user=self.user, display_name="Ada")
+        #: The own profile: 200 for a signed-in session, a login redirect else.
+        self.profile_url = reverse("socialhub:profile_details", args=[person.slug])
+        #: Where the session doors go back to: the Security tab's section.
+        self.back = self.profile_url + "?tab=security#sessions"
         self.client.force_login(self.user)
 
     def browser(self, user=None):
@@ -53,7 +58,8 @@ class SessionsTestCase(TestCase):
         return response.json()["token"]
 
     def listed(self, client=None):
-        response = (client or self.client).get(reverse("account:home"))
+        response = (client or self.client).get(reverse("account:home") + "?tab=security",
+                                               follow=True)
         self.assertEqual(response.status_code, 200)
         return response, list(response.context["sessions"])
 
@@ -147,10 +153,10 @@ class EndTests(SessionsTestCase):
         other = self.browser()
         row = UserSession.objects.get(session_key=other.session.session_key)
         response = self.client.post(reverse("account:session_end", args=[row.pk]))
-        self.assertRedirects(response, reverse("account:home"), fetch_redirect_response=False)
+        self.assertRedirects(response, self.back, fetch_redirect_response=False)
         self.assertFalse(SessionStore().exists(row.session_key))
         self.assertFalse(UserSession.objects.filter(pk=row.pk).exists())
-        self.assertNotEqual(other.get(reverse("account:home")).status_code, 200)
+        self.assertNotEqual(other.get(self.profile_url).status_code, 200)
         record = AuditRecord.objects.get(action="AUTH.SESSION_ENDED")
         self.assertEqual(record.actor_user, self.user)
         self.assertEqual(record.metadata, {"kind": "browser", "session_id": row.pk})
@@ -172,8 +178,9 @@ class EndTests(SessionsTestCase):
 
     def test_the_session_in_use_is_not_ended_here(self):
         row = UserSession.objects.get(session_key=self.client.session.session_key)
-        self.client.post(reverse("account:session_end", args=[row.pk]))
-        self.assertEqual(self.client.get(reverse("account:home")).status_code, 200)
+        response = self.client.post(reverse("account:session_end", args=[row.pk]))
+        self.assertRedirects(response, self.back, fetch_redirect_response=False)
+        self.assertEqual(self.client.get(self.profile_url).status_code, 200)
 
     def test_ending_is_post_only(self):
         other = self.browser()
@@ -188,12 +195,12 @@ class EndTests(SessionsTestCase):
         self.assertEqual(user_for_session_key(token, door="api"), self.user)
         mine = self.client.session.session_key
         response = self.client.post(reverse("account:sessions_end_others"))
-        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, self.back, fetch_redirect_response=False)
         self.assertTrue(SessionStore().exists(mine))
         self.assertFalse(SessionStore().exists(other.session.session_key))
         self.assertFalse(SessionStore().exists(token))
         self.assertIsNone(user_for_session_key(token, door="api"))
-        self.assertEqual(self.client.get(reverse("account:home")).status_code, 200)
+        self.assertEqual(self.client.get(self.profile_url).status_code, 200)
         self.assertEqual(list(UserSession.objects.filter(user=self.user)
                               .values_list("session_key", flat=True)), [mine])
         record = AuditRecord.objects.get(action="AUTH.SIGNED_OUT_EVERYWHERE")

@@ -4,7 +4,8 @@
 Every signed-in member saw every other member's e-mail address — on the
 profile, in the roster and in the data-mesh org chart — with no way to hide
 it, and the phone number the same way. Both are now off by default
-(``Person.show_email``, ``Person.show_phone``), switched on on My account;
+(``Person.show_email``, ``Person.show_phone``), switched on on the Edit
+profile tab of the member's own profile (My account until stage 50);
 the member always sees their own and an administrator (a superuser on the
 Superuser plan) keeps seeing both. The org chart, which its caller's desktop
 client copies on to peers, carries only what the member shows.
@@ -169,9 +170,11 @@ class MyAccountTests(ContactCase):
         return self.client.post(reverse("account:profile"), {
             "display_name": "Quiet", "bio": "", "phone": PHONE, **switches})
 
-    def test_my_account_offers_both_switches_off_with_a_sentence(self):
+    def test_edit_your_profile_offers_both_switches_off_with_a_sentence(self):
         self.client.force_login(self.quiet_user)
-        response = self.client.get(reverse("account:home"))
+        # Edit profile, a tab of the member's own profile (stage 50).
+        response = self.client.get(reverse("socialhub:profile_details", args=[self.quiet.slug])
+                                   + "?tab=edit")
         html = response.content.decode()
         for name in ("show_email", "show_phone"):
             with self.subTest(switch=name):
@@ -184,7 +187,8 @@ class MyAccountTests(ContactCase):
 
     def test_switching_the_address_on_shows_it_and_off_hides_it_again(self):
         response = self.post_profile(show_email="on")
-        self.assertRedirects(response, reverse("account:home"), fetch_redirect_response=False)
+        self.assertRedirects(response, reverse("socialhub:profile_details", args=[self.quiet.slug])
+                             + "?tab=edit#profile", fetch_redirect_response=False)
         self.quiet.refresh_from_db()
         self.assertEqual((self.quiet.show_email, self.quiet.show_phone), (True, False))
         self.assertIn(EMAIL, self.profile(self.other_user, self.quiet))

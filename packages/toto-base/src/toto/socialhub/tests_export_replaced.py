@@ -138,7 +138,7 @@ class ReplaceTests(ReplacedCase):
 class PageTests(ReplacedCase):
     def test_the_section_says_a_new_copy_replaces_the_one_before(self):
         self.client.force_login(self.ada)
-        response = self.client.get(reverse("account:home"))
+        response = self.client.get(reverse("account:home") + "?tab=data", follow=True)
         self.assertContains(response, "A new copy replaces the one before: the earlier zip "
                                       "is deleted for good, not moved to the trash.")
         self.assertContains(response, "It also holds what the audit trail records others "

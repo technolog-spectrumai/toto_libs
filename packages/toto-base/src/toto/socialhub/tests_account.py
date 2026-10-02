@@ -1,5 +1,6 @@
-"""My account (2026-09-30): the profile and time zone sections, the top-bar
-entry, the per-request time zone and the audit record they leave.
+"""Your account (2026-09-30; on your own profile's tabs since 2026-10-02,
+stage 50): the profile and time zone sections, the top-bar entry, the
+per-request time zone and the audit record they leave.
 
 Own account only by construction — the views take no person — so "cannot edit
 another's" is pinned by posting another member's identifiers and watching
@@ -49,6 +50,7 @@ class AccountTestCase(TestCase):
         self.user = User.objects.create_user("ada", password="pw")
         self.person = Person.objects.create(user=self.user, display_name="Ada",
                                             bio="old bio", phone="111")
+        self.profile_url = reverse("socialhub:profile_details", args=[self.person.slug])
         self.client.force_login(self.user)
 
     def post_profile(self, **data):
@@ -63,11 +65,17 @@ class AccountTestCase(TestCase):
 
 class PageTests(AccountTestCase):
     def test_the_page_and_its_top_bar_entry(self):
+        # /account/ stays, and leads to the member's own profile (stage 50).
         self.assertEqual(reverse("account:home"), "/account/")
         response = self.client.get("/account/")
+        self.assertRedirects(response, self.profile_url, fetch_redirect_response=False)
+        response = self.client.get(self.profile_url)
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'id="header-my-account"')
+        self.assertContains(response, 'id="header-profile"')
+        # The profile form on the Edit profile tab, the time zone on Account.
+        response = self.client.get(self.profile_url + "?tab=edit")
         self.assertContains(response, 'action="/account/profile/"')
+        response = self.client.get(self.profile_url + "?tab=account")
         self.assertContains(response, 'action="/account/timezone/"')
 
     def test_signed_out_is_sent_to_sign_in(self):
@@ -79,23 +87,34 @@ class PageTests(AccountTestCase):
     def test_a_member_with_no_person_yet_gets_one_on_the_first_save(self):
         bob = User.objects.create_user("bob", password="pw")
         self.client.force_login(bob)
-        self.assertEqual(self.client.get("/account/").status_code, 200)
+        # No profile to go to: the page is drawn at /account/, Edit profile
+        # its first tab.
+        response = self.client.get("/account/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'action="/account/profile/"')
+        self.assertContains(response, "Your profile is created when you first save it.")
         self.assertFalse(Person.objects.filter(user=bob).exists())
         response = self.client.post(reverse("account:profile"),
                                     {"display_name": "Bob", "bio": "", "phone": ""})
-        self.assertRedirects(response, "/account/", fetch_redirect_response=False)
-        self.assertEqual(Person.objects.get(user=bob).display_name, "Bob")
+        person = Person.objects.get(user=bob)
+        self.assertEqual(person.display_name, "Bob")
+        # ...and the first save goes to the profile it made, on its form.
+        self.assertRedirects(response, reverse("socialhub:profile_details", args=[person.slug])
+                             + "?tab=edit#profile", fetch_redirect_response=False)
 
     def test_the_page_is_free_on_every_plan(self):
         from toto.subscriptions.gate import ALWAYS_FREE
 
+        # The doors are account's, the page (the profile) the socialhub's.
         self.assertIn("account", ALWAYS_FREE)
+        self.assertIn("socialhub", ALWAYS_FREE)
 
 
 class ProfileTests(AccountTestCase):
     def test_edit_own_profile(self):
         response = self.post_profile(display_name="Ada L.", bio="new bio", phone="+48 600")
-        self.assertRedirects(response, "/account/", fetch_redirect_response=False)
+        self.assertRedirects(response, self.profile_url + "?tab=edit#profile",
+                             fetch_redirect_response=False)
         self.person.refresh_from_db()
         self.assertEqual((self.person.display_name, self.person.bio, self.person.phone),
                          ("Ada L.", "new bio", "+48 600"))
@@ -213,7 +232,8 @@ class AvatarTests(AccountTestCase):
 class TimeZoneTests(AccountTestCase):
     def test_choosing_a_zone(self):
         response = self.client.post(reverse("account:timezone"), {"timezone": "Europe/Warsaw"})
-        self.assertRedirects(response, "/account/", fetch_redirect_response=False)
+        self.assertRedirects(response, self.profile_url + "?tab=account#timezone",
+                             fetch_redirect_response=False)
         self.person.refresh_from_db()
         self.assertEqual(self.person.timezone, "Europe/Warsaw")
 
@@ -242,7 +262,7 @@ class TimeZoneTests(AccountTestCase):
 
     def test_pages_show_times_in_the_chosen_zone(self):
         self.client.post(reverse("account:timezone"), {"timezone": "Asia/Tokyo"})
-        response = self.client.get("/account/")
+        response = self.client.get("/account/?tab=account", follow=True)
         self.assertContains(response, "(Asia/Tokyo)")
         self.assertEqual(timezone.get_current_timezone_name(), "UTC")  # deactivated after
 

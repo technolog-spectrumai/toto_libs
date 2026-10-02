@@ -187,20 +187,28 @@ class BadgeTests(PageTestCase):
 
 
 class ProfileTests(PageTestCase):
+    """The pools on the owner's own profile, on its Wallet tab since
+    2026-10-02 (stage 50: the profile in tabs) — nobody else has the tab."""
+
     def test_the_owner_sees_their_pools_on_their_profile(self):
         from toto.tax.tests.factories import make_person
 
         person = make_person(self.ada)
-        body = self.client.get(reverse("socialhub:profile_details", args=[person.slug])).content.decode()
+        url = reverse("socialhub:profile_details", args=[person.slug])
+        body = self.client.get(url + "?tab=wallet").content.decode()
         self.assertIn('data-testid="mana-profile"', body)
+        self.assertNotIn('data-testid="mana-profile"', self.client.get(url).content.decode())
 
     def test_nobody_else_does(self):
         from toto.tax.tests.factories import make_person
 
         person = make_person(self.ada)
         self.client.force_login(User.objects.create_user("bob", password="pw"))
-        body = self.client.get(reverse("socialhub:profile_details", args=[person.slug])).content.decode()
-        self.assertNotIn('data-testid="mana-profile"', body)
+        url = reverse("socialhub:profile_details", args=[person.slug])
+        for tab in ("", "?tab=wallet"):
+            body = self.client.get(url + tab).content.decode()
+            self.assertNotIn('data-testid="mana-profile"', body)
+            self.assertNotIn('id="profile-tab-wallet"', body)
 
 
 class AntivirusPageTests(PageTestCase):

@@ -1,4 +1,5 @@
-"""My account, the key store section (2026-10-01): a member creates their own
+"""Your account, the key store section (2026-10-01; on the own profile's
+Security tab since 2026-10-02, stage 50): a member creates their own
 personal key store once, under a passphrase they choose; a second try, a bare
 box the desktop made, and a box whose salt sealed files depend on all refuse
 and change nothing; nobody can make one for somebody else; neither trail
@@ -37,6 +38,11 @@ class KeyStoreTestCase(TestCase):
                                 publication_year=2026, active=True)
         self.user = User.objects.create_user("ada", "ada@example.test", "Correct-horse-9")
         self.client.force_login(self.user)
+        # No profile here: the own page is drawn at /account/ itself.
+        self.security = reverse("account:home") + "?tab=security"
+
+    def page(self):
+        return self.client.get(self.security, follow=True)
 
     def create(self, passphrase=PASSPHRASE, again=None, **extra):
         return self.client.post(reverse("account:key_store"), {
@@ -64,14 +70,14 @@ class KeyStoreTestCase(TestCase):
 
 class CreateTests(KeyStoreTestCase):
     def test_the_page_offers_the_form_when_there_is_none(self):
-        response = self.client.get(reverse("account:home"))
+        response = self.page()
         self.assertContains(response, 'id="keystore"')
         self.assertContains(response, reverse("account:key_store"))
         self.assertIsNone(response.context["key_store"]["box"])
 
     def test_a_member_creates_their_key_store_once(self):
         response = self.create()
-        self.assertRedirects(response, reverse("account:home") + "#keystore",
+        self.assertRedirects(response, self.security + "#keystore",
                              fetch_redirect_response=False)
         box = self.box()
         self.assertEqual(box.name, PERSONAL_STRONGBOX_NAME)
@@ -81,7 +87,7 @@ class CreateTests(KeyStoreTestCase):
         self.assertTrue(self.opens(box, PASSPHRASE))
         self.assertFalse(self.opens(box, OTHER_PASSPHRASE))
         self.assertIn("Your key store is ready", " ".join(self.messages(response)))
-        page = self.client.get(reverse("account:home"))
+        page = self.page()
         self.assertTrue(page.context["key_store"]["keyed"])
         self.assertNotContains(page, reverse("account:key_store"))
 
@@ -102,7 +108,7 @@ class CreateTests(KeyStoreTestCase):
     def test_a_bare_box_the_desktop_made_is_not_overwritten(self):
         bare = UserStrongbox.objects.create(owner=self.user, name=PERSONAL_STRONGBOX_NAME)
         salt = bytes(bare.salt)
-        self.assertContains(self.client.get(reverse("account:home")), "has no keys yet")
+        self.assertContains(self.page(), "has no keys yet")
         self.create()
         bare.refresh_from_db()
         self.assertEqual(bytes(bare.salt), salt)
@@ -144,7 +150,7 @@ class CreateTests(KeyStoreTestCase):
 
     def test_the_keys_page_sends_a_member_without_one_here(self):
         response = self.client.get(reverse("gervazy:my_keys"))
-        self.assertContains(response, reverse("account:home") + "#keystore")
+        self.assertContains(response, self.security + "#keystore")
 
     def test_only_a_signed_in_post_creates(self):
         self.assertEqual(self.client.get(reverse("account:key_store")).status_code, 405)
@@ -195,6 +201,6 @@ class NoSecretTests(KeyStoreTestCase):
 
     def test_recent_sign_ins_label_the_creation(self):
         self.create()
-        page = self.client.get(reverse("account:home"))
+        page = self.page()
         labels = [row["label"] for row in page.context["signins_page"].rows]
         self.assertIn("Key store created", [str(label) for label in labels])

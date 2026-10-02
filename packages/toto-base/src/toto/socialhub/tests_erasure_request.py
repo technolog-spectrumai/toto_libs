@@ -1,5 +1,6 @@
-"""*Erase my account* (2026-10-01, RODO): a member files a request on My
-account, a superuser on the plan sees it with the console command and may
+"""*Erase my account* (2026-10-01, RODO): a member files a request on their
+profile's Your data tab (stage 50; My account until then), a superuser on the
+plan sees it with the console command and may
 decline it, and only the console's ``erase_user`` carries it out — closing
 the request, which outlives the account by its username snapshot.
 
@@ -50,6 +51,13 @@ class ErasureFixture(TestCase):
     def file(self, **data):
         return self.client.post(reverse("account:erasure_request"), {"confirm": "yes", **data})
 
+    #: The Your data tab; these members have no profile, so it is drawn at
+    #: /account/ itself.
+    DATA_TAB = "/account/?tab=data"
+
+    def page(self):
+        return self.client.get(self.DATA_TAB, follow=True)
+
     def messages(self, response):
         return [str(m) for m in get_messages(response.wsgi_request)]
 
@@ -58,7 +66,7 @@ class FilingTests(ErasureFixture):
     def test_the_member_files_one_request_of_their_own(self):
         self.client.force_login(self.ada)
         response = self.file(user=self.bob.pk)
-        self.assertRedirects(response, reverse("account:home") + "#erasure",
+        self.assertRedirects(response, self.DATA_TAB + "#erasure",
                              fetch_redirect_response=False)
         ticket = ErasureRequest.objects.get()
         self.assertEqual((ticket.user, ticket.username, ticket.status),
@@ -95,18 +103,18 @@ class FilingTests(ErasureFixture):
 
     def test_the_page_offers_the_confirmation_and_then_shows_the_request(self):
         self.client.force_login(self.ada)
-        page = self.client.get(reverse("account:home")).content.decode()
+        page = self.page().content.decode()
         self.assertIn('data-testid="erasure-confirm"', page)
         self.assertIn("audit trail", page)
         self.file()
-        page = self.client.get(reverse("account:home")).content.decode()
+        page = self.page().content.decode()
         self.assertIn('data-testid="erasure-latest"', page)
         self.assertNotIn('data-testid="erasure-confirm"', page)
 
     def test_a_member_sees_only_their_own_request(self):
         erasure.decline(erasure.file_request(self.bob), by=self.root, note="Bob's secret reason")
         self.client.force_login(self.ada)
-        page = self.client.get(reverse("account:home")).content.decode()
+        page = self.page().content.decode()
         self.assertNotIn('data-testid="erasure-latest"', page)
         self.assertNotIn("Bob&#x27;s secret reason", page)
         self.assertNotIn("Bob's secret reason", page)
@@ -159,7 +167,7 @@ class ListTests(ErasureFixture):
             self.assertEqual(records[0].actor_user, self.root)
             self.assertNotIn("treasury", json.dumps(records[0].metadata))
         self.client.force_login(self.ada)
-        self.assertContains(self.client.get(reverse("account:home")), "You hold the treasury keys.")
+        self.assertContains(self.page(), "You hold the treasury keys.")
         # Declined, it may be asked again.
         self.file()
         self.assertEqual(ErasureRequest.objects.filter(status=ErasureRequest.OPEN).count(), 1)
@@ -169,15 +177,15 @@ class ListTests(ErasureFixture):
         President of UODO, or a court (RODO art. 12(4))."""
         ticket = erasure.file_request(self.ada)
         self.client.force_login(self.ada)
-        self.assertNotContains(self.client.get(reverse("account:home")), "erasure-remedies")
+        self.assertNotContains(self.page(), "erasure-remedies")
         erasure.decline(ticket, by=self.root, note="You hold the treasury keys.")
-        page = self.client.get(reverse("account:home"))
+        page = self.page()
         self.assertContains(page, "Prezes Urzędu Ochrony Danych Osobowych")
         self.assertContains(page, "take the matter to court")
 
     def test_the_dialog_says_what_the_erase_takes_and_what_stays(self):
         self.client.force_login(self.ada)
-        page = self.client.get(reverse("account:home"))
+        page = self.page()
         for words in ("Also your profile picture", "pictures and voice recordings you sent",
                       "signed “Former member” instead of your name",
                       "Backups taken before the erase, until they age out"):

@@ -294,6 +294,11 @@ class TicketActionTests(RecoveryBase):
         self.client.force_login(self.patron_user)
         response = self.client.post(self._reject_url(ticket))
         self.assertEqual(response.status_code, 302)
+        # Back where the card was: the Activity tab of the patron's own
+        # profile (stage 50).
+        self.assertEqual(response["Location"],
+                         reverse("socialhub:profile_details", args=[self.patron.slug])
+                         + "?tab=activity")
         ticket.refresh_from_db()
         self.assertEqual(ticket.status, RecoveryTicket.REJECTED)
         self.assertEqual(ticket.link_sha256, "")
@@ -467,8 +472,9 @@ class RedeemTests(RecoveryBase):
             link_expires_at=timezone.now() - timezone.timedelta(minutes=1),
         )
         self.client.force_login(self.patron_user)
+        # The cards are on the profile's Activity tab (stage 50).
         self.client.get(
-            reverse("socialhub:profile_details", args=[self.patron.slug])
+            reverse("socialhub:profile_details", args=[self.patron.slug]) + "?tab=activity"
         )
         record = AuditRecord.objects.get(action="PASSWORD_RECOVERY_EXPIRED")
         self.assertIsNone(record.actor_user_id)
@@ -491,10 +497,11 @@ class RedeemTests(RecoveryBase):
 
 class ProfileCardTests(RecoveryBase):
     """The ticket card renders on the APPROVER's own profile and nowhere else
-    — the community-invitation shape, with the same two POST forms."""
+    — the community-invitation shape, with the same two POST forms — on its
+    Activity tab since 2026-10-02 (stage 50: the profile in tabs)."""
 
     def _profile_url(self, person):
-        return reverse("socialhub:profile_details", args=[person.slug])
+        return reverse("socialhub:profile_details", args=[person.slug]) + "?tab=activity"
 
     def test_the_patron_sees_the_card_on_their_own_profile(self):
         self._file()
