@@ -17,7 +17,7 @@ import tempfile
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from PIL import ExifTags, Image, PngImagePlugin
 
@@ -163,6 +163,59 @@ class JpegTests(AvatarCase):
         self.assertEqual(response.status_code, 400)
         self.person.refresh_from_db()
         self.assertFalse(self.person.avatar)
+
+    def test_pixels_cut_short_are_refused_when_pillow_was_told_to_forgive(self):
+        # WeasyPrint turns Pillow's LOAD_TRUNCATED_IMAGES on for the whole
+        # process the moment it is imported (Aralia's renderer imports it).
+        # With it on, the half JPEG above was stored as a picture over grey
+        # (2026-10-02, 41.4); the redraw reads the pixels whole regardless,
+        # and leaves the switch as it found it.
+        from PIL import ImageFile
+
+        self.addCleanup(setattr, ImageFile, "LOAD_TRUNCATED_IMAGES",
+                        ImageFile.LOAD_TRUNCATED_IMAGES)
+        ImageFile.LOAD_TRUNCATED_IMAGES = True
+        original = phone_jpeg(image=Image.effect_noise((64, 64), 60).convert("RGB"))
+        response = self.post(upload(original[:len(original) // 2], "cut.jpg", "image/jpeg"))
+        self.assertEqual(response.status_code, 400)
+        self.person.refresh_from_db()
+        self.assertFalse(self.person.avatar)
+        self.assertIs(ImageFile.LOAD_TRUNCATED_IMAGES, True)
+
+
+class RedrawTests(SimpleTestCase):
+    """``redraw_picture`` itself: the avatar's door and the host's Trix door
+    both draw through it."""
+
+    def cut_jpeg(self):
+        original = phone_jpeg(image=Image.effect_noise((64, 64), 60).convert("RGB"))
+        return original[:len(original) // 2]
+
+    def test_a_cut_picture_raises_whatever_pillow_was_told(self):
+        from PIL import ImageFile
+
+        from toto.socialhub.forms import redraw_picture
+
+        self.addCleanup(setattr, ImageFile, "LOAD_TRUNCATED_IMAGES",
+                        ImageFile.LOAD_TRUNCATED_IMAGES)
+        for forgiving in (False, True):
+            with self.subTest(load_truncated_images=forgiving):
+                ImageFile.LOAD_TRUNCATED_IMAGES = forgiving
+                with self.assertRaises(OSError):
+                    redraw_picture(self.cut_jpeg(), "JPEG", 10 * 1024 * 1024)
+                self.assertIs(ImageFile.LOAD_TRUNCATED_IMAGES, forgiving)
+
+    def test_a_whole_picture_is_drawn_with_the_switch_on_too(self):
+        from PIL import ImageFile
+
+        from toto.socialhub.forms import redraw_picture
+
+        self.addCleanup(setattr, ImageFile, "LOAD_TRUNCATED_IMAGES",
+                        ImageFile.LOAD_TRUNCATED_IMAGES)
+        ImageFile.LOAD_TRUNCATED_IMAGES = True
+        data = redraw_picture(phone_jpeg(), "JPEG", 10 * 1024 * 1024)
+        self.assertEqual(Image.open(io.BytesIO(data)).size, (40, 20))
+        self.assertIs(ImageFile.LOAD_TRUNCATED_IMAGES, True)
 
 
 class OtherFormatTests(AvatarCase):

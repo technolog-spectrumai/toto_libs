@@ -1,5 +1,7 @@
 import io
+import threading
 import uuid
+from contextlib import contextmanager
 
 from django import forms
 from django.contrib.auth import get_user_model
@@ -236,6 +238,32 @@ def avatar_max_bytes() -> int:
     return int(getattr(settings, "SOCIALHUB_AVATAR_MAX_BYTES", 2 * 1024 * 1024))
 
 
+#: Held while one redraw has Pillow's process-wide switch turned off
+#: (``_pixels_read_whole``), so two redraws never put back each other's.
+_STRICT_DECODE = threading.Lock()
+
+
+@contextmanager
+def _pixels_read_whole():
+    """Pillow refuses pixels cut short only while ``PIL.ImageFile.
+    LOAD_TRUNCATED_IMAGES`` is off — one switch for the whole process, which
+    WeasyPrint turns on for good the moment it is imported
+    (``weasyprint/images.py``; Aralia's renderer imports it). With it on, a
+    JPEG cut in half was decoded as half a picture over grey and stored
+    (2026-10-02, 41.4: the gate imports the renderer's tests first, and both
+    doors' "cut short" tests failed there). So the redraw decodes with the
+    switch off, and puts it back as it found it."""
+    from PIL import ImageFile
+
+    with _STRICT_DECODE:
+        was = ImageFile.LOAD_TRUNCATED_IMAGES
+        ImageFile.LOAD_TRUNCATED_IMAGES = False
+        try:
+            yield
+        finally:
+            ImageFile.LOAD_TRUNCATED_IMAGES = was
+
+
 def redraw_picture(data: bytes, image_format: str, max_bytes: int) -> bytes | None:
     """The picture drawn again from its pixels alone (2026-10-01).
 
@@ -250,14 +278,16 @@ def redraw_picture(data: bytes, image_format: str, max_bytes: int) -> bytes | No
 
     ``max_bytes`` holds for what is stored too: a JPEG or WebP is tried at
     each of ``AVATAR_QUALITIES`` until one fits; None when none does. Raises
-    whatever Pillow raises for pixels it cannot decode. Avatars come here
-    through ``reencode_avatar``, and the host's Trix attachments directly
-    (37c.24).
+    whatever Pillow raises for pixels it cannot decode — a file cut short
+    included, whatever another library set Pillow to forgive
+    (``_pixels_read_whole``). Avatars come here through ``reencode_avatar``,
+    and the host's Trix attachments directly (37c.24).
     """
     from PIL import Image, ImageOps
 
     image_format = REDRAWN_AS.get(image_format, image_format)
-    with Image.open(io.BytesIO(data)) as source:
+    with _pixels_read_whole(), Image.open(io.BytesIO(data)) as source:
+        source.load()  # every pixel of the first frame, decoded here
         picture = ImageOps.exif_transpose(source)
     # Everything else in info is metadata, and the encoders write some of it
     # back on their own (a JPEG's comment, a GIF's, a PNG's ICC profile).
