@@ -232,6 +232,25 @@ class Platform(models.Model):
         return f"{self.site_name} Platform"
 
 
+class BootstrapMarker(models.Model):
+    """What a start-up step remembers from one start to the next (stage 51).
+
+    ``init_data`` runs on every container start. It used to set the admin's
+    password from ADMIN_PASSWORD each time, so a password changed on the
+    profile came back as the configured one at the next restart. It now keeps
+    here a salted hash of the configured password it last applied
+    (``admin-password:<username>``) and sets it again only when the
+    configuration changes. Never the password itself.
+    """
+
+    name = models.CharField(max_length=150, unique=True)
+    value = models.CharField(max_length=255, blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+
 class UserSession(models.Model):
     """One sign-in of a member: the row Django's session table does not have
     (2026-09-30).

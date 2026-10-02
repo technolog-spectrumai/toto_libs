@@ -15,6 +15,8 @@ class Command(BaseCommand):
         parser.add_argument('--email', type=str, default='', help='Email address')
         parser.add_argument('--first-name', type=str, default='', help='First name')
         parser.add_argument('--last-name', type=str, default='', help='Last name')
+        parser.add_argument('--keep-password', action='store_true', default=False,
+                            help='Set the password only when the account is created')
 
     def handle(self, *args, **options):
         username = options['username']
@@ -24,7 +26,10 @@ class Command(BaseCommand):
             user, created = User.objects.update_or_create(
                 username=username,
             )
-            user.set_password(password)
+            # --keep-password (stage 51): init_data's restart leaves a
+            # password changed on the profile alone.
+            if created or not options.get("keep_password"):
+                user.set_password(password)
             if options.get("admin"):
                 user.is_superuser = True
                 user.is_staff = True

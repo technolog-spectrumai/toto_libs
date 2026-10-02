@@ -95,13 +95,19 @@ class Command(BaseCommand):
         admin_last_name = os.environ.get("ADMIN_LAST_NAME", "")
 
         self.stdout.write(self.style.NOTICE("Creating superuser..."))
+        apply_password = self._configured_password_is_new(admin_username, admin_password)
         call_command(
             "create_user", admin_username, admin_password,
             admin=True,
             email=admin_email,
             first_name=admin_first_name,
             last_name=admin_last_name,
+            keep_password=not apply_password,
         )
+        if apply_password:
+            self._remember_configured_password(admin_username, admin_password)
+        else:
+            self.stdout.write("Admin password unchanged since the last start: kept.")
         self.stdout.write(self.style.SUCCESS("Superuser created."))
 
         self._create_admin_person(admin_username)
@@ -186,6 +192,37 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS(f"Assigned federation to platform '{platform.site_name}'.")
             )
+
+    # Stage 51: every start used to set ADMIN_PASSWORD again, so a password
+    # changed on the profile (after a leak, say) was silently undone by the
+    # next restart. Now the configured password is applied when the account
+    # is new, when it differs from the one applied at the last start (a new
+    # ADMIN_PASSWORD, deploy.py --admin-password), or when no start has
+    # recorded one yet (an admin from before this, admin/admin included,
+    # converges once). What is recorded is a salted hash, never the password.
+
+    @staticmethod
+    def _marker_name(username: str) -> str:
+        return f"admin-password:{username}"
+
+    def _configured_password_is_new(self, username: str, password: str) -> bool:
+        from django.contrib.auth import get_user_model  # noqa: PLC0415
+        from django.contrib.auth.hashers import check_password  # noqa: PLC0415
+        from toto.core.models import BootstrapMarker  # noqa: PLC0415
+
+        if not get_user_model().objects.filter(username=username).exists():
+            return True
+        marker = BootstrapMarker.objects.filter(name=self._marker_name(username)).first()
+        if marker is None or not marker.value:
+            return True
+        return not check_password(password, marker.value)
+
+    def _remember_configured_password(self, username: str, password: str) -> None:
+        from django.contrib.auth.hashers import make_password  # noqa: PLC0415
+        from toto.core.models import BootstrapMarker  # noqa: PLC0415
+
+        BootstrapMarker.objects.update_or_create(
+            name=self._marker_name(username), defaults={"value": make_password(password)})
 
     def _create_admin_person(self, admin_username: str) -> None:
         display_name = os.environ.get("ADMIN_DISPLAY_NAME", "")

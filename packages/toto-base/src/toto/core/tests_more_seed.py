@@ -135,6 +135,32 @@ class RestartTests(SeedCase):
         self.assertEqual((Theme.objects.count(), Font.objects.count(),
                           Federation.objects.count()), (1, 1, 1))
 
+    def test_a_password_changed_on_the_profile_survives_a_restart(self):
+        # Stage 51: every start set ADMIN_PASSWORD again, so a rotation made
+        # on the profile after a leak was undone by the next restart.
+        self.seed(password="env-pw")
+        admin = User.objects.get(username="admin")
+        admin.set_password("rotated-pw")
+        admin.save()
+        self.seed(password="env-pw")
+        admin = User.objects.get(username="admin")
+        self.assertTrue(admin.check_password("rotated-pw"))
+        self.assertFalse(admin.check_password("env-pw"))
+        self.assertTrue(admin.is_superuser and admin.is_staff)
+
+    def test_an_admin_from_before_the_marker_takes_the_password_once(self):
+        # A server whose admin predates the marker (admin/admin) converges on
+        # the configured password at its next start, as deploy.py expects.
+        User.objects.create_superuser("admin", "", "admin")
+        self.seed(password="configured-pw")
+        self.assertTrue(User.objects.get(username="admin").check_password("configured-pw"))
+
+    def test_the_marker_is_not_the_password(self):
+        from toto.core.models import BootstrapMarker
+
+        self.seed(password="env-pw")
+        self.assertNotIn("env-pw", " ".join(BootstrapMarker.objects.values_list("value", flat=True)))
+
     def test_a_restart_keeps_the_logo_it_already_assigned(self):
         self.seed()
         first = Platform.objects.get().logo.name
@@ -229,6 +255,11 @@ class CreateUserCommandTests(TestCase):
         out = io.StringIO()
         call_command("create_user", *args, stdout=out, **kwargs)
         return out.getvalue()
+
+    def test_keep_password_sets_it_only_on_a_new_account(self):
+        self.run_it("ops", "pw1", keep_password=True)
+        self.run_it("ops", "pw2", keep_password=True)
+        self.assertTrue(User.objects.get(username="ops").check_password("pw1"))
 
     def test_an_account_is_created_then_updated_never_duplicated(self):
         self.assertIn("created superuser: ops", self.run_it("ops", "pw1"))
