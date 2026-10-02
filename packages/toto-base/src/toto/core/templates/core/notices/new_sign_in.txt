@@ -6,5 +6,5 @@
 {% blocktranslate %}Browser or app: {{ user_agent }}{% endblocktranslate %}{% endif %}
 
 {% translate "If this was you, there is nothing to do." %}
-{% translate "If it was not, open My account, end that session and change your password, then tell an administrator." %}
+{% translate "If it was not, open your profile, end that session under Security and change your password under Account, then tell an administrator." %}
 {% endautoescape %}
