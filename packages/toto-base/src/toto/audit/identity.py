@@ -9,8 +9,8 @@ membership flow, a management command.
 |---|---|
 | `AUTH.LOGIN` | a session starts (`user_logged_in`) |
 | `AUTH.LOGOUT` | a session ends (`user_logged_out`) |
-| `AUTH.LOGIN_FAILED` | credentials refused, a lockout included (`user_login_failed`); `success=False`, the attempted username only; a try the sign-in lockout refused carries `refused` (`delay`, `locked`, `address_locked`) and is recorded at most once a minute per name and address |
-| `AUTH.LOCKED` | the sign-in lockout paused a name at an address, or a whole address (`toto.core.signin_lockout`, 2026-09-30); `success=False`, the scope, the typed name, the address, the failures and the minutes |
+| `AUTH.LOGIN_FAILED` | credentials refused, a lockout included (`user_login_failed`); `success=False`, the attempted username only, and as its subject the one account that name was a try at, if any (`_account_named`, 2026-10-02); a try the sign-in lockout refused carries `refused` (`delay`, `locked`, `address_locked`) and is recorded at most once a minute per name and address |
+| `AUTH.LOCKED` | the sign-in lockout paused a name at an address, or a whole address (`toto.core.signin_lockout`, 2026-09-30); `success=False`, the scope, the typed name, the address, the failures and the minutes; its subject as `AUTH.LOGIN_FAILED`'s |
 | `AUTH.UNLOCKED` | a pause lifted from the console (`manage.py unlock_signin`); the name, the address or `all` |
 | `AUTH.TOKEN_REFUSED` | a session key presented as an API or WebSocket token named an account and was refused (`toto.api.tokens`, 2026-09-30); `success=False`, the door and the reason only |
 | `AUTH.PASSWORD_CHANGED` | a member changed their own password while signed in (My account, 2026-09-30); `sessions_ended` — how many other sign-ins went with the old one |
@@ -54,6 +54,8 @@ FLAGS = {
 
 
 def _record(action, user=None, *, username="", **kwargs):
+    """``user`` is the record's subject; ``username`` its description when
+    given (what was typed), else the subject's username."""
     from django.db import transaction
 
     from .services import record
@@ -64,11 +66,59 @@ def _record(action, user=None, *, username="", **kwargs):
         with transaction.atomic():
             return record(f"auth.{action}", app_label=APP_LABEL, object_type="auth.user",
                           object_id=str(user.pk) if user is not None and user.pk else "",
-                          description=(user.get_username() if user is not None else username)[:150],
+                          description=(username or (user.get_username() if user is not None
+                                                    else ""))[:150],
                           **kwargs)
     except Exception:  # noqa: BLE001 - the chain never breaks a login
         log.exception("audit: could not record auth.%s", action)
         return None
+
+
+def _account_named(name):
+    """The account a sign-in with ``name`` was a try at, or None (2026-10-02).
+
+    A failed sign-in names no account, only what was typed, and "Recent
+    sign-ins" and the data export gave it to EVERY account whose username or
+    e-mail address matched it in any case. Usernames are free text, so one
+    account's username could be another's address — and each then saw the
+    other's failed sign-ins, with the address and browser they came from.
+    So it is decided here, once, as the record is written, and the record's
+    subject says it: the account the sign-in looked the name up as (its
+    username, as typed); else the one account whose username it is in
+    another case; else the one account whose e-mail address it is, in any
+    case — a member typing their address where the username goes. A name no
+    account has, or that several share, is nobody's.
+
+    One query whatever the answer, so an account that exists costs no more
+    time to name than one that does not.
+    """
+    name = str(name or "")
+    if not name:
+        return None
+    from django.db import transaction
+    from django.db.models import Case, IntegerField, Q, Value, When
+
+    User = get_user_model()
+    username, email = User.USERNAME_FIELD, User.get_email_field_name()
+    named = Q(**{f"{username}__iexact": name})
+    if "@" in name:
+        named |= Q(**{f"{email}__iexact": name})
+    named_as = Case(When(**{username: name}, then=Value(0)),
+                    When(**{f"{username}__iexact": name}, then=Value(1)),
+                    default=Value(2), output_field=IntegerField())
+    try:
+        with transaction.atomic():
+            found = list(User._default_manager.filter(named).annotate(named_as=named_as)
+                         .order_by("named_as", "pk")[:2])
+    except Exception:  # noqa: BLE001 - the chain never breaks a login
+        log.warning("audit: could not look up the account a sign-in named")
+        return None
+    if not found:
+        return None
+    first = found[0]
+    if first.named_as and len(found) > 1 and found[1].named_as == first.named_as:
+        return None
+    return first
 
 
 def on_login(sender, request, user, **kwargs):
@@ -88,7 +138,8 @@ def on_login_failed(sender, credentials, request=None, **kwargs):
     from .services import SYSTEM
 
     credentials = credentials or {}
-    attempted = str(credentials.get("username") or credentials.get("email") or "")[:150]
+    typed = str(credentials.get("username") or credentials.get("email") or "")
+    attempted = typed[:150]
     metadata = {"username": attempted}
     # The sign-in lockout's refusal, when it was that (2026-09-30). A paused
     # guesser's try costs no hashing, so a record per knock would be a cheap
@@ -99,8 +150,10 @@ def on_login_failed(sender, credentials, request=None, **kwargs):
         if not getattr(refused, "record", True):
             return
         metadata["refused"] = str(getattr(refused, "reason", ""))
-    _record("login_failed", username=attempted, actor_user=SYSTEM, request=request,
-            success=False, metadata=metadata)
+    # The account it was a try at is the record's subject (2026-10-02,
+    # ``_account_named``); the description keeps what was typed.
+    _record("login_failed", _account_named(typed), username=attempted, actor_user=SYSTEM,
+            request=request, success=False, metadata=metadata)
 
 
 def on_signin_locked(*, scope, address, failures, minutes, username="", request=None):
@@ -109,19 +162,21 @@ def on_signin_locked(*, scope, address, failures, minutes, username="", request=
     Called by ``toto.core.signin_lockout`` once, when a count reaches its
     threshold. ``scope`` is ``account_address`` (this name from this address)
     or ``address`` (every name from it). The name is the one typed, whether or
-    not an account has it — the record does not look it up — and nothing else
-    from the credentials. The actor is the system: whoever was guessing is not
-    proven to be anybody.
+    not an account has it, and nothing else from the credentials; the account
+    it was tried at, if any, is the record's subject (``_account_named``,
+    2026-10-02). The actor is the system: whoever was guessing is not proven
+    to be anybody.
     """
     from .services import SYSTEM
 
-    attempted = str(username or "")[:150]
+    typed = str(username or "")
+    attempted = typed[:150]
     metadata = {"scope": scope, "address": str(address), "failures": int(failures),
                 "minutes": int(minutes)}
     if attempted:
         metadata["username"] = attempted
-    _record("locked", username=attempted or str(address), actor_user=SYSTEM, request=request,
-            success=False, metadata=metadata)
+    _record("locked", _account_named(typed), username=attempted or str(address),
+            actor_user=SYSTEM, request=request, success=False, metadata=metadata)
 
 
 def on_signin_unlocked(*, username="", address="", everything=False):

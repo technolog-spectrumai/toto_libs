@@ -360,6 +360,11 @@ def reference_accept(request, ref_id):
     if ref.referrer.user != request.user:
         raise PermissionDenied(_("You cannot modify this reference request."))
 
+    # The account this acceptance lets in (2026-10-02): the one
+    # ReferenceRequest.save activates, found while it still waits — after, it
+    # is active like a member's with the same address, and the address alone
+    # found two accounts and sent no mail.
+    applicant = applications.applicant_account(ref.application, waiting_only=True)
     ref.status = "accepted"
     ref.responded_at = timezone.now()
     ref.save()  # triggers your model logic to activate the user
@@ -369,15 +374,18 @@ def reference_accept(request, ref_id):
     # ---------------------------------------------------------
     try:
         application = ref.application
-        user = User.objects.get(email=application.email)
+        user = applicant or applications.applicant_account(application)
         community = application.community
 
+        # Sign-in is by username (2026-10-02): the mail said "using your
+        # email address", which signs nobody in — an address typed where the
+        # username goes is tried at whichever account has it as its username.
         subject = f"Your Membership in {community.name} Has Been Approved"
         body = (
             f"Hello,\n\n"
             f"Good news! Your reference has been accepted and your membership "
             f"in {community.name} is now fully approved.\n\n"
-            f"You can now log in using your email address: {user.email}\n\n"
+            f"You can now sign in with your username: {user.get_username()}\n\n"
             f"Welcome aboard!\n"
             f"{community.name} Team"
         )
