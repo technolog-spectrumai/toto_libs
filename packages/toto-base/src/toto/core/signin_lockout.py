@@ -12,13 +12,28 @@ before it makes an account). So the lockout is enforced once, there:
 
 * ``SigninLockoutBackend``, first in ``AUTHENTICATION_BACKENDS``
   (``toto.auth_config.authentication_backends`` puts it ahead of
-  ModelBackend), authenticates nobody. While a sign-in is held it raises
-  ``PermissionDenied``, and Django then stops before any backend has compared
-  a password — so the right password is refused too, and it costs no hashing.
-* ``on_login_failed`` (``user_login_failed``) counts a refused password
-  against the pair (the username as typed, normalised, plus the client
-  address) and against the address alone.
-* ``on_logged_in`` (``user_logged_in``) clears that pair's count.
+  ModelBackend), authenticates nobody. It counts the try against the pair
+  (the username as typed, normalised, plus the client address) and against
+  the address alone BEFORE any backend compares its password
+  (``begin_try``), and while a sign-in is held — or the try is one too many
+  — it raises ``PermissionDenied``: Django then stops before any backend has
+  compared a password, so the right password is refused too, and it costs
+  no hashing.
+* ``on_login_failed`` (``user_login_failed``) keeps that count, and starts a
+  wait or a pause when it reaches a threshold.
+* ``on_logged_in`` (``user_logged_in``) clears that pair's count and gives
+  the try back to the address's.
+
+**Counted when it begins** (2026-10-02, the crown bug hunt). The count used
+to be taken only in ``on_login_failed``, once the password had been
+compared, and the backend only read it — so tries made at the same moment
+(each web request has its own thread) all found nothing counted yet, and two
+hundred of them were two hundred passwords compared, waits and pauses
+notwithstanding. Counted first, a try sees every try begun before it; one
+past a limit is refused and its count given back, as is a try that turns
+out to be no guess (a sign-in; ``release_try`` at a door that signs nobody
+in). Past the free tries they go one at a time: a try takes the wait the
+failure before it would set, so a try beside it waits.
 
 The rule, with the owner's numbers as defaults (0 turns a rule off):
 
@@ -236,8 +251,96 @@ def _where(request) -> str:
 
 # --- asking, counting, clearing ---------------------------------------------
 
+#: Where ``begin_try`` leaves the try it counted, for the door's outcome to
+#: settle: a failure keeps it counted, a sign-in or ``release_try`` gives it
+#: back.
+TRY_ATTR = "signin_try"
+
+
+@dataclass(frozen=True)
+class _Try:
+    keys: _Keys
+    tag: str
+    pair: int | None      # the pair's count with this try in it; None: not counted
+    address: int | None   # the address's, likewise
+
+
+def _refused(reason: str, key: str, seconds: float, now: float) -> Refusal:
+    """A refusal; the chain hears of the first one each minute per key."""
+    first = ratelimit.hold(f"{key}:noted", seconds=NOTE_EVERY_SECONDS, now=now)
+    return Refusal(reason, max(1, math.ceil(seconds)), record=first)
+
+
+def _held(keys: _Keys, now: float, *, waits: bool = True) -> Refusal | None:
+    """The pause, or the wait, in force on these keys."""
+    holds = [(ADDRESS_LOCKED, keys.address_lock), (LOCKED, keys.pair_lock)]
+    if waits:
+        holds.append((DELAY, keys.pair_wait))
+    for reason, key in holds:
+        until = ratelimit.held_until(key, now=now)
+        if until:
+            return _refused(reason, key, until - now, now)
+    return None
+
+
 def refusal(request, username, *, now: float | None = None) -> Refusal | None:
-    """Why a password for ``username`` may not be tried from here now, or None."""
+    """Why a password for ``username`` may not be tried from here now, or
+    None. It counts nothing: a door about to compare a password asks
+    ``begin_try``."""
+    bucket = _where(request)
+    if not bucket:
+        return None
+    keys = _keys(username, bucket)
+    if keys is None:
+        return None
+    return _held(keys, _clock() if now is None else now)
+
+
+def _wait_after(failures: int) -> int:
+    """Seconds to wait after ``failures`` failures (past LOGIN_DELAY_AFTER)."""
+    return min(setting("LOGIN_DELAY_MAX_SECONDS"),
+               2 ** min(failures - setting("LOGIN_DELAY_AFTER"), 30))
+
+
+def _one_too_many(keys: _Keys, pair, address, now: float) -> Refusal | None:
+    """Is the try these counts include one past a limit?"""
+    lock_seconds = setting("LOGIN_LOCK_MINUTES") * 60
+    delay_after, lock_after = setting("LOGIN_DELAY_AFTER"), setting("LOGIN_LOCK_AFTER")
+    address_after = setting("LOGIN_ADDRESS_LOCK_AFTER")
+    if address is not None and address_after and lock_seconds and address > address_after:
+        return _refused(ADDRESS_LOCKED, keys.address_lock, lock_seconds, now)
+    if pair is not None and lock_after and lock_seconds and pair > lock_after:
+        return _refused(LOCKED, keys.pair_lock, lock_seconds, now)
+    if pair is not None and delay_after and pair > delay_after:
+        # Past the free tries, one at a time: this try takes the wait the
+        # failure before it sets, so a try beside it is told to wait.
+        if not ratelimit.hold(keys.pair_wait, seconds=_wait_after(pair - 1), now=now):
+            until = ratelimit.held_until(keys.pair_wait, now=now)
+            if until:
+                return _refused(DELAY, keys.pair_wait, until - now, now)
+    return None
+
+
+def _give_back(counted: _Try, *, pair: bool = True) -> None:
+    if pair and counted.pair is not None:
+        ratelimit.uncount(counted.keys.pair)
+    if counted.address is not None:
+        ratelimit.uncount(counted.keys.address)
+
+
+def begin_try(request, username, *, now: float | None = None) -> Refusal | None:
+    """A password for ``username`` is about to be compared: may it be, from
+    here, now? Asked by the backend for every sign-in, and by any other door
+    that checks a password (2026-10-02).
+
+    The try is COUNTED here, before the comparison, so that tries made at
+    the same moment see each other; one past a limit is refused, and its
+    count given back. An admitted try is left on ``request`` for its outcome
+    to settle: ``note_failure`` keeps it, ``note_success`` and
+    ``release_try`` give it back.
+    """
+    if request is not None:
+        setattr(request, TRY_ATTR, None)
     bucket = _where(request)
     if not bucket:
         return None
@@ -245,18 +348,50 @@ def refusal(request, username, *, now: float | None = None) -> Refusal | None:
     if keys is None:
         return None
     now = _clock() if now is None else now
-    for reason, key in ((ADDRESS_LOCKED, keys.address_lock), (LOCKED, keys.pair_lock),
-                        (DELAY, keys.pair_wait)):
-        until = ratelimit.held_until(key, now=now)
-        if until:
-            first = ratelimit.hold(f"{key}:noted", seconds=NOTE_EVERY_SECONDS, now=now)
-            return Refusal(reason, max(1, math.ceil(until - now)), record=first)
+    held = _held(keys, now)
+    if held is not None:
+        return held
+    window = setting("LOGIN_FAILURE_WINDOW_MINUTES") * 60
+    if not window:
+        return None
+    counted = _Try(keys, _name_tag(username),
+                   ratelimit.count(keys.pair, window=window),
+                   ratelimit.count(keys.address, window=window))
+    # A pause another try set since the first look counts as much as a limit.
+    refused = (_held(keys, now, waits=False)
+               or _one_too_many(keys, counted.pair, counted.address, now))
+    if refused is not None:
+        _give_back(counted)
+        return refused
+    setattr(request, TRY_ATTR, counted)
     return None
 
 
+def _take_try(request, username=None) -> _Try | None:
+    """The try ``begin_try`` left on ``request`` — for ``username``, when
+    given — taken off it."""
+    counted = getattr(request, TRY_ATTR, None) if request is not None else None
+    if counted is None:
+        return None
+    setattr(request, TRY_ATTR, None)
+    if username is not None and counted.tag != _name_tag(username):
+        return None
+    return counted
+
+
+def release_try(request) -> None:
+    """The try begun on ``request`` was no guess — the right password at a
+    door that signs nobody in: its counts are given back."""
+    counted = _take_try(request)
+    if counted is not None:
+        _give_back(counted)
+
+
 def note_failure(request, username, *, now: float | None = None) -> None:
-    """A password refused: count it for the pair and for the address, and
-    start a wait or a pause when a count reaches its threshold."""
+    """A password refused: start a wait or a pause when a count reaches its
+    threshold. The try was counted when it began (``begin_try``); one a door
+    did not begin is counted now, for the pair and for the address."""
+    counted = _take_try(request, username)
     bucket = _where(request)
     if not bucket:
         return
@@ -271,7 +406,14 @@ def note_failure(request, username, *, now: float | None = None) -> None:
     delay_after, lock_after = setting("LOGIN_DELAY_AFTER"), setting("LOGIN_LOCK_AFTER")
     address_after = setting("LOGIN_ADDRESS_LOCK_AFTER")
 
-    failures = ratelimit.count(keys.pair, window=window)
+    if counted is not None and counted.keys == keys:
+        # Read now rather than as it began: the tries begun since are in it.
+        failures = ratelimit.peek(keys.pair) if counted.pair is not None else None
+        from_here = ratelimit.peek(keys.address) if counted.address is not None else None
+    else:
+        failures = ratelimit.count(keys.pair, window=window)
+        from_here = ratelimit.count(keys.address, window=window)
+
     if failures is not None:
         if lock_after and lock_seconds and failures >= lock_after:
             if ratelimit.hold(keys.pair_lock, seconds=lock_seconds, now=now):
@@ -281,11 +423,8 @@ def note_failure(request, username, *, now: float | None = None) -> None:
             # again from nothing, five free tries and the waits after them.
             ratelimit.forget(keys.pair, keys.pair_wait)
         elif delay_after and failures >= delay_after:
-            wait = min(setting("LOGIN_DELAY_MAX_SECONDS"),
-                       2 ** min(failures - delay_after, 30))
-            ratelimit.hold(keys.pair_wait, seconds=wait, replace=True, now=now)
+            ratelimit.hold(keys.pair_wait, seconds=_wait_after(failures), replace=True, now=now)
 
-    from_here = ratelimit.count(keys.address, window=window)
     if from_here is not None and address_after and lock_seconds and from_here >= address_after:
         if ratelimit.hold(keys.address_lock, seconds=lock_seconds, now=now):
             _on_chain_locked(request, scope="address", username="", address=bucket,
@@ -296,7 +435,11 @@ def note_failure(request, username, *, now: float | None = None) -> None:
 def note_success(request, user) -> None:
     """A sign-in from here clears the pair's count and wait — not a pause,
     which a password could not have got through anyway, and not the
-    address's count, which is everybody's at that address."""
+    address's count, which is everybody's at that address: only the try
+    this sign-in began is given back to it."""
+    counted = _take_try(request)
+    if counted is not None:
+        _give_back(counted, pair=False)        # the pair's count is forgotten below
     bucket = _where(request)
     if not bucket:
         return
@@ -364,7 +507,7 @@ class SigninLockoutBackend:
             from django.contrib.auth import get_user_model
 
             username = credentials.get(get_user_model().USERNAME_FIELD)
-        held = refusal(request, username)
+        held = begin_try(request, username)
         if held is None:
             return None
         setattr(request, REQUEST_ATTR, held)

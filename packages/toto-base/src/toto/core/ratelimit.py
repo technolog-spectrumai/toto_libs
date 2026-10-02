@@ -15,6 +15,7 @@ Two more shapes, for the sign-in lockout (``toto.core.signin_lockout``,
 2026-09-30), which has to remember a run of failures rather than a rate:
 
     count("k", window=900)          -> 7     one more; forgotten `window` s after the LAST one
+    uncount("k")                             one fewer: a count taken back
     peek("k")                       -> 7     the count, without counting
     hold("k:lock", seconds=900)     -> True  a deadline, set; False if one was already there
     held_until("k:lock")            -> 1790000000.0, or 0.0 once it has passed
@@ -116,6 +117,17 @@ def count(key: str, *, window: int) -> int | None:
         log.warning("rate limiter: cache returned nothing, not counting %s", key)
         return None
     return int(value)
+
+
+def uncount(key: str) -> None:
+    """Take one ``count`` back (2026-10-02): the sign-in lockout counts a try
+    before its password is compared, and gives the count back when the try
+    is refused or proves no guess. Quiet when the count is gone already or
+    the cache is down."""
+    try:
+        cache.decr(f"rl:n:{key}")
+    except Exception:  # noqa: BLE001 - forgotten meanwhile (ValueError), or the cache is down
+        pass
 
 
 def peek(key: str) -> int:

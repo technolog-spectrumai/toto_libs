@@ -329,12 +329,17 @@ def _password_changed_on_chain(user, request, ended):
 
 
 def _password_guess_refused(request, user):
-    """The sign-in lockout's refusal for this member from this address, or None."""
+    """The sign-in lockout's refusal for this member from this address, or
+    None — and then the try is counted, before the password is compared
+    (``begin_try``, 2026-10-02: counted after, tries sent at the same moment
+    were all compared): a wrong password keeps the count
+    (``_password_guess_failed``), a right one gives it back
+    (``_password_not_a_guess``)."""
     from toto.core import signin_lockout
 
     if not signin_lockout.enabled():
         return None
-    return signin_lockout.refusal(request, user.get_username())
+    return signin_lockout.begin_try(request, user.get_username())
 
 
 def _password_guess_failed(request, user):
@@ -343,6 +348,13 @@ def _password_guess_failed(request, user):
 
     if signin_lockout.enabled():
         signin_lockout.note_failure(request, user.get_username())
+
+
+def _password_not_a_guess(request):
+    """The current password was right: the try counted for it is given back."""
+    from toto.core import signin_lockout
+
+    signin_lockout.release_try(request)
 
 
 @sensitive_post_parameters("old_password", "new_password1", "new_password2")
@@ -375,7 +387,10 @@ def account_password(request):
     if not form.is_valid():
         if form.has_error("old_password"):
             _password_guess_failed(request, user)
+        else:
+            _password_not_a_guess(request)
         return _page(request, password_form=form, status=400)
+    _password_not_a_guess(request)
     form.save()
     old_key = request.session.session_key
     update_session_auth_hash(request, user)
@@ -465,7 +480,10 @@ def account_email(request):
     if not form.is_valid():
         if form.has_error("password"):
             _password_guess_failed(request, request.user)
+        else:
+            _password_not_a_guess(request)
         return _page(request, email_form=form, status=400)
+    _password_not_a_guess(request)
     address = form.cleaned_data["new_email"]
     if email_change.throttled(request.user, address):
         messages.error(request, _("That address has been sent enough links for today. "
