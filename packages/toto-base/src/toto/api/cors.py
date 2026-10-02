@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from django.http import HttpResponse, JsonResponse
 from django.views import View
 
+from .fetch_metadata import cross_site_refusal
 from .tokens import DOOR_API, user_for_session_key
 
 CORS_ALLOW_HEADERS = "Content-Type, X-Requested-With, Authorization"
@@ -121,6 +122,14 @@ class CorsApiView(View):
         if request.method == "OPTIONS":
             return _cors(request, HttpResponse())
         _try_bearer_auth(request)
+        # Stage 51: these doors are csrf_exempt for the desktop's Bearer
+        # token, so a cookie write a browser sent from another site (a
+        # same-site page posting text/plain JSON, a cross-site form logging
+        # the browser into another account) is refused here, before the
+        # view reads the body.
+        refusal = cross_site_refusal(request)
+        if refusal is not None:
+            return _cors(request, refusal)
         response = super().dispatch(request, *args, **kwargs)
         return _cors(request, response)
 

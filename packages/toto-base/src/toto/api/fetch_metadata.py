@@ -7,14 +7,35 @@ accept a forged write. Every modern browser labels its requests with
 ``Sec-Fetch-Site``; a write labelled ``same-site`` or ``cross-site`` that was
 authenticated by cookie is refused. A request without the header (a
 non-browser client) or authenticated by a Bearer token passes.
+
+Since stage 51 every ``CorsApiView`` asks this first (``toto.api.cors``), and
+two more rules hold: a browser too old to send the label still sends
+``Origin`` on a POST, so an Origin naming another host is refused the same
+way; and a request from an origin the host names exactly in
+``CORS_ALLOWED_ORIGINS`` (the desktop app's webview, which a browser labels
+cross-site) passes, as CORS already trusts that origin with credentials.
 """
 
 from __future__ import annotations
+
+from urllib.parse import urlparse
 
 from django.http import JsonResponse
 
 SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 FOREIGN = ("same-site", "cross-site")
+
+
+def _foreign_origin(request, origin: str) -> bool:
+    """Whether an Origin header names a host other than the one asked."""
+    if origin.strip().lower() == "null":
+        return True                       # a sandboxed or opaque origin
+    try:
+        theirs = (urlparse(origin).hostname or "").lower()
+        ours = request.get_host().rsplit(":", 1)[0].strip("[]").lower()
+    except Exception:
+        return True
+    return not theirs or theirs != ours
 
 
 def cross_site_refusal(request):
@@ -23,7 +44,13 @@ def cross_site_refusal(request):
         return None
     if getattr(request, "_toto_bearer_auth", False):
         return None
+    origin = request.META.get("HTTP_ORIGIN") or ""
+    if origin:
+        from .cors import _is_allowed_origin
+
+        if _is_allowed_origin(origin):
+            return None
     site = (request.META.get("HTTP_SEC_FETCH_SITE") or "").lower()
-    if site in FOREIGN:
+    if site in FOREIGN or (not site and origin and _foreign_origin(request, origin)):
         return JsonResponse({"error": "Cross-site request refused."}, status=403)
     return None

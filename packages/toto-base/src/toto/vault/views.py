@@ -2151,6 +2151,18 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
         ),
     }
 
+
+    def dispatch(self, request, *args, **kwargs):
+        # csrf_exempt, so a forged cookie POST from another site is refused
+        # here (stage 51; toto.api.fetch_metadata). The vault page's own
+        # fetch is same-origin and passes.
+        from toto.api.fetch_metadata import cross_site_refusal
+
+        refusal = cross_site_refusal(request)
+        if refusal is not None:
+            return refusal
+        return super().dispatch(request, *args, **kwargs)
+
     def post(self, request):
         from toto.vault.models import file_edits_allowed
         if not file_edits_allowed():

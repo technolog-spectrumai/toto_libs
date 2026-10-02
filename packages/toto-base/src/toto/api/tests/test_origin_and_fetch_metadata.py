@@ -1,6 +1,6 @@
 from urllib.parse import urlparse
 
-from django.test import RequestFactory, SimpleTestCase, override_settings
+from django.test import Client, RequestFactory, SimpleTestCase, TestCase, override_settings
 
 from toto.api.fetch_metadata import cross_site_refusal
 from toto.api.ws_origin import TotoOriginValidator
@@ -42,3 +42,102 @@ class FetchMetadataTests(SimpleTestCase):
         request = self.rf.post("/x", HTTP_SEC_FETCH_SITE="cross-site")
         request._toto_bearer_auth = True
         self.assertIsNone(cross_site_refusal(request))
+
+
+class OriginFallbackTests(SimpleTestCase):
+    """A browser too old for Fetch Metadata still sends Origin on a POST."""
+
+    def setUp(self):
+        self.rf = RequestFactory()
+
+    def test_a_foreign_origin_without_the_site_label_is_refused(self):
+        for origin in ("https://evil.example", "http://testserver.evil.example", "null"):
+            with self.subTest(origin=origin):
+                request = self.rf.post("/x", HTTP_ORIGIN=origin)
+                self.assertEqual(cross_site_refusal(request).status_code, 403)
+
+    def test_the_platforms_own_origin_passes(self):
+        self.assertIsNone(cross_site_refusal(
+            self.rf.post("/x", HTTP_ORIGIN="https://testserver")))
+
+    @override_settings(CORS_ALLOWED_ORIGINS=["tauri://localhost"])
+    def test_the_desktop_apps_named_origin_passes_even_labelled_cross_site(self):
+        request = self.rf.post("/x", HTTP_ORIGIN="tauri://localhost",
+                               HTTP_SEC_FETCH_SITE="cross-site")
+        self.assertIsNone(cross_site_refusal(request))
+        request = self.rf.post("/x", HTTP_ORIGIN="http://localhost:31337",
+                               HTTP_SEC_FETCH_SITE="same-site")
+        self.assertEqual(cross_site_refusal(request).status_code, 403)
+
+
+class SessionDoorTests(TestCase):
+    """Stage 51 (zenobia/todo.md item 2): the cookie-authenticated
+    `csrf_exempt` write doors answered a forged same-site text/plain POST
+    with 201. Every CorsApiView, and the vault's create-file door, now asks
+    the Fetch-Metadata guard first; a Bearer token still passes."""
+
+    DOORS = (
+        "/vault/api/directories/",
+        "/vault/api/files/create/",
+        "/events/api/enigma/list/",
+        "/locations/api/addresses/",
+        "/assets/api/wallet/pin/verify/",
+        "/bourse/api/enigma/proposals/create/",
+        "/vault/file/create/",
+    )
+    REFUSED = "Cross-site request refused."
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+
+        cls.ada = get_user_model().objects.create_user("ada", password="pw")
+
+    def _doors(self):
+        from django.urls import Resolver404, resolve
+
+        for path in self.DOORS:
+            try:
+                resolve(path)
+            except Resolver404:
+                continue
+            yield path
+
+    def _forged(self, client, path, **extra):
+        return client.post(path, data='{"name": "planted", "title": "x"}',
+                           content_type="text/plain", HTTP_SEC_FETCH_SITE="same-site",
+                           **extra)
+
+    def _is_refusal(self, response):
+        return (response.status_code == 403
+                and response.get("Content-Type", "").startswith("application/json")
+                and response.json().get("error") == self.REFUSED)
+
+    def test_a_forged_cookie_write_is_refused_at_every_door(self):
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.ada)
+        checked = 0
+        for path in self._doors():
+            checked += 1
+            with self.subTest(path=path):
+                self.assertTrue(self._is_refusal(self._forged(client, path)))
+        self.assertTrue(checked)
+
+    def test_a_forged_desktop_sign_in_sets_no_session(self):
+        response = Client(enforce_csrf_checks=True).post(
+            "/api/login/", data='{"username": "ada", "password": "pw"}',
+            content_type="text/plain", HTTP_SEC_FETCH_SITE="cross-site")
+        self.assertTrue(self._is_refusal(response))
+        self.assertNotIn("sessionid", response.cookies)
+
+    def test_the_same_write_with_a_bearer_token_is_not_refused(self):
+        key_client = Client()
+        key_client.force_login(self.ada)
+        key = key_client.session.session_key
+        for path in self._doors():
+            if path == "/vault/file/create/":
+                continue                # a browser form door: no token there
+            with self.subTest(path=path):
+                response = self._forged(Client(enforce_csrf_checks=True), path,
+                                        HTTP_AUTHORIZATION=f"Bearer {key}")
+                self.assertFalse(self._is_refusal(response))
