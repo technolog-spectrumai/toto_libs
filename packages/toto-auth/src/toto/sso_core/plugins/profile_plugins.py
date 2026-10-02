@@ -26,6 +26,9 @@ class RecoveryTicketsProfilePlugin(ProfilePlugin):
     template_name = "sso/profile_plugins/recovery_tickets.html"
     section_icon = "fa-solid fa-user-shield"
     show_for_owner_only = True
+    # On the owner's Activity tab (2026-10-02, stage 50), beside the
+    # reference requests whose shape it copies.
+    tab = "activity"
 
     def _tickets(self, **kwargs):
         request = self.get_request_from_kwargs(**kwargs)

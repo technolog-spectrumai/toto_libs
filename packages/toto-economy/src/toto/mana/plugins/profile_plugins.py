@@ -8,6 +8,8 @@ class ManaProfilePlugin(ProfilePlugin):
     template_name = "mana/profile_plugins/mana.html"
     section_icon = "fa-solid fa-droplet"
     show_for_owner_only = True
+    # The owner's Wallet tab (2026-10-02, stage 50).
+    tab = "wallet"
 
     def is_visible_for_profile(self, **kwargs) -> bool:
         profile = kwargs.get("profile")

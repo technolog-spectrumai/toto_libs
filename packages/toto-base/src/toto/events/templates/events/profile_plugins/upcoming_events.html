@@ -1,62 +1,71 @@
 {% load i18n %}
+{% comment %}A profile's upcoming events, the viewer's to see (2026-10-01,
+37c.25). A card of its own since 2026-10-02 (stage 50), on the profile's
+Activity tab beside the other cards there; a bare list until then.{% endcomment %}
+<section id="upcoming-events"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
+    <i class="{{ profile_plugin_icon }}" aria-hidden="true"></i>{{ profile_plugin_title }}</h2>
 
-{% if has_any %}
-  <div class="space-y-4">
+  {% if has_any %}
+    <div class="space-y-4">
 
-    {% if organizing_events %}
-      <div>
-        <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Organising" %}</p>
-        <div class="space-y-2">
-          {% for event in organizing_events %}
-            <a
-              href="{% url 'events:event_detail' event.pk %}"
-              class="flex items-start gap-3 rounded-lg transition hover:opacity-80">
-              <div class="mt-0.5 flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-lg bg-current/10 text-center leading-none">
-                <span class="text-[10px] font-semibold uppercase opacity-60">{{ event.start_time|date:"M" }}</span>
-                <span class="text-base font-bold">{{ event.start_time|date:"j" }}</span>
-              </div>
-              <div class="min-w-0">
-                <p class="truncate font-semibold text-sm">{{ event.title }}</p>
-                <p class="text-xs opacity-55">{{ event.start_time|date:"g:i A" }} – {{ event.end_time|date:"g:i A" }}</p>
-                {% if event.address %}
-                  <p class="text-xs opacity-45 truncate">{{ event.address }}</p>
-                {% endif %}
-              </div>
-            </a>
-          {% endfor %}
-        </div>
-      </div>
-    {% endif %}
-
-    {% if attending_events %}
       {% if organizing_events %}
-        <div class="border-t border-current/10"></div>
-      {% endif %}
-      <div>
-        <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Attending" %}</p>
-        <div class="space-y-2">
-          {% for event in attending_events %}
-            <a
-              href="{% url 'events:event_detail' event.pk %}"
-              class="flex items-start gap-3 rounded-lg transition hover:opacity-80">
-              <div class="mt-0.5 flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-lg bg-current/10 text-center leading-none">
-                <span class="text-[10px] font-semibold uppercase opacity-60">{{ event.start_time|date:"M" }}</span>
-                <span class="text-base font-bold">{{ event.start_time|date:"j" }}</span>
-              </div>
-              <div class="min-w-0">
-                <p class="truncate font-semibold text-sm">{{ event.title }}</p>
-                <p class="text-xs opacity-55">{{ event.start_time|date:"g:i A" }} – {{ event.end_time|date:"g:i A" }}</p>
-                {% if event.address %}
-                  <p class="text-xs opacity-45 truncate">{{ event.address }}</p>
-                {% endif %}
-              </div>
-            </a>
-          {% endfor %}
+        <div>
+          <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Organising" %}</p>
+          <div class="space-y-2">
+            {% for event in organizing_events %}
+              <a
+                href="{% url 'events:event_detail' event.pk %}"
+                class="flex items-start gap-3 rounded-lg transition hover:opacity-80">
+                <div class="mt-0.5 flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-lg bg-current/10 text-center leading-none">
+                  <span class="text-[10px] font-semibold uppercase opacity-60">{{ event.start_time|date:"M" }}</span>
+                  <span class="text-base font-bold">{{ event.start_time|date:"j" }}</span>
+                </div>
+                <div class="min-w-0">
+                  <p class="truncate font-semibold text-sm">{{ event.title }}</p>
+                  <p class="text-xs opacity-55">{{ event.start_time|date:"g:i A" }} – {{ event.end_time|date:"g:i A" }}</p>
+                  {% if event.address %}
+                    <p class="text-xs opacity-45 truncate">{{ event.address }}</p>
+                  {% endif %}
+                </div>
+              </a>
+            {% endfor %}
+          </div>
         </div>
-      </div>
-    {% endif %}
+      {% endif %}
 
-  </div>
-{% else %}
-  <p class="text-sm opacity-60">{% trans "No upcoming events." %}</p>
-{% endif %}
+      {% if attending_events %}
+        {% if organizing_events %}
+          <div class="border-t border-current/10"></div>
+        {% endif %}
+        <div>
+          <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Attending" %}</p>
+          <div class="space-y-2">
+            {% for event in attending_events %}
+              <a
+                href="{% url 'events:event_detail' event.pk %}"
+                class="flex items-start gap-3 rounded-lg transition hover:opacity-80">
+                <div class="mt-0.5 flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-lg bg-current/10 text-center leading-none">
+                  <span class="text-[10px] font-semibold uppercase opacity-60">{{ event.start_time|date:"M" }}</span>
+                  <span class="text-base font-bold">{{ event.start_time|date:"j" }}</span>
+                </div>
+                <div class="min-w-0">
+                  <p class="truncate font-semibold text-sm">{{ event.title }}</p>
+                  <p class="text-xs opacity-55">{{ event.start_time|date:"g:i A" }} – {{ event.end_time|date:"g:i A" }}</p>
+                  {% if event.address %}
+                    <p class="text-xs opacity-45 truncate">{{ event.address }}</p>
+                  {% endif %}
+                </div>
+              </a>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+    </div>
+  {% else %}
+    <p class="text-sm opacity-60">{% trans "No upcoming events." %}</p>
+  {% endif %}
+</section>

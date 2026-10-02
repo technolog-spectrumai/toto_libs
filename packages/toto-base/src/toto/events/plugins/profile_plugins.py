@@ -13,6 +13,9 @@ from toto.socialhub.plugins.profile_plugins import ProfilePlugin
 class UpcomingEventsProfilePlugin(ProfilePlugin):
     template_name = "events/profile_plugins/upcoming_events.html"
     section_icon = "fa-solid fa-calendar-days"
+    # On the profile's Activity tab (2026-10-02, stage 50), for the owner
+    # and for visitors alike: the lists are the VIEWER's events, below.
+    tab = "activity"
 
     def get_context(self, **kwargs):
         context = super().get_context(**kwargs)
