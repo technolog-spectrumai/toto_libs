@@ -22,8 +22,10 @@ on a narrow one — with two doors and no others:
   (their through tables PROTECT it).
 
 Nothing is edited here: who holds a clearance and its speeds change in the
-Django admin (``ClearanceAdmin``, superusers only). Every change reaches the
-audit chain through ``audit.py``'s signals, whichever door made it.
+Django admin (``ClearanceAdmin``; since 2026-10-02 it asks this page's rule,
+``may_manage``, and so does the person admin's ``clearances`` field). Every
+change reaches the audit chain through ``audit.py``'s signals, whichever door
+made it.
 
 What a clearance READS is each app's own business and stays there: the wiki's
 page × clearance grid, a sheet's or a place's access control.

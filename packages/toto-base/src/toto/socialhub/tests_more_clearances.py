@@ -991,9 +991,10 @@ class ClearanceDeleteTests(OnThePlan, ClearanceFixture):
 # ---------------------------------------------------------------------------
 
 
-class ClearanceAdminLimitsTests(ClearanceFixture):
-    """The clearance admin is a superuser's door whatever model permissions a
-    staff account holds; the community admin is untouched by it."""
+class ClearanceAdminLimitsTests(OnThePlan, ClearanceFixture):
+    """The clearance admin is a superuser's door — on the Superuser plan, as
+    the tab asks (2026-10-02) — whatever model permissions a staff account
+    holds; the community admin is untouched by it."""
 
     @classmethod
     def setUpTestData(cls):

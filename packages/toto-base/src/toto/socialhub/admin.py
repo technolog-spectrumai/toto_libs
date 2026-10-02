@@ -101,12 +101,23 @@ class CommunityAdmin(TotoModelAdmin):
     is_foreign_display.short_description = "Foreign"
 
 
+def _manages_clearances(user) -> bool:
+    """The Clearances tab's rule (``views.clearances.may_manage``): a real
+    superuser on the Superuser plan."""
+    from toto.socialhub.views.clearances import may_manage
+
+    return may_manage(user)
+
+
 @admin.register(Clearance)
 class ClearanceAdmin(TotoModelAdmin):
     """Superusers only (2026-09-29, the owner's rule): a clearance decides who
     reads and how fast mana refills, so no staff right reaches this page —
     not to see it, not to add, change or delete. The Clearances tab in the
-    socialhub is the same door with fewer fields."""
+    socialhub is the same door with fewer fields, and its rule is this
+    page's (2026-10-02, the crown bug hunt): a superuser on the Superuser
+    plan. The superuser bit alone let one off the plan make clearances, give
+    them and delete them here while the tab refused them."""
 
     form = ClearanceAdminForm
     list_display = ("name", "slug", "regen_security", "regen_compute", "regen_storage", "holders")
@@ -119,19 +130,19 @@ class ClearanceAdmin(TotoModelAdmin):
     holders.short_description = _("Holders")
 
     def has_module_permission(self, request):
-        return request.user.is_superuser
+        return _manages_clearances(request.user)
 
     def has_view_permission(self, request, obj=None):
-        return request.user.is_superuser
+        return _manages_clearances(request.user)
 
     def has_add_permission(self, request):
-        return request.user.is_superuser
+        return _manages_clearances(request.user)
 
     def has_change_permission(self, request, obj=None):
-        return request.user.is_superuser
+        return _manages_clearances(request.user)
 
     def has_delete_permission(self, request, obj=None):
-        return request.user.is_superuser
+        return _manages_clearances(request.user)
 
 
 

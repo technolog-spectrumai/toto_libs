@@ -62,6 +62,19 @@ class PersonAdmin(TotoModelAdmin):
     def address_display(self, obj):
         return str(obj.address) if obj.address else "-"
 
+    # Who holds a clearance is the Clearances tab's to change (2026-10-02,
+    # the crown bug hunt): a superuser on the Superuser plan. Anybody else
+    # who may change a person sees the field read-only — it was an ordinary
+    # field here, so a staff clerk holding only people.change_person ticked
+    # any clearance on their own person and read everything it keeps.
+    def get_readonly_fields(self, request, obj=None):
+        from toto.socialhub.views.clearances import may_manage
+
+        fields = list(super().get_readonly_fields(request, obj))
+        if "clearances" not in fields and not may_manage(request.user):
+            fields.append("clearances")
+        return fields
+
     # The picture replaced, taken off or left behind here goes with it
     # (2026-10-01, the review of stage 37c), as on My account: a photo left in
     # /media/ is still a photo of them on the server, at an address anybody

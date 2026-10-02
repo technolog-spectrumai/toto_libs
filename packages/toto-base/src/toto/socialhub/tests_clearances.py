@@ -103,8 +103,10 @@ class ClearanceCapTests(ClearanceTestCase):
         Community.objects.create(name="testers", slug="testers")  # a community: no cap
 
 
-class ClearanceAdminMembershipTests(ClearanceTestCase):
-    """Superusers put people in clearances — on the clearance, or on the person."""
+class ClearanceAdminMembershipTests(OnThePlan, ClearanceTestCase):
+    """Superusers put people in clearances — on the clearance, or on the person
+    — on the Superuser plan, as the tab asks (2026-10-02,
+    ``tests_clearance_admin_plan``)."""
 
     def _change_clearance(self, *members):
         return self.client.post(reverse("admin:socialhub_clearance_change", args=[self.internal.pk]), {
