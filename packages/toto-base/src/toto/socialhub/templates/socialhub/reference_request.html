@@ -210,13 +210,32 @@
                   <p class="mt-1 text-xs opacity-65">{{ form.password.help_text }}</p>
                 {% endif %}
 
-                {% if form.password.errors %}
+                {% comment %} Each refusal on its own line (2026-10-02): the
+                     validators may give several, which striptags ran together. {% endcomment %}
+                {% for error in form.password.errors %}
                   <p
                     :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
                     class="mt-2 text-xs font-medium">
-                    {{ form.password.errors|striptags }}
+                    {{ error }}
                   </p>
+                {% endfor %}
+              </div>
+
+              <div>
+                {{ form.password2.label_tag }}
+                {{ form.password2 }}
+
+                {% if form.password2.help_text %}
+                  <p class="mt-1 text-xs opacity-65">{{ form.password2.help_text }}</p>
                 {% endif %}
+
+                {% for error in form.password2.errors %}
+                  <p
+                    :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+                    class="mt-2 text-xs font-medium">
+                    {{ error }}
+                  </p>
+                {% endfor %}
               </div>
             </div>
 

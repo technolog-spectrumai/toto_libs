@@ -61,7 +61,8 @@ class ReferenceSessionCase(TestCase):
 
     def ask(self, client, password="chosen-pw-1"):
         return client.post(self.step_url(), {"referrer": self.referrer.pk,
-                                             "message": "vouch", "password": password})
+                                             "message": "vouch", "password": password,
+                                             "password2": password})
 
     def assertRefused(self, response):
         self.assertEqual(response.status_code, 403)

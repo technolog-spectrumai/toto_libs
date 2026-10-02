@@ -71,7 +71,8 @@ class TheApplicantsWayTests(ApplicationUrlCase):
             self.assertRedirects(response, step, fetch_redirect_response=False)
             self.assertEqual(get(step).status_code, 200)
             response = self.client.post(step, {"referrer": self.voucher.pk, "message": "vouch",
-                                               "password": "Chosen-pw-41"})
+                                               "password": "Chosen-pw-41",
+                                               "password2": "Chosen-pw-41"})
             thanks = reverse("socialhub:reference_next")
             self.assertRedirects(response, thanks, fetch_redirect_response=False)
             self.assertEqual(get(thanks).status_code, 200)

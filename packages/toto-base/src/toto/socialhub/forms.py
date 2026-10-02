@@ -164,13 +164,53 @@ class ReferenceRequestForm(forms.ModelForm):
         }),
         help_text=_("Optional — set a password now so you can log in as soon as your application is approved."),
     )
+    # Typed twice, and through AUTH_PASSWORD_VALIDATORS (2026-10-02, the crown
+    # bug hunt): this field was bare — `1` or `password` was set, and the
+    # account signed in with it once admitted — while every other door that
+    # sets a password asks them. Django's own words, so its catalogue
+    # translates them.
+    password2 = forms.CharField(
+        required=False,
+        label=_("Password confirmation"),
+        widget=forms.PasswordInput(attrs={'autocomplete': 'new-password'}),
+        help_text=_("Enter the same password as before, for verification."),
+    )
 
     def __init__(self, *args, application=None, **kwargs):
         super().__init__(*args, **kwargs)
+        #: The account the password goes on: the one still waiting for its
+        #: acceptance (``applications.applicant_account``), or None.
+        self.applicant = None
         if application:
+            from toto.socialhub.applications import applicant_account
+
             self.fields['referrer'].queryset = Person.objects.filter(
                 communities=application.community
             )
+            self.applicant = applicant_account(application, waiting_only=True)
+        self._application = application
+
+    def clean(self):
+        cleaned = super().clean()
+        password = cleaned.get("password") or ""
+        again = cleaned.get("password2") or ""
+        if not password and not again:
+            return cleaned
+        if password != again:
+            self.add_error("password2", forms.ValidationError(
+                _("The two password fields didn’t match."), code="password_mismatch"))
+            return cleaned
+        from django.contrib.auth import password_validation
+
+        # The validators compare it with the account it is for — its
+        # username and address — or, when none waits any more, with the
+        # address this application was made with.
+        user = self.applicant or User(email=getattr(self._application, "email", ""))
+        try:
+            password_validation.validate_password(password, user=user)
+        except forms.ValidationError as error:
+            self.add_error("password", error)
+        return cleaned
 
     class Meta:
         model = ReferenceRequest

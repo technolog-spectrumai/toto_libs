@@ -168,7 +168,8 @@ class ReferenceRequestPageTests(FlowCase):
         # first account at the address — a member's.
         member = self.member_with_the_address()
         self.client.post(reverse("socialhub:reference_request"),
-                         {"referrer": self.referrer.pk, "message": "vouch", "password": "chosen-pw-1"})
+                         {"referrer": self.referrer.pk, "message": "vouch", "password": "chosen-pw-1",
+                          "password2": "chosen-pw-1"})
         member.refresh_from_db()
         self.applicant.refresh_from_db()
         self.assertTrue(member.check_password("elder-pw"))
@@ -179,7 +180,8 @@ class ReferenceRequestPageTests(FlowCase):
         self.applicant.set_password("own-pw")
         self.applicant.save()
         self.client.post(reverse("socialhub:reference_request"),
-                         {"referrer": self.referrer.pk, "message": "again", "password": "other-pw-1"})
+                         {"referrer": self.referrer.pk, "message": "again", "password": "other-pw-1",
+                          "password2": "other-pw-1"})
         self.applicant.refresh_from_db()
         self.assertTrue(self.applicant.check_password("own-pw"))
 

@@ -261,7 +261,8 @@ class ReferenceRequestPasswordTests(TestCase):
     def test_password_set_now_but_user_activated_only_on_accept(self):
         res = self.client.post(
             self._url(),
-            {"referrer": self.referrer.id, "message": "vouch", "password": "s3cret-pw"},
+            {"referrer": self.referrer.id, "message": "vouch", "password": "s3cret-pw",
+             "password2": "s3cret-pw"},
         )
         self.assertEqual(res.status_code, 302)
 
