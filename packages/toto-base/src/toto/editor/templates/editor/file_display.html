@@ -380,12 +380,16 @@ const EditorSync = (() => {
 })();
 </script>
 
+{# The file's text as DATA (2026-10-02, crown 41): inside setValue(`…`) a file holding #}
+{# ${…} ran — a shell script's ${HOME} threw and the editor never started — because #}
+{# escapejs is for a quoted string, not a template literal. #}
+{{ content|json_script:"editor-content" }}
 <script>
 ace.config.set("basePath", "{% static 'vendor/ace/' %}");
 const editor = ace.edit("editor");
 editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
 editor.session.setMode("ace/mode/{{ ace_mode }}");
-editor.setValue(`{{ content|escapejs }}`, -1);
+editor.setValue(JSON.parse(document.getElementById("editor-content").textContent), -1);
 editor.setOptions({ fontSize: "14px", showPrintMargin: false, wrap: {{ wrap_lines }}, readOnly: false });
 window.VaultEditor = editor;
 
