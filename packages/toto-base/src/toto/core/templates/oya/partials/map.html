@@ -40,10 +40,13 @@
 
       <!-- 📋 FILTERED LIST -->
       <div class="space-y-1">
+        {# Each name is the element's DATA (2026-10-02): inside the expression's quotes #}
+        {# the browser undid Django's escaping before Alpine ran it, so x'+alert(1)+' ran. #}
         {% for loc in widget.features %}
-          <template x-if="matches('{{ loc.name|lower }}')">
+          <template data-match="{{ loc.name|lower }}" x-if="matches($el.dataset.match)">
             <button
-              @click="zoomTo('{{ loc.name }}')"
+              data-name="{{ loc.name }}"
+              @click="zoomTo($el.dataset.name)"
               class="w-full text-left px-2 py-1 rounded text-sm transition
                      hover:bg-link-light/15 dark:hover:bg-link-light">
               <div class="font-medium">{{ loc.type }}</div>

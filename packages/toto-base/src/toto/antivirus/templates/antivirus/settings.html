@@ -117,13 +117,14 @@
   {% endif %}
 </div>
 
+{# Quoted strings, what escapejs is for (2026-10-02): in a template literal ${…} runs. #}
 <script>
 function antivirusSettings() {
   return {
-    types: JSON.parse(`{{ types_json|escapejs }}`),
-    doors: JSON.parse(`{{ doors_json|escapejs }}`),
-    savedTypes: JSON.parse(`{{ types_json|escapejs }}`),
-    savedDoors: JSON.parse(`{{ doors_json|escapejs }}`),
+    types: JSON.parse("{{ types_json|escapejs }}"),
+    doors: JSON.parse("{{ doors_json|escapejs }}"),
+    savedTypes: JSON.parse("{{ types_json|escapejs }}"),
+    savedDoors: JSON.parse("{{ doors_json|escapejs }}"),
     prefSaved: false,
     {% if is_operator %}
     config: {
