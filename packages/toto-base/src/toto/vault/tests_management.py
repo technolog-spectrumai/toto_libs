@@ -302,12 +302,12 @@ class ListTests(ManageFixture):
 
     def test_a_bucket_being_deleted_is_marked_and_takes_no_edit(self):
         Bucket.objects.filter(pk=self.local.pk).update(
-            deletion_requested_at=timezone.now(), deletion_error="Held by a wiki page.")
+            deletion_requested_at=timezone.now(), deletion_error="Held by another app.")
         body = self.page()
         row = body[body.index(f'data-testid="bucket-row-{self.local.pk}"'):]
         row = row[:row.index("</tr>")]
         self.assertIn("Deletion stopped", row)
-        self.assertIn("Held by a wiki page.", row)
+        self.assertIn("Held by another app.", row)
         self.assertNotIn(f'data-testid="bucket-edit-{self.local.pk}"', row)
         self.assertIn("Delete again", row)
 

@@ -197,7 +197,7 @@ Refused:
   desk's upload, the API's files/put and a job's staged inputs
   (`toto.anastasia`), the knowledge graph's "Save graph as NeoJSON" name and
   an analysis's File Title (`toto.ravioli`: both doors and the analysis task;
-  2026-10-01) — and on zenobia the wiki's image upload and zip import.
+  2026-10-01).
   Tests: `tests_office_refusal`.
 * **OpenDocument is not Microsoft** — .odt .ods .odp are unaffected and keep
   today's behaviour.
@@ -238,7 +238,7 @@ Neo4j (`toto.neo_editor.tests_clearance`):
 
 Changing them: only a **superuser on the Superuser plan** (2026-10-01,
 `plan_gate.superuser_plan_holder` — the account alone is refused, as by the
-wiki's `may_keep`), in the "Clearances" section of the bucket's page
+map's Domains tab), in the "Clearances" section of the bucket's page
 (`metrics/<slug>/`), which posts to `clearances.bucket_clearances`
 (`buckets/<slug>/clearances/`); whoever may see the bucket's page sees its
 clearances, read-only (its owner and a superuser without the plan are told
@@ -247,6 +247,12 @@ page's 404). Every change is on the audit chain
 (`VAULT.BUCKET.CLEARANCES_CHANGED`: before, after, `open`, the bucket). A
 clearance that still keeps a bucket cannot be deleted (PROTECT). There is no
 per-file door any more. Tests: `tests_clearances`, `tests_more_clearances`.
+
+Buckets are the only file groups clearances keep. zenobia's wiki kept its
+pages' attachments in a bucket per topic (37c.28) until the wiki was parked
+(2026-10-02, zenobia's `RETIRED.md`): a bucket that served a topic, or the
+shared `wiki` bucket, is an ordinary bucket now, kept by the clearances its
+own page sets and nothing else.
 
 Seeing them all: the vault's **Clearances** tab (`clearances/`,
 `clearance_tab.py`), for a superuser on the Superuser plan only
@@ -307,7 +313,7 @@ Deleting a vault file moves it to the trash. The file keeps its bytes, its
 versions, its bucket (so the bucket's clearances still keep it) and its key;
 it leaves its folder (`directory` cleared, the folder kept in `trashed_from`
 for the restore) and is stamped `trashed_at` / `trashed_by`. It is kept
-`VAULT_TRASH_DAYS` days (30; `models.trash_days()`). Wiki pages have no trash.
+`VAULT_TRASH_DAYS` days (30; `models.trash_days()`).
 
 **How a trashed file disappears: the default manager hides it.**
 `VaultFile.objects` is `LiveFileManager` (`trashed_at IS NULL`), and so are the
@@ -338,9 +344,9 @@ hiding place — its bytes are still held:
 * the admin (with a "trashed" filter).
 
 **Joins skip the manager.** A lookup through another model
-(`WikiAsset.objects.filter(vault_file__…)`, `Bucket…annotate(Count("files"))`)
+(`Bucket…annotate(Count("files"))`, another app's row pointing at a file)
 does not apply `VaultFile.objects`; a join that shows a file must say
-`…trashed_at__isnull=True` itself (the wiki's image render does). Counts
+`…trashed_at__isnull=True` itself. Counts
 through a join include the trash, which is what a usage figure wants.
 
 **Keys.** The (bucket, key) rule binds live files only
@@ -375,8 +381,7 @@ too. A refused delete (404) is still the middleware's failed `FILE_DELETED`.
 Doors that keep their behaviour, on purpose: a copy or transfer with the
 "replace" policy (an overwrite the copier chose, not a delete), a mirror
 refresh's prune (rows only), the bucket purge (purges), `erase_user`
-(console), the admin (superusers), a wiki page's image un-attach and kanban's
-attachment remove (the link only, never the file), forum attachments (not
+(console), the admin (superusers), kanban's attachment remove (the link only, never the file), forum attachments (not
 vault files).
 
 **The delete signal and a trashed row.** `signals.delete_file_on_disk` never
@@ -386,8 +391,8 @@ anyway; the after-commit unlink is for cascades that bypass it (an erased
 account), so they leave no orphan.
 
 **Leaks closed through joins and forward keys** (they skip the manager):
-`attach.readable` refuses a trashed file (the wiki's export list and every
-attachment list), the wiki's image lists and backup, the git import (a trashed
+`attach.readable` refuses a trashed file (every attachment list), the git
+import (a trashed
 file has left the repo), the metrics API and page (counts are live files;
 sizes are stored bytes, trash included, with `trash_size_bytes` /
 `trash_size` saying how much), the "buckets I have files in" tree, and
@@ -657,8 +662,8 @@ a real user's pk; the anonymous arm never reaches it) and nothing crashes on it:
   owned by the bucket's owner), a peer upload into an exported bucket (409), an
   empty file created in it, an echo to or from it (yamabiko's
   `endpoint_refusal`);
-* doors that create folders in a shared bucket (the forum's rooms, the wiki's
-  images, the connectors' archive) fall back to a superuser, and a whitelist is
+* doors that create folders in a shared bucket (the forum's rooms, the
+  connectors' archive) fall back to a superuser, and a whitelist is
   never left empty (empty means everybody);
 * the pages show "—" for the owner; a superuser on the Superuser plan gives it
   one in Management (`VAULT.BUCKET.UPDATED`).

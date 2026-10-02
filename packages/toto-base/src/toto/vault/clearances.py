@@ -11,8 +11,8 @@ with none follows the vault's five clauses.
 This module is the door for CHANGING a bucket's clearances — a POST from the
 "Clearances" section of the bucket's page (``metrics/<slug>/``), and the
 helpers that page asks. Only a superuser on the Superuser plan sets them
-(2026-10-01: superuser functionality asks the plan, as the wiki's
-``may_keep`` and the vault's own tabs do); whoever may see the bucket's page
+(2026-10-01: superuser functionality asks the plan, as the map's
+domains and the vault's own tabs do); whoever may see the bucket's page
 sees them, read-only.
 """
 

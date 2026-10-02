@@ -502,7 +502,7 @@ def personal_bucket(user):
     """The user's own ``personal-<username>`` bucket, created on first use.
 
     The one shape every door that files something "somewhere of theirs" uses
-    (the vault API, the new-file picker, aralia's renders, the wiki). Since
+    (the vault API, the new-file picker, aralia's renders). Since
     owners are SET_NULL a bucket with that slug may belong to nobody — its
     account was deleted — or to somebody else (Management gave it away).
     Handing such a bucket to a NEW account that happens to carry the old

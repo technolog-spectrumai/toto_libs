@@ -47,7 +47,7 @@ uses it. A file another app still holds (a PROTECT foreign key), or bytes that
 would not go, stop the purge before the bucket goes: the bucket stays marked,
 ``deletion_error`` says why, and Delete may be confirmed again once the cause
 is gone. Something ELSE that holds the bucket itself through a PROTECT
-foreign key — a wiki topic keeping its pages' files here (2026-10-01) —
+foreign key — another app's row keeping its files here (2026-10-01) —
 refuses Delete before anything is marked, and stops a purge before its first
 file (``holders``): the purge would take every file and then fail on the
 bucket. No file ever ends with ``bucket=None`` — ``VaultFile.bucket`` is
@@ -232,8 +232,9 @@ def update_bucket(bucket, actor, **changes):
 def holders(bucket) -> list:
     """What holds ``bucket`` besides its files (2026-10-01): for each other
     model whose foreign key to it is PROTECT and has rows naming it, its
-    plural name and up to five of the rows (``"wiki topics: Payroll, Board"``).
-    A wiki topic keeps its pages' files in a bucket this way. Files are the
+    plural name and up to five of the rows (``"topics: Payroll, Board"``).
+    An app that keeps its own files in a bucket holds it this way (zenobia's
+    wiki topics did until 2026-10-02). Files are the
     purge's own to take; these it cannot, so Delete refuses while any is left
     rather than taking every file and then failing on the bucket."""
     from django.db.models import PROTECT
