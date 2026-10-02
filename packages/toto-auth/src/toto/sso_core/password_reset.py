@@ -355,15 +355,17 @@ def password_reset_recover_view(request, token):
 
 
 def _back_to_profile(request):
-    """Where an approver lands after acting on a card: their own profile,
-    where the card was — or the dashboard when profiles are not mounted."""
+    """Where an approver lands after acting on a card: their own profile's
+    Activity tab, where the card was (2026-10-02, stage 50: the profile in
+    tabs) — or the dashboard when profiles are not mounted."""
     if django_apps.is_installed("toto.people"):
         from toto.people.models import Person
 
         person = Person.objects.filter(user=request.user).only("slug").first()
         if person is not None and person.slug:
             try:
-                return reverse("socialhub:profile_details", args=[person.slug])
+                return reverse("socialhub:profile_details",
+                               args=[person.slug]) + "?tab=activity"
             except NoReverseMatch:
                 pass
     try:
