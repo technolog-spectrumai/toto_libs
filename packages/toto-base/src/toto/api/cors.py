@@ -20,16 +20,41 @@ CORS_ALLOW_HEADERS = "Content-Type, X-Requested-With, Authorization"
 CORS_ALLOW_METHODS = "GET, POST, OPTIONS"
 
 
+#: The desktop app's own origins (Tauri: tauri://localhost on Linux and
+#: macOS, http(s)://tauri.localhost on Windows), for a host that names none.
+DEFAULT_CLIENT_ORIGINS = (
+    "tauri://localhost", "http://tauri.localhost", "https://tauri.localhost",
+)
+
+
+def _normal_origin(origin: str) -> str:
+    return (origin or "").strip().rstrip("/").lower()
+
+
+def client_origins() -> set[str]:
+    """The origins the host trusts with credentialed CORS: exactly its
+    ``CORS_ALLOWED_ORIGINS`` (the setting django-cors-headers reads too), or
+    the desktop app's own when it names none."""
+    from django.conf import settings
+
+    named = getattr(settings, "CORS_ALLOWED_ORIGINS", None)
+    if named is None:
+        named = DEFAULT_CLIENT_ORIGINS
+    return {_normal_origin(o) for o in named if o}
+
+
 def _is_allowed_origin(origin: str) -> bool:
-    """Allow localhost / 127.0.0.1 (any port) and Tauri scheme origins."""
-    if not origin:
+    """An exact match against :func:`client_origins` (stage 51).
+
+    It used to be any localhost or 127.0.0.1 host on any port and any tauri://
+    origin, echoed back with credentials: a page served on another port of the
+    machine running the local stack read the member's vault, profiles and
+    pages, CSRF tokens included.
+    """
+    origin = _normal_origin(origin)
+    if not origin or origin == "null":
         return False
-    try:
-        parsed = urlparse(origin)
-        hostname = parsed.hostname or ""
-        return hostname in ("localhost", "127.0.0.1") or parsed.scheme == "tauri"
-    except Exception:
-        return False
+    return origin in client_origins()
 
 
 def _cors(request, response):

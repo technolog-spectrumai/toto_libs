@@ -51,21 +51,39 @@ class _Probe(MeshGatedApiView):
         return JsonResponse({"written": True})
 
 
+CLIENTS = ["tauri://localhost", "http://tauri.localhost"]
+
+
+@override_settings(CORS_ALLOWED_ORIGINS=CLIENTS)
 class OriginRuleTests(SimpleTestCase):
-    def test_local_origins_on_any_port_and_the_desktop_scheme_are_allowed(self):
-        for origin in ("http://localhost:1420", "http://127.0.0.1", "https://localhost",
-                       "tauri://localhost", "tauri://anything"):
+    """Stage 51: only the exact origins the host names in
+    CORS_ALLOWED_ORIGINS. A page on any localhost port used to be echoed
+    back with credentials, so anything served on the machine running the
+    local stack read the member's vault."""
+
+    def test_the_named_client_origins_are_allowed(self):
+        for origin in CLIENTS + ["TAURI://localhost", "http://tauri.localhost/"]:
             with self.subTest(origin=origin):
                 self.assertTrue(_is_allowed_origin(origin))
 
-    def test_everything_else_is_refused_look_alikes_included(self):
+    def test_everything_else_is_refused_local_ports_and_look_alikes_included(self):
         for origin in ("", "https://zenobia.example.org", "http://localhost.evil.com",
                        "http://127.0.0.1.nip.io", "http://evil.com/?localhost",
-                       "null"):
+                       "null", "http://localhost:31337", "http://127.0.0.1:9",
+                       "https://localhost", "http://localhost:1420",
+                       "tauri://anything", "tauri://localhost.evil.com"):
             with self.subTest(origin=origin):
                 self.assertFalse(_is_allowed_origin(origin))
 
+    @override_settings()
+    def test_a_host_that_names_none_allows_the_desktop_app_alone(self):
+        from django.conf import settings
+        del settings.CORS_ALLOWED_ORIGINS
+        self.assertTrue(_is_allowed_origin("tauri://localhost"))
+        self.assertFalse(_is_allowed_origin("http://localhost:1420"))
 
+
+@override_settings(CORS_ALLOWED_ORIGINS=CLIENTS)
 class CorsHeaderTests(TestCase):
     def setUp(self):
         self.rf = RequestFactory()
@@ -90,9 +108,30 @@ class CorsHeaderTests(TestCase):
         self.assertNotIn("Access-Control-Allow-Credentials", response)
 
     def test_an_ordinary_answer_carries_the_cors_headers_too(self):
-        response = self.call("get", "http://localhost:5173")
+        response = self.call("get", "http://tauri.localhost")
         self.assertEqual(json.loads(response.content), {"ok": True, "service": "toto"})
-        self.assertEqual(response["Access-Control-Allow-Origin"], "http://localhost:5173")
+        self.assertEqual(response["Access-Control-Allow-Origin"], "http://tauri.localhost")
+
+    def test_a_page_on_another_local_port_is_not_echoed(self):
+        response = self.call("get", "http://localhost:31337")
+        self.assertNotIn("Access-Control-Allow-Origin", response)
+        self.assertNotIn("Access-Control-Allow-Credentials", response)
+
+
+class CorsThroughTheStackTests(TestCase):
+    """The same through the whole stack and the host's own settings: its CORS
+    middleware (where it has one) and the library's layer both stay silent."""
+
+    def test_a_local_port_reads_nothing_from_the_vault_listing(self):
+        from django.apps import apps
+        if not apps.is_installed("toto.vault"):
+            self.skipTest("toto.vault is not installed")
+        self.client.force_login(User.objects.create_user("ada", password="pw"))
+        for origin in ("http://localhost:31337", "http://127.0.0.1:9"):
+            with self.subTest(origin=origin):
+                response = self.client.get("/vault/api/files/", HTTP_ORIGIN=origin)
+                self.assertNotIn("Access-Control-Allow-Origin", response)
+                self.assertNotIn("Access-Control-Allow-Credentials", response)
 
 
 class BearerTests(TestCase):
@@ -157,10 +196,11 @@ class MeshGateTests(TestCase):
         request.user = user or AnonymousUser()
         return _Probe.as_view()(request)
 
+    @override_settings(CORS_ALLOWED_ORIGINS=CLIENTS)
     def test_nobody_signed_in_is_told_so_not_that_the_data_is_gated(self):
-        response = self.call(HTTP_ORIGIN="http://localhost")
+        response = self.call(HTTP_ORIGIN="tauri://localhost")
         self.assertEqual(response.status_code, 401)
-        self.assertEqual(response["Access-Control-Allow-Origin"], "http://localhost")
+        self.assertEqual(response["Access-Control-Allow-Origin"], "tauri://localhost")
 
     def test_a_member_outside_the_mesh_is_told_to_pull_from_a_peer(self):
         response = self.call(user=self.ada)
