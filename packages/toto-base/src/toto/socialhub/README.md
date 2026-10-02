@@ -347,7 +347,13 @@ platform their data, and the rest in `toto.core`:
   where django-trix-editor's widget links unpkg.com. A form cannot name that
   widget in `Meta.widgets` — `TrixEditorField.formfield` puts the package's
   back — so the news form and `make_section_form` call `use_local_trix` on
-  their built fields.
+  their built fields. Its upload script is the widget's own too
+  (`verbena/trix_upload.js`, 2026-10-02): a picture the host's door refuses
+  is taken out of the editor again with the door's sentence under it, where
+  the package's left it hanging at its progress bar. A door that serves
+  every community's news at once asks
+  `permissions.can_manage_some_community_news` — the news rule itself,
+  asked of each community — never a model permission.
 - **Nothing kept longer than needed**: membership applications that lapse
   are renewed when their applicant applies again, and pruned with the
   never-used accounts they made 30 days after they lapsed

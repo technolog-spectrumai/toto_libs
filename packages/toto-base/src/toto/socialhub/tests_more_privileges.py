@@ -124,6 +124,80 @@ class NewsPermissionTests(PrivilegeCase):
         self.assertEqual(permissions.current_person(request), self.weaver)
 
 
+class SomeCommunityNewsTests(PrivilegeCase):
+    """Whether a sender writes the news of at least one community, for a door
+    that serves every community's news at once — the Trix editor's attachment
+    upload, which a picture reaches before the post it goes into exists
+    (2026-10-02). It asks ``can_manage_community_news`` itself: the door's own
+    rule, a model permission nothing grants, shut the heads and the senior
+    members out."""
+
+    def some(self, user):
+        request = RequestFactory().get("/")
+        request.user = user
+        return permissions.can_manage_some_community_news(request)
+
+    def can_somewhere(self, user):
+        request = RequestFactory().get("/")
+        request.user = user
+        return any(permissions.can_manage_community_news(request, community)
+                   for community in Community.objects.all())
+
+    def test_the_head_and_a_senior_member_of_any_community_do(self):
+        head = person("head")
+        senior = person("senior")
+        Community.objects.create(name="spinners", slug="spinners", head=head)
+        self.weavers.senior_members.add(senior)
+        self.assertTrue(self.some(head.user))
+        self.assertTrue(self.some(senior.user))
+
+    def test_a_member_of_a_granting_community_does(self):
+        self.assertTrue(self.some(self.agent.user))
+
+    def test_staff_and_superusers_do_without_a_person(self):
+        self.assertTrue(self.some(User.objects.create_user("staff", password="pw", is_staff=True)))
+        self.assertTrue(self.some(User.objects.create_superuser("root", "root@example.com", "pw")))
+
+    def test_a_plain_member_anonymous_and_a_login_without_a_person_do_not(self):
+        self.assertFalse(self.some(self.weaver.user))
+        self.assertFalse(self.some(AnonymousUser()))
+        self.assertFalse(self.some(User.objects.create_user("stray", password="pw")))
+
+    def test_a_model_permission_makes_nobody_a_writer(self):
+        from django.contrib.auth.models import Permission
+
+        self.weaver.user.user_permissions.add(Permission.objects.get(
+            content_type__app_label="socialhub", codename="add_communitynewspost"))
+        self.assertFalse(self.some(User.objects.get(pk=self.weaver.user.pk)))
+
+    def test_it_answers_as_the_rule_does_for_every_kind_of_sender(self):
+        head, senior = person("head"), person("senior", self.weavers)
+        self.weavers.head = head
+        self.weavers.save()
+        self.weavers.senior_members.add(senior)
+        senders = [head.user, senior.user, self.agent.user, self.weaver.user, AnonymousUser(),
+                   User.objects.create_user("stray", password="pw"),
+                   User.objects.create_user("staff", password="pw", is_staff=True),
+                   User.objects.create_superuser("root", "root@example.com", "pw")]
+        for sender in senders:
+            with self.subTest(sender=str(sender)):
+                self.assertEqual(self.some(sender), self.can_somewhere(sender))
+
+    def test_with_no_community_there_is_no_news_and_no_writer(self):
+        Community.objects.all().delete()
+        self.assertFalse(self.some(User.objects.create_superuser("root", "root@example.com", "pw")))
+
+    def test_a_head_is_answered_at_their_own_community(self):
+        for number in range(5):
+            Community.objects.create(name=f"guild {number}", slug=f"guild-{number}")
+        head = person("head")
+        Community.objects.create(name="last", slug="last", head=head)
+        request = RequestFactory().get("/")
+        request.user = User.objects.get(pk=head.user.pk)
+        with self.assertNumQueries(2):  # the person, then the community they head
+            self.assertTrue(permissions.can_manage_some_community_news(request))
+
+
 class ChainAndAdministrataTests(PrivilegeCase):
     def test_the_chain_is_refused_without_the_right(self):
         self.client.force_login(self.weaver.user)
