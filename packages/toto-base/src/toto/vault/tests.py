@@ -1072,6 +1072,57 @@ class ZipArchiveHelperTests(TestCase):
         self.assertIsNone(vf.directory_id)  # target=None → bucket root
 
 
+class ZipNodeRecheckTests(ZipArchiveHelperTests):
+    """Stage 51: the `vault_zip_files` node checks its input again itself.
+    CreateZipView checks before it starts the run, but the node used to trust
+    whatever owner, folders and files the run's input named."""
+
+    def _run(self, owner, files, *, source=None, target=None):
+        from toto.vault.predefined_tasks import vault_zip_files
+        return vault_zip_files({"data": {
+            "owner_id": owner.pk,
+            "source_directory_id": (source or self.docs).pk,
+            "target_directory_id": target.pk if target else None,
+            "file_ids": [f.pk for f in files], "output_name": "loot.zip"}})
+
+    def _zips(self):
+        return VaultFile.objects.filter(file_type="zip")
+
+    def test_the_bucket_owner_still_zips(self):
+        f = self._file("a.txt", "a", self.docs)
+        out = self._run(self.alice, [f])
+        self.assertEqual(out["data"]["added"], 1)
+        self.assertEqual(self._zips().count(), 1)
+
+    def test_an_owner_who_does_not_own_the_bucket_is_refused(self):
+        from django.core.exceptions import PermissionDenied
+        f = self._file("salaries.txt", "salaries", self.docs, body=b"TOP SECRET")
+        op = User.objects.create_user("zip_op", password="x", is_staff=True)
+        with self.assertRaises(PermissionDenied):
+            self._run(op, [f])
+        self.assertFalse(self._zips().exists())
+
+    def test_a_target_folder_in_another_bucket_is_refused(self):
+        from django.core.exceptions import PermissionDenied
+        f = self._file("a.txt", "a", self.docs)
+        other = Bucket.objects.create(name="O", slug="o-bucket", owner=self.alice)
+        elsewhere = VaultDirectory.objects.create(name="E", bucket=other, owner=self.alice)
+        with self.assertRaises(PermissionDenied):
+            self._run(self.alice, [f], target=elsewhere)
+        self.assertFalse(self._zips().exists())
+
+    def test_a_file_the_bucket_clearances_hide_is_left_out(self):
+        from toto.socialhub.models import Clearance
+        from toto.vault.models import BucketClearance
+        f = self._file("a.txt", "a", self.docs)
+        BucketClearance.objects.create(
+            bucket=self.bucket,
+            clearance=Clearance.objects.create(name="internal", slug="internal"))
+        with self.assertRaises(ValueError):
+            self._run(self.alice, [f])
+        self.assertFalse(self._zips().exists())
+
+
 class CreateZipViewTests(TestCase):
     @classmethod
     def setUpClass(cls):

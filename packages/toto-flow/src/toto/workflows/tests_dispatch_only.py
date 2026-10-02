@@ -143,7 +143,8 @@ class MarkedNodesTests(TestCase):
             "toto.forum": ["forum_cleanup"],
             "toto.antivirus": ["antivirus_scan"],
             "toto.vault": ["vault_refresh_remote_bucket",
-                           "vault_transfer_files"],
+                           "vault_transfer_files", "vault_zip_files"],
+            "toto.aralia": ["aralia_render"],
         }
         checked = 0
         for app, names in expected.items():
@@ -155,3 +156,53 @@ class MarkedNodesTests(TestCase):
                     checked += 1
         if not checked:
             self.skipTest("none of the dispatching apps is installed")
+
+    def test_every_node_that_reads_a_record_id_is_marked(self):
+        """Stage 51: `vault_zip_files` trusted owner_id, directory and file ids
+        typed into the Workflows API, so a staff account zipped a member's
+        private files into an archive it owned. A node that reads a record id
+        from its input is started by its app, which checked the record first;
+        the start door must never take one by hand."""
+        import inspect
+        import re
+
+        # Read no record id, or refuse every input: nothing to replay.
+        hand_startable = {"vault_encrypt_file"}
+        reads_an_id = re.compile(r"""["'][a-z_]*_ids?["']""")
+        for name, handler in sorted(_registry.items()):
+            if name in hand_startable:
+                continue
+            try:
+                source = inspect.getsource(handler)
+            except (OSError, TypeError):
+                continue
+            if reads_an_id.search(source):
+                with self.subTest(task=name):
+                    self.assertTrue(is_dispatch_only(name),
+                                    f"{name} reads a record id from its input")
+
+
+class VaultZipDoorTests(DispatchOnlyBase):
+    """The vault's own zip workflow, seeded as CreateZipView seeds it."""
+
+    def test_staff_cannot_start_a_zip_run_by_hand(self):
+        from django.apps import apps
+        if not apps.is_installed("toto.vault"):
+            self.skipTest("toto.vault is not installed")
+        from toto.vault.views import CreateZipView
+
+        workflow = CreateZipView._ensure_workflow()
+        request = APIRequestFactory().post(
+            f"/workflows/api/{workflow.pk}/runs/",
+            {"input_data": {"data": {"owner_id": self.staff.pk,
+                                     "source_directory_id": 1,
+                                     "file_ids": [1], "output_name": "x.zip"}}},
+            format="json")
+        force_authenticate(request, user=self.staff)
+        with mock.patch("toto.workflows.views.celery_available",
+                        return_value=True), \
+             mock.patch("toto.workflows.views.start_workflow_run_task") as task:
+            response = run_list(request, workflow_id=workflow.pk)
+        self.assertEqual(response.status_code, 403)
+        task.delay.assert_not_called()
+        self.assertFalse(WorkflowRun.objects.filter(workflow=workflow).exists())

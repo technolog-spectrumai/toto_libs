@@ -9,28 +9,46 @@ this module is never loaded.
 from toto.workflows.predefined_tasks import register
 
 
-@register("vault_zip_files")
+@register("vault_zip_files", dispatch_only=True)
 def vault_zip_files(input_data: dict) -> dict:
     """Zip the selected vault files into a new ``zip`` VaultFile.
 
     Expects input_data = {"data": {owner_id, source_directory_id,
     target_directory_id (nullable), file_ids, output_name}}.
+
+    Dispatch-only (stage 51): CreateZipView checks the selection and starts
+    the run itself. Through the Workflows API a staff account could name any
+    member's folder and files with its own owner_id and download the archive.
+    The node checks its input again anyway, as the view does: the owner owns
+    the source bucket (or is a superuser), the target folder is in that
+    bucket, and only files the bucket's clearances show the owner go in.
     """
     from django.contrib.auth.models import User
+    from django.core.exceptions import PermissionDenied
 
+    from toto.vault import access
     from toto.vault.archive import zip_files_to_vault_file
-    from toto.vault.models import VaultDirectory
+    from toto.vault.models import VaultDirectory, VaultFile
 
     data = input_data.get("data") or {}
     owner = User.objects.get(pk=data["owner_id"])
-    source = VaultDirectory.objects.get(pk=data["source_directory_id"])
-    target = (
-        VaultDirectory.objects.get(pk=data["target_directory_id"])
-        if data.get("target_directory_id")
-        else None
-    )
+    source = VaultDirectory.objects.select_related("bucket").get(
+        pk=data["source_directory_id"])
+    if source.bucket.owner_id != owner.pk and not owner.is_superuser:
+        raise PermissionDenied("The archive's owner does not own its bucket.")
+    target = None
+    if data.get("target_directory_id"):
+        target = VaultDirectory.objects.get(pk=data["target_directory_id"])
+        if target.bucket_id != source.bucket_id:
+            raise PermissionDenied("The target folder is in another bucket.")
+    file_ids = list(
+        access.gate_by_bucket(owner, VaultFile.objects.filter(
+            pk__in=list(data.get("file_ids") or []), bucket=source.bucket,
+            is_encrypted=False))
+        .filter(access.local_content_q())
+        .values_list("pk", flat=True))
     vault_file, n_added = zip_files_to_vault_file(
-        owner, source, target, data.get("file_ids") or [], data.get("output_name") or "",
+        owner, source, target, file_ids, data.get("output_name") or "",
     )
     return {"data": {"vault_file_id": vault_file.pk, "added": n_added}}
 
