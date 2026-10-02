@@ -647,7 +647,12 @@ class VaultFile(models.Model):
         ('video', 'Video'),
         ('python', 'Python'),
         ('neojson', 'NeoJSON'),
-        ('sheet', 'Primula Sheet'),   # a Univer workbook snapshot (JSON), edited in toto.primula
+        ('sheet', 'Primula Sheet'),   # LEGACY: a Univer workbook as .json; a plain file since 2026-10-01
+        # A sheet (2026-10-02): `.uson`, a Univer workbook in a small JSON
+        # envelope, {"format": "uson", "version": 1, "workbook": {...}}. The
+        # host's app plays and edits it (zenobia: toto.primula); without one
+        # it is a plain file.
+        ('uson', 'Sheet'),
         ('pxml', 'Presentation'),     # a slide deck (.pxml), authored in zinnia, shown by toto.memo
         ('presentation', 'Presentation'),  # LEGACY spelling of 'pxml' — see below
         ('zip', 'Archive'),
@@ -701,6 +706,9 @@ class VaultFile(models.Model):
         ".svg": "svg",
         ".csv": "csv",
         ".json": "json",
+        # A sheet says what it is in its name (2026-10-02), so no JSON file
+        # is ever sniffed for a workbook.
+        ".uson": "uson",
         ".neojson": "neojson",
         ".yaml": "yaml", ".yml": "yaml",
         # Before ".xml" is irrelevant (dict lookup, not a scan) but the pairing
