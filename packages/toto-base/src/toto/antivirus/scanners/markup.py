@@ -78,6 +78,13 @@ _SVG_SAFE_REF = re.compile(r"^(#|data:image/(png|jpeg|webp|gif);base64,)",
 #: A scheme we refuse everywhere. `vbscript:` is not a joke on old renderers.
 _ACTIVE_URL = re.compile(r"^\s*(javascript|vbscript|livescript)\s*:", re.IGNORECASE)
 
+#: What a browser removes from a URL before it reads the scheme: ASCII tab and
+#: newline anywhere, and control characters and spaces around it. The parser
+#: decodes `java&#x09;script:` to `java<TAB>script:`, which the pattern above
+#: would not match, so the check runs on the value with all of them taken out
+#: (htmlview's scrub does the same with its _URL_NOISE).
+_URL_NOISE = re.compile(r"[\x00-\x20\x7f]")
+
 _URL_IN_STYLE = re.compile(r"url\s*\(", re.IGNORECASE)
 
 _REF_ATTRS = ("href", "xlink:href", "src", "xlink:src", "data", "action",
@@ -120,7 +127,7 @@ class _Guard(HTMLParser):
             if name.startswith("on"):
                 self._refuse(REASON_ACTIVE, f"{name} on <{tag}>")
 
-            if _ACTIVE_URL.match(value):
+            if _ACTIVE_URL.match(_URL_NOISE.sub("", value)):
                 self._refuse(REASON_ACTIVE, f"{name} is a script URL on <{tag}>")
 
             if name == "style" and _URL_IN_STYLE.search(value):

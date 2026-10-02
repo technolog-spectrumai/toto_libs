@@ -68,6 +68,20 @@ class MarkupScannerTests(SimpleTestCase):
             with self.subTest(scanner=scanner.__name__):
                 self.assertFalse(scanner('<a href="javascript:alert(1)">x</a>').ok)
 
+    def test_a_script_url_with_noise_in_its_scheme_is_refused(self):
+        # Stage 51: a browser strips tab and newline from a URL before it reads
+        # the scheme; the parser hands the check the decoded characters.
+        for href in ("java&#x09;script:alert(1)", "java&#x0A;script:alert(1)",
+                     "java&#13;script:x", "&#x01;javascript:x", "vb&#9;script:x",
+                     "java\tscript:x"):
+            for scanner in (markup.scan_svg, markup.scan_html):
+                with self.subTest(href=href, scanner=scanner.__name__):
+                    verdict = scanner(f'<svg><a href="{href}">x</a></svg>'
+                                      if scanner is markup.scan_svg
+                                      else f'<a href="{href}">x</a>')
+                    self.assertFalse(verdict.ok)
+                    self.assertEqual(verdict.reason, "active-content")
+
     def test_doctype_is_refused_before_parsing(self):
         """Billion laughs: a parser that already expanded entities has lost."""
         verdict = markup.scan_xml(
