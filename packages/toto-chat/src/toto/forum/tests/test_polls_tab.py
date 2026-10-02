@@ -341,11 +341,18 @@ class PageCostTests(RoomPollBase):
         Written as a measurement rather than a magic number so the test
         survives an unrelated query being added to the room chrome, and still
         fails the moment the cost starts scaling with the number of polls.
+
+        The page is asked once before it is measured: a session's first
+        request costs what its next ones do not — a host's "last seen" write
+        on My account's list of sessions (toto.core's UserSessionMiddleware,
+        at most one every few minutes) — and that write landed in the
+        measurement and not in the measured request (2026-10-02, 41.4).
         """
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
 
         RoomPoll.objects.exclude(title="Question 0").delete()
+        self.client.get(url)
         with CaptureQueriesContext(connection) as ctx:
             self.client.get(url)
         baseline = len(ctx)
