@@ -356,6 +356,14 @@ def reference_next(request):
     return render(request, "socialhub/reference_next.html", processor.decorate(context, request))
 
 
+def _references_on_own_profile(user):
+    """The member's reference requests: their own profile's Activity tab, at
+    the section (2026-10-02, stage 50; the profile itself until then)."""
+    from toto.socialhub.views.account import own_page_url
+
+    return own_page_url(user, "activity", "references")
+
+
 @require_POST
 @login_required
 def reference_accept(request, ref_id):
@@ -409,7 +417,9 @@ def reference_accept(request, ref_id):
         logger.error("Failed to send the approval mail for reference %s: %s", ref_id,
                      type(e).__name__)
 
-    return redirect("socialhub:profile_details", slug=request.user.community_profile.slug)
+    # Back to the reference requests, on the Activity tab of the member's
+    # own profile (2026-10-02, stage 50).
+    return redirect(_references_on_own_profile(request.user))
 
 
 
@@ -463,7 +473,9 @@ def reference_reject(request, ref_id):
         logger.error("Failed to send the rejection mail for reference %s: %s", ref_id,
                      type(e).__name__)
 
-    return redirect("socialhub:profile_details", slug=request.user.community_profile.slug)
+    # Back to the reference requests, on the Activity tab of the member's
+    # own profile (2026-10-02, stage 50).
+    return redirect(_references_on_own_profile(request.user))
 
 
 
