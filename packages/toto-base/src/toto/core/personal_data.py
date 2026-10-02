@@ -25,7 +25,7 @@ encrypted or remote file is listed in the index without its bytes, and the
 index says why. Earlier exports in their bucket are left out, or every copy
 would carry all the copies before it.
 
-Apps the library cannot import — the host's wiki — add tables through a
+Apps the library cannot import — a host's own apps — add tables through a
 ``PersonalDataPlugin`` in ``<app>/plugins/personal_data_plugins.py``, found
 by ``autodiscover_plugins`` the first time an export is built; a section of
 an app that is not installed is simply absent, and the README says only what

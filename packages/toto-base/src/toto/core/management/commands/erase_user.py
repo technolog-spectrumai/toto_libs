@@ -13,7 +13,6 @@ What "as if they never existed" can and cannot mean here, said plainly:
 
 * **Erased:** the account, its person, their community and clearance
   memberships, their files (the bytes on this disk too), their
-  wiki revisions — and the wiki pages only they ever wrote — their
   subscriptions, grants, sessions, tokens, and everything else that cascades
   from the account (Django's own collector decides; the report lists it).
   Since 2026-10-01 (37c.21, ``toto.core.erasure``) also what the cascade
@@ -90,9 +89,6 @@ def plan(user) -> dict:
     detached: dict = defaultdict(int)
     for (field, _value), batches in collector.field_updates.items():
         detached[f"{_label(field.model)}.{field.name}"] += sum(_count(b) for b in batches)
-    empty_pages = _pages_left_empty(user)
-    if empty_pages:
-        deleted["wakawaka.WikiPage"] += len(empty_pages)
     # Only the tables with rows (2026-10-01). The collector hands back a
     # queryset for EVERY relation to the account, empty or not, so the report
     # listed every related table — a hundred lines, nearly all at 0 — and the
@@ -124,20 +120,6 @@ def plan(user) -> dict:
             "detached": dict(sorted(detached.items())),
             "beyond": dict(sorted(beyond.items())),
             "blocked_by": blockers, "notes": notes}
-
-
-def _pages_left_empty(user) -> list[int]:
-    """Wiki pages whose every revision is theirs: with the revisions gone the
-    page would be an empty shell nothing can open, so it goes with them."""
-    if not apps.is_installed("wakawaka"):
-        return []
-    from django.db.models import Count, F, Q
-
-    from wakawaka.models import WikiPage
-
-    return list(WikiPage.objects.annotate(
-        total=Count("revisions"), theirs=Count("revisions", filter=Q(revisions__creator=user)))
-        .filter(total__gt=0, total=F("theirs")).values_list("pk", flat=True))
 
 
 class Command(BaseCommand):
@@ -180,7 +162,6 @@ class Command(BaseCommand):
         pk = user.pk
         closed = []
         with transaction.atomic():
-            empty_pages = _pages_left_empty(user)
             # Their erasure request, filed on My account, is carried out by
             # this run: done before the account goes, while it still points at
             # them, and undone with everything else if the erase fails
@@ -194,10 +175,6 @@ class Command(BaseCommand):
             left = erasure.gather(user)
             user.delete()
             erasure.after_delete(left)
-            if empty_pages:
-                from wakawaka.models import WikiPage
-
-                WikiPage.objects.filter(pk__in=empty_pages).delete()
             transaction.on_commit(lambda: erasure.after_commit(left))
         self._record(username, pk, report)
         if closed:

@@ -116,26 +116,6 @@ class PlanReportTests(EraseCase):
                                  file_type="text", bucket=bucket)
         self.assertFalse(any("remote bucket" in note for note in plan(self.ada)["notes"]))
 
-    @unittest.skipUnless(apps.is_installed("wakawaka"), "no wiki on this host")
-    def test_a_page_only_they_wrote_is_counted_among_the_deleted(self):
-        from wakawaka.models import Revision, WikiPage
-
-        own = WikiPage.objects.create(slug="AdaOnly")
-        Revision.objects.create(page=own, content="mine", creator=self.ada)
-        shared = WikiPage.objects.create(slug="Shared")
-        Revision.objects.create(page=shared, content="a", creator=self.ada)
-        Revision.objects.create(page=shared, content="b", creator=self.root)
-        WikiPage.objects.create(slug="NeverWritten")
-        self.assertEqual(plan(self.ada)["deleted"]["wakawaka.WikiPage"], 1)
-
-    @unittest.skipUnless(apps.is_installed("wakawaka"), "no wiki on this host")
-    def test_an_empty_page_is_not_theirs_to_take(self):
-        from wakawaka.models import WikiPage
-
-        WikiPage.objects.create(slug="NeverWritten")
-        run("erase_user", "ada", "--confirm", "ada")
-        self.assertTrue(WikiPage.objects.filter(slug="NeverWritten").exists())
-
 
 class BlockedTests(EraseCase):
     def _blocked_by(self, error_class):

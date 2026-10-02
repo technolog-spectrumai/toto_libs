@@ -6,9 +6,7 @@ audit chain still verifies, and the chain records the erasure."""
 import io
 import json
 import tempfile
-import unittest
 
-from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth import login
 from django.contrib.auth.models import AnonymousUser
@@ -99,19 +97,6 @@ class EraseUserTests(TestCase):
         erased = AuditRecord.objects.filter(action="AUTH.ACCOUNT_ERASED").get()
         self.assertEqual(erased.object_description, "ada")
         self.assertEqual(erased.source, "console")
-
-    @unittest.skipUnless(apps.is_installed("wakawaka"), "no wiki on this host")
-    def test_pages_only_they_wrote_go_and_shared_ones_keep_the_others(self):
-        from wakawaka.models import Revision, WikiPage
-
-        own = WikiPage.objects.create(slug="AdaNotes")
-        Revision.objects.create(page=own, content="mine", creator=self.ada)
-        shared = WikiPage.objects.create(slug="TeamNotes")
-        Revision.objects.create(page=shared, content="hers", creator=self.ada)
-        Revision.objects.create(page=shared, content="his", creator=self.root)
-        run("erase_user", "ada", "--confirm", "ada")
-        self.assertFalse(WikiPage.objects.filter(slug="AdaNotes").exists())
-        self.assertEqual(list(shared.revisions.values_list("content", flat=True)), ["his"])
 
     def test_refusals(self):
         self.assertEqual(run("erase_user", "nobody")[0], 1)
