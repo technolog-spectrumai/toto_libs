@@ -204,9 +204,11 @@ class AvailabilityTests(EventCase):
     def status(self, who, target=None):
         # The owner of the sitting plans it: an organiser reads the
         # availability of the people invited to it (2026-10-02,
-        # AvailabilityInviteeTests), so the person is invited first.
+        # AvailabilityInviteeTests), and its reasons once they accept
+        # (tests_availability_reasons), so the person is invited and says yes.
         target = target or self.sitting
-        EventInvite.objects.get_or_create(event=target, person=who)
+        EventInvite.objects.update_or_create(
+            event=target, person=who, defaults={"status": EventInvite.Status.ACCEPTED})
         self.client.force_login(self.owner_user)
         return self.client.get(reverse("events:event_availability_api"), {
             "person_id": who.pk, "event_id": target.pk}).json()
@@ -294,7 +296,12 @@ class AvailabilityPrivacyTests(EventCase):
         self.assertEqual(response.json()["conflict"]["reason"], "Chemotherapy")
 
     def test_an_organiser_sees_it_with_the_reason(self):
+        # Once the invitee has accepted (2026-10-02, tests_availability_reasons).
         self.open_day.organizers.add(self.owner)
+        response = self.ask(self.owner_user, self.guest, self.open_day)
+        self.assertIsNone(response.json()["conflict"]["reason"])
+        self.open_day.invites.filter(person=self.guest).update(
+            status=EventInvite.Status.ACCEPTED)
         response = self.ask(self.owner_user, self.guest, self.open_day)
         self.assertEqual(response.json()["conflict"]["reason"], "Chemotherapy")
 
@@ -314,6 +321,8 @@ class AvailabilityPrivacyTests(EventCase):
 
     def test_the_plan_shows_an_organiser_the_reason(self):
         self.open_day.organizers.add(self.owner)
+        self.open_day.invites.filter(person=self.guest).update(
+            status=EventInvite.Status.ACCEPTED)
         self.client.force_login(self.owner_user)
         response = self.client.get(reverse("events:event_plan", args=[self.open_day.pk]))
         self.assertContains(response, "Chemotherapy")
@@ -367,11 +376,18 @@ class AvailabilityInviteeTests(EventCase):
         self.assertNotContains(plan, self.REASON)
 
     def test_the_organiser_sees_an_invitee_with_the_reason(self):
+        # The periods once invited, the reason once Bob accepts (2026-10-02,
+        # tests_availability_reasons).
         self.client.force_login(self.owner_user)
         self.client.post(reverse("events:event_plan", args=[self.sitting.pk]),
                          {"person_ids": [self.bob.pk]})
         response = self.ask(self.owner_user, self.bob, self.sitting)
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["conflict"]["type"], "Out of office")
+        self.assertIsNone(response.json()["conflict"]["reason"])
+        self.assertNotIn(self.REASON, response.content.decode())
+        self.sitting.invites.filter(person=self.bob).update(status=EventInvite.Status.ACCEPTED)
+        response = self.ask(self.owner_user, self.bob, self.sitting)
         self.assertEqual(response.json()["conflict"]["reason"], self.REASON)
 
     def test_the_person_sees_their_own_without_an_invitation(self):

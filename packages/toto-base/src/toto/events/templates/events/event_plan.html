@@ -205,7 +205,9 @@
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
         <!-- Person + availability: somebody else's is the organisers' to see
-             (2026-10-01, 37c.21); the view leaves avail_status empty. -->
+             (2026-10-01, 37c.21); the view leaves avail_status empty. The
+             reason typed comes only once the invitee accepts (2026-10-02):
+             row.conflict is a dict from the view with reason None until then. -->
         <div class="flex items-center gap-3 min-w-0">
           {% if row.avail_status %}
           <button
@@ -233,12 +235,12 @@
               {% elif row.avail_status == "blocked" %}
                 <span class="inline-flex items-center gap-1 text-warn-light font-medium">
                   <span class="h-2 w-2 rounded-full bg-warn-light"></span>{% trans "Unavailable" %}
-                  {% if row.conflict %}<span class="opacity-70">— {{ row.conflict.get_availability_type_display }}{% if row.conflict.reason %}: {{ row.conflict.reason }}{% endif %}</span>{% endif %}
+                  {% if row.conflict %}<span class="opacity-70">— {{ row.conflict.type }}{% if row.conflict.reason %}: {{ row.conflict.reason }}{% endif %}</span>{% endif %}
                 </span>
               {% elif row.avail_status == "busy" %}
                 <span class="inline-flex items-center gap-1 text-amber-500 font-medium">
                   <span class="h-2 w-2 rounded-full bg-amber-500"></span>{% trans "Busy" %}
-                  {% if row.conflict %}<span class="opacity-70">— {{ row.conflict.get_availability_type_display }}{% if row.conflict.reason %}: {{ row.conflict.reason }}{% endif %}</span>{% endif %}
+                  {% if row.conflict %}<span class="opacity-70">— {{ row.conflict.type }}{% if row.conflict.reason %}: {{ row.conflict.reason }}{% endif %}</span>{% endif %}
                 </span>
               {% elif row.avail_status == "unknown" %}
                 <span class="inline-flex items-center gap-1 text-success-light font-medium">
@@ -367,6 +369,12 @@
                  class="text-center text-sm opacity-50 py-2">
               {% trans "No availability entries overlap with the event window." %}
             </div>
+
+            {# The reason typed shows once the invitation is accepted (2026-10-02). #}
+            <p x-show="modal.data.availabilities && modal.data.availabilities.length > 0 && !modal.data.reasons_shown"
+               class="text-xs opacity-50">
+              {% trans "Reasons are shown once the invitation is accepted." %}
+            </p>
 
           </div>
         </template>

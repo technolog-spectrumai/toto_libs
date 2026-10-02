@@ -167,11 +167,14 @@ def event_create(request):
 # ─── Planning ────────────────────────────────────────────────────────────────
 
 def _avail_status(person, event):
-    """Return (status_key, first_conflict_or_None) for a person against an event window."""
-    overlapping = person.availabilities.filter(
-        start_time__lt=event.end_time,
-        end_time__gt=event.start_time,
-    )
+    """Return (status_key, first_conflict_or_None) for a person against an event window.
+
+    Only the periods that overlap the event's own times are asked
+    (``access.event_periods``) — an explicit available window that covers
+    the event overlaps it too."""
+    from .access import event_periods
+
+    overlapping = event_periods(person, event)
     blocker = overlapping.filter(blocks_scheduling=True).first()
     if blocker:
         return "blocked", blocker
@@ -180,7 +183,7 @@ def _avail_status(person, event):
     if soft:
         return "busy", soft
 
-    explicit = person.availabilities.filter(
+    explicit = overlapping.filter(
         start_time__lte=event.start_time,
         end_time__gte=event.end_time,
         availability_type=Availability.AvailabilityType.AVAILABLE,
@@ -203,9 +206,21 @@ def _may_see_availability(user, person, event) -> bool:
     return may_see_availability(user, person, event)
 
 
+def _period(entry, with_reason):
+    """One availability period as a page or the JSON shows it: its kind and
+    whether it blocks, and the reason typed only ``with_reason``
+    (``access.may_see_availability_reasons``) — ``None`` otherwise, so a
+    withheld reason and an empty one read the same."""
+    return {
+        "type": entry.get_availability_type_display(),
+        "reason": (entry.reason or None) if with_reason else None,
+        "blocks": entry.blocks_scheduling,
+    }
+
+
 @login_required
 def event_availability_api(request):
-    from .access import may_read
+    from .access import event_periods, may_read, may_see_availability_reasons
 
     person_id = request.GET.get("person_id")
     event_id = request.GET.get("event_id")
@@ -221,12 +236,11 @@ def event_availability_api(request):
                                            "person's availability."))}, status=403)
 
     status_key, conflict = _avail_status(person, event)
-
-    overlapping = list(
-        person.availabilities
-        .filter(start_time__lt=event.end_time, end_time__gt=event.start_time)
-        .order_by("start_time")
-    )
+    # Periods for an invitee whatever they answered; the reasons once they
+    # have accepted, and only on the periods that overlap the event's own
+    # times (2026-10-02, the owner's "reasons only after accepting").
+    with_reason = may_see_availability_reasons(request.user, person, event)
+    overlapping = list(event_periods(person, event))
 
     return JsonResponse({
         "person": {
@@ -234,11 +248,8 @@ def event_availability_api(request):
             "initials": (person.display_name or "?")[0].upper(),
         },
         "status": status_key,
-        "conflict": {
-            "type": conflict.get_availability_type_display(),
-            "reason": conflict.reason,
-            "blocks": conflict.blocks_scheduling,
-        } if conflict else None,
+        "conflict": _period(conflict, with_reason) if conflict else None,
+        "reasons_shown": with_reason,
         "event": {
             "date": localtime(event.start_time).strftime("%b %-d, %Y"),
             "start": localtime(event.start_time).strftime("%H:%M"),
@@ -246,11 +257,9 @@ def event_availability_api(request):
         },
         "availabilities": [
             {
-                "type": a.get_availability_type_display(),
+                **_period(a, with_reason),
                 "start": localtime(a.start_time).strftime("%H:%M"),
                 "end": localtime(a.end_time).strftime("%H:%M"),
-                "reason": a.reason,
-                "blocks": a.blocks_scheduling,
             }
             for a in overlapping
         ],
@@ -259,7 +268,7 @@ def event_availability_api(request):
 
 @login_required
 def event_plan(request, pk):
-    from .access import visible_events
+    from .access import may_see_availability_reasons, visible_events
 
     # The plan of an event hidden from the reader is a missing page
     # (2026-10-01, 37c.21): it listed every invitee's availability.
@@ -293,8 +302,14 @@ def event_plan(request, pk):
         # who is invited and their answer, and only their own availability.
         # Everybody listed here is invited; the people still to invite show
         # no availability at all (2026-10-02, access.may_see_availability).
+        # The reason typed shows once the invitee has accepted (2026-10-02,
+        # access.may_see_availability_reasons): the row carries a plain
+        # dict, never the period itself, so the page cannot reach past it.
         if _may_see_availability(request.user, invite.person, event):
             status_key, conflict = _avail_status(invite.person, event)
+            if conflict is not None:
+                conflict = _period(conflict, may_see_availability_reasons(
+                    request.user, invite.person, event))
         else:
             status_key, conflict = None, None
         invite_rows.append({

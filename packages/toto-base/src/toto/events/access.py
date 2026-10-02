@@ -1,5 +1,5 @@
-"""Which events a user may see — and who organises one and whose
-availability they see. One rule each, in one place.
+"""Which events a user may see — and who organises one, whose availability
+they see and when with its reasons. One rule each, in one place.
 
 It was written inside `EventCalendarView.get_queryset` and lived only there,
 which is how two other doors ended up answering a different question:
@@ -84,17 +84,52 @@ def may_organise(user, event) -> bool:
 
 
 def may_see_availability(user, person, event) -> bool:
-    """Whether ``user`` may see ``person``'s availability against ``event``
-    — the periods that overlap it, each with its reason: the person
-    themself, and an organiser of the event (:func:`may_organise`) when the
-    person is INVITED to it.
+    """Whether ``user`` may see ``person``'s availability PERIODS against
+    ``event`` — their kind and times, the reason aside
+    (:func:`may_see_availability_reasons`): the person themself, and an
+    organiser of the event (:func:`may_organise`) when the person is
+    INVITED to it, whatever they answered.
 
     The invitation is new (2026-10-02, crown 41): an organiser saw anybody's,
     so any member who made an event — one spanning a year overlaps every
     period — read every other member's reasons through it."""
     if person is None or event is None:
         return False
-    own = _person(user)
-    if own is not None and own.pk == person.pk:
+    if _is_self(user, person):
         return True
     return may_organise(user, event) and event.invites.filter(person=person).exists()
+
+
+def may_see_availability_reasons(user, person, event) -> bool:
+    """Whether ``user`` also sees the REASON ``person`` typed on each period
+    that overlaps ``event``: the person themself, and an organiser of the
+    event once the person has ACCEPTED the invitation — a pending or
+    declined one shows the periods without it.
+
+    The owner's decision of 2026-10-02 ("reasons only after accepting"),
+    closing what crown 41's invitation rule left open: any member could
+    make a year-long event, invite somebody and read every reason they had
+    typed for that year without their saying yes to anything. No staff or
+    superuser arm, as in :func:`may_organise`."""
+    from .models import EventInvite
+
+    if person is None or event is None:
+        return False
+    if _is_self(user, person):
+        return True
+    return may_organise(user, event) and event.invites.filter(
+        person=person, status=EventInvite.Status.ACCEPTED).exists()
+
+
+def event_periods(person, event):
+    """``person``'s availability periods that overlap ``event``'s own times
+    — the only ones anybody is shown against it, whatever window a page or
+    a caller has in mind. Touching edges do not overlap."""
+    return person.availabilities.filter(
+        start_time__lt=event.end_time, end_time__gt=event.start_time,
+    ).order_by("start_time")
+
+
+def _is_self(user, person) -> bool:
+    own = _person(user)
+    return own is not None and own.pk == person.pk
