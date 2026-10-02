@@ -416,8 +416,12 @@ class PlatformAdminEmailHandler(AdminEmailHandler):
     Django writes the subject and the line above the report from the log
     message — "Internal Server Error: <path>" — before any reporter sees the
     request, so ``path_secrets`` are starred here, on a copy of the record:
-    the console log keeps what it always had. The report itself is the
-    reporter's (``PlatformExceptionReporter``). Logged inside a transaction,
+    the console log keeps what it always had. A host that names
+    ``PathSecretsLogFilter`` on ``django.request`` itself (zenobia, 37c.24)
+    has the path cut as ``[token]`` before any handler sees the record, so
+    its subject reads as the console's line does and nothing is left to star
+    here. The report itself is the reporter's (``PlatformExceptionReporter``),
+    starred either way. Logged inside a transaction,
     the mail waits for its commit, and a rollback drops it; outside one —
     every crashing request, which Django logs once the view's transaction
     has ended — it leaves at once.
