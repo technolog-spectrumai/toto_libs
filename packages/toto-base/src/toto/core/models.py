@@ -310,8 +310,8 @@ class NoticeDelivery(models.Model):
     still tell whether the last one went to a given address); the error as
     its class and SMTP reply code, never the server's own words, which can
     echo the address or the login. The SMTP password is nowhere near it —
-    it stays in its secret file (toto.jess kept it in the database, and was
-    retired for that).
+    only the processes that send are given it (toto.jess kept it in the
+    database, and was retired for that).
 
     ``failures`` counts the sends of this kind that failed for good since a
     notice of ANY kind last went: a delivery sets every row back to 0, so

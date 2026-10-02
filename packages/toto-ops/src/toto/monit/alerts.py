@@ -33,7 +33,9 @@ fails has saved nothing and mailed nothing, and the next one decides again;
 no SMTP round trip holds the states' locks. A mail no address took then
 puts its state back as it was (unless a later run has written it since).
 Where a worker takes notices, "took" means queued, and the worker tries it
-five times over about an hour. One it gave up on is not mailed again by the
+five times over about an hour (on zenobia, since 2026-10-02, the mail
+worker, `celery_mail`: this run is the general worker's, which holds no SMTP
+password). One it gave up on is not mailed again by the
 next run; the Mail check (``record.check_mail``) turns WARN when sends keep
 failing, and that shows on the Database page.
 

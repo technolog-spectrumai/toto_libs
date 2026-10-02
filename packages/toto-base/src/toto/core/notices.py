@@ -16,7 +16,11 @@ themselves, so how it leaves is decided here alone.
 one) the notice is rendered here — in the member's language, with the time
 of the event — and handed to ``toto.core.tasks.deliver_notice`` once the
 current transaction COMMITS: the scheduled alert run mails from inside one,
-and a change that rolls back must not have been announced. The worker tries
+and a change that rolls back must not have been announced. The task is one
+of ``tasks.MAIL_TASKS``: a host may route it to a worker of its own, the only
+one that holds the SMTP password (zenobia, 2026-10-02: the `mail` queue and
+its ``celery_mail`` worker), so the worker that runs workflow code and parses
+uploads never sees the login. The worker tries
 ``TRIES`` times, waiting ``RETRY_DELAYS`` between tries (five tries over about
 an hour), then gives up. ``True`` then means "on its way", not "delivered". A
 broker that cannot be reached is no reason to lose a notice: it is sent at
@@ -29,8 +33,8 @@ worker that never comes.
 to ``NoticeDelivery``, one row per kind — sent, being retried, failed; how
 many tries; the error's class and SMTP reply code; a keyed hash of the
 recipient. No address in clear, no subject or body, no link or token, and
-never the SMTP password, which stays in its secret file (toto.jess kept it in
-the database and was retired for that). It is not an outbox: a message that
+never the SMTP password, which only the processes that send are given
+(toto.jess kept it in the database and was retired for that). It is not an outbox: a message that
 failed is gone, and the monitoring's Mail check
 (``toto.monit.record.check_mail``) says so when sends keep failing — a
 backoff nobody can see would hide a broken mail server for hours.

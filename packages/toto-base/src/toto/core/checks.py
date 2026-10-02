@@ -16,10 +16,11 @@ request or a worker for good.
 Off — the default — nothing here is looked at: a laptop's console backend is
 a choice, not a fault.
 
-The password is not looked at. A host keeps it where it decides (zenobia: a
-secret file on its own volume, read when a connection opens), and only a
-login against the real server can prove it; zenobia's deploy does that
-(``deploy.py <config> up`` on a cloud profile, ``manage.py mail_check``).
+The password is not looked at. A host keeps it where it decides (zenobia,
+2026-10-02: smtp.yaml beside the deploy profiles, copied at deploy into an
+env file only web and the mail worker read), and only a login against the
+real server can prove it; zenobia's deploy does that (``deploy.py <config>
+up`` on a cloud profile, ``manage.py mail_check``).
 zenobia's deploy.py writes ``REQUIRE_SMTP=1`` for a profile that says
 ``deployment.environment: cloud``.
 """
@@ -64,8 +65,8 @@ def check_required_smtp(app_configs, **kwargs):
         errors.append(Error(
             f"EMAIL_BACKEND is {backend!r}, which sends no mail over SMTP, "
             "and REQUIRE_SMTP says this deployment must",
-            hint="Configure the mail server (zenobia: the profile's `email:` "
-                 "block). The console, file, locmem and dummy backends keep "
+            hint="Configure the mail server (zenobia: smtp.yaml beside the "
+                 "deploy profiles). The console, file, locmem and dummy backends keep "
                  "every mail on this machine.",
             id="core.E001"))
 
@@ -94,7 +95,7 @@ def check_required_smtp(app_configs, **kwargs):
                 f"{name} is {address!r}, an address at this machine that no "
                 "mail server will relay or anybody answer",
                 hint="A sender on the platform's own domain (zenobia: "
-                     "email.from).",
+                     "smtp.yaml's from).",
                 id=code))
 
     timeout = getattr(settings, "EMAIL_TIMEOUT", None)
@@ -103,6 +104,7 @@ def check_required_smtp(app_configs, **kwargs):
         errors.append(Error(
             f"EMAIL_TIMEOUT is {timeout!r}: a mail server that stops "
             "answering would hold a request or a worker for good",
-            hint="A number of seconds (zenobia: email.timeout, 15 by default).",
+            hint="A number of seconds (zenobia: smtp.yaml's timeout, 15 by "
+                 "default).",
             id="core.E006"))
     return errors

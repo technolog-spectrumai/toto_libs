@@ -5,6 +5,9 @@ notice once the change that caused it commits; ``tasks.deliver_notice`` tries
 ``TRIES`` times, ``RETRY_DELAYS`` apart, and gives up. Every try leaves its
 outcome on ``NoticeDelivery`` — never the address, the mail, a token or the
 SMTP password. Without a worker the notice is sent at once, one try.
+
+And the mail tasks are a list a host can route (2026-10-02): every task in
+the library that sends mail is in ``tasks.MAIL_TASKS``, nothing else is.
 """
 
 from __future__ import annotations
@@ -17,13 +20,13 @@ from django.core import mail
 from django.db import transaction
 from django.db.transaction import TransactionManagementError
 from django.forms.models import model_to_dict
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from kombu.exceptions import OperationalError
 
 from toto.core import notices
 from toto.core.models import NoticeDelivery, Platform
 from toto.core.notices import send_notice
-from toto.core.tasks import deliver_notice
+from toto.core.tasks import MAIL_TASKS, NOTICE_TASK_NAME, deliver_notice
 
 User = get_user_model()
 LOCMEM = "django.core.mail.backends.locmem.EmailBackend"
@@ -238,3 +241,60 @@ class NothingSecretKeptTests(NoticeTestCase):
         # A refusal shaped unlike smtplib's still answers, with its class.
         self.assertEqual(text(smtplib.SMTPRecipientsRefused({"ops@example.test": 550})),
                          "SMTPRecipientsRefused")
+
+
+#: What a task body calls when it sends mail itself: Django's mail API, and
+#: the library's own sending helpers (notices.deliver, toto.jess's send_now).
+MAIL_CALLS = frozenset({"EmailMessage", "EmailMultiAlternatives", "send_mail",
+                        "send_mass_mail", "mail_admins", "mail_managers",
+                        "get_connection", "deliver", "send_now"})
+
+
+def library_tasks():
+    """(task name, the names its body uses) for every Celery task in the
+    library's task modules, read from the source — so a task module of an
+    app this host does not install is read too."""
+    import ast
+    from pathlib import Path
+
+    import toto
+
+    found = []
+    for root in toto.__path__:
+        for path in sorted(Path(root).rglob("tasks*.py")):
+            if "tests" in path.name:
+                continue
+            module = "toto." + ".".join(path.relative_to(root).with_suffix("").parts)
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in tree.body:
+                if not isinstance(node, ast.FunctionDef):
+                    continue
+                for deco in node.decorator_list:
+                    call = deco if isinstance(deco, ast.Call) else None
+                    target = call.func if call else deco
+                    if getattr(target, "id", getattr(target, "attr", "")) != "shared_task":
+                        continue
+                    name = f"{module}.{node.name}"
+                    for keyword in (call.keywords if call else []):
+                        if keyword.arg == "name" and isinstance(keyword.value, ast.Constant):
+                            name = keyword.value.value
+                        elif keyword.arg == "name" and isinstance(keyword.value, ast.Name):
+                            name = {"NOTICE_TASK_NAME": NOTICE_TASK_NAME}.get(
+                                keyword.value.id, name)
+                    used = {getattr(n, "id", None) or getattr(n, "attr", None)
+                            for n in ast.walk(node)
+                            if isinstance(n, (ast.Name, ast.Attribute))}
+                    found.append((name, used))
+    return found
+
+
+class MailTasksTests(SimpleTestCase):
+    def test_the_notice_task_is_a_mail_task(self):
+        self.assertEqual(deliver_notice.name, NOTICE_TASK_NAME)
+        self.assertIn(NOTICE_TASK_NAME, MAIL_TASKS)
+
+    def test_every_task_that_sends_mail_is_listed_and_nothing_else(self):
+        tasks = library_tasks()
+        self.assertGreater(len(tasks), 10, "no task modules found — vacuous")
+        sending = {name for name, used in tasks if used & MAIL_CALLS}
+        self.assertEqual(sending, set(MAIL_TASKS))

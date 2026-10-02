@@ -28,7 +28,7 @@ COMPLETE = dict(
 
 
 class HostBackend(EmailBackend):
-    """A host's own backend over Django's (zenobia's reads a secret file)."""
+    """A host's own backend over Django's."""
 
 
 class RequireSmtpCheckTests(SimpleTestCase):

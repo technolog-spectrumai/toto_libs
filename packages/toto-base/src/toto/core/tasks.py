@@ -6,6 +6,13 @@ and nothing else, and "toto.core" must stay in ``toto.registry.TASK_MODULES``.
 The housekeeping's work is ``housekeeping.run``; this is only its door onto a
 worker, put there by the beat (``toto.schedules``, ``housekeeping=True``).
 ``deliver_notice`` is sent by ``notices.send_notice`` alone, never the beat.
+
+``MAIL_TASKS`` names every task in the library that sends mail (2026-10-02).
+A host that keeps its SMTP password away from the worker that runs
+everything else routes exactly these to a queue of their own and lets that
+queue's worker run nothing else — zenobia: the `mail` queue and its
+``celery_mail`` worker, the only worker given the password. The list is the
+contract; ``tests_notice_delivery`` checks that no task outside it sends.
 """
 
 from celery import shared_task
@@ -24,6 +31,10 @@ def nightly_housekeeping() -> dict:
 
 
 NOTICE_TASK_NAME = "toto.core.tasks.deliver_notice"
+
+#: Every task that sends mail: the notices, and toto.jess's outbox (an app
+#: zenobia does not install). See the module docstring.
+MAIL_TASKS = (NOTICE_TASK_NAME, "toto.jess.tasks.send_mail_message")
 
 
 @shared_task(name=NOTICE_TASK_NAME, bind=True, ignore_result=True, max_retries=None,
