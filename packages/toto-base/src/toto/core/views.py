@@ -362,6 +362,10 @@ def _manual_features(request):
         # the forum, and it links into a room rather than to a separate app.
         "polls": apps.is_installed("toto.forum"),
         "vod": apps.is_installed("toto.vod"),
+        # Markdown Play is a host app's page (zenobia's toto.htmlview, which
+        # replaced its wiki on 2026-10-02): mounted, so a host without it
+        # documents no Play button it does not draw.
+        "markdown": _mounted("htmlview:index"),
         "memo": apps.is_installed("toto.memo"),
         "notarius": apps.is_installed("toto.notarius"),
         "editor": apps.is_installed("toto.editor"),

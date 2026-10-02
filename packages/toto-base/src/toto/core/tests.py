@@ -112,3 +112,27 @@ class ManualFeatureGateTests(TestCase):
         self.assertIs(type(features["notebooks"]), bool)
 
 
+
+    def test_the_markdown_play_line_follows_the_htmlview_mount(self):
+        # Markdown Play replaced zenobia's wiki (2026-10-02, stage 45): the
+        # storage chapter names it, formulas included, where a host serves it
+        # and nowhere else.
+        from django.test import RequestFactory
+        from django.contrib.auth.models import AnonymousUser
+        from toto.core.views import _manual_features, _mounted
+
+        request = RequestFactory().get("/core/manual/")
+        request.user = AnonymousUser()
+        mounted = _mounted("htmlview:index")
+        self.assertEqual(_manual_features(request)["markdown"], mounted)
+        if not mounted:
+            self.skipTest("this host serves no Markdown Play")
+        Platform.objects.get_or_create(site_name="Test", defaults={
+            "author": "t", "publication_year": 2026, "active": True})
+        reader = User.objects.create_user("reader", password="pw")
+        self.client.force_login(reader)
+        response = self.client.get(reverse("core:manual"), HTTP_ACCEPT_LANGUAGE="en")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "<code>.md</code> files")
+        self.assertContains(response, "formulas written between")
+        self.assertNotContains(response, "/wiki/")
