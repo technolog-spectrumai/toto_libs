@@ -128,6 +128,11 @@ class ChannelDetailView(LoginRequiredMixin, DetailView):
         context["is_encrypted"] = channel.is_encrypted
         context["can_manage_members"] = permissions.can_manage_members(self.request.user, channel)
         context["forum_price_code"] = "forum.encrypt" if channel.is_encrypted else "forum.message"
+        # A URL in a message is a link only to one of these names or the
+        # page's own host (static/forum/linkify.js, 47.4).
+        from . import links
+
+        context["forum_link_hosts"] = links.platform_hosts()
 
         if not context["can_send_messages"]:
             if context["can_join"]:

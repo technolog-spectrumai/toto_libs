@@ -118,6 +118,16 @@ primitive is home-made.
   the room's name), then the key, then the sockets, then the room.
 - Retention (staff-set, nightly) applies to encrypted rooms exactly as to
   ordinary ones; it deletes rows and keeps the room key.
+- Every cleanup runs on the worker (2026-10-02): the request or the beat
+  CLAIMS the passes (staff only, typed `DELETE`, boundary re-derived from the
+  policy and the clock) and dispatches one "Forum cleanup" workflow run. The
+  workflow's node finishes only rows still PENDING/RUNNING whose
+  `workflow_run_id` is its own run's, written before the task was queued;
+  it never claims or derives a boundary from its input. The node is
+  dispatch-only, so `POST /workflows/api/<id>/runs/` refuses it for everyone,
+  staff included. With no worker nothing is claimed; a failed dispatch closes
+  its rows FAILED, and the stuck-run sweeper (which now also revokes the
+  task) closes anything a dead worker left RUNNING.
 - The staff room archive is the plaintext copy somebody chooses to take: it
   decrypts bodies with the room key and names sealed attachments as left out.
 - Attachments are not in any backup until the host's media sidecar includes
@@ -185,3 +195,32 @@ shows the price with `{% price_hint %}`.
 - The WebSocket still accepts a session key in the query string (open risk,
   technology.md).
 - Encrypted attachments are not in the room archive.
+
+## 12. Links in messages
+
+Since 2026-10-02 (`static/forum/linkify.js`, `links.py`) a URL in a room's
+messages is a link only when it points at this platform: its host is the
+room page's own host or one of the platform's public names the room view
+hands the page (PLATFORM_DOMAIN, the certificate's name, the tailnet name,
+ALLOWED_HOSTS without the compose aliases, `testserver`, `localhost`,
+loopback addresses and `*`; a leading-dot entry gives its bare name, never
+its subdomains). Every other URL stays text, and so does anything not
+`http`/`https`, a URL with `user@` before the host, a look-alike host
+(`ours.evil.com`, `ours.` with its trailing dot, an IDN double) and a URL
+glued to a word or an address. URLs are found as aralia finds them in
+Markdown; trailing punctuation and an unbalanced `)` stay outside the link.
+
+A link to another of our names points at the page's own origin with the same
+path, query and fragment, so the session cookie goes with it; it opens in the
+same tab, `rel="noopener"`, and a `#msg-<uuid>` in the same room only jumps.
+
+The body is built from text nodes and `createElement("a")` with `.href`, never
+from markup: a message is whatever its sender typed, the row goes through
+`Alpine.initTree`, and the page's CSP allows `unsafe-eval`, so markup from a
+message would be script. The link's text is the typed substring exactly, so
+Edit, Reply and reply quotes read the message back unchanged.
+
+Only the room page links. The search page (its whole result card is a link),
+the Files tab's captions, the ZIP export (offline, link-free by design), the
+JSON doors, the desktop client's payloads and the admin all show the same
+URL as escaped text; the wire format is unchanged (`tests/test_links.py`).

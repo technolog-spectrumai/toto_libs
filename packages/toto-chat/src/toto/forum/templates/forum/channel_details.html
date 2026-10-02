@@ -17,6 +17,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   const canSend       = {{ can_send_messages|yesno:"true,false" }};
   const csrfToken     = "{{ csrf_token }}";
 
+  // Links in messages (47.4): a URL becomes a link only to this platform —
+  // this page's host or one of the names the view lists (toto.forum.links);
+  // everything else stays text. Should the script not load, every message is
+  // plain text, as before, rather than the room not opening.
+  const linkHosts = [
+    window.location.hostname,
+    ...JSON.parse(document.getElementById("forum-link-hosts")?.textContent || "[]"),
+  ];
+  let linkify = null;
+  try {
+    ({ linkify } = await import("{% static 'forum/linkify.js' %}"));
+  } catch (err) {
+    console.warn("forum: message links are off", err);
+  }
+
   let socket = null;
 
   // Server-assigned message ids, so a message rendered from the history replay is not
@@ -208,7 +223,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     } else {
       body = document.createElement("p");
       body.className = `mt-1 whitespace-pre-wrap break-words text-sm opacity-90 [overflow-wrap:anywhere] ${isSelf ? "text-right" : ""}`;
-      body.textContent = data.message || "";
+      // Text nodes and <a> elements, never markup; the text is the message
+      // exactly, so Edit/Reply/quotes reading textContent back see it unchanged.
+      if (linkify) body.appendChild(linkify(data.message || "", linkHosts));
+      else body.textContent = data.message || "";
     }
     body.setAttribute("data-body", "");
 
@@ -869,6 +887,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 {% endblock %}
 
 {% block content %}
+{{ forum_link_hosts|json_script:"forum-link-hosts" }}
 <main
   x-data="{ sidebarOpen: false, connectionStatus: 'observer' }"
   data-forum-channel
