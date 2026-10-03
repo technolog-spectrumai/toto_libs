@@ -70,11 +70,17 @@ class OriginFallbackTests(SimpleTestCase):
         self.assertEqual(cross_site_refusal(request).status_code, 403)
 
 
+@override_settings(VAULT_STORAGE_ONLY=False)
 class SessionDoorTests(TestCase):
     """Stage 51 (zenobia/todo.md item 2): the cookie-authenticated
     `csrf_exempt` write doors answered a forged same-site text/plain POST
     with 201. Every CorsApiView, and the vault's create-file door, now asks
-    the Fetch-Metadata guard first; a Bearer token still passes."""
+    the Fetch-Metadata guard first; a Bearer token still passes.
+
+    `VAULT_STORAGE_ONLY` is set off for the class: the vault's create-file
+    door is there only on a host that makes files, and the guard in front of
+    it can only be asked where the door is. The last test says what a host
+    that sets the flag answers (zenobia, 2026-10-03)."""
 
     DOORS = (
         "/vault/api/directories/",
@@ -141,3 +147,25 @@ class SessionDoorTests(TestCase):
                 response = self._forged(Client(enforce_csrf_checks=True), path,
                                         HTTP_AUTHORIZATION=f"Bearer {key}")
                 self.assertFalse(self._is_refusal(response))
+
+    @override_settings(VAULT_STORAGE_ONLY=True)
+    def test_a_storage_only_host_has_no_create_file_door_to_forge_at(self):
+        """There the door answers 404 to everybody, a forged write included,
+        and nothing is planted; the other doors are still there and still
+        refuse the forgery."""
+        door = "/vault/file/create/"
+        doors = list(self._doors())
+        if door not in doors:
+            self.skipTest("the vault's create-file door is not mounted on this host")
+        from toto.vault.models import VaultDirectory, VaultFile
+
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.ada)
+        self.assertEqual(self._forged(client, door).status_code, 404)
+        for path in doors:
+            if path == door:
+                continue
+            with self.subTest(path=path):
+                self.assertTrue(self._is_refusal(self._forged(client, path)))
+        self.assertFalse(VaultFile.objects.exists())
+        self.assertFalse(VaultDirectory.objects.filter(name="planted").exists())

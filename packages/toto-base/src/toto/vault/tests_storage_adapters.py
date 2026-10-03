@@ -714,6 +714,10 @@ class OwnerlessTests(Fixture):
         self.assertIn("no owner", response.json()["error"])
         self.assertEqual(VaultFile.objects.filter(bucket=self.orphan).count(), 1)
 
+    # The New-file door has to be there to refuse: both flags that take it
+    # away are set off, so the skip below means what it says — no editor —
+    # and not "this host is storage only" (VAULT_STORAGE_ONLY, 2026-10-03).
+    @override_settings(VAULT_STORAGE_ONLY=False, VAULT_FILE_EDITS=True)
     def test_creating_an_empty_file_in_an_ownerless_bucket_is_refused(self):
         from .plugins import VaultEditorPlugin
         from .views import available_create_types

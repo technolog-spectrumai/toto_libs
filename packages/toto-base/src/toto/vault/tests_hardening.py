@@ -6,6 +6,10 @@ every behavior unchanged. This module deliberately avoids any editor-app
 import so a host without ``toto.editor`` can run it via
 ``manage.py test toto.vault.tests_hardening``. Permissive-side tests set
 their flag explicitly, so the module passes on hosts that turn either off.
+
+``VAULT_STORAGE_ONLY = True`` is the third (zenobia sets it, 2026-10-03) and
+the same rule holds for it: a test that needs the New-file door sets the flag
+off itself, wherever the test lives (``StorageOnlyFlagTests`` below).
 """
 import tempfile
 
@@ -14,7 +18,8 @@ from django.core.exceptions import ValidationError
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from toto.vault.models import Bucket, external_buckets_allowed
+from toto.vault.models import (Bucket, VaultDirectory, VaultFile,
+                               external_buckets_allowed, storage_only)
 from toto.vault.storage_backends import (
     LocalVaultStorageDriver,
     S3CompatibleVaultStorageDriver,
@@ -161,13 +166,143 @@ class FileEditsFlagTests(TestCase):
         from toto.vault.views import available_create_types
         self.assertEqual(available_create_types(), [])
 
-    @override_settings(VAULT_FILE_EDITS=False)
+    # VAULT_STORAGE_ONLY off as well: the door has to be there to refuse.
+    @override_settings(VAULT_FILE_EDITS=False, VAULT_STORAGE_ONLY=False)
     def test_create_empty_file_view_refused(self):
         resp = self.client.post(
             reverse("vault:create_file"),
             {"title": "a", "file_type": "text", "directory_id": "1"},
         )
         self.assertEqual(resp.status_code, 403)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="vault-hardening-"))
+class StorageOnlyFlagTests(TestCase):
+    """``VAULT_STORAGE_ONLY`` — a vault that stores files and makes none.
+
+    The New-file door (``vault:create_file``) is there only while the flag is
+    off, and the flag is read on every request. So a test that asks something
+    OF the door sets the flag off itself: the edits flag above, the Office
+    sentence (``tests_office_refusal``) and the cross-site refusal
+    (``toto.api.tests.test_origin_and_fetch_metadata``). Until 2026-10-03
+    they relied on the library default and failed on the first host that set
+    the flag. These say what such a host gets instead: 404 whatever is asked,
+    and nothing written. The API's half (``api/files/create/`` without
+    content) is ``tests_api.FileCreateWithContentApiTests``.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user("storer", "s@x.com", "pw")
+        cls.bucket = Bucket.objects.create(
+            name="Store", owner=cls.user, slug="hardening-store")
+        cls.directory = VaultDirectory.objects.create(
+            bucket=cls.bucket, name="inbox", owner=cls.user)
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def _new_file(self, **fields):
+        data = {"title": "a.txt", "file_type": "text",
+                "directory_id": self.directory.pk}
+        data.update(fields)
+        return self.client.post(reverse("vault:create_file"), data)
+
+    def test_the_library_default_is_off(self):
+        from django.conf import settings
+
+        with self.settings(VAULT_STORAGE_ONLY=True):
+            self.assertTrue(storage_only())
+            del settings.VAULT_STORAGE_ONLY     # a host that never named it
+            self.assertFalse(storage_only())
+
+    @override_settings(VAULT_STORAGE_ONLY=True)
+    def test_the_new_file_door_is_gone_and_writes_nothing(self):
+        asked = (
+            {},
+            {"title": "a.md", "file_type": "markdown"},
+            {"title": "a.svg", "file_type": "svg"},
+            {"title": "minutes.docx"},      # not the Office sentence either
+            {"title": ""},
+            {"file_type": "no-such-type"},
+            {"directory_id": ""},
+        )
+        for fields in asked:
+            with self.subTest(**fields):
+                self.assertEqual(self._new_file(**fields).status_code, 404)
+        self.assertEqual(
+            self.client.get(reverse("vault:create_file")).status_code, 404)
+        self.assertFalse(VaultFile.objects.exists())
+
+    @override_settings(VAULT_STORAGE_ONLY=True, VAULT_FILE_EDITS=False)
+    def test_gone_whatever_the_edits_flag_says(self):
+        # Both flags set: 404, not the edits flag's 403 — there is no door to
+        # be refused at.
+        self.assertEqual(self._new_file().status_code, 404)
+        self.assertFalse(VaultFile.objects.exists())
+
+    @override_settings(VAULT_STORAGE_ONLY=True)
+    def test_the_create_menu_empties(self):
+        from toto.vault.views import available_create_types
+        self.assertEqual(available_create_types(), [])
+
+    @override_settings(VAULT_STORAGE_ONLY=True)
+    def test_an_upload_and_a_new_folder_are_still_taken(self):
+        """What the flag leaves: a file arrives by upload, and a folder is
+        not a file."""
+        import json
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        resp = self.client.post(reverse("vault:api_file_upload"), {
+            "file": SimpleUploadedFile("note.txt", b"hello",
+                                       content_type="text/plain"),
+            "bucket_slug": self.bucket.slug,
+            "directory_id": self.directory.pk})
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(VaultFile.objects.get().directory_id, self.directory.pk)
+        resp = self.client.post(
+            reverse("vault:api_directory_create"),
+            json.dumps({"name": "scans", "parent_id": self.directory.pk,
+                        "bucket_slug": self.bucket.slug}),
+            content_type="application/json")
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertTrue(VaultDirectory.objects.filter(
+            name="scans", parent=self.directory).exists())
+
+    @override_settings(VAULT_STORAGE_ONLY=False, VAULT_FILE_EDITS=True)
+    def test_the_door_answers_for_itself_when_the_flag_is_off(self):
+        # Past both flags the door reads the request: no filename is its own
+        # 400, which proves it is there (whether a file could then be made
+        # depends on an editor being installed, which this module never asks).
+        resp = self._new_file(title="")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("error", resp.json())
+        self.assertFalse(VaultFile.objects.exists())
+
+    def test_every_test_module_that_asks_an_empty_file_door_names_the_flag(self):
+        """The rule in this class's docstring, kept by reading the sources: a
+        test module of an installed toto app that goes to either empty-file
+        door says which kind of host it is asking about. A module that names
+        a door and never the flag is asking the host's setting by accident."""
+        from pathlib import Path
+
+        from django.apps import apps
+
+        doors = ("vault:create_file", "/vault/file/create/",
+                 "vault:api_file_create", "/vault/api/files/create/")
+        asking, silent = 0, []
+        for config in apps.get_app_configs():
+            if not config.name.startswith("toto."):
+                continue
+            for path in Path(config.path).rglob("test*.py"):
+                source = path.read_text(encoding="utf-8", errors="replace")
+                if any(door in source for door in doors):
+                    asking += 1
+                    if "VAULT_STORAGE_ONLY" not in source:
+                        silent.append(str(path))
+        self.assertGreater(asking, 1, "the walk found this module alone: it is vacuous")
+        self.assertEqual(silent, [])
 
 
 _SCRATCH_MEDIA = tempfile.mkdtemp(prefix="vault-hardening-")

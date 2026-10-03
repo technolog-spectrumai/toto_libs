@@ -188,6 +188,11 @@ class DoorTests(TestCase):
         vf.refresh_from_db()
         self.assertEqual(vf.title, "note")  # the API upload drops the extension
 
+    # Both flags that take the New-file door away are set to "there": which
+    # sentence the door says can only be asked where there is a door. A host
+    # with VAULT_STORAGE_ONLY (zenobia, 2026-10-03) answers 404 for this name
+    # as for any other — tests_hardening.StorageOnlyFlagTests.
+    @override_settings(VAULT_STORAGE_ONLY=False, VAULT_FILE_EDITS=True)
     def test_new_file_with_an_office_name_is_refused(self):
         resp = self.client.post(reverse("vault:create_file"), {
             "title": "minutes.docx", "file_type": "text",
