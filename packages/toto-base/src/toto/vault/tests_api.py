@@ -765,12 +765,23 @@ class FileCreateWithContentApiTests(TestCase):
         self.assertEqual(body["content"], "written offline")
         self.assertTrue(body["content_hash"], "a pushed file must be saveable next time")
 
+    @override_settings(VAULT_STORAGE_ONLY=False)
     def test_an_empty_create_still_needs_a_starter(self):
         # The New-file case is unchanged: we must know what an empty one is.
+        # (Asked with the storage-only switch off: a host that sets it has no
+        # New-file case at all, which the next test asserts.)
         self.assertEqual(self.create(bucket_slug="push", title="a.txt",
                                      file_type="text").status_code, 201)
         self.assertEqual(self.create(bucket_slug="push", title="b.deck",
                                      file_type="pxml").status_code, 400)
+
+    @override_settings(VAULT_STORAGE_ONLY=True)
+    def test_a_storage_only_host_makes_no_empty_file_and_still_takes_a_push(self):
+        self.assertEqual(self.create(bucket_slug="push", title="a.txt",
+                                     file_type="text").status_code, 404)
+        self.assertFalse(VaultFile.objects.filter(title="a.txt").exists())
+        self.assertEqual(self.create(bucket_slug="push", title="b.txt", file_type="text",
+                                     content="pushed").status_code, 201)
 
     def test_a_type_with_no_starter_can_still_be_pushed_with_content(self):
         # This is the whole point: the client has the bytes, so "what does an
@@ -782,6 +793,10 @@ class FileCreateWithContentApiTests(TestCase):
 
     def test_a_pushed_file_is_screened(self):
         # A file arriving with its bytes is an upload in all but name.
+        from django.apps import apps
+
+        if not apps.is_installed("toto.antivirus"):
+            self.skipTest("toto.antivirus is not installed on this host: nothing screens")
         res = self.create(bucket_slug="push", title="bad.svg", file_type="svg",
                           content='<svg xmlns="http://www.w3.org/2000/svg">'
                                   "<script>alert(1)</script></svg>")

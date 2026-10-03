@@ -859,6 +859,76 @@
           this.actionsModal = true;
         },
 
+        // ── Upload into an owned folder (no gateway) ──────────
+        // One request per file to the vault's upload door; what it refuses
+        // (an Office file, a spent quota, a full bucket) is reported by name
+        // with the door's own sentence, and the rest still land.
+        uploadDir: null,
+        uploadBusy: false,
+        pickUpload(dirItem) {
+          this.uploadDir = dirItem;
+          this.$refs.vaultUploadInput.value = '';
+          this.$refs.vaultUploadInput.click();
+        },
+        async uploadPicked(event) {
+          const files = Array.from(event.target.files || []);
+          const dir = this.uploadDir;
+          if (!files.length || !dir) return;
+          const csrf = document.cookie.split(';')
+            .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+          const refused = [];
+          this.uploadBusy = true;
+          for (const file of files) {
+            const form = new FormData();
+            form.append('file', file);
+            form.append('title', file.name);
+            form.append('bucket_slug', dir.bslug);
+            form.append('directory_id', dir.id);
+            try {
+              const res = await fetch('{% url "vault:api_file_upload" %}', {
+                method: 'POST', headers: { 'X-CSRFToken': csrf },
+                credentials: 'same-origin', body: form,
+              });
+              if (res.status !== 201) {
+                const data = await res.json().catch(() => ({}));
+                refused.push(`${file.name}: ${data.detail || data.error || res.status}`);
+              }
+            } catch {
+              refused.push(`${file.name}: {{ _("Network error. Please try again.")|escapejs }}`);
+            }
+          }
+          this.uploadBusy = false;
+          if (refused.length) window.alert(refused.join('\n'));
+          if (refused.length < files.length) window.location.reload();
+        },
+
+        // ── New folder ────────────────────────────────────────
+        // A folder is not a file: it is made here on every host, inside the
+        // folder whose row was used, or at the top of the member's own
+        // bucket from the toolbar. The door is the vault's directory API.
+        async newFolder(dirItem) {
+          const name = (window.prompt('{{ _("Folder name")|escapejs }}') || '').trim();
+          if (!name) return;
+          const csrf = document.cookie.split(';')
+            .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+          const body = dirItem
+            ? { name, parent_id: dirItem.id, bucket_slug: dirItem.bslug }
+            : { name };
+          try {
+            const res = await fetch('{% url "vault:api_directory_create" %}', {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify(body),
+            });
+            if (res.status === 201) { window.location.reload(); return; }
+            const data = await res.json().catch(() => ({}));
+            window.alert(data.error || '{{ _("The folder could not be made.")|escapejs }}');
+          } catch {
+            window.alert('{{ _("Network error. Please try again.")|escapejs }}');
+          }
+        },
+
         // ── Image preview ─────────────────────────────────────
         openImageModal(item) {
           this.imageModalUrl = item.url;
@@ -1047,6 +1117,9 @@
 
     <!-- Tree -->
     <div x-data="vaultTree()">
+      {% comment %}One hidden picker for "Upload" on a folder with no gateway.{% endcomment %}
+      <input type="file" multiple class="hidden" x-ref="vaultUploadInput"
+             @change="uploadPicked($event)">
 
       <!-- Search bar -->
       <div x-show="items.length > 0" class="mb-3">
@@ -1135,8 +1208,20 @@
         </a>
         {% endif %}{% endif %}
 
+        {% comment %}New folder at the top level of the member's own bucket.
+           A folder inside another is made from that folder's row.{% endcomment %}
+        {% if user.is_authenticated %}
+        <button type="button" @click="newFolder(null)"
+                :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+                class="{% if not antivirus_url %}ml-auto {% endif %}inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition"
+                title="{% trans 'New folder' %}" data-vault-control="new-folder">
+          <i class="fa-solid fa-folder-plus"></i>
+          <span class="hidden sm:inline">{% trans "New folder" %}</span>
+        </button>
+        {% endif %}
+
         <!-- View toggle -->
-        <div class="{% if not antivirus_url %}ml-auto {% endif %}flex rounded-lg overflow-hidden border"
+        <div class="{% if not antivirus_url and not user.is_authenticated %}ml-auto {% endif %}flex rounded-lg overflow-hidden border"
              :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
           <button @click="setViewMode('tree')"
                   :class="viewMode === 'tree'
@@ -1238,6 +1323,11 @@
                   </span>
 
                   <div class="ml-auto flex items-center gap-1 shrink-0">
+                    {% comment %}"New" makes an empty file for an editor to
+                       open, so it is drawn only where an editor is installed
+                       (create_file_types). A host that only stores files —
+                       no editor app — shows Upload and nothing else here.{% endcomment %}
+                    {% if create_file_types %}
                     <button x-show="item.can_create"
                             @click.stop="openCreateFile(item)"
                             :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-accent-dark/15' : 'border-accent-2 text-text-main-light hover:bg-accent-light/15'"
@@ -1245,6 +1335,7 @@
                       <i class="fa-solid fa-file-circle-plus text-xs"></i>
                       <span class="hidden sm:inline">{% trans "New" %}</span>
                     </button>
+                    {% endif %}
                     <button x-show="item.can_create && zipEnabled && (item.n_files > 0 || item.n_dirs > 0)"
                             @click.stop="openZip(item)"
                             :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-accent-dark/15' : 'border-accent-2 text-text-main-light hover:bg-accent-light/15'"
@@ -1258,7 +1349,30 @@
                          row of the file manager was the clutter, and this was
                          the only place a repo could be created — that way in
                          now lives in each surface's own toolbar. -->
+                    {% comment %}New folder — a folder is not a file, so it
+                       has a control of its own beside Upload, on every host.{% endcomment %}
+                    <button x-show="item.can_create"
+                            @click.stop="newFolder(item)"
+                            :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-accent-dark/15' : 'border-accent-2 text-text-main-light hover:bg-accent-light/15'"
+                            class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition"
+                            title="{% trans 'New folder' %}" data-vault-control="new-folder">
+                      <i class="fa-solid fa-folder-plus text-xs"></i>
+                      <span class="hidden sm:inline">{% trans "New folder" %}</span>
+                    </button>
+                    {% comment %}Upload into a folder of one's own bucket that
+                       no gateway serves: the files go to the vault's own
+                       upload door (api/files/upload/), which applies the
+                       same refusals, quota and charge as a gateway.{% endcomment %}
+                    <button x-show="!item.upload_url && item.can_create"
+                            @click.stop="pickUpload(item)" :disabled="uploadBusy"
+                            data-vault-control="upload-here"
+                            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                            class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition hover:opacity-85 disabled:opacity-50">
+                      <i class="fa-solid" :class="uploadBusy ? 'fa-spinner fa-spin' : 'fa-upload'"></i>
+                      <span class="hidden sm:inline">{% trans "Upload" %}</span>
+                    </button>
                     <a x-show="item.upload_url" :href="item.upload_url" @click.stop
+                       data-vault-control="upload"
                        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition hover:opacity-85">
                       <i class="fa-solid fa-upload text-xs"></i>
@@ -1353,7 +1467,10 @@
                     <i class="fa-solid fa-ellipsis text-xs"></i>
                   </button>
 
-                  <!-- View image — full-screen preview for image files -->
+                  {% comment %}View image — full-screen preview for image
+                     files. Not drawn on a host that only stores files
+                     (VAULT_STORAGE_ONLY): every file there is a download.{% endcomment %}
+                  {% if not vault_storage_only %}
                   <button x-show="item.file_type === 'image' && item.url"
                           @click.stop="openImageModal(item)"
                           :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
@@ -1361,8 +1478,11 @@
                           :title="`{% trans 'View' %} ${item.title}`">
                     <i class="fa-solid fa-expand text-xs"></i>
                   </button>
+                  {% endif %}
 
-                  <!-- Play — enabled when plugin registered, disabled (owner-only) when not -->
+                  <!-- Play — drawn only where some play plugin is registered
+                       (vault_has_play), and shown for the files one claims -->
+                  {% if vault_has_play %}
                   <button x-show="item.play_url"
                           @click.stop="window.location.href = item.play_url"
                           :class="darkMode ? 'text-green-400 hover:bg-green-400/15' : 'text-green-600 hover:bg-green-600/15'"
@@ -1372,6 +1492,7 @@
                     <i class="fa-solid fa-play text-xs" aria-hidden="true"></i>
                     <span class="sr-only">{% trans "Play" %}</span>
                   </button>
+                  {% endif %}
 
                   <!-- Delete trash — owner only, revealed on row hover -->
                   <button x-show="item.owner === currentUser"
@@ -1486,14 +1607,17 @@
                             class="rounded-lg border px-2 py-1 text-xs opacity-60 hover:opacity-100 transition" :title="`{% trans 'Actions for' %} ${item.title}`">
                       <i class="fa-solid fa-ellipsis"></i>
                     </button>
-                    <!-- View image — full-screen preview for image files -->
+                    {% comment %}View image — as in the list row.{% endcomment %}
+                    {% if not vault_storage_only %}
                     <button x-show="item.file_type === 'image' && item.url"
                             @click.stop="openImageModal(item)"
                             :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
                             class="rounded-lg border px-2 py-1 text-xs transition" title="{% trans "View image" %}">
                       <i class="fa-solid fa-expand"></i>
                     </button>
-                    <!-- Play — enabled when plugin registered, disabled (owner-only) when not -->
+                    {% endif %}
+                    <!-- Play — as in the list row -->
+                    {% if vault_has_play %}
                     <button x-show="item.play_url"
                             @click.stop="window.location.href = item.play_url"
                             class="rounded-lg border border-green-400/40 px-2 py-1 text-xs text-green-500 hover:opacity-80 transition" title="{% trans "Play" %}"
@@ -1501,6 +1625,7 @@
                       <i class="fa-solid fa-play" aria-hidden="true"></i>
                       <span class="sr-only">{% trans "Play" %}</span>
                     </button>
+                    {% endif %}
                     <!-- Delete -->
                     <button x-show="item.owner === currentUser"
                             @click.stop="openDelete(item)"
@@ -2079,7 +2204,8 @@
         </div>
       </div>
 
-      <!-- ── Create New File modal ───────────────────────────────── -->
+      {% comment %}── Create New File modal — only where an editor is installed ──{% endcomment %}
+      {% if create_file_types %}
       <div x-show="createModal"
            x-cloak
            @keydown.escape.window="createModal = false"
@@ -2143,6 +2269,7 @@
 
         </div>
       </div>
+      {% endif %}
 
       <!-- ── Zip directory modal ──────────────────────────────────── -->
       <div x-show="zipModal"
@@ -2249,19 +2376,23 @@
           <div class="flex flex-col gap-1.5">
             <!-- Play: the file's player or reader (a Markdown file read like a
                  GitHub README, 2026-10-02) — the same link as the row's button -->
+            {% if vault_has_play %}
             <button x-show="actionsItem && actionsItem.play_url"
                     @click="chooseAction('play')"
                     :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
                     class="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-semibold text-left transition">
               <i class="fa-solid fa-play w-5 text-center opacity-70"></i>{% trans "Play" %}
             </button>
-            <!-- Edit in editor -->
+            {% endif %}
+            <!-- Edit in editor — only where an editor is installed -->
+            {% if vault_has_editors %}
             <button x-show="actionsItem && actionsItem.editor_url"
                     @click="chooseAction('edit')"
                     :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
                     class="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-semibold text-left transition">
               <i class="fa-solid fa-code w-5 text-center opacity-70"></i>{% trans "Open in editor" %}
             </button>
+            {% endif %}
             <!-- Open the file's tool directly (no service picker) -->
             <button x-show="actionsItem && actionsItem.has_services && _openServiceUrlTpl"
                     @click="window.location.href = _openServiceUrlTpl.replace('0', actionsItem.id)"
@@ -2355,7 +2486,8 @@
         </div>
       </div>
 
-      <!-- ── Image preview modal ──────────────────────────────────── -->
+      {% comment %}── Image preview modal — not on a storage-only host ──{% endcomment %}
+      {% if not vault_storage_only %}
       <div x-show="imageModalOpen"
            x-cloak
            @keydown.escape.window="imageModalOpen = false"
@@ -2376,6 +2508,7 @@
           </div>
         </div>
       </div>
+      {% endif %}
 
     </div><!-- /vaultTree -->
 

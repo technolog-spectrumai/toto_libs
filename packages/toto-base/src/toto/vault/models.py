@@ -65,6 +65,18 @@ def file_edits_allowed() -> bool:
     return getattr(settings, "VAULT_FILE_EDITS", True)
 
 
+def storage_only() -> bool:
+    """Host contract flag: a host sets ``VAULT_STORAGE_ONLY = True`` (zenobia
+    does, since 2026-10-03) to say the vault stores files and shows none.
+
+    Then nothing is playable and nothing is made here: the pages draw no Play,
+    no Edit, no image viewer and no "New" (whatever plugin is registered), the
+    empty-file doors answer 404, and a file arrives by upload and leaves by
+    download. Folders are still made (they are not files). The default, False,
+    is every other host's vault as it was."""
+    return bool(getattr(settings, "VAULT_STORAGE_ONLY", False))
+
+
 def refused_file_types() -> frozenset:
     """Host contract flag: ``VAULT_REFUSED_FILE_TYPES = {"latex"}`` names
     vault file types this host refuses at every door that assigns one —

@@ -57,8 +57,8 @@ def available_create_types():
     spreadsheet look like" is a question this package must not import primula to
     answer. See VaultEditorPlugin.blank_content.
     """
-    from toto.vault.models import file_edits_allowed, refused_file_types
-    if not file_edits_allowed():
+    from toto.vault.models import file_edits_allowed, refused_file_types, storage_only
+    if not file_edits_allowed() or storage_only():
         return []
     from toto.vault.plugins import VaultEditorPlugin  # local: registry filled in ready()
 
@@ -95,10 +95,14 @@ class PublicFileListView(TemplateView):
 
     def _build_flat_items(self, dirs, files, dir_gateway_map, user_bucket_pks=None,
                           clean_pks=None):
+        from toto.vault.models import storage_only
         from toto.vault.plugins import VaultPlayPlugin
 
+        # A host that only stores files offers neither, whatever is registered.
+        _storage_only = storage_only()
+
         def _play_url_for(f):
-            if f.is_encrypted:
+            if f.is_encrypted or _storage_only:
                 return ""
             plugin = VaultPlayPlugin.for_file_type(f.file_type)
             # A plugin whose target URL isn't mounted (its feature flag is off) must
@@ -116,7 +120,7 @@ class PublicFileListView(TemplateView):
             # (mirrors _play_url_for above). Non-local content gets the same
             # treatment: the editors open local handles, and a remote file's
             # bytes are on another host — download works, editing does not.
-            if f.is_encrypted or not access.is_local_content(f):
+            if f.is_encrypted or _storage_only or not access.is_local_content(f):
                 return ""
             plugin = VaultEditorPlugin.for_file_type(f.file_type)
             try:
@@ -174,6 +178,8 @@ class PublicFileListView(TemplateView):
                     "n_dirs": n_dirs,
                     "locked": d.allowed_users.exists(),
                     "upload_url": dir_gateway_map.get(d.pk, ""),
+                    # For "New folder": the API names a bucket by its slug.
+                    "bslug": d.bucket.slug,
                     "can_create": d.bucket_id in user_bucket_pks if user_bucket_pks else False,
                 })
                 visit(d.pk, depth + 1)
@@ -358,6 +364,18 @@ class PublicFileListView(TemplateView):
         context["bucket_quota_info"] = bucket_quota_info
         # "New file" type pills — only types whose editor is installed on this deployment.
         context["create_file_types"] = available_create_types()
+        # Whether any Play or Edit control is drawn at all. A host that only
+        # stores files registers neither kind of plugin, and then the page
+        # carries no such button — not a hidden one.
+        from toto.vault.models import storage_only
+        from toto.vault.plugins import VaultEditorPlugin, VaultPlayPlugin
+        # VAULT_STORAGE_ONLY: nothing is playable and nothing is made here —
+        # no Play, no Edit, no image viewer, no New — whatever is registered.
+        context["vault_storage_only"] = storage_only()
+        context["vault_has_play"] = (not storage_only()
+                                     and bool(VaultPlayPlugin.registry))
+        context["vault_has_editors"] = (not storage_only() and any(
+            plugin.is_available() for plugin in VaultEditorPlugin.all()))
 
         # Archiving moved to the Archive tab, which is the same tree carrying
         # the zip actions this one deliberately no longer offers. The Alpine
@@ -2158,6 +2176,12 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
         # fetch is same-origin and passes.
         from toto.api.fetch_metadata import cross_site_refusal
 
+        from toto.vault.models import storage_only
+
+        if storage_only():
+            # No such door on a host that only stores files: a file arrives
+            # by upload, never empty from here.
+            raise Http404("This host stores uploaded files only.")
         refusal = cross_site_refusal(request)
         if refusal is not None:
             return refusal

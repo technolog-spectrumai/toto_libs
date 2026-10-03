@@ -818,6 +818,15 @@ class FileCreateApiView(CorsApiView):
         #     so only "may this type be written through this API at all?"
         #     applies, which is EDITABLE_FILE_TYPES.
         if content is None:
+            from toto.vault.models import storage_only
+
+            if storage_only():
+                # A host that only stores files makes no empty one: the New
+                # file door is gone there. A push with its content is an
+                # upload, and is taken below as before.
+                return JsonResponse(
+                    {"error": _("This host stores uploaded files only: send "
+                                "the file's content, or upload it.")}, status=404)
             creatable = set(CreateEmptyFileView._INITIAL) & EDITABLE_FILE_TYPES
             if file_type not in creatable:
                 return JsonResponse(
