@@ -144,7 +144,6 @@ class MarkedNodesTests(TestCase):
             "toto.antivirus": ["antivirus_scan"],
             "toto.vault": ["vault_refresh_remote_bucket",
                            "vault_transfer_files", "vault_zip_files"],
-            "toto.aralia": ["aralia_render"],
         }
         checked = 0
         for app, names in expected.items():

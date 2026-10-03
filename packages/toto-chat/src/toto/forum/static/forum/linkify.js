@@ -6,8 +6,8 @@
 // own host, plus the names the room view hands over (toto.forum.links). A
 // URL anywhere else stays text, and so does everything that is not http(s).
 //
-// URLs are found the way aralia finds them in Markdown
-// (toto.aralia.markdown_source: _URL_RE, _URL_TRAILING, _trim_url): http://,
+// URLs are found the way Markdown Play finds them (zenobia's
+// toto.htmlview.markdown_source: _URL_RE, _URL_TRAILING, _trim_url): http://,
 // https:// or www., not glued to a word, an address or another URL; trailing
 // punctuation and an unbalanced ")" are left out of the link.
 //

@@ -207,8 +207,8 @@ loopback addresses and `*`; a leading-dot entry gives its bare name, never
 its subdomains). Every other URL stays text, and so does anything not
 `http`/`https`, a URL with `user@` before the host, a look-alike host
 (`ours.evil.com`, `ours.` with its trailing dot, an IDN double) and a URL
-glued to a word or an address. URLs are found as aralia finds them in
-Markdown; trailing punctuation and an unbalanced `)` stay outside the link.
+glued to a word or an address. URLs are found as Markdown Play finds them
+(zenobia's `toto.htmlview.markdown_source`); trailing punctuation and an unbalanced `)` stay outside the link.
 
 A link to another of our names points at the page's own origin with the same
 path, query and fragment, so the session cookie goes with it; it opens in the
