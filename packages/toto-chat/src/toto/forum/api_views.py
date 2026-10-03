@@ -251,7 +251,9 @@ class MessageAttachmentApiView(CorsApiView):
             except (RoomKeyUnavailable, sealing.SealBroken):
                 return JsonResponse({"error": _("This attachment cannot be opened now.")}, status=409)
             response = HttpResponse(data, content_type=row.attachment_mime or "application/octet-stream")
-            response["Content-Disposition"] = f'inline; filename="{row.attachment_name or "attachment"}"'
+            response["Content-Disposition"] = (
+                f'{_attachment_disposition(row.attachment_mime)}; '
+                f'filename="{row.attachment_name or "attachment"}"')
             response["X-Content-Type-Options"] = "nosniff"
             return response
 
@@ -260,11 +262,14 @@ class MessageAttachmentApiView(CorsApiView):
         except (FileNotFoundError, OSError):
             raise Http404("Attachment file is missing.")
 
-        return FileResponse(
+        response = FileResponse(
             handle,
             content_type=row.attachment_mime or "application/octet-stream",
             filename=row.attachment_name or "attachment",
+            as_attachment=_attachment_disposition(row.attachment_mime) == "attachment",
         )
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -381,6 +386,21 @@ class ChannelLeaveAllApiView(CorsApiView):
 
 
 _ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+
+
+def _attachment_disposition(mime: str) -> str:
+    """How a stored attachment leaves: shown in place only when it is one of
+    the pictures the upload door takes; anything else is a download.
+
+    The stored type is the sender's word, and a row written by an older door
+    or by hand may carry any. A page (text/html, image/svg+xml) served in
+    place from this origin would run with the reader's session, so only the
+    raster pictures are; a voice message still plays, because an <audio>
+    element does not ask how its source is disposed. Every answer also says
+    nosniff, so a picture's type is never guessed into a page.
+    """
+    return "inline" if (mime or "").split(";")[0].strip().lower() in _ALLOWED_IMAGE_TYPES \
+        else "attachment"
 _ALLOWED_AUDIO_PREFIXES = ("audio/webm", "audio/ogg", "audio/mp4", "audio/wav", "audio/mpeg")
 _MAX_MEDIA_BYTES = 10 * 1024 * 1024  # 10 MB
 
