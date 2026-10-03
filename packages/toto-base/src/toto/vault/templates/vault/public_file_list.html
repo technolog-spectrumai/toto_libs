@@ -859,6 +859,15 @@
           this.actionsModal = true;
         },
 
+        // ── What Upload and New folder say ────────────────────
+        // Their sentences are DATA: the tree's root element carries them as
+        // data-msg-* attributes and say() reads one. Nothing the server
+        // renders is written into this script for them: in a template
+        // literal a ${…} inside a sentence would run, and escapejs, which is
+        // for a quoted string, leaves it alone
+        // (toto.core.tests_script_literals).
+        say(key) { return this.$root.dataset[key] || ''; },
+
         // ── Upload into an owned folder (no gateway) ──────────
         // One request per file to the vault's upload door; what it refuses
         // (an Office file, a spent quota, a full bucket) is reported by name
@@ -894,7 +903,7 @@
                 refused.push(`${file.name}: ${data.detail || data.error || res.status}`);
               }
             } catch {
-              refused.push(`${file.name}: {{ _("Network error. Please try again.")|escapejs }}`);
+              refused.push(`${file.name}: ${this.say('msgNetwork')}`);
             }
           }
           this.uploadBusy = false;
@@ -907,7 +916,7 @@
         // folder whose row was used, or at the top of the member's own
         // bucket from the toolbar. The door is the vault's directory API.
         async newFolder(dirItem) {
-          const name = (window.prompt('{{ _("Folder name")|escapejs }}') || '').trim();
+          const name = (window.prompt(this.say('msgFolderName')) || '').trim();
           if (!name) return;
           const csrf = document.cookie.split(';')
             .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
@@ -923,9 +932,9 @@
             });
             if (res.status === 201) { window.location.reload(); return; }
             const data = await res.json().catch(() => ({}));
-            window.alert(data.error || '{{ _("The folder could not be made.")|escapejs }}');
+            window.alert(data.error || this.say('msgFolderFailed'));
           } catch {
-            window.alert('{{ _("Network error. Please try again.")|escapejs }}');
+            window.alert(this.say('msgNetwork'));
           }
         },
 
@@ -1116,7 +1125,13 @@
     {{ move_targets|json_script:"vault-move-targets" }}
 
     <!-- Tree -->
-    <div x-data="vaultTree()">
+    {% comment %}data-msg-*: the sentences Upload and New folder say, handed
+       to the script as data and read there with say() (see its comment).
+       force_escape because a translated literal is not escaped by itself.{% endcomment %}
+    <div x-data="vaultTree()"
+         data-msg-network="{{ _('Network error. Please try again.')|force_escape }}"
+         data-msg-folder-name="{{ _('Folder name')|force_escape }}"
+         data-msg-folder-failed="{{ _('The folder could not be made.')|force_escape }}">
       {% comment %}One hidden picker for "Upload" on a folder with no gateway.{% endcomment %}
       <input type="file" multiple class="hidden" x-ref="vaultUploadInput"
              @change="uploadPicked($event)">

@@ -3,7 +3,9 @@ reader is shown, and the per-row facts the tree component acts on — upload
 targets, create rights, the metrics link, quota badges.
 """
 
+import re
 import tempfile
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
@@ -183,3 +185,51 @@ class RowFactsTests(_Fixture):
         context = self.listing(self.owner).context
         self.assertEqual(context["file_types"], VaultFile.FILE_TYPES)
         self.assertFalse(context["zip_enabled"])
+
+
+class ScriptSentencesTests(_Fixture):
+    """Upload and New folder say their sentences from the tree element's
+    ``data-msg-*`` attributes (``say(key)`` in the page's script), not from
+    text the server writes into the script: there a sentence sat in a template
+    literal, where ``${…}`` runs and ``escapejs`` does not help
+    (``toto.core.tests_script_literals``, 2026-10-03)."""
+
+    TREE = re.compile(r'<div x-data="vaultTree\(\)"([^>]*)>')
+
+    def attributes(self, html):
+        tree = self.TREE.search(html)
+        self.assertIsNotNone(tree, "the tree's root element was not found")
+        return dict(re.findall(r'\bdata-(msg-[a-z-]+)="([^"]*)"', tree.group(1)))
+
+    def test_every_sentence_the_script_asks_for_is_on_the_tree(self):
+        """A key the script asks for and the element lacks is an empty alert."""
+        html = self.listing(self.owner).content.decode()
+        given = self.attributes(html)
+        asked = set(re.findall(r"\bsay\('(msg[A-Za-z]+)'\)", html))
+        self.assertTrue(asked, "the script asks for no sentence: the check is vacuous")
+        for key in sorted(asked):
+            attribute = re.sub("[A-Z]", lambda found: "-" + found.group(0).lower(), key)
+            with self.subTest(key=key):
+                self.assertTrue(given.get(attribute, "").strip(),
+                                f"the tree carries no data-{attribute}")
+
+    def test_a_sentence_cannot_leave_its_attribute(self):
+        """A translated literal reaches the template marked safe, so nothing
+        escapes it unless the attribute says so. A translation with a quote
+        in it must stay one attribute's value."""
+        from django.utils import translation
+        from django.utils.safestring import mark_safe
+
+        hostile = '"><i x="${alert(1)}`'
+        translate = translation._trans.gettext
+
+        def with_one_hostile_sentence(message):
+            if message == "Folder name":
+                return mark_safe(hostile)       # as gettext does for a literal
+            return translate(message)
+
+        with mock.patch.object(translation._trans, "gettext", with_one_hostile_sentence):
+            html = self.listing(self.owner).content.decode()
+        self.assertEqual(self.attributes(html)["msg-folder-name"],
+                         "&quot;&gt;&lt;i x=&quot;${alert(1)}`")
+        self.assertNotIn(hostile, html)
