@@ -342,6 +342,18 @@ def _manual_features(request):
     this server (portal and faros install different app subsets)."""
     from django.apps import apps  # noqa: PLC0415
 
+    features = _manual_feature_map(request, apps)
+    # Whether the storage chapter may promise Play / Edit buttons at all: a
+    # host that only stores files installs none of these, and its chapter
+    # says a file comes back as a download instead.
+    features["viewers"] = any(
+        features[name] for name in (
+            "vod", "markdown", "memo", "notarius", "editor", "sketch",
+            "notebooks", "latex"))
+    return features
+
+
+def _manual_feature_map(request, apps):
     return {
         "vault": apps.is_installed("toto.vault"),
         # The recurring storage fee (levy engine). Implies the economy: toto.tax
@@ -369,6 +381,9 @@ def _manual_features(request):
         "memo": apps.is_installed("toto.memo"),
         "notarius": apps.is_installed("toto.notarius"),
         "editor": apps.is_installed("toto.editor"),
+        # Mounted: "file scans" among the metered work is the on-demand scan
+        # of the antivirus desk, which a host without the app does not sell.
+        "antivirus": _mounted("antivirus:index"),
         "sketch": apps.is_installed("toto.sketch"),
         "chat": apps.is_installed("toto.forum"),
         # Mounted, not installed — and the distinction is load-bearing here.

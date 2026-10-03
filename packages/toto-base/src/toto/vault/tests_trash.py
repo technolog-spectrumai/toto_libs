@@ -142,6 +142,10 @@ class HiddenDoorTests(_Fixture):
         self.assertEqual(titles, ["live.txt"])
 
     def test_the_editor_open_door(self):
+        from django.apps import apps
+
+        if not apps.is_installed("toto.editor"):
+            self.skipTest("toto.editor is not installed on this host: no editor door")
         self.assertEqual(self.client.get(reverse("editor:text_display", args=[self.gone.pk]))
                          .status_code, 404)
 

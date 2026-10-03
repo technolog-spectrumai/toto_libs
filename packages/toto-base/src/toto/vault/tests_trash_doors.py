@@ -165,6 +165,10 @@ class DoorTests(_Fixture):
         self.assertEqual(vault_actions(), ["FILE_TRASHED"])
 
     def test_the_editor_delete(self):
+        from django.apps import apps
+
+        if not apps.is_installed("toto.editor"):
+            self.skipTest("toto.editor is not installed on this host: no editor door")
         vault_file = self.file("doc")
         response = self.client.post(reverse("editor:text_delete", args=[vault_file.pk]))
         self.assertEqual(response.status_code, 200)

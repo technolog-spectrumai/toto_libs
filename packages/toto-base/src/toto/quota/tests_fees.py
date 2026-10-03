@@ -449,14 +449,12 @@ class IncomeBoardLiveTests(TestCase):
         # metric registers, nothing gets priced, and the drift check below has
         # nothing to be a check OF.
         #
-        # `antivirus.scan` should end the sequence, and the reasoning is worth
-        # stating because the last three subjects all looked safe too. Every
-        # one of them belonged to an EDITOR — an app that can be retired as a
-        # product decision. toto.antivirus cannot: it is a write-door on SVG,
-        # HTML, XML and JSON, and a platform that accepts uploads and screens
-        # none of them is not a product. It leaves only if the host stops being
-        # itself.
-        self.assertTrue(rates.set_price("antivirus.scan", "0.001"))
+        # `antivirus.scan` was the fifth, chosen as an app that "cannot
+        # leave" — and zenobia stopped installing toto.antivirus on
+        # 2026-10-03, when it became storage only. `storage.request` is the
+        # vault's own metric, and toto.vault is in the same package as this
+        # test: it is registered wherever this runs.
+        self.assertTrue(rates.set_price("storage.request", "0.001"))
         TariffItem.objects.update(charged_asset=banana)
 
         self.assertEqual(
