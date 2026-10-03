@@ -4,9 +4,19 @@ from .last_visited import record_and_get_back
 
 
 def last_visited(request):
-    if not request.user.is_authenticated:
+    """The "back to …" link: the app section a member came from.
+
+    A request may carry no ``user`` (2026-10-03). Django draws its error pages
+    with the request, so every context processor runs — and the 400 page for
+    an unknown host (``DisallowedHost``, raised by CommonMiddleware) is drawn
+    before AuthenticationMiddleware has run. Reading ``request.user`` raised
+    there, and every such request answered 500. Django's own ``auth``
+    processor reads it the same way.
+    """
+    user = getattr(request, "user", None)
+    if user is None or not user.is_authenticated:
         return {}
-    back_url, back_name = record_and_get_back(request.user.pk, request.path)
+    back_url, back_name = record_and_get_back(user.pk, request.path)
     return {"last_visited_url": back_url, "last_visited_name": back_name}
 
 

@@ -136,3 +136,44 @@ class ManualFeatureGateTests(TestCase):
         self.assertContains(response, "<code>.md</code> files")
         self.assertContains(response, "formulas written between")
         self.assertNotContains(response, "/wiki/")
+
+
+@override_settings(
+    CACHES={
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "core-last-visited",
+        }
+    }
+)
+class LastVisitedTests(TestCase):
+    """The "back to …" link's context processor (2026-10-03)."""
+
+    def setUp(self):
+        cache.clear()
+
+    def test_a_request_no_middleware_signed_in_records_nothing(self):
+        # Django draws its error pages with the request and every context
+        # processor, and for an unknown host before AuthenticationMiddleware
+        # has run: no request.user. Reading it raised, and the 400 page for
+        # every such request became a 500.
+        from django.test import RequestFactory
+        from .context_processors import last_visited
+
+        request = RequestFactory().get("/vault/")
+        self.assertFalse(hasattr(request, "user"))
+        self.assertEqual(last_visited(request), {})
+
+    def test_a_member_is_offered_the_section_they_came_from(self):
+        from django.test import RequestFactory
+        from .context_processors import last_visited
+
+        member = User.objects.create_user(username="walker", password="pw")
+        first = RequestFactory().get("/vault/files/")
+        first.user = member
+        self.assertEqual(last_visited(first),
+                         {"last_visited_url": None, "last_visited_name": None})
+        then = RequestFactory().get("/events/")
+        then.user = member
+        self.assertEqual(last_visited(then),
+                         {"last_visited_url": "/vault/files/", "last_visited_name": "Vault"})
