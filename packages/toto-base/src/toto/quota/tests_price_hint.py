@@ -256,29 +256,37 @@ class PriceHintLiveTests(TestCase):
         ensure_local_issuer()
         super().setUp()
 
+    #: The metric this test prices is ITS OWN, registered for the length of the
+    #: test. It named another app's four times — cyprian.pdf (gone 8/2026,
+    #: cyprian migration 0003), memo.pdf (2026-09-03), sketch.save
+    #: (2026-09-04), antivirus.scan (2026-10-03: "a write-door the platform
+    #: cannot drop", until zenobia became storage only and dropped it). A code
+    #: no metric registers cannot be priced — set_price returns False and the
+    #: test fails for a reason that has nothing to do with prices, which is
+    #: how it read every time. What is asserted is the wiring from the rate
+    #: desk to a template; that needs A metric, not anybody's in particular,
+    #: so no app's leaving can fail it again.
+    PROBE = "quota.price_hint_probe"
+
     def test_a_price_seeded_through_the_real_rate_card_reaches_a_template(self):
         from toto.quota import rates
+        from toto.quota.metrics import Metric, registry
 
         # The seeders build the gas asset, the default tariff and the revenue
         # account; a price needs all three to exist.
         call_command("ingress_assets", verbosity=0)
         call_command("ingress_tariffs", verbosity=0)
 
-        # rates.set_price, not tariffs.upsert_price: the quota-side API takes a
-        # metric CODE, which is the only thing a caller on this side of the
-        # boundary has. upsert_price wants the registry object.
-        #
-        # antivirus.scan, and it is the fourth code this test has named:
-        # cyprian.pdf went in 8/2026 (cyprian migration 0003), memo.pdf on
-        # 2026-09-03, sketch.save on 2026-09-04. A code no metric registers
-        # cannot be priced — set_price returns False and the test fails for a
-        # reason that has nothing to do with prices, which is how it read every
-        # time. The first three all belonged to editors, which are retirable;
-        # toto.antivirus is a write-door the platform cannot drop.
-        self.assertTrue(rates.set_price("antivirus.scan", "0.001"))
-
-        out = render('{% price_hint "antivirus.scan" %}')
+        probe = Metric(code=self.PROBE, label="Price hint probe", app_label="quota")
+        # patch.dict hands the registry back as it was, whatever happens here.
+        with mock.patch.dict(registry._metrics, {probe.code: probe}):
+            # rates.set_price, not tariffs.upsert_price: the quota-side API
+            # takes a metric CODE, which is the only thing a caller on this
+            # side of the boundary has. upsert_price wants the registry object.
+            self.assertTrue(rates.set_price(probe.code, "0.001"))
+            out = render('{% price_hint "' + probe.code + '" %}')
         self.assertIn("0.001", out)
+        self.assertIsNone(registry.get(probe.code))
 
     def test_an_unpriced_metric_stays_silent_against_a_real_card(self):
         call_command("ingress_assets", verbosity=0)
