@@ -75,6 +75,19 @@ class CheckTests(TestCase):
         else:
             self.assertEqual(check.status, record.OFF)
 
+    def test_the_audit_chain_is_counted_in_words(self):
+        """One record and more (ngettext since 2026-10-02's Polish pass),
+        never "record(s)"; a host with no chain yet verifies none."""
+        if not django_apps.is_installed("toto.audit"):
+            self.skipTest("toto.audit is not installed on this host")
+        from toto.audit.services import record as audit
+
+        self.assertEqual(record.check_audit().summary, "0 records verify.")
+        audit("MONIT_TEST_ONE", app_label="monit")
+        self.assertEqual(record.check_audit().summary, "1 record verifies.")
+        audit("MONIT_TEST_TWO", app_label="monit")
+        self.assertEqual(record.check_audit().summary, "2 records verify.")
+
     def test_worst_ranks_fail_over_warn_over_unknown(self):
         mk = lambda status: record.Check("k", "K", status, "s")
         self.assertEqual(record.worst([mk(record.OK)]), record.OK)

@@ -291,7 +291,12 @@ class ScheduledFormTests(TestCase):
             Path(scratch, "logo.png").write_bytes(b"png")
             with mock.patch.object(Path, "rglob", side_effect=AssertionError("walked")):
                 self.assertEqual(record.check_media(scheduled=True).status, record.OK)
-            self.assertEqual(record.check_media().summary, "1 file(s), 3 B.")
+            # Counted in words, one and more (ngettext since 2026-10-02's
+            # Polish pass), never "file(s)"; the walk goes down the tree.
+            self.assertEqual(record.check_media().summary, "1 file, 3 B.")
+            Path(scratch, "docs").mkdir()
+            Path(scratch, "docs", "terms.txt").write_bytes(b"text")
+            self.assertEqual(record.check_media().summary, "2 files, 7 B.")
             self.assertEqual(record.check_media(scheduled=True).status, record.OK)
         with override_settings(MEDIA_ROOT="/nonexistent/monit-media"):
             self.assertEqual(record.check_media(scheduled=True).status, record.FAIL)
@@ -304,7 +309,8 @@ class ScheduledFormTests(TestCase):
             self.assertIsNone(walk.call_args.kwargs.get("after"))
             audit("MONIT_TEST_NEW", app_label="monit")
             check = record.check_audit(scheduled=True)
-            self.assertEqual((check.status, check.summary), (record.OK, "6 record(s) verify."))
+            # Counted from the chain's start, though only the new one was walked.
+            self.assertEqual((check.status, check.summary), (record.OK, "6 records verify."))
             self.assertEqual(walk.call_args.kwargs["after"][0], 5)
 
     def test_a_new_record_edited_is_found_by_the_next_run(self):
