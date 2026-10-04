@@ -10,7 +10,7 @@ import unittest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from toto.people.models import LocationSharing, Person
+from toto.people.models import Person
 
 User = get_user_model()
 
@@ -67,10 +67,11 @@ class NameTests(TestCase):
 
 
 class DefaultsTests(TestCase):
-    def test_nobody_s_home_is_shown_until_they_say_so(self):
+    def test_nobody_s_contact_details_are_shown_until_they_say_so(self):
         person = Person.objects.create(display_name="Ada")
-        self.assertEqual(person.location_sharing, LocationSharing.OFF)
-        self.assertEqual(Person.LOCATION_SHARING_CHOICES[0][0], "off")
+        self.assertEqual((person.show_email, person.show_phone, person.show_address),
+                         (False, False, False))
+        self.assertEqual(person.address, "")
 
     def test_the_language_starts_as_english_and_no_federation_subject(self):
         person = Person.objects.create(display_name="Ada")

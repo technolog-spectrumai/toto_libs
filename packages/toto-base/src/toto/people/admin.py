@@ -47,10 +47,9 @@ class PersonAdmin(TotoModelAdmin):
     list_display = ("display_name", "user", "patron_display", "joined_date", "slug", "id", "address_display", "email")
     search_fields = (
         "display_name", "user__username", "user__email", "email",
-        "patron__display_name", "address__street",
-        "address__locality_name", "address__state_or_province_name", "address__country_name",
+        "patron__display_name", "address",
     )
-    list_filter = ("joined_date", "address__country_name", "address__state_or_province_name")
+    list_filter = ("joined_date",)
     ordering = ("-joined_date",)
     filter_horizontal = ("communities",)
 
@@ -60,7 +59,7 @@ class PersonAdmin(TotoModelAdmin):
 
     @admin.display(description="Address")
     def address_display(self, obj):
-        return str(obj.address) if obj.address else "-"
+        return obj.address or "-"
 
     # Who holds a clearance is the Clearances tab's to change (2026-10-02,
     # the crown bug hunt): a superuser on the Superuser plan. Anybody else

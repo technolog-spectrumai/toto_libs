@@ -12,18 +12,6 @@ from django.utils.translation import gettext_lazy as _
 from toto.core.domain import DomainEntity
 
 
-class LocationSharing(models.TextChoices):
-    """How much of a person's whereabouts other members may see.
-
-    The order is deliberate: OFF first, so it is the default any new column,
-    any fixture and any forgotten argument lands on.
-    """
-
-    OFF = "off", _("Not shown to anyone")
-    APPROXIMATE = "approximate", _("Approximate area only")
-    EXACT = "exact", _("Exact address")
-
-
 @lru_cache(maxsize=1)
 def time_zone_names() -> frozenset:
     """Every IANA zone this Python knows. Read once: the tz database does not
@@ -78,53 +66,26 @@ class Person(DomainEntity):
     joined_date = models.DateTimeField(default=timezone.now)
     slug = models.SlugField(unique=True, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
-    address = models.ForeignKey(
-        "locations.Address",
-        on_delete=models.SET_NULL,
-        null=True,
+    #: Where this person lives or can be reached by post: plain text, as they
+    #: typed it (2026-10-04). It was a key to a map address with a pin and a
+    #: three-way sharing switch; toto-base carries no geography now, so nothing
+    #: here is looked up, geocoded or drawn. Who reads it is `show_address`.
+    address = models.TextField(
         blank=True,
-        related_name="residents",
-        help_text="Optional address for this community member",
-    )
-    #: Whether this person's address may be shown to other members, and how
-    #: precisely. OFF is the default and that is the whole point: a home
-    #: location is the most sensitive thing this platform stores, so appearing
-    #: on the People map is something a person switches ON, never something
-    #: they have to discover and switch off.
-    #:
-    #: ONE field rather than a boolean plus a precision, because the pair can
-    #: express "sharing, precision unset" and this cannot.
-    #:
-    #: It lives on Person rather than in a Group or a side table because
-    #: `datalink` replicates Person between federated hosts and REFUSES
-    #: auth.Group ("group membership is a local authorization decision" —
-    #: datalink_policies.py). A consent flag that did not travel with the person
-    #: would let a federated host republish an address its owner switched off
-    #: here.
-    #: The choices, reachable from a template — Django templates cannot call
-    #: `LocationSharing.choices` and iterating a hardcoded list in the markup is
-    #: how the page and the field drift apart.
-    LOCATION_SHARING_CHOICES = LocationSharing.choices
-
-    location_sharing = models.CharField(
-        max_length=12,
-        choices=LocationSharing.choices,
-        default=LocationSharing.OFF,
-        help_text=(
-            "Whether other members may see where this person lives, and how "
-            "precisely. Off by default."
-        ),
+        default="",
+        help_text="The postal address this person typed, as text. Nothing is looked up.",
     )
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=50, blank=True, null=True)
-    #: Whether other members see the e-mail address and the phone number
-    #: (2026-10-01, 37c.25). Every member saw every other member's address
-    #: and had no way to hide it; now each is the member's own choice, OFF by
-    #: default like `location_sharing`. The member always sees their own and
-    #: an administrator keeps seeing both (`toto.socialhub.contact_access`).
-    #: On Person, beside the values they guard, for `location_sharing`'s
-    #: reason: a choice that did not travel with the person could be ignored
-    #: by a host the person is copied to.
+    #: Whether other members see the e-mail address, the phone number and the
+    #: postal address (2026-10-01, 37c.25; the address since 2026-10-04).
+    #: Every member saw every other member's e-mail address and had no way to
+    #: hide it; now each is the member's own choice, OFF by default. The
+    #: member always sees their own and an administrator keeps seeing them
+    #: (`toto.socialhub.contact_access`). On Person, beside the values they
+    #: guard, because `datalink` replicates Person between federated hosts: a
+    #: choice that did not travel with the person could be ignored by a host
+    #: the person is copied to.
     show_email = models.BooleanField(
         default=False,
         help_text="Whether other members see this person's e-mail address. Off by default.",
@@ -132,6 +93,10 @@ class Person(DomainEntity):
     show_phone = models.BooleanField(
         default=False,
         help_text="Whether other members see this person's phone number. Off by default.",
+    )
+    show_address = models.BooleanField(
+        default=False,
+        help_text="Whether other members see this person's postal address. Off by default.",
     )
     digital_signature = models.TextField(
         blank=True,

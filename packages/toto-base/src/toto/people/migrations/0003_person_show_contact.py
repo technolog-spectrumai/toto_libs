@@ -20,4 +20,9 @@ class Migration(migrations.Migration):
             name='show_phone',
             field=models.BooleanField(default=False, help_text="Whether other members see this person's phone number. Off by default."),
         ),
+        migrations.AddField(
+            model_name='person',
+            name='show_address',
+            field=models.BooleanField(default=False, help_text="Whether other members see this person's postal address. Off by default."),
+        ),
     ]

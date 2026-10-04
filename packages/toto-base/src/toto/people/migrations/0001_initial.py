@@ -12,7 +12,6 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('locations', '0001_initial'),
     ]
 
     operations = [
@@ -27,7 +26,6 @@ class Migration(migrations.Migration):
                 ('joined_date', models.DateTimeField(default=django.utils.timezone.now)),
                 ('slug', models.SlugField(blank=True, unique=True)),
                 ('date_of_birth', models.DateField(blank=True, null=True)),
-                ('location_sharing', models.CharField(choices=[('off', 'Not shown to anyone'), ('approximate', 'Approximate area only'), ('exact', 'Exact address')], default='off', help_text='Whether other members may see where this person lives, and how precisely. Off by default.', max_length=12)),
                 ('email', models.EmailField(blank=True, max_length=254, null=True)),
                 ('phone', models.CharField(blank=True, max_length=50, null=True)),
                 ('is_federal_agent', models.BooleanField(default=False, help_text="DEPRECATED as a live flag — superseded by community privileges. It always meant two things at once: the old help text claimed an exemption from poll taxes (never implemented), while the code used it as a cross-community admin permission. Both live on the seeded 'Federal Agents' community now (CommunityPrivilege), and every holder of this flag was admitted to it by migration. Kept only because aurelian's mobilization templates read it; retiring it is an aurelian follow-up.")),
@@ -35,7 +33,7 @@ class Migration(migrations.Migration):
                 ('preferred_language', models.CharField(blank=True, choices=[('en', 'English'), ('pl', 'Polski')], default='en', max_length=10)),
                 ('federated_sub', models.CharField(blank=True, db_index=True, help_text='OIDC subject of the identity provider this person was provisioned from, on a consumer host. Empty on the provider itself.', max_length=255)),
                 ('timezone', models.CharField(blank=True, default='', help_text='IANA time zone name, e.g. Europe/Warsaw. Blank: the platform default.', max_length=64, validators=[toto.people.models.validate_time_zone])),
-                ('address', models.ForeignKey(blank=True, help_text='Optional address for this community member', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='residents', to='locations.address')),
+                ('address', models.TextField(blank=True, default='', help_text='The postal address this person typed, as text. Nothing is looked up.')),
             ],
             options={
                 'db_table': 'socialhub_person',

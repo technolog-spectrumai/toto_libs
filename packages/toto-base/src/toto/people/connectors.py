@@ -9,7 +9,6 @@ from toto.core.connectors import (
     minimal_person,
     register_connector,
 )
-from toto.locations.connectors import serialize_address
 
 
 @register_connector
@@ -23,7 +22,7 @@ class PeopleReadConnector(ReadOnlyModelConnector):
 
         input_data = input_data or {}
         action = self.config.get("action", "list")
-        qs = Person.objects.select_related("address", "patron").prefetch_related("communities")
+        qs = Person.objects.select_related("patron").prefetch_related("communities")
 
         if action == "get":
             person = get_object_by_config(qs, self, input_data, default_lookup="id")
@@ -61,7 +60,6 @@ class PeopleReadConnector(ReadOnlyModelConnector):
             "joined_date": iso(person.joined_date),
             "date_of_birth": iso(person.date_of_birth),
             "patron": minimal_person(person.patron) if person.patron else None,
-            "address": serialize_address(person.address) if person.address else None,
             "communities": [
                 {"id": community.id, "uid": str(community.uid), "name": community.name, "slug": community.slug}
                 for community in person.communities.all()
@@ -70,4 +68,6 @@ class PeopleReadConnector(ReadOnlyModelConnector):
         if self.config.get("include_contact"):
             data["email"] = person.email
             data["phone"] = person.phone
+            # Text the person typed (2026-10-04); it was a map address row.
+            data["address"] = person.address
         return data
