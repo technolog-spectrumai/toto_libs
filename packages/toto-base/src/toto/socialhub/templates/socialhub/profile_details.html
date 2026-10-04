@@ -1,5 +1,4 @@
 {% extends "oya/base.html" %}
-{% load static %}
 {% load i18n %}
 
 {% block title %}{{ profile.display_name }}{% if active_tab_label %} · {{ active_tab_label }}{% endif %}{% endblock %}
@@ -10,15 +9,6 @@
     display: none !important;
   }
 </style>
-{% if is_own_profile and active_tab == "edit" and profile.pk %}
-{% comment %}Leaflet + the classical pin, for the address picker modal. Own
-profile only, and its Edit profile tab: nobody else gets a picker, so nobody
-else pays for the map, and neither do the owner's other tabs.
-{% endcomment %}
-<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}">
-<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
-<script src="{% static 'oya/pin.js' %}"></script>
-{% endif %}
 {% endblock %}
 
 {% block content %}

@@ -15,7 +15,7 @@ from django.utils import translation
 
 from toto.api.testutils import add_to_mesh
 from toto.core.models import Platform
-from toto.people.models import LocationSharing, Person
+from toto.people.models import Person
 from toto.socialhub.models import Clearance, Community, CommunityNewsPost
 
 User = get_user_model()
@@ -63,36 +63,6 @@ class LanguageTests(ProfileCase):
                                     {"language": "en"})
         self.assertRedirects(response, "/", fetch_redirect_response=False)
         self.assertIn("Could not save language preference.", self.messages_of(response))
-
-
-class LocationSharingTests(ProfileCase):
-    def share(self, choice, **extra):
-        return self.client.post(reverse("socialhub:set_location_sharing"),
-                                {"location_sharing": choice}, **extra)
-
-    def test_a_get_changes_nothing(self):
-        response = self.client.get(reverse("socialhub:set_location_sharing"),
-                                   {"location_sharing": LocationSharing.APPROXIMATE})
-        self.assertRedirects(response, reverse("socialhub:profile_list"),
-                             fetch_redirect_response=False)
-        self.ada.refresh_from_db()
-        self.assertEqual(self.ada.location_sharing, LocationSharing.OFF)
-
-    def test_sharing_without_an_address_is_saved_and_says_it_shows_nothing_yet(self):
-        response = self.share(LocationSharing.APPROXIMATE)
-        self.ada.refresh_from_db()
-        self.assertEqual(self.ada.location_sharing, LocationSharing.APPROXIMATE)
-        self.assertTrue(any("no address on your profile yet" in m
-                            for m in self.messages_of(response)))
-
-    def test_off_is_accepted_and_a_person_less_login_is_refused(self):
-        self.share(LocationSharing.APPROXIMATE)
-        self.share(LocationSharing.OFF)
-        self.ada.refresh_from_db()
-        self.assertEqual(self.ada.location_sharing, LocationSharing.OFF)
-        self.client.force_login(User.objects.create_user("stray", password="pw"))
-        response = self.share(LocationSharing.OFF)
-        self.assertIn("You have no profile to share.", self.messages_of(response))
 
 
 class ApiCase(TestCase):

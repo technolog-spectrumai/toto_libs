@@ -110,7 +110,8 @@ class ProfilePageTests(ContactCase):
         html = self.profile(self.quiet_user, self.quiet)
         self.assertIn(EMAIL, html)
         self.assertIn(PHONE, html)
-        self.assertEqual(html.count(HIDDEN_NOTE), 2)
+        # E-mail, phone and (since 2026-10-04) the postal address.
+        self.assertEqual(html.count(HIDDEN_NOTE), 3)
 
     def test_an_administrator_keeps_seeing_both(self):
         html = self.profile(self.root, self.quiet)
@@ -176,7 +177,7 @@ class MyAccountTests(ContactCase):
         response = self.client.get(reverse("socialhub:profile_details", args=[self.quiet.slug])
                                    + "?tab=edit")
         html = response.content.decode()
-        for name in ("show_email", "show_phone"):
+        for name in ("show_email", "show_phone", "show_address"):
             with self.subTest(switch=name):
                 tag = re.search(rf'<input[^>]*name="{name}"[^>]*>', html)
                 self.assertIsNotNone(tag)
@@ -205,3 +206,51 @@ class MyAccountTests(ContactCase):
         self.post_profile(show_phone="on")
         record = AuditRecord.objects.filter(action="SOCIALHUB.PROFILE_CHANGED").get()
         self.assertEqual(record.metadata["fields"], ["show_phone"])
+
+
+class PostalAddressTests(ContactCase):
+    """The postal address is text the member types, shown by its own switch
+    (2026-10-04): the rule of the e-mail address and the phone number. Until
+    then it was a pin on a map with a three-way sharing setting."""
+
+    STREET = "1 Secret Lane"
+
+    def setUp(self):
+        Person.objects.filter(pk=self.quiet.pk).update(address=self.STREET + "\nHidden Town")
+        self.quiet.refresh_from_db()
+
+    def shows(self, viewer) -> bool:
+        return self.STREET in self.profile(viewer, self.quiet)
+
+    def test_it_is_off_by_default_and_hidden_from_another_member(self):
+        self.assertFalse(Person._meta.get_field("show_address").default)
+        self.assertFalse(self.shows(self.other_user))
+        self.assertTrue(self.shows(self.quiet_user))
+        self.assertTrue(self.shows(self.root))
+
+    def test_switched_on_it_shows_to_another_member(self):
+        Person.objects.filter(pk=self.quiet.pk).update(show_address=True)
+        self.assertTrue(self.shows(self.other_user))
+
+    def test_the_rule_is_the_contact_rule(self):
+        from toto.socialhub.contact_access import may_see_address, shown_address
+
+        self.assertTrue(may_see_address(self.quiet_user, self.quiet))
+        self.assertFalse(may_see_address(self.other_user, self.quiet))
+        self.assertFalse(may_see_address(self.quiet_user, self.quiet, passed_on=True))
+        self.assertEqual(shown_address(self.other_user, self.quiet), "")
+
+    def test_the_profile_form_saves_the_text_and_the_switch(self):
+        self.client.force_login(self.quiet_user)
+        response = self.client.post(reverse("account:profile"), {
+            "display_name": "Quiet", "bio": "", "phone": "",
+            "address": "2 New Road", "show_address": "on"})
+        self.assertEqual(response.status_code, 302)
+        self.quiet.refresh_from_db()
+        self.assertEqual((self.quiet.address, self.quiet.show_address), ("2 New Road", True))
+
+    def test_the_address_is_a_text_column_and_nothing_else(self):
+        from django.db import models
+
+        self.assertIsInstance(Person._meta.get_field("address"), models.TextField)
+        self.assertFalse(hasattr(Person, "location_sharing"))

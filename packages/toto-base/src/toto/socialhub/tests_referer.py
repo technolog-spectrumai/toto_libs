@@ -46,13 +46,3 @@ class RefererDoorTests(TestCase):
         response = self.post("set_preferred_language", {"language": "xx"},
                              "http://testserver/vault/")
         self.assertEqual(response["Location"], "http://testserver/vault/")
-
-    def test_the_map_sharing_door_ignores_an_off_site_referer(self):
-        response = self.post("set_location_sharing", {"location_sharing": "nonsense"}, EVIL)
-        self.assertEqual(response["Location"], reverse("socialhub:profile_list"))
-
-    def test_the_pin_door_ignores_an_off_site_referer(self):
-        response = self.post("set_my_address", {"latitude": "x"}, "//evil.example.com/")
-        self.assertEqual(response["Location"], reverse("socialhub:profile_list"))
-        response = self.post("set_my_address", {"latitude": "91", "longitude": "0"}, EVIL)
-        self.assertEqual(response["Location"], reverse("socialhub:profile_list"))

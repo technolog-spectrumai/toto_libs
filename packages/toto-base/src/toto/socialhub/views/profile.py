@@ -9,7 +9,6 @@ from django.urls import reverse
 from django.utils import translation
 from django.utils.cache import add_never_cache_headers
 from django.utils.translation import gettext_lazy as _
-from django.views.decorators.http import require_POST
 from django.views.generic import ListView, DetailView
 
 from toto.core.safe_next import safe_next
@@ -92,7 +91,7 @@ def profile_queryset(viewer):
     """Persons as the profile page fetches them."""
     return (Person.objects.all()
             .prefetch_related(listed_communities(viewer))
-            .select_related("address", "user"))
+            .select_related("user"))
 
 
 def is_own(user, profile) -> bool:
@@ -128,40 +127,17 @@ def _overview(request, profile, own):
     """The Overview: what may be seen of ``profile`` by the viewer — the page
     every member sees; the owner's own contact details marked where they are
     hidden from others (the template), and their communities with it."""
-    # The e-mail address and the phone number only where their owner
-    # shows them, or to the owner or an administrator (2026-10-01,
-    # 37c.25) — the rule the roster and the org-chart API ask too.
-    from toto.socialhub.contact_access import may_see_email, may_see_phone
+    # The e-mail address, the phone number and the postal address only
+    # where their owner shows them, or to the owner or an administrator
+    # (2026-10-01, 37c.25) — the rule the roster and the org-chart API ask
+    # too. The postal address is text the member typed (2026-10-04); until
+    # then it was a map pin under a resolver of its own.
+    from toto.socialhub.contact_access import (may_see_address, may_see_email,
+                                               may_see_phone)
 
-    context = {"may_see_email": may_see_email(request.user, profile),
-               "may_see_phone": may_see_phone(request.user, profile)}
-
-    # The SAME resolver the People map uses, so the page and the map cannot
-    # disagree about who may see an address — the failure `vault/access.py`
-    # calls "the listing and the door drift apart".
-    #
-    # `address_shown` is what the resolver decided may be published, not the
-    # raw field: an approximate sharer's locality rather than their street.
-    from toto.locations.people_access import may_see_location, place_label
-
-    may_see = may_see_location(request.user, profile)
-    context["may_see_address"] = may_see
-    if own:
-        # Your own address in full, whatever you share with others.
-        # `place_label` deliberately coarsens for an approximate sharer, and
-        # applying that to the owner would show somebody their own street
-        # as a locality and read as data loss. What others see of it is said
-        # beside it (`address_others_see`).
-        from toto.people.models import LocationSharing
-
-        context["address_shown"] = str(profile.address) if profile.address_id else ""
-        context["address_hidden"] = profile.location_sharing == LocationSharing.OFF
-        context["address_others_see"] = (
-            place_label(profile) if profile.location_sharing == LocationSharing.APPROXIMATE
-            else "")
-    else:
-        context["address_shown"] = place_label(profile) if may_see else ""
-    return context
+    return {"may_see_email": may_see_email(request.user, profile),
+            "may_see_phone": may_see_phone(request.user, profile),
+            "may_see_address": may_see_address(request.user, profile)}
 
 
 def _activity(request, profile, own):
@@ -309,164 +285,3 @@ def set_preferred_language(request):
         return redirect(reverse("socialhub:profile_details", args=[slug]))
     except Exception:
         return redirect("/")
-
-
-@login_required
-def set_location_sharing(request):
-    """Switch appearing on the People map on or off, and at what precision.
-
-    Deliberately its own door rather than a field on a bigger profile form: this
-    is the one setting whose wrong value publishes where somebody lives, and a
-    setting like that should not be able to change as a side effect of saving
-    something else.
-
-    Off is always accepted, even from a person with no address at all — turning
-    it off must never be the thing that fails.
-    """
-    from toto.people.models import LocationSharing
-
-    if request.method != "POST":
-        return redirect("socialhub:profile_list")
-
-    choice = (request.POST.get("location_sharing") or "").strip()
-    if choice not in LocationSharing.values:
-        messages.error(request, _("That is not a sharing setting."))
-        return _back(request, reverse("socialhub:profile_list"), "where-you-live")
-
-    profile = getattr(request.user, "community_profile", None)
-    if profile is None:
-        messages.error(request, _("You have no profile to share."))
-        return redirect("socialhub:profile_list")
-
-    profile.location_sharing = choice
-    profile.save(update_fields=["location_sharing"])
-
-    if choice == LocationSharing.OFF:
-        messages.success(request, _("You no longer appear on the People map."))
-    elif not profile.address_id:
-        # Honest rather than silently useless: the setting IS saved, and it will
-        # start working the moment an address exists.
-        messages.warning(request, _(
-            "Saved — but you have no address on your profile yet, so nobody can "
-            "see you on the map until you add one."))
-    elif choice == LocationSharing.APPROXIMATE:
-        messages.success(request, _(
-            "You now appear on the People map, as an approximate area rather "
-            "than an exact address."))
-    else:
-        messages.success(request, _(
-            "You now appear on the People map at your exact address."))
-    return _back(request, reverse("socialhub:profile_list"), "where-you-live")
-
-
-@login_required
-def set_my_address(request):
-    """Place (or move) your own pin — the address the People map shares.
-
-    The other half of `set_location_sharing`: that door decides WHO may see
-    the address, this one is the only door that can WRITE it. Own profile
-    only, by construction — there is no way to name anybody else.
-
-    The Address row is updated in place rather than replaced, so nothing
-    referencing it dangles and a re-save moves the pin instead of minting
-    rows. The pin alone is exactly as useful on the map. Its street and town
-    come from a reverse lookup only when asked for (2026-09-28): that is a
-    charged place lookup now (`toto.locations.geocoding`), so it has its own
-    priced button, "Save and look up the address", and a plain Save asks
-    nobody. A refused lookup never loses the pin: it is saved, and the member
-    is told why its address was not.
-    """
-    from toto.locations import geocoding
-    from toto.locations.models import Address
-
-    if request.method != "POST":
-        return redirect("socialhub:profile_list")
-
-    try:
-        latitude = float(request.POST.get("latitude", ""))
-        longitude = float(request.POST.get("longitude", ""))
-    except (TypeError, ValueError):
-        messages.error(request, _("Place the pin on the map first."))
-        return _back(request, reverse("socialhub:profile_list"), "where-you-live")
-    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
-        messages.error(request, _("Place the pin on the map first."))
-        return _back(request, reverse("socialhub:profile_list"), "where-you-live")
-
-    profile = getattr(request.user, "community_profile", None)
-    if profile is None:
-        # First contact with the map creates the profile row, the same way
-        # the truth-book host's my-location page did.
-        profile = Person.objects.create(
-            user=request.user,
-            display_name=request.user.get_username())
-
-    fields = {"latitude": latitude, "longitude": longitude}
-    refused = None
-    answer = None
-    if request.POST.get("lookup_address"):
-        try:
-            answer = geocoding.reverse(request.user, latitude, longitude)
-        except geocoding.REFUSALS as exc:
-            refused = exc
-        else:
-            # The answer describes THIS pin, blanks included: a moved pin
-            # must not keep the old street under a new town.
-            for key, value in answer["fields"].items():
-                limit = Address._meta.get_field(key).max_length
-                fields[key] = str(value or "")[:limit]
-
-    if profile.address_id:
-        # On a GIS build the geometry is authoritative and save() overwrites
-        # the floats from it — so a moved pin must drop the old geometry, and
-        # save() then derives a fresh one from the new coordinates. Without
-        # this the pin silently refuses to move on exactly the hosts with GIS.
-        if hasattr(profile.address, "geometry"):
-            profile.address.geometry = None
-        for key, value in fields.items():
-            setattr(profile.address, key, value)
-        profile.address.save()
-    else:
-        profile.address = Address.objects.create(**fields)
-        profile.save(update_fields=["address"])
-
-    if refused is not None:
-        messages.warning(request, _(
-            "Your pin is saved, but its address was not looked up: %(reason)s")
-            % {"reason": refused})
-    elif answer is not None and not answer["found"]:
-        messages.success(request, _(
-            "Your pin is saved. No street address is known at that point."))
-    else:
-        messages.success(request, _("Your address is saved."))
-    return _back(request, own_account.page_url_of(profile), "where-you-live")
-
-
-@require_POST
-@login_required
-def search_address(request):
-    """Forward-geocode a typed place name, for the picker's search box.
-
-    Proxied through the server rather than fetched from the browser so the
-    host's `LOCATIONS_GEOCODING` config is the single gate: a host that makes
-    no outbound calls answers 404 here and renders no search box. Each search
-    is a charged place lookup (`toto.locations.geocoding`, 2026-09-28), so it
-    is a POST with the CSRF token, sent on Enter or the Search button and
-    never per keystroke, and a refusal answers ``{"error"}`` with its own
-    status: 402 out of mana, 429 too many, 503 provider down, 404 off here.
-
-    Its own door rather than `locations:geocode_search`: socialhub is free on
-    every plan, the locations app is not, and setting your own address must
-    not need a plan.
-    """
-    from django.http import JsonResponse
-
-    from toto.locations import geocoding
-
-    try:
-        results = geocoding.search(request.user, request.POST.get("q", ""))
-    except geocoding.REFUSALS as exc:
-        response = JsonResponse({"error": str(exc)}, status=exc.status_code)
-        if getattr(exc, "retry_after", None):
-            response["Retry-After"] = str(exc.retry_after)
-        return response
-    return JsonResponse({"results": results})

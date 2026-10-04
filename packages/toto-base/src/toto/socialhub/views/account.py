@@ -46,7 +46,7 @@ Own account only, by construction: no door here takes a person, a slug or a
 user id — whatever a form names, the row written is ``request.user``'s, and
 the tabs are built from ``request.user``, never from the profile shown. This
 page never creates or deletes an ACCOUNT (console only); it creates the
-Person row on a first save, the way `set_my_address` does.
+Person row on a first save.
 
 Every successful change is a ``SOCIALHUB.PROFILE_CHANGED`` record naming the
 fields, never their values; a password change is ``AUTH.PASSWORD_CHANGED``
@@ -162,7 +162,7 @@ TAB_LABELS = {
 #: back to it, and the page's own script takes an old ``/account/#section``
 #: address there.
 SECTION_TABS = {
-    "profile": "edit", "where-you-live": "edit",
+    "profile": "edit",
     "email": "account", "password": "account", "timezone": "account", "language": "account",
     "sessions": "security", "signins": "security", "keystore": "security",
     "references": "activity",
@@ -384,14 +384,11 @@ def _erasure(request):
 
 
 def _edit_tab(request, person, *, profile_form=None, **_):
-    """Edit profile: the profile form, and where you live — the address
-    picker, whose place search is offered where the host geocodes."""
-    from toto.locations.geocode import geocoding_enabled, geocoding_settings
-
+    """Edit profile: the profile form — the address is one of its fields,
+    text with its own switch (2026-10-04; it was a map picker)."""
     return {
         "profile_form": profile_form or AccountProfileForm(instance=person),
         "avatar_max_mb": avatar_max_bytes() // (1024 * 1024),
-        "geocoding_enabled": geocoding_enabled(geocoding_settings()),
     }
 
 

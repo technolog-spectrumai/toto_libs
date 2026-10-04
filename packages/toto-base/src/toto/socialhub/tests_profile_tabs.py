@@ -33,8 +33,7 @@ from django.urls import reverse
 from django.utils.safestring import mark_safe
 
 from toto.core.models import Platform
-from toto.locations.models import Address
-from toto.people.models import LocationSharing, Person
+from toto.people.models import Person
 from toto.socialhub.models import Community
 from toto.socialhub.plugins.profile_plugins import ProfilePlugin
 from toto.socialhub.views import account as account_views
@@ -51,7 +50,7 @@ PRIVATE = (
     'name="old_password"', 'name="new_email"', 'name="passphrase"',
     'id="sessions"', 'id="signins"', "this device",
     'id="keystore"', 'id="data"', 'id="erasure"', 'data-testid="erasure-confirm"',
-    'id="profile-section-tabs"', 'id="where-you-live"', "address-pick-map",
+    'id="profile-section-tabs"', 'name="show_address"', 'name="address"',
     'id="references"', 'name="show_email"',
 )
 
@@ -147,15 +146,14 @@ class OwnerTests(TabsCase):
         # Nothing of any other tab: no form, no map.
         self.assertNotContains(response, 'action="/account/')
         self.assertNotContains(response, "vendor/leaflet/leaflet.js")
-        self.assertNotContains(response, 'id="where-you-live"')
+        self.assertNotContains(response, 'name="show_address"')
         self.assertNotContains(response, 'id="references"')
 
     def test_each_tab_draws_its_own_sections_and_no_other(self):
         sections = {
             "overview": ['id="communities"', "Member since"],
             "edit": ['id="profile"', 'action="/account/profile/"', 'name="show_email"',
-                     'id="where-you-live"', 'name="tab" value="edit"',
-                     "vendor/leaflet/leaflet.js", "address-pick-map"],
+                     'name="address"', 'name="show_address"'],
             "account": ['id="email"', 'id="password"', 'id="timezone"', 'id="language"',
                         'action="/account/email/"', 'action="/account/password/"',
                         'action="/account/timezone/"', 'name="tab" value="account"'],
@@ -229,28 +227,28 @@ class OwnerTests(TabsCase):
         self.assertEqual(homes["password"], "account")
         self.assertEqual(homes["erasure"], "data")
         self.assertEqual(homes["profile"], "edit")
-        self.assertEqual(homes["where-you-live"], "edit")
+        self.assertNotIn("where-you-live", homes)
         self.assertEqual(homes["references"], "activity")
         self.assertTrue(set(homes.values()) <= set(OWN_TABS))
 
     def test_the_overview_marks_what_others_do_not_see(self):
         Person.objects.filter(pk=self.ada.pk).update(
-            phone="+48 600", show_phone=True,
-            address=Address.objects.create(street="Sekretna 1", locality_name="Town",
-                                           latitude=52.2, longitude=21.0))
+            phone="+48 600", show_phone=True, address="Sekretna 1\nTown")
         html = self.get(self.ada_user).content.decode()
         # The e-mail address is hidden (the default), the phone shown, and the
-        # address shared with nobody (the default).
+        # address (text, since 2026-10-04) shown to nobody (the default).
         self.assertEqual(html.count("Hidden from other members."), 2)
         self.assertIn("ada@example.test", html)
         self.assertIn("+48 600", html)
         self.assertIn("Sekretna 1", html)
-        Person.objects.filter(pk=self.ada.pk).update(
-            location_sharing=LocationSharing.APPROXIMATE)
+        Person.objects.filter(pk=self.ada.pk).update(show_address=True)
         html = self.get(self.ada_user).content.decode()
         self.assertEqual(html.count("Hidden from other members."), 1)
-        self.assertIn("Other members see the area only: Town.", html)
         self.assertIn("Sekretna 1", html)
+        # A visitor reads it only once it is switched on.
+        self.assertIn("Sekretna 1", self.get(self.bob_user).content.decode())
+        Person.objects.filter(pk=self.ada.pk).update(show_address=False)
+        self.assertNotIn("Sekretna 1", self.get(self.bob_user).content.decode())
 
 
 class VisitorTests(TabsCase):
@@ -367,8 +365,7 @@ class AccountAddressTests(TabsCase):
         self.assertEqual(self.tabs(response), strip(account, *NO_PROFILE_TABS))
         self.assertContains(response, "Your profile is created when you first save it.")
         self.assertContains(response, 'action="/account/profile/"')
-        # Nothing of a profile that is not there: no map, no public tab.
-        self.assertNotContains(response, 'id="where-you-live"')
+        # Nothing of a profile that is not there: no public tab.
         for key in ("overview", "wallet", "activity", "communities"):
             self.assertNotContains(response, f'id="profile-tab-{key}"')
         response = self.client.get(account + "?tab=account")
@@ -389,7 +386,7 @@ class AccountAddressTests(TabsCase):
         self.assertEqual(self.current(response), ["overview"])
         self.assertContains(response, 'href="/account/?tab=security" id="profile-tab-security"')
         response = self.get(self.ada_user, "?tab=edit", url=reverse("account:home"))
-        self.assertContains(response, 'id="where-you-live"')
+        self.assertContains(response, 'name="show_address"')
 
 
 class DoorTests(TabsCase):
@@ -471,16 +468,6 @@ class DoorTests(TabsCase):
                                     HTTP_REFERER="http://testserver/")
         self.assertEqual(response["Location"], self.url + "?tab=account#language")
 
-    def test_the_map_doors_come_back_to_where_you_live(self):
-        response = self.client.post(reverse("socialhub:set_location_sharing"),
-                                    {"location_sharing": "off", "tab": "edit"},
-                                    HTTP_REFERER="http://testserver/")
-        self.assertEqual(response["Location"], self.url + "?tab=edit#where-you-live")
-        response = self.client.post(reverse("socialhub:set_my_address"),
-                                    {"latitude": "52.2", "longitude": "21.0", "tab": "edit"},
-                                    HTTP_REFERER="http://testserver/")
-        self.assertEqual(response["Location"], self.url + "?tab=edit#where-you-live")
-
     def test_a_tab_not_on_the_list_leaves_the_referer_rule(self):
         for tab in ("nonsense", "communities", "//evil.example.com", "https://evil.example.com/"):
             with self.subTest(tab=tab):
@@ -488,10 +475,6 @@ class DoorTests(TabsCase):
                                             {"language": "en", "tab": tab},
                                             HTTP_REFERER="http://testserver/vault/")
                 self.assertEqual(response["Location"], "http://testserver/vault/")
-                response = self.client.post(reverse("socialhub:set_location_sharing"),
-                                            {"location_sharing": "off", "tab": tab},
-                                            HTTP_REFERER="https://evil.example.com/")
-                self.assertEqual(response["Location"], reverse("socialhub:profile_list"))
 
     def test_the_doors_act_on_the_member_alone(self):
         """A tab is somebody's own page only: posting Bob's identifiers to a

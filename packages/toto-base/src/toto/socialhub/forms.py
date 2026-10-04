@@ -416,15 +416,17 @@ def clean_avatar_upload(avatar):
 
 class AccountProfileForm(forms.ModelForm):
     """The member's own profile — the form on their profile's Edit profile
-    tab (stage 50; My account's until then). Four fields, the two switches
-    saying whether other members see the e-mail address and the phone number
-    (2026-10-01, 37c.25; off by default, `contact_access`), and nothing that
-    decides access: communities, clearances, the patron and the map switch
-    each have their own door, and none of them may ride along here."""
+    tab (stage 50; My account's until then). Five fields, the three switches
+    saying whether other members see the e-mail address, the phone number
+    and the postal address (2026-10-01, 37c.25; the address, text the member
+    types, since 2026-10-04; all off by default, `contact_access`), and
+    nothing that decides access: communities, clearances and the patron each
+    have their own door, and none of them may ride along here."""
 
     class Meta:
         model = Person
-        fields = ["display_name", "bio", "avatar", "phone", "show_phone", "show_email"]
+        fields = ["display_name", "bio", "avatar", "phone", "show_phone", "show_email",
+                  "address", "show_address"]
         labels = {
             "display_name": _("Display name"),
             "bio": _("About you"),
@@ -432,6 +434,8 @@ class AccountProfileForm(forms.ModelForm):
             "phone": _("Phone"),
             "show_phone": _("Show my phone number to other members"),
             "show_email": _("Show my e-mail address to other members"),
+            "address": _("Address"),
+            "show_address": _("Show my address to other members"),
         }
         help_texts = {
             "avatar": _("A JPEG, PNG, GIF or WebP picture, at most 2 MB."),
@@ -439,9 +443,14 @@ class AccountProfileForm(forms.ModelForm):
                             "phone number."),
             "show_email": _("When this is off, only you and the administrators see your "
                             "e-mail address."),
+            "address": _("As you would write it on an envelope. It is kept as you type "
+                         "it: nothing is looked up and nothing is put on a map."),
+            "show_address": _("When this is off, only you and the administrators see your "
+                              "address."),
         }
         widgets = {
             "bio": forms.Textarea(attrs={"rows": 4}),
+            "address": forms.Textarea(attrs={"rows": 3, "autocomplete": "street-address"}),
             "avatar": forms.ClearableFileInput(
                 attrs={"accept": "image/jpeg,image/png,image/gif,image/webp"}),
         }

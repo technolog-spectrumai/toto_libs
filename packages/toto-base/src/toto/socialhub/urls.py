@@ -7,8 +7,7 @@ from toto.socialhub.api_views import (
     CommunityOrgChartApiView,
 )
 from toto.socialhub.views.profile import (ProfileListView, ProfileDetailView,
-                                          search_address, set_location_sharing,
-                                          set_my_address, set_preferred_language)
+                                          set_preferred_language)
 from toto.socialhub.views.community import (
     CommunityListView,
     CommunityDetailView,
@@ -42,11 +41,10 @@ urlpatterns = [
     path("profiles/", ProfileListView.as_view(), name="profile_list"),
     path("profiles/<slug:slug>/", ProfileDetailView.as_view(), name="profile_details"),
     path("profiles/language/set/", set_preferred_language, name="set_preferred_language"),
-    # Its own door: the one setting whose wrong value publishes where you live.
-    path("profiles/address/set/", set_my_address, name="set_my_address"),
-    path("profiles/address/search/", search_address, name="search_address"),
-    path("profiles/location-sharing/set/", set_location_sharing,
-         name="set_location_sharing"),
+    # No address doors since 2026-10-04: the address is text on the profile
+    # form (account:profile), shown by its own switch. The map picker, the
+    # place search and the three-way sharing setting are toto.locations' own
+    # (toto-geo), on a host that installs it.
 
     path("communities/", CommunityListView.as_view(), name="community_list"),
     # Clearances (2026-09-29), for superusers — above the <slug> route, which

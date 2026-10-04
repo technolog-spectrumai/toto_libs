@@ -60,10 +60,11 @@ plugins that sit on the overview (ProfilePlugin.tab).{% endcomment %}
 
   <!-- Info Grid -->
   <div class="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4 sm:p-6">
-    {% comment %}The e-mail address and the phone number only where their
-    owner shows them (Edit profile), or to the owner or an administrator
-    (2026-10-01, 37c.25): `contact_access`, the rule the roster and the
-    org-chart API ask too. Both used to show to every signed-in member.{% endcomment %}
+    {% comment %}The e-mail address, the phone number and the postal
+    address only where their owner shows them (Edit profile), or to the owner
+    or an administrator (2026-10-01, 37c.25): `contact_access`, the rule the
+    roster and the org-chart API ask too. The postal address is text the
+    member typed (2026-10-04).{% endcomment %}
     {% if may_see_email %}
       <article
         :class="darkMode
@@ -98,13 +99,6 @@ plugins that sit on the overview (ProfilePlugin.tab).{% endcomment %}
       </article>
     {% endif %}
 
-    {% comment %}The address is shown only to somebody entitled to it.
-
-    This block used to render to ANY signed-in account, which made the
-    People tab's opt-in meaningless: a viewer refused on the map could read
-    the same address here. `may_see_address` is the same resolver the map
-    uses, so the two cannot disagree. The owner sees theirs in full, and
-    what others see of it: nothing (sharing off), or the area only.{% endcomment %}
     {% if may_see_address %}
       <article
         :class="darkMode
@@ -113,13 +107,9 @@ plugins that sit on the overview (ProfilePlugin.tab).{% endcomment %}
         class="rounded-xl border p-4">
         <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
           <i class="fa-solid fa-location-dot"></i>{% trans "Address" %}</p>
-        <p class="mt-2 break-words text-sm font-semibold">
-          {{ address_shown|default:"—" }}
-        </p>
-        {% if is_own_profile and address_hidden %}
+        <p class="mt-2 whitespace-pre-line break-words text-sm font-semibold">{{ profile.address|default:"—" }}</p>
+        {% if not profile.show_address %}
           <p class="mt-1 text-xs opacity-60">{% trans "Hidden from other members." %}</p>
-        {% elif is_own_profile and address_others_see %}
-          <p class="mt-1 text-xs opacity-60">{% blocktranslate with place=address_others_see %}Other members see the area only: {{ place }}.{% endblocktranslate %}</p>
         {% endif %}
       </article>
     {% endif %}
