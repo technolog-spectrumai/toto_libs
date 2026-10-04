@@ -11,7 +11,6 @@ from toto.core.connectors import (
     minimal_person,
     register_connector,
 )
-from toto.locations.connectors import serialize_address
 
 
 @register_connector
@@ -48,7 +47,7 @@ class EventsReadConnector(ReadOnlyModelConnector):
     def _execute_scheduled_event(self, input_data: dict) -> dict:
         from toto.events.models import ScheduledEvent
 
-        qs = ScheduledEvent.objects.select_related("category", "owner", "address").prefetch_related("organizers")
+        qs = ScheduledEvent.objects.select_related("category", "owner").prefetch_related("organizers")
         qs = self._filter_event_window(qs, input_data)
         qs = self._filter_public(qs)
 
@@ -93,7 +92,7 @@ class EventsReadConnector(ReadOnlyModelConnector):
     def _execute_invite(self, input_data: dict) -> dict:
         from toto.events.models import EventInvite
 
-        qs = EventInvite.objects.select_related("event", "event__category", "event__address", "person")
+        qs = EventInvite.objects.select_related("event", "event__category", "person")
         person_slug = self.configured_value("person_slug", "person_slug_field", input_data, default=None)
         if person_slug:
             qs = qs.filter(person__slug=person_slug)
@@ -187,7 +186,7 @@ def serialize_scheduled_event(event) -> dict:
         "public": event.public,
         "owner": minimal_person(event.owner) if event.owner else None,
         "organizers": [minimal_person(person) for person in event.organizers.all()],
-        "address": serialize_address(event.address) if event.address else None,
+        "address": event.address or None,
         "capacity": event.capacity,
         "requires_registration": event.requires_registration,
     }

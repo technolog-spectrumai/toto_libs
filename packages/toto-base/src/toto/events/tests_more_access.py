@@ -553,7 +553,6 @@ class CreateApiTests(EventCase):
             (self.good(start_time="tomorrow"), None, "Invalid start_time or end_time (use ISO 8601)."),
             (self.good(end_time="2030-06-01T10:00:00"), None, "end_time must be after start_time."),
             (self.good(category_id=category.pk + 1000), None, "Category not found."),
-            (self.good(address_id=999999), None, "Address not found."),
         )
         for payload, raw, error in cases:
             with self.subTest(error=error):

@@ -22,8 +22,7 @@ def _event_to_dict(event):
         "category_id": event.category_id,
         "public": event.public,
         "owner": event.owner.display_name if event.owner else None,
-        "address": str(event.address) if event.address else None,
-        "address_id": event.address_id,
+        "address": event.address or None,
         "capacity": event.capacity,
         "requires_registration": event.requires_registration,
     }
@@ -63,7 +62,7 @@ class EventListApiView(MeshGatedApiView):
         qs = visible_events(
             request.user,
             ScheduledEvent.objects
-            .select_related("category", "owner", "address")
+            .select_related("category", "owner")
             .order_by("start_time"))
         events = list(qs)
         upcoming_qs = [e for e in events if e.start_time >= current_time]
@@ -109,17 +108,8 @@ class EventListApiView(MeshGatedApiView):
             except EventCategory.DoesNotExist:
                 return JsonResponse({"error": "Category not found."}, status=400)
 
-        address = None
-        if data.get("address_id"):
-            from toto.locations.access import readable_addresses
-            from toto.locations.models import Address
-            # Only a place the caller may read on the map (2026-10-01, the
-            # review of stage 37c): a home pin its person shares with nobody,
-            # or a kept map domain's address, is as missing as no address.
-            try:
-                address = readable_addresses(request.user).get(pk=data["address_id"])
-            except Address.DoesNotExist:
-                return JsonResponse({"error": "Address not found."}, status=400)
+        # The place is text (2026-10-04); it was the id of a map address.
+        address = str(data.get("address") or "").strip()[:255]
 
         try:
             owner = request.user.community_profile
@@ -159,7 +149,7 @@ class EventDetailApiView(MeshGatedApiView):
             # read: distinguishing the two tells a stranger the row exists.
             event = (
                 visible_events(request.user)
-                .select_related("category", "owner", "address")
+                .select_related("category", "owner")
                 .prefetch_related("organizers")
                 .get(pk=pk)
             )
@@ -223,34 +213,25 @@ class EventInviteApiView(CorsApiView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class FormDataApiView(MeshGatedApiView):
-    """Return categories, addresses, and people for the create-event form."""
+    """Return categories and people for the create-event form (the place is
+    text since 2026-10-04, so no list of addresses)."""
 
     def get(self, request):
         err = _require_auth(request)
         if err:
             return err
 
-        from toto.locations.access import readable_addresses
-        from toto.locations.models import Address
         from toto.people.models import Person
 
         categories = list(
             EventCategory.objects.values("id", "name").order_by("name")
         )
-        # The places the caller may read on the map (2026-10-01, the review
-        # of stage 37c), as the event form offers them: every address went
-        # out, private home pins and kept map domains' included.
-        addresses = [
-            {"id": a.id, "display": str(a)}
-            for a in readable_addresses(
-                request.user, Address.objects.order_by("locality_name", "street"))[:200]
-        ]
         people = [
             {"id": p.id, "name": p.display_name}
             for p in Person.objects.order_by("display_name")[:500]
         ]
 
-        return JsonResponse({"categories": categories, "addresses": addresses, "people": people})
+        return JsonResponse({"categories": categories, "people": people})
 
 
 @method_decorator(csrf_exempt, name="dispatch")

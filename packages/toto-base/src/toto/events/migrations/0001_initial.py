@@ -11,7 +11,6 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('people', '0002_initial'),
-        ('locations', '0003_initial'),
     ]
 
     operations = [
@@ -39,7 +38,7 @@ class Migration(migrations.Migration):
                 ('public', models.BooleanField(default=True, help_text='Check if this event is publicly visible.')),
                 ('capacity', models.PositiveIntegerField(blank=True, help_text='Maximum number of participants, if limited.', null=True)),
                 ('requires_registration', models.BooleanField(default=False)),
-                ('address', models.ForeignKey(blank=True, help_text='Specific address for this event, if applicable.', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='scheduled_events', to='locations.address')),
+                ('address', models.CharField(blank=True, default='', help_text='Where this event takes place, as text, if applicable.', max_length=255)),
                 ('category', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_events', to='events.eventcategory')),
                 ('organizers', models.ManyToManyField(blank=True, help_text='People who can manage this event and send invites.', related_name='organized_events', to='people.person')),
                 ('owner', models.ForeignKey(blank=True, help_text='Person who created this event.', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='owned_events', to='people.person')),

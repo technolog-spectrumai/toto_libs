@@ -5,7 +5,6 @@ from django.utils.timezone import now
 
 from toto.ingress import IngressCommand
 from toto.events.models import EventCategory, ScheduledEvent
-from toto.locations.models import Address
 from toto.people.models import Person
 
 
@@ -22,6 +21,8 @@ DESCRIPTIONS = (
     "Hands-on from the start: bring a laptop and your own questions.",
     "An overview for newcomers, then the details for those who stay.",
 )
+PLACES = ("The main hall", "Room 2, first floor", "The library's reading room",
+          "The courtyard, weather permitting")
 
 
 class Command(IngressCommand):
@@ -54,10 +55,9 @@ class Command(IngressCommand):
         if not members:
             raise Exception("❌ No people found. Please create some first.")
 
-        addresses = list(Address.objects.all())
-
-        if not addresses:
-            self.stdout.write(self.style.WARNING("⚠ No addresses found. Events will have no address."))
+        # Places as text (2026-10-04): an event's address is what its
+        # organiser types, not a row on a map.
+        addresses = list(PLACES)
 
         companies = list(COMPANIES)
         event_templates = [
@@ -82,7 +82,7 @@ class Command(IngressCommand):
                     random.choice(categories),
                 )
 
-                address = random.choice(addresses) if addresses else None
+                address = random.choice(addresses)
 
                 organizer = random.choice(members)
                 event = ScheduledEvent.objects.create(

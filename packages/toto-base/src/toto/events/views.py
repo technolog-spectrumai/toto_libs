@@ -273,7 +273,7 @@ def event_plan(request, pk):
     # The plan of an event hidden from the reader is a missing page
     # (2026-10-01, 37c.21): it listed every invitee's availability.
     event = get_object_or_404(
-        visible_events(request.user, ScheduledEvent.objects.select_related("owner", "address")),
+        visible_events(request.user, ScheduledEvent.objects.select_related("owner")),
         pk=pk,
     )
 

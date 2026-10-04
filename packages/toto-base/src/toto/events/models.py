@@ -70,13 +70,14 @@ class ScheduledEvent(EventBase):
         help_text="People who can manage this event and send invites.",
     )
 
-    address = models.ForeignKey(
-        "locations.Address",
-        on_delete=models.SET_NULL,
-        null=True,
+    #: Where the event takes place: text, as its organiser typed it
+    #: (2026-10-04). It was a key to a map address; toto-base carries no
+    #: geography now, so nothing here is looked up or drawn.
+    address = models.CharField(
+        max_length=255,
         blank=True,
-        related_name="scheduled_events",
-        help_text="Specific address for this event, if applicable.",
+        default="",
+        help_text="Where this event takes place, as text, if applicable.",
     )
 
     capacity = models.PositiveIntegerField(

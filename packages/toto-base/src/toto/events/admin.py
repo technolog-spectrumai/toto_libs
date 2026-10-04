@@ -28,10 +28,9 @@ class ScheduledEventAdmin(admin.ModelAdmin):
         "owner__display_name",
         "owner__email",
         "category__name",
-        "address__street",
-        "address__locality_name",
+        "address",
     )
-    autocomplete_fields = ("owner", "organizers", "category", "address")
+    autocomplete_fields = ("owner", "organizers", "category")
     date_hierarchy = "start_time"
     ordering = ("-start_time", "title")
     fieldsets = (
