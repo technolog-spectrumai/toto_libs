@@ -122,10 +122,6 @@ CLEARANCE_REMOVED = register(Kind(
     "clearance.removed", "fa-solid fa-key",
     _("The clearance %(clearance)s was taken from you")))
 
-COMMUNITY_JOINED = register(Kind(
-    "community.joined", "fa-solid fa-user-plus",
-    _("%(name)s joined %(community)s")))
-
 # ---------------------------------------------------------------------------
 # Transfers and background jobs
 # ---------------------------------------------------------------------------

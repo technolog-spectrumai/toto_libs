@@ -83,20 +83,6 @@ class BellTests(TestCase):
     def test_a_visitor_has_no_bell(self):
         self.assertNotIn("data-notify-bell", self.header(user=AnonymousUser()))
 
-    def test_a_name_cannot_leave_its_attribute(self):
-        from unittest import mock
-
-        from django.utils.safestring import mark_safe
-
-        hostile = '"><i x="${alert(1)}`'
-        real = translation._trans.gettext
-        with mock.patch.object(translation._trans, "gettext",
-                               lambda m: mark_safe(hostile) if m == "{name} signed in" else real(m)):
-            html = self.header()
-        self.assertNotIn(hostile, html)
-        self.assertIn('data-msg-signed-in="&quot;&gt;&lt;i x=&quot;${alert(1)}`"', html)
-
-
 _HARNESS = r"""
 const {createLive, createBell, BACKOFF, POLL_MS} = require(process.argv[1]);
 const out = {};
@@ -144,8 +130,7 @@ class El { constructor(tag) { this.tagName = tag; this.children = []; this.datas
   contains() { return false; }
   querySelector(sel) { return this.parts[sel] || null; } }
 const mk = () => { const root = new El("div");
-  root.dataset = {listUrl: "/notify/api/", readUrl: "/notify/api/read/", readAllUrl: "/notify/api/read-all/",
-                  msgSignedIn: "{name} signed in", msgSignedOut: "{name} signed out"};
+  root.dataset = {listUrl: "/notify/api/", readUrl: "/notify/api/read/", readAllUrl: "/notify/api/read-all/"};
   const token = new El("input"); token.value = "tok";
   root.parts = {"input[name=csrfmiddlewaretoken]": token, "[data-notify-count]": new El("span"),
                 "[data-notify-list]": new El("ul"), "[data-notify-empty]": new El("p"),
@@ -183,9 +168,6 @@ const tick = () => new Promise(r => setImmediate(r));
   // The socket's poke: one question after a burst.
   doc.handlers["toto:notification"].forEach(f => { f({}); f({}); f({}); });
   out.settles = later.filter(t => t.ms === 400).length;
-  // Presence: a toast, the name as text.
-  doc.handlers["toto:presence"][0]({detail: {event: "in", name: "<b>Bob</b>", link: "/socialhub/profiles/bob/"}});
-  out.presence = doc.body.children[0].children[doc.body.children[0].children.length - 1].textContent;
   // A click marks read with the token, then follows only a path of this platform.
   const row = roots[0].parts["[data-notify-list]"].children[1].children[0];
   row.handlers.click[0](); await tick(); await tick();
@@ -243,9 +225,6 @@ class LiveScriptTests(SimpleTestCase):
         self.assertEqual(self.out["toasts"], ["second"])
         self.assertEqual(self.out["notPolledWhenOpen"], 2)
         self.assertEqual(self.out["settles"], 1)
-
-    def test_a_presence_toast_puts_the_name_in_as_text(self):
-        self.assertEqual(self.out["presence"], "<b>Bob</b> signed in")
 
     def test_a_click_marks_read_with_the_token_and_follows_only_this_platforms_paths(self):
         self.assertEqual(self.out["post"], ["/notify/api/read/", "tok", "id=1"])

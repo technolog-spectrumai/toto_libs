@@ -98,15 +98,6 @@ class Person(DomainEntity):
         default=False,
         help_text="Whether other members see this person's postal address. Off by default.",
     )
-    #: Whether the members of this person's communities are told when they
-    #: sign in and out (2026-10-04, toto.notify's presence). On by default;
-    #: theirs to switch off on the Edit profile tab. Nothing is kept either
-    #: way: there is no list of who is online.
-    show_online = models.BooleanField(
-        default=True,
-        help_text="Whether members of this person's communities are told when "
-                  "they sign in and out. On by default.",
-    )
     digital_signature = models.TextField(
         blank=True,
         help_text="Base64-encoded PNG of the person's handwritten signature.",

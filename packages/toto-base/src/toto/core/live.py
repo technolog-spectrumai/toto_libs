@@ -16,11 +16,7 @@ channel layer, to a GROUP — and it is written so that nothing depends on it:
   transaction it goes at once.
 * **No names on the wire.** A message says THAT something happened and which
   ids it concerns; what it is called is fetched by the page through a door
-  that checks the reader (``notify:api_list``, ``vault:file_row``). The one
-  exception is presence (``toto.notify.presence``): a sign-in or sign-out is
-  kept nowhere, so there is no door to ask, and the message carries the
-  person's display name and profile address — to the sockets of the members
-  of their own communities and to nobody else.
+  that checks the reader (``notify:api_list``, ``vault:file_row``).
 
 Groups: ``user.<pk>`` — every socket of one account — and whatever an app
 names for itself (the vault's ``folder.<directory pk>``,
@@ -38,7 +34,6 @@ log = logging.getLogger("toto.core.live")
 #: The handler names a message may carry (``LiveConsumer``'s methods).
 NOTIFICATION = "live.notification"
 FOLDER = "live.folder"
-PRESENCE = "live.presence"
 
 _warned = False
 

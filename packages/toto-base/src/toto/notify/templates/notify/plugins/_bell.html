@@ -8,9 +8,7 @@
 {% if variant == "mobile" %}
 <div class="relative" data-notify-bell data-variant="mobile"
      data-list-url="{{ notify_urls.list }}" data-read-url="{{ notify_urls.read }}"
-     data-read-all-url="{{ notify_urls.read_all }}" data-ws-path="{{ notify_ws_path }}"
-     data-msg-signed-in="{{ _('{name} signed in')|force_escape }}"
-     data-msg-signed-out="{{ _('{name} signed out')|force_escape }}">
+     data-read-all-url="{{ notify_urls.read_all }}" data-ws-path="{{ notify_ws_path }}">
   {% csrf_token %}
   <button type="button" data-notify-toggle id="header-bell-mobile"
           title="{% trans 'Notifications' %}" aria-label="{% trans 'Notifications' %}"
@@ -34,9 +32,7 @@
 {% else %}
 <div class="relative hidden sm:block" data-notify-bell data-variant="bar"
      data-list-url="{{ notify_urls.list }}" data-read-url="{{ notify_urls.read }}"
-     data-read-all-url="{{ notify_urls.read_all }}" data-ws-path="{{ notify_ws_path }}"
-     data-msg-signed-in="{{ _('{name} signed in')|force_escape }}"
-     data-msg-signed-out="{{ _('{name} signed out')|force_escape }}">
+     data-read-all-url="{{ notify_urls.read_all }}" data-ws-path="{{ notify_ws_path }}">
   {% csrf_token %}
   <button type="button" data-notify-toggle id="header-bell"
           title="{% trans 'Notifications' %}" aria-label="{% trans 'Notifications' %}"

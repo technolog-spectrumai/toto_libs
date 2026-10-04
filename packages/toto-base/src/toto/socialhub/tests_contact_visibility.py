@@ -169,8 +169,7 @@ class MyAccountTests(ContactCase):
     def post_profile(self, **switches):
         self.client.force_login(self.quiet_user)
         return self.client.post(reverse("account:profile"), {
-            "display_name": "Quiet", "bio": "", "phone": PHONE,
-            "show_online": "on", **switches})
+            "display_name": "Quiet", "bio": "", "phone": PHONE, **switches})
 
     def test_edit_your_profile_offers_both_switches_off_with_a_sentence(self):
         self.client.force_login(self.quiet_user)

@@ -10,11 +10,7 @@ and an anonymous handshake is closed (4401). The host also checks the
 handshake's Origin before any of this runs
 (``toto.api.ws_origin.same_origin_validator``).
 
-**What it says.** Three messages. The first two have no name in them; the
-third — ``{"type": "presence", "event": "in" | "out", "name", "link"}``, a
-member of one of this member's communities signed in or out — carries a
-display name and a profile address, because it is kept nowhere and there is
-no door to ask (``toto.notify.presence``):
+**What it says.** Two messages, with no name in either:
 
 * ``{"type": "notification"}`` — the member has news; the page asks the
   bell's door (``notify:api_list``) what it is;
@@ -189,17 +185,6 @@ class LiveConsumer(AsyncWebsocketConsumer):
             await self.close(code=CLOSE_NOT_SIGNED_IN)
             return
         await self._say({"type": "notification"})
-
-    async def live_presence(self, event):
-        """Somebody of the member's communities signed in or out: a toast,
-        kept nowhere (``toto.notify.presence`` chose who hears it)."""
-        if await self._signed_in() is None:
-            await self.close(code=CLOSE_NOT_SIGNED_IN)
-            return
-        await self._say({"type": "presence",
-                         "event": "out" if event.get("event") == "out" else "in",
-                         "name": str(event.get("name") or "")[:150],
-                         "link": str(event.get("link") or "")[:300]})
 
     async def live_folder(self, event):
         try:

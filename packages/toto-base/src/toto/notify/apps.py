@@ -18,9 +18,3 @@ class NotifyConfig(AppConfig):
         from . import sources
 
         sources.connect()
-
-        # Who joined, who signed in and out — to the members of the same
-        # communities (presence.py).
-        from . import presence
-
-        presence.connect()

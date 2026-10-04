@@ -232,11 +232,3 @@ class MessageTests(SocketCase):
         cookie = await sync_to_async(cookie_for)(self.owner)
         await sync_to_async(User.objects.filter(pk=self.owner.pk).update)(is_active=False)
         self.assertIsNone(await sync_to_async(consumers.signed_in_user)(cookie, self.owner.pk))
-
-    async def test_presence_is_forwarded_as_a_toast(self):
-        socket = await self.open(self.ada)
-        await get_channel_layer().group_send(live.user_group(self.ada.pk), {
-            "type": live.PRESENCE, "event": "in", "name": "Bob", "link": "/socialhub/profiles/bob/"})
-        self.assertEqual(await socket.receive_json_from(), {
-            "type": "presence", "event": "in", "name": "Bob", "link": "/socialhub/profiles/bob/"})
-        await socket.disconnect()

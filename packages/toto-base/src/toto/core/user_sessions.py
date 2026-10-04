@@ -53,8 +53,6 @@ from importlib import import_module
 
 from django.conf import settings
 
-from django.dispatch import Signal
-
 log = logging.getLogger("toto.core.sessions")
 
 #: The engines whose sessions live in ``django_session`` and can be listed.
@@ -219,14 +217,6 @@ def _end_key(key: str, user_pk=None) -> bool:
     return True
 
 
-#: Sent when a member ends one of their own sessions from the Security tab,
-#: or a token signs itself out (2026-10-04). Keyword argument: ``user``.
-#: ``user_logged_out`` is Django's for the session a request is in; these two
-#: ends have no such request. Never sent for a session that merely expired,
-#: nor for the others a password change ends. ``send_robust``.
-session_ended = Signal()
-
-
 def end_session(user, session_id, *, request=None):
     """End the member's session ``session_id`` (a ``UserSession`` id).
 
@@ -242,7 +232,6 @@ def end_session(user, session_id, *, request=None):
     row_pk = row.pk
     UserSession.objects.filter(pk=row_pk).delete()
     row.pk = row_pk
-    session_ended.send_robust(sender=type(user), user=user)
     return row
 
 
@@ -257,8 +246,6 @@ def end_token(user, key: str) -> bool:
         return False
     ended = _end_key(key, getattr(user, "pk", None))
     UserSession.objects.filter(session_key=key).delete()
-    if ended and getattr(user, "pk", None):
-        session_ended.send_robust(sender=type(user), user=user)
     return ended
 
 

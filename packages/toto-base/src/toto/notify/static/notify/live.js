@@ -5,8 +5,6 @@
  *   - it reconnects by itself, waiting longer after each failure (BACKOFF);
  *   - what the server says becomes a DOM event on `document`:
  *       toto:notification            the member has news
- *       toto:presence {event, name, link}     somebody of their communities
- *                                    signed in or out (a toast, kept nowhere)
  *       toto:folder {kind, file, directory}   a file changed in a watched folder
  *       toto:live-open / toto:live-closed
  *   - a page asks to watch a folder with
@@ -56,10 +54,6 @@
       if (!message || typeof message !== "object") return;
       if (message.type === "notification") {
         env.dispatch("toto:notification", {});
-      } else if (message.type === "presence") {
-        env.dispatch("toto:presence", {event: message.event === "out" ? "out" : "in",
-                                       name: String(message.name || ""),
-                                       link: String(message.link || "")});
       } else if (message.type === "folder") {
         env.dispatch("toto:folder", {kind: String(message.kind || ""),
                                      file: Number(message.file),
@@ -280,17 +274,6 @@
         settle = env.setTimeout(function () { settle = null; refresh(true); }, REFRESH_SETTLE_MS);
       });
       env.document.addEventListener("toto:live-open", function () { refresh(true); });
-      // Somebody of the member's communities signed in or out: a toast and
-      // nothing more — it is in no list. The sentence is the bell's own
-      // (data-msg-signed-in / -out); the name is put in as text.
-      env.document.addEventListener("toto:presence", function (event) {
-        var detail = event.detail || {};
-        var sentence = address(detail.event === "out" ? "msgSignedOut" : "msgSignedIn");
-        if (!sentence || !detail.name) return;
-        toast({text: sentence.replace("{name}", detail.name), link: detail.link, read: true,
-               icon: detail.event === "out" ? "fa-solid fa-right-from-bracket"
-                                            : "fa-solid fa-right-to-bracket"});
-      });
       // No socket: ask every minute instead, while the page is looked at.
       env.setInterval(function () {
         if (!env.live.isOpen() && env.visible()) refresh(true);
