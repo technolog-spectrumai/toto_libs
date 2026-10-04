@@ -8,7 +8,7 @@
 {% if variant == "mobile" %}
 <div class="relative" data-notify-bell data-variant="mobile"
      data-list-url="{{ notify_urls.list }}" data-read-url="{{ notify_urls.read }}"
-     data-read-all-url="{{ notify_urls.read_all }}" data-ws-path="{{ notify_ws_path }}">
+     data-read-all-url="{{ notify_urls.read_all }}" data-wait-url="{{ notify_urls.wait }}">
   {% csrf_token %}
   <button type="button" data-notify-toggle id="header-bell-mobile"
           title="{% trans 'Notifications' %}" aria-label="{% trans 'Notifications' %}"
@@ -32,7 +32,7 @@
 {% else %}
 <div class="relative hidden sm:block" data-notify-bell data-variant="bar"
      data-list-url="{{ notify_urls.list }}" data-read-url="{{ notify_urls.read }}"
-     data-read-all-url="{{ notify_urls.read_all }}" data-ws-path="{{ notify_ws_path }}">
+     data-read-all-url="{{ notify_urls.read_all }}" data-wait-url="{{ notify_urls.wait }}">
   {% csrf_token %}
   <button type="button" data-notify-toggle id="header-bell"
           title="{% trans 'Notifications' %}" aria-label="{% trans 'Notifications' %}"

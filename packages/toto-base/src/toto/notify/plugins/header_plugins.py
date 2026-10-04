@@ -3,8 +3,8 @@ words — on the desktop bar, and in the phone menu (``variant="mobile"``).
 
 The markup is ``notify/plugins/_bell.html``; what it does is
 ``notify/live.js``, which reads everything it needs — the three doors'
-addresses, the socket's — from the element's ``data-`` attributes. Nothing
-the server knows is written into a script.
+addresses and the long-poll door's — from the element's ``data-``
+attributes. Nothing the server knows is written into a script.
 """
 
 from toto.core.plugin import HeaderPlugin
@@ -22,7 +22,6 @@ class BellPlugin(HeaderPlugin):
         from django.urls import NoReverseMatch, reverse
 
         from .. import services
-        from ..ws import socket_path
 
         context = super().get_context(**kwargs)
         request = kwargs.get("request")
@@ -33,13 +32,13 @@ class BellPlugin(HeaderPlugin):
             request._toto_notify_unread = unread
         try:
             urls = {"list": reverse("notify:api_list"), "read": reverse("notify:api_read"),
-                    "read_all": reverse("notify:api_read_all")}
+                    "read_all": reverse("notify:api_read_all"),
+                    "wait": reverse("notify:api_wait")}
         except NoReverseMatch:      # installed, but the host mounts no doors
             urls = None
         context.update({
             "notify_unread": unread,
             "notify_urls": urls,
-            "notify_ws_path": socket_path(),
             "variant": kwargs.get("variant", "bar"),
         })
         return context

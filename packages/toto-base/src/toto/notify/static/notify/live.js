@@ -1,21 +1,32 @@
-/* The live socket and the bell (2026-10-04).
+/* The long poll and the bell (2026-10-04).
  *
- * One WebSocket per page (ws/live/), opened here and nowhere else:
+ * One request per page is held open at the long-poll door (notify:api_wait),
+ * asked here and nowhere else — no WebSocket:
  *
- *   - it reconnects by itself, waiting longer after each failure (BACKOFF);
- *   - what the server says becomes a DOM event on `document`:
- *       toto:notification            the member has news
- *       toto:folder {kind, file, directory}   a file changed in a watched folder
+ *   - "anything new since my cursor?": the server answers at once when there
+ *     is, otherwise it holds the request until something changes or some
+ *     25 seconds pass; then the page asks again, with the cursor it was given;
+ *   - what the answer says becomes a DOM event on `document`:
+ *       toto:notification                 the member's bell has news
+ *       toto:folder {directory, files}    a watched folder changed; files is
+ *                                         {file id: version tag} — the files
+ *                                         the reader is shown there — or null
  *       toto:live-open / toto:live-closed
  *   - a page asks to watch a folder with
  *       (window.totoLiveWatch = window.totoLiveWatch || []).push(directoryId)
  *     which works before this script has loaded (the array is drained) and
- *     after (push sends). Watches are sent again after every reconnect.
+ *     after (push asks again at once, naming the folder);
+ *   - a hidden tab stops asking (the held request is dropped) and asks again
+ *     when it is looked at, with the cursor it had: what changed meanwhile
+ *     is answered at once;
+ *   - a failed request is tried again, waiting longer each time (BACKOFF);
+ *     an answer that says "retry" (too many tabs, or a server that cannot
+ *     hold a request) is obeyed; a 401 or 403 ends it — the session is over.
  *
- * The bell draws the list its door answers (notify:api_list) and never
- * anything the socket carried: the socket only says THAT there is news. While
- * the socket is not open the bell asks its door every POLL_MS instead, so it
- * works on a host with no socket at all.
+ * The answer carries ids only. The bell draws the list its door answers
+ * (notify:api_list), a file list asks the row door for each row; nothing the
+ * long poll carried is ever drawn. While the long poll is not working the
+ * bell asks its door every POLL_MS instead.
  *
  * Nothing the server knows is written into this file. The addresses come from
  * the bell element's data- attributes, the CSRF token from its hidden input,
@@ -28,71 +39,103 @@
   var POLL_MS = 60000;
   var TOAST_MS = 6000;
   var REFRESH_SETTLE_MS = 400;
+  // Never more than one question a second, whatever the answers say.
+  var MIN_GAP_MS = 1000;
+  // A folder opened while a request is held: ask again, once for a burst.
+  var REASK_MS = 100;
+  var MAX_RETRY_S = 300;
 
   function createLive(env) {
-    var socket = null, open = false, attempt = 0, stopped = false, watched = [];
+    // env: url, fetch, AbortController, setTimeout, clearTimeout, dispatch,
+    //      visible(), now()
+    var cursor = "", watched = [], asking = null, timer = null;
+    var healthy = false, attempt = 0, stopped = false, started = 0;
 
     function address() {
-      var scheme = env.location.protocol === "https:" ? "wss://" : "ws://";
-      return scheme + env.location.host + env.path;
+      var query = [];
+      if (cursor) query.push("cursor=" + encodeURIComponent(cursor));
+      if (watched.length) query.push("folders=" + watched.join(","));
+      return env.url + (query.length ? "?" + query.join("&") : "");
     }
 
-    function retry() {
-      if (stopped) return;
+    function later(ms) {
+      if (timer !== null) env.clearTimeout(timer);
+      timer = env.setTimeout(function () { timer = null; ask(); }, Math.max(0, ms));
+    }
+
+    function closed() {
+      if (healthy) { healthy = false; env.dispatch("toto:live-closed", {}); }
+    }
+
+    function fail() {
+      closed();
       var delay = BACKOFF[Math.min(attempt, BACKOFF.length - 1)];
       attempt += 1;
-      env.setTimeout(connect, delay);
+      later(delay);
     }
 
-    function sendWatch(id) {
-      if (open && socket) socket.send(JSON.stringify({type: "watch", directory: id}));
+    function take(data) {
+      attempt = 0;
+      if (!healthy) { healthy = true; env.dispatch("toto:live-open", {}); }
+      if (typeof data.cursor === "string") cursor = data.cursor;
+      if (data.notifications) env.dispatch("toto:notification", {});
+      var files = data.files && typeof data.files === "object" ? data.files : {};
+      (Array.isArray(data.folders) ? data.folders : []).forEach(function (id) {
+        var listed = files[id];
+        env.dispatch("toto:folder", {directory: Number(id),
+                                     files: listed && typeof listed === "object" ? listed : null});
+      });
+      var retry = Number(data.retry);
+      if (retry > 0) later(Math.min(retry, MAX_RETRY_S) * 1000);
+      else later(MIN_GAP_MS - (env.now() - started));
     }
 
-    function hear(text) {
-      var message;
-      try { message = JSON.parse(text); } catch (error) { return; }
-      if (!message || typeof message !== "object") return;
-      if (message.type === "notification") {
-        env.dispatch("toto:notification", {});
-      } else if (message.type === "folder") {
-        env.dispatch("toto:folder", {kind: String(message.kind || ""),
-                                     file: Number(message.file),
-                                     directory: Number(message.directory)});
+    function ask() {
+      if (stopped || asking || !env.url || !env.visible()) return;
+      var mine = {dropped: false, controller: env.AbortController ? new env.AbortController() : null};
+      asking = mine;
+      started = env.now();
+      var options = {credentials: "same-origin", cache: "no-store",
+                     headers: {"Accept": "application/json"}};
+      if (mine.controller) options.signal = mine.controller.signal;
+      var done = function (data) {
+        if (asking === mine) asking = null;
+        if (mine.dropped) return;
+        if (data === "over") { stopped = true; closed(); return; }
+        if (!data || typeof data !== "object") { fail(); return; }
+        take(data);
+      };
+      env.fetch(address(), options).then(function (response) {
+        if (response.status === 401 || response.status === 403) return "over";
+        return response.ok ? response.json() : null;
+      }).then(done, function () { done(null); });
+    }
+
+    // Drop the held request without counting it as a failure.
+    function drop() {
+      if (timer !== null) { env.clearTimeout(timer); timer = null; }
+      if (asking) {
+        var mine = asking;
+        asking = null;
+        mine.dropped = true;
+        if (mine.controller) mine.controller.abort();
       }
-    }
-
-    function connect() {
-      if (stopped || !env.path || !env.WebSocket) return;
-      try { socket = new env.WebSocket(address()); } catch (error) { socket = null; retry(); return; }
-      socket.onopen = function () {
-        open = true;
-        attempt = 0;
-        watched.forEach(sendWatch);
-        env.dispatch("toto:live-open", {});
-      };
-      socket.onmessage = function (event) { hear(event.data); };
-      socket.onerror = function () {};
-      socket.onclose = function () {
-        var was = open;
-        open = false;
-        socket = null;
-        if (was) env.dispatch("toto:live-closed", {});
-        retry();
-      };
     }
 
     function watch(id) {
       id = Number(id);
       if (!Number.isInteger(id) || id <= 0 || watched.indexOf(id) !== -1) return;
       watched.push(id);
-      sendWatch(id);
+      // The held request does not know this folder: ask again, naming it.
+      if (asking) { drop(); later(REASK_MS); }
     }
 
     return {
-      connect: connect,
+      start: function () { if (!asking && timer === null) ask(); },
+      pause: drop,
       watch: watch,
-      isOpen: function () { return open; },
-      stop: function () { stopped = true; if (socket) socket.close(); },
+      isOpen: function () { return healthy && !stopped; },
+      stop: function () { stopped = true; drop(); closed(); },
     };
   }
 
@@ -267,14 +310,14 @@
       env.document.addEventListener("keydown", function (event) {
         if (event.key === "Escape") env.roots.forEach(function (rootEl) { toggle(rootEl, false); });
       });
-      // The socket says THAT there is news; a burst settles into one question.
+      // The long poll says THAT there is news; a burst settles into one question.
       var settle = null;
       env.document.addEventListener("toto:notification", function () {
         if (settle !== null) return;
         settle = env.setTimeout(function () { settle = null; refresh(true); }, REFRESH_SETTLE_MS);
       });
-      env.document.addEventListener("toto:live-open", function () { refresh(true); });
-      // No socket: ask every minute instead, while the page is looked at.
+      // The long poll is not working: ask every minute instead, while the
+      // page is looked at.
       env.setInterval(function () {
         if (!env.live.isOpen() && env.visible()) refresh(true);
       }, POLL_MS);
@@ -288,11 +331,15 @@
     var doc = root.document;
     var roots = Array.prototype.slice.call(doc.querySelectorAll("[data-notify-bell]"));
     if (!roots.length || root.totoLive) return;
+    var visible = function () { return doc.visibilityState !== "hidden"; };
     var live = createLive({
-      WebSocket: root.WebSocket,
-      location: root.location,
-      path: roots[0].dataset.wsPath || "",
+      url: roots[0].dataset.waitUrl || "",
+      AbortController: root.AbortController,
+      fetch: function (url, options) { return root.fetch(url, options); },
       setTimeout: function (fn, ms) { return root.setTimeout(fn, ms); },
+      clearTimeout: function (id) { root.clearTimeout(id); },
+      now: function () { return Date.now(); },
+      visible: visible,
       dispatch: function (name, detail) {
         doc.dispatchEvent(new root.CustomEvent(name, {detail: detail}));
       },
@@ -310,14 +357,19 @@
       fetch: function (url, options) { return root.fetch(url, options); },
       setTimeout: function (fn, ms) { return root.setTimeout(fn, ms); },
       setInterval: function (fn, ms) { return root.setInterval(fn, ms); },
-      visible: function () { return doc.visibilityState !== "hidden"; },
+      visible: visible,
     }).start();
-    live.connect();
+    // A tab nobody looks at asks nothing; it asks again when it is looked at.
+    doc.addEventListener("visibilitychange", function () {
+      if (visible()) live.start(); else live.pause();
+    });
+    root.addEventListener("focus", function () { live.start(); });
+    live.start();
   }
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {createLive: createLive, createBell: createBell,
-                      BACKOFF: BACKOFF, POLL_MS: POLL_MS};
+                      BACKOFF: BACKOFF, POLL_MS: POLL_MS, MIN_GAP_MS: MIN_GAP_MS};
   } else if (root.document) {
     if (root.document.readyState === "loading") {
       root.document.addEventListener("DOMContentLoaded", boot);

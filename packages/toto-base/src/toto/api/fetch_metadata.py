@@ -14,6 +14,11 @@ two more rules hold: a browser too old to send the label still sends
 way; and a request from an origin the host names exactly in
 ``CORS_ALLOWED_ORIGINS`` (the desktop app's webview, which a browser labels
 cross-site) passes, as CORS already trusts that origin with credentials.
+
+A READ is refused the same way where a door asks for it (``reads=True``,
+2026-10-04): the long-poll door ``notify:api_wait`` holds a request open,
+and a page of another site must not be able to make a member's browser hold
+one, nor time its answer.
 """
 
 from __future__ import annotations
@@ -38,9 +43,10 @@ def _foreign_origin(request, origin: str) -> bool:
     return not theirs or theirs != ours
 
 
-def cross_site_refusal(request):
-    """A 403 JsonResponse for a forged cookie write, else None."""
-    if request.method in SAFE_METHODS:
+def cross_site_refusal(request, *, reads: bool = False):
+    """A 403 JsonResponse for a forged cookie write, else None. With
+    ``reads`` a GET is held to the same rule."""
+    if request.method in SAFE_METHODS and not reads:
         return None
     if getattr(request, "_toto_bearer_auth", False):
         return None

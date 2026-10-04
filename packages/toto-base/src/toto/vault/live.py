@@ -1,136 +1,155 @@
 """Folders that update as they change (2026-10-04).
 
-A file list that has a folder open asks the live socket to WATCH it
-(``toto.notify.consumers.LiveConsumer``); from then on the page is told when
-a file in that folder is added, changed or removed, fetches that one row from
-``vault:file_row`` and redraws it. This module is the vault's half of that:
+A file list that has a folder open names it to the long-poll door
+(``notify:api_wait``, ``?folders=<ids>``); the door answers when something
+changed in it, with the ids of the files the reader is shown there, and the
+page fetches the rows that are new to it from ``vault:file_row`` and drops
+the ones that left. This module is the vault's half of that:
 
-* ``publish`` — on ``signals.file_changed`` — sends a small event to the
-  group ``folder.<directory pk>``: a kind, the file's id, the folder's id.
-  **No name.** Upload and restore are ``added``; trash and delete are
-  ``removed``; a move is ``removed`` from the old folder and ``added`` to
-  the new one; a rename, a new body, a lock are ``changed``. A file at a
-  bucket's top level is in no folder, and nobody is told.
-* ``may_watch`` — may this account watch that folder at all? The rule of the
-  page that lists it: the bucket's clearances let them read (pessimistic, no
-  owner bypass, ``access.gate_by_bucket``), and the folder's own access list
-  admits them (``VaultDirectory.user_can_access``). A folder that is not
-  there and one that is not theirs answer the same.
-* ``may_see`` — asked for EVERY event, for every socket it is about to reach:
-  ``access.may_read`` on the file. Watching a folder is not reading every
-  file in it — a folder open to everybody holds private files — so an event
-  about a file the reader may not read is dropped before it leaves the
-  server, and with it the fact that the file exists. A clearance taken away
-  after the watch began stops the events the same way. For a file that has
-  left the folder the question is asked of the row as it stood there (the
-  event remembers its owner, its public flag and its bucket; they never
-  reach a browser).
+* ``publish`` — on ``signals.file_changed`` — says that a FOLDER changed
+  (``toto.core.live``, key ``folder.<directory pk>``): nothing about which
+  file, what it is called or who did it. An upload, a restore, a rename, a
+  new body or a lock touch the file's folder; a trashing or a delete the
+  folder it left; a move both. A file at a bucket's top level is in no
+  folder, and nothing is said.
+* ``watched`` — which of these folders may this account watch? The rule of
+  the page that lists them, asked at EVERY poll: the bucket's clearances let
+  them read (pessimistic, no owner bypass, ``access.gate_by_bucket``), and
+  the folder's own access list admits them (as
+  ``VaultDirectory.user_can_access``). A folder that is not there and one
+  that is not theirs are left out the same way, and the door never says
+  which.
+* ``rows`` — what a changed folder holds FOR THIS READER: the ids of the
+  files the list would show them there (``views.listed_files``, the same
+  queryset as the page), each with a version tag. Watching a folder is not
+  reading every file in it — a folder open to everybody holds private files
+  — so a file the reader is not shown is not in their answer, and neither
+  is the fact that it exists. The page compares: an id it does not have, or
+  has under another tag, is fetched from the row door (which asks
+  ``access.may_read`` again); a row it has whose id is gone is dropped.
+* ``row_version`` — the tag: a keyed hash of the columns a listing shows
+  (``models.LIVE_FIELDS``). It changes when the row does, and says nothing
+  of what the row holds.
 
-Connected only where ``toto.notify`` — the app that serves the socket — is
+Connected only where ``toto.notify`` — the app that serves the door — is
 installed (``VaultConfig.ready``); elsewhere nothing is published.
 """
 
 from __future__ import annotations
 
+import hashlib
+
 from . import access
 
-ADDED = "added"
-CHANGED = "changed"
-REMOVED = "removed"
+#: A folder with more files than this is not listed for a page to compare:
+#: it is told that the folder changed and draws it again at the next load.
+MAX_ROWS = 2000
+
+_version_key = None
 
 
-def folder_group(directory_id) -> str:
-    """Every socket watching one folder."""
+def folder_key(directory_id) -> str:
+    """One folder, as ``toto.core.live`` names it."""
     return f"folder.{int(directory_id)}"
 
 
-def may_watch(user, directory_id) -> bool:
-    """See the module docstring."""
+def watched(user, directory_ids) -> list:
+    """The ids among ``directory_ids`` that ``user`` may watch, in the order
+    given. See the module docstring."""
     from .models import VaultDirectory
 
     if not getattr(user, "is_authenticated", False):
-        return False
-    try:
-        directory_id = int(directory_id)
-    except (TypeError, ValueError):
-        return False
-    directory = access.gate_by_bucket(
-        user, VaultDirectory.objects.filter(pk=directory_id)).first()
-    return directory is not None and directory.user_can_access(user)
+        return []
+    asked = []
+    for raw in directory_ids:
+        try:
+            pk = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if pk > 0 and pk not in asked:
+            asked.append(pk)
+    if not asked:
+        return []
+    readable = set(access.gate_by_bucket(user, VaultDirectory.objects.filter(pk__in=asked))
+                   .values_list("pk", flat=True))
+    if not readable:
+        return []
+    if not getattr(user, "is_superuser", False):
+        # The folder's own access list, for all of them in one query: a
+        # folder with no list is open, one with a list admits its names.
+        listed = {}
+        through = VaultDirectory.allowed_users.through
+        for directory_id, user_id in through.objects.filter(
+                vaultdirectory_id__in=readable).values_list("vaultdirectory_id", "user_id"):
+            listed.setdefault(directory_id, set()).add(user_id)
+        readable = {pk for pk in readable if pk not in listed or user.pk in listed[pk]}
+    return [pk for pk in asked if pk in readable]
 
 
-def may_see(user, event: dict) -> bool:
-    """May ``user`` be told this folder event? ``access.may_read`` on the
-    file — the row itself, or for a ``removed`` one the row as it stood in
-    the folder it left. Anything that cannot be decided is a no."""
-    from django.core.exceptions import ObjectDoesNotExist
-
-    from .models import VaultFile
-
-    try:
-        file_id = int(event.get("file"))
-    except (TypeError, ValueError):
-        return False
-    try:
-        if event.get("kind") == REMOVED:
-            reader = event.get("reader") or {}
-            vault_file = VaultFile(pk=file_id, owner_id=reader.get("owner"),
-                                   is_public=bool(reader.get("public")),
-                                   bucket_id=reader.get("bucket"),
-                                   directory_id=event.get("directory"))
-        else:
-            vault_file = (VaultFile.objects.select_related("bucket", "directory")
-                          .filter(pk=file_id).first())
-        return access.may_read(user, vault_file)
-    except ObjectDoesNotExist:      # the bucket or the folder went meanwhile
-        return False
+def may_watch(user, directory_id) -> bool:
+    """``watched`` for one folder."""
+    return bool(watched(user, [directory_id]))
 
 
-def _event(kind, file_id, directory_id, state=None) -> dict:
-    from toto.core import live
+def _version(state: dict) -> str:
+    from .models import LIVE_FIELDS
 
-    event = {"type": live.FOLDER, "kind": kind, "file": file_id, "directory": directory_id}
-    if kind == REMOVED:
-        state = state or {}
-        event["reader"] = {"owner": state.get("owner_id"),
-                           "public": bool(state.get("is_public")),
-                           "bucket": state.get("bucket_id")}
-    return event
+    global _version_key
+    if _version_key is None:
+        from django.conf import settings
+
+        _version_key = hashlib.sha256(
+            ("toto.vault.live.row:" + settings.SECRET_KEY).encode("utf-8")).digest()
+    text = "\x1f".join(f"{state.get(name)!s}" for name in LIVE_FIELDS)
+    return hashlib.blake2s(text.encode("utf-8", "surrogatepass"), digest_size=5,
+                           key=_version_key).hexdigest()
 
 
-def events_for(kind, vault_file, was) -> list:
-    """The folder events one ``file_changed`` amounts to, as
-    ``[(directory id, event)]``."""
+def row_version(vault_file) -> str:
+    """The tag of one file's row as it stands. See the module docstring."""
+    from .models import live_state
+
+    return _version(live_state(vault_file))
+
+
+def rows(user, directory_id):
+    """``{file id: version tag}`` for the files the list shows ``user`` in
+    this folder, or ``None`` for a folder too large to compare
+    (``MAX_ROWS``). The caller has asked ``watched``."""
+    from .models import LIVE_FIELDS
+    from .views import listed_files
+
+    found = list(listed_files(user).filter(directory_id=directory_id)
+                 .values("pk", *LIVE_FIELDS)[:MAX_ROWS + 1])
+    if len(found) > MAX_ROWS:
+        return None
+    return {str(row["pk"]): _version(row) for row in found}
+
+
+def folders_of(kind, vault_file, was) -> list:
+    """The folders one ``file_changed`` touches."""
     was = was or {}
     here = vault_file.__dict__.get("directory_id")
     before = was.get("directory_id")
-    file_id = vault_file.pk
-    out = []
-    if kind in ("uploaded", "restored"):
-        if here:
-            out.append((here, _event(ADDED, file_id, here)))
-    elif kind in ("replaced", "changed"):
-        if here:
-            out.append((here, _event(CHANGED, file_id, here)))
+    if kind in ("uploaded", "restored", "replaced", "changed"):
+        found = [here]
     elif kind in ("trashed", "deleted"):
-        if before:
-            out.append((before, _event(REMOVED, file_id, before, was)))
+        found = [before]
     elif kind == "moved":
-        if before:
-            out.append((before, _event(REMOVED, file_id, before, was)))
-        if here:
-            out.append((here, _event(ADDED, file_id, here)))
-    return out
+        found = [before, here]
+    else:
+        found = []
+    return [pk for pk in dict.fromkeys(found) if pk]
 
 
 def publish(sender=None, file=None, kind="", was=None, **kwargs) -> None:
-    """``signals.file_changed``'s listener: tell the folder's watchers."""
+    """``signals.file_changed``'s listener: say which folders changed."""
     from toto.core import live
 
     if file is None or not getattr(file, "pk", None):
         return
-    for directory_id, event in events_for(kind, file, was):
-        live.publish(folder_group(directory_id), event)
+    for directory_id in folders_of(kind, file, was):
+        live.publish(folder_key(directory_id))
 
 
 def connect() -> None:

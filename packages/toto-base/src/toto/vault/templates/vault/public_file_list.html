@@ -216,9 +216,10 @@
             if (open) this.$nextTick(() => this.$refs.removeEncInput?.focus());
           });
           this.$watch('search', () => this._updateSearch());
-          // A file changed in a folder this page watches (the live socket,
-          // notify/live.js): the event names the file and the folder, never
-          // what the file is called — the row is asked for (fetchRow).
+          // A folder this page watches changed (the long poll,
+          // notify/live.js): the event names the folder and the ids of the
+          // files the reader is shown there, never what a file is called —
+          // the rows that are new to the page are asked for (fetchRow).
           document.addEventListener('toto:folder', event => this.onFolderEvent(event.detail));
         },
 
@@ -938,18 +939,33 @@
         },
 
         // ── Rows that change while the page is open ───────────
-        // The page asks the live socket to watch each folder it opens. An
-        // event says a file was added, changed or removed there; the row
-        // itself comes from the vault's row door, behind the reader's own
-        // permission, so nothing is drawn that a reload would not list.
+        // The page names each folder it opens to the long poll. An answer
+        // says the folder changed and which files the reader is shown there
+        // now ({id: version tag}); the page compares that with its rows.
+        // A row itself comes from the vault's row door, behind the reader's
+        // own permission, so nothing is drawn that a reload would not list.
         watchFolder(id) {
           if (!this.$root.dataset.live) return;
           (window.totoLiveWatch = window.totoLiveWatch || []).push(id);
         },
         onFolderEvent(detail) {
-          if (!detail || !this.dirMap[detail.directory]) return;
-          if (detail.kind === 'removed') this.dropRow(detail.file, detail.directory);
-          else this.fetchRow(detail.file);
+          // files null: a folder too large to compare — the next load draws it.
+          if (!detail || !detail.files || !this.dirMap[detail.directory]) return;
+          const listed = detail.files;
+          const mine = {};
+          for (const item of this.items) if (item.t === 'file') mine[item.id] = item;
+          // Rows drawn in this folder that are not listed there any more.
+          for (const item of Object.values(mine)) {
+            if (item.pid === detail.directory && !(String(item.id) in listed)) {
+              this.dropRow(item.id, detail.directory);
+            }
+          }
+          // Listed there and not drawn so, or drawn from an older version.
+          for (const key of Object.keys(listed)) {
+            const id = Number(key);
+            const row = mine[id];
+            if (!row || row.pid !== detail.directory || row.v !== listed[key]) this.fetchRow(id);
+          }
         },
         async fetchRow(id) {
           const url = this.$root.dataset.rowUrl.replace('/0/', '/' + encodeURIComponent(id) + '/');
@@ -1230,8 +1246,8 @@
        to the script as data and read there with say() (see its comment).
        force_escape because a translated literal is not escaped by itself.{% endcomment %}
     {% comment %}data-upload-url, data-row-url: the upload door and the row
-       door (its 0 stands for a file's id). data-live: whether the live
-       socket tells this page of changes in the folders it opens. A dropped
+       door (its 0 stands for a file's id). data-live: whether the long
+       poll tells this page of changes in the folders it opens. A dropped
        file that misses a folder is not opened by the browser instead.{% endcomment %}
     <div x-data="vaultTree()"
          data-upload-url="{% url 'vault:api_file_upload' %}"

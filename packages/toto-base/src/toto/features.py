@@ -113,7 +113,7 @@ class Features:
     subscriptions: bool
     monit: bool
     jess: bool          # toto.jess — the mail transport and outbox
-    # toto.notify — the bell and the live socket (2026-10-04). Opt-in.
+    # toto.notify — the bell and the long-poll door (2026-10-04). Opt-in.
     notify: bool
     # GIS. When off, locations loads without GeoDjango (no GDAL/GEOS/PostGIS) and
     # Address carries plain lat/lon floats — a much lighter host. Default on.
@@ -293,11 +293,10 @@ def resolve_features(get) -> Features:
     # and its sends need a worker.
     jess = flag(get, "BUILD_JESS")
     # toto.notify — notifications kept per member, the bell in the app bar and
-    # the one WebSocket consumer that pushes them (and a watched folder's
-    # changes) to an open page. Opt-in. It joins needs_channels below because
-    # its socket is a channels consumer; the bell itself works without one
-    # (it asks its door every minute), so a host that installs the app by
-    # hand and serves no socket loses the push, nothing else.
+    # the long-poll door that tells an open page of them (and of a watched
+    # folder's changes). Opt-in. NOT part of needs_channels below: the door
+    # is an async Django view, not a channels consumer — it needs an ASGI
+    # server to hold a request, and under WSGI it answers at once instead.
     notify = flag(get, "BUILD_NOTIFY")
 
     # Mail is a mailbox app over jess's transport: it sends through jess so
@@ -406,7 +405,7 @@ def resolve_features(get) -> Features:
     # memory because somebody enabled a PDF export.
     anastasia = flag(get, "BUILD_ANASTASIA")
     # Channels/ASGI back every WebSocket consumer.
-    needs_channels = chat or sabbia or canasta or notify
+    needs_channels = chat or sabbia or canasta
     # Ollama/Qwen service layer — scoped to the features that actually use it.
     vicuna = graph or sabbia_ollama
 

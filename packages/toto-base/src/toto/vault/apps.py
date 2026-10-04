@@ -11,7 +11,7 @@ class VaultConfig(AppConfig):
         from django.apps import apps
 
         # Folders that update as they change (live.py, 2026-10-04): published
-        # only where the app that serves the socket is installed.
+        # only where the app that serves the long-poll door is installed.
         if apps.is_installed("toto.notify"):
             from toto.vault import live
 

@@ -29,6 +29,7 @@ from django.contrib import messages
 from django.utils.decorators import method_decorator
 from toto.ui import PageProcessor
 from . import access, scanning
+from .live import row_version
 from . import storage_backends as _storage_backends
 from .models import (VaultFile, Bucket, FileGateway, VaultDirectory,
                      BucketCopyLog, StorageBackend)
@@ -206,6 +207,9 @@ def file_item(f, *, pid, depth, clean_pks=None, fs_plugins=None) -> dict:
         "trashable": f.can_be_trashed,
         # A small picture of a raster image, or "" (2026-10-04).
         "thumb_url": thumbnail_url(f),
+        # The row's version tag (toto.vault.live): what the long poll's
+        # answer is compared with, so a row that changed is fetched again.
+        "v": row_version(f),
     }
 
 
@@ -428,7 +432,7 @@ class PublicFileListView(TemplateView):
         context["active_tab"] = "files"
         # Whether a folder that is open on the page is told of its changes as
         # they happen (toto.vault.live, 2026-10-04): a signed-in reader, on a
-        # host that serves the live socket.
+        # host that serves the long-poll door.
         context["vault_live"] = bool(user.is_authenticated
                                      and apps.is_installed("toto.notify"))
 
@@ -585,8 +589,8 @@ class VaultFileDownloadView(View):
 def file_row(request, pk):
     """One file's row, as the list's script takes it (2026-10-04).
 
-    The door a page asks when the live socket says a file in a folder it
-    watches was added or changed — and after its own upload lands. It answers
+    The door a page asks when the long poll says a folder it watches holds
+    a file that is new to it or changed — and after its own upload lands. It answers
     exactly the row the listing would have built (``file_item``) and only for
     a file the listing would show this reader: ``access.may_read`` AND the
     list's own rule (``listed_files``), so nothing can appear on an open page

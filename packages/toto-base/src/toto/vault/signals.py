@@ -47,7 +47,8 @@ transfer_file_landed = Signal()
 #: JSON API, the admin, a worker — and no door had to learn it. Sent with
 #: ``send_robust``: a listener that fails never fails the save. What listens:
 #: ``toto.vault.live`` (the folders that update as they change) and
-#: ``toto.notify.sources`` (the bell), each only where it is installed.
+#: ``toto.notify.sources`` (the bell, for the bucket's owner), each only
+#: where it is installed.
 file_changed = Signal()
 
 

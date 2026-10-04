@@ -15,20 +15,18 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.staticfiles import finders
 from django.template.loader import render_to_string
-from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
+from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import translation
 
 from toto import notify
 from toto.core.models import Platform
-from toto.notify.testing import MEMORY_LAYER
 
 User = get_user_model()
 BELL = re.compile(r'<div class="[^"]*" data-notify-bell (.*?)>\s*(.*?)</button>', re.S)
 _NODE = shutil.which("node")
 
 
-@override_settings(CHANNEL_LAYERS=MEMORY_LAYER)
 class BellTests(TestCase):
     def setUp(self):
         Platform.objects.get_or_create(active=True, defaults={
@@ -68,7 +66,9 @@ class BellTests(TestCase):
         html = self.header()
         for name in ("notify:api_list", "notify:api_read", "notify:api_read_all"):
             self.assertIn(f'="{reverse(name)}"', html)
-        self.assertEqual(html.count('data-ws-path="/ws/live/"'), 2)
+        self.assertEqual(html.count(f'data-wait-url="{reverse("notify:api_wait")}"'), 2)
+        for gone in ("data-ws-path", "ws/live", "data-msg-signed"):
+            self.assertNotIn(gone, html)
         scripts = re.findall(r"<script\b([^>]*)>(.*?)</script>", html, re.S)
         mine = [(attrs, body) for attrs, body in scripts if "notify" in attrs]
         self.assertEqual(len(mine), 1)
@@ -76,98 +76,139 @@ class BellTests(TestCase):
         self.assertEqual(mine[0][1].strip(), "")
         self.assertIsNotNone(finders.find("notify/live.js"))
 
-    @override_settings(CHANNEL_LAYERS={})
-    def test_a_host_with_no_channel_layer_opens_no_socket(self):
-        self.assertEqual(self.header().count('data-ws-path=""'), 2)
-
     def test_a_visitor_has_no_bell(self):
         self.assertNotIn("data-notify-bell", self.header(user=AnonymousUser()))
 
 _HARNESS = r"""
-const {createLive, createBell, BACKOFF, POLL_MS} = require(process.argv[1]);
+const {createLive, createBell, BACKOFF, POLL_MS, MIN_GAP_MS} = require(process.argv[1]);
 const out = {};
-const timers = [];
-const listeners = {};
-const sockets = [];
-class Sock { constructor(url) { this.url = url; this.sent = []; sockets.push(this); }
-  send(text) { this.sent.push(JSON.parse(text)); } close() {} }
-const events = [];
-const env = {WebSocket: Sock, location: {protocol: "https:", host: "portal.example.org"},
-  path: "/ws/live/", setTimeout: (fn, ms) => { timers.push({fn, ms}); },
-  dispatch: (name, detail) => { events.push([name, detail]); (listeners[name] || []).forEach(f => f({detail})); }};
-const live = createLive(env);
-live.watch(7);
-live.connect();
-out.url = sockets[0].url;
-out.sentBeforeOpen = sockets[0].sent.length;
-sockets[0].onopen();
-out.watchAfterOpen = sockets[0].sent.slice();
-live.watch(7); live.watch("x"); live.watch(9);
-out.watches = sockets[0].sent.map(m => m.directory);
-sockets[0].onmessage({data: JSON.stringify({type: "notification", text: "<b>x</b>"})});
-sockets[0].onmessage({data: JSON.stringify({type: "folder", kind: "added", file: 3, directory: 7, name: "n"})});
-sockets[0].onmessage({data: "not json"});
-out.events = events.slice();
-sockets[0].onclose();
-out.openAfterClose = live.isOpen();
-const delays = [];
-for (let i = 0; i < 8; i++) { const t = timers.pop(); delays.push(t.ms); t.fn(); sockets[sockets.length - 1].onclose(); }
-out.delays = delays;
-timers.pop().fn(); sockets[sockets.length - 1].onopen();
-out.rewatched = sockets[sockets.length - 1].sent.map(m => m.directory);
-out.backoff = BACKOFF; out.poll = POLL_MS;
-
-// The bell, on a page faked just far enough.
-class El { constructor(tag) { this.tagName = tag; this.children = []; this.dataset = {}; this.attrs = {};
-    this.hidden = false; this.className = ""; this._text = ""; this.handlers = {}; }
-  set textContent(v) { this._text = String(v); } get textContent() { return this._text + this.children.map(c => c.textContent).join(""); }
-  set innerHTML(v) { throw new Error("innerHTML is never used"); }
-  appendChild(c) { this.children.push(c); c.parent = this; return c; }
-  removeChild(c) { this.children = this.children.filter(x => x !== c); }
-  get firstChild() { return this.children[0] || null; }
-  setAttribute(k, v) { this.attrs[k] = v; }
-  addEventListener(name, fn) { (this.handlers[name] = this.handlers[name] || []).push(fn); }
-  contains() { return false; }
-  querySelector(sel) { return this.parts[sel] || null; } }
-const mk = () => { const root = new El("div");
-  root.dataset = {listUrl: "/notify/api/", readUrl: "/notify/api/read/", readAllUrl: "/notify/api/read-all/"};
-  const token = new El("input"); token.value = "tok";
-  root.parts = {"input[name=csrfmiddlewaretoken]": token, "[data-notify-count]": new El("span"),
-                "[data-notify-list]": new El("ul"), "[data-notify-empty]": new El("p"),
-                "[data-notify-read-all]": new El("button"), "[data-notify-panel]": new El("div"),
-                "[data-notify-toggle]": new El("button")};
-  root.parts["[data-notify-panel]"].hidden = true; return root; };
-const roots = [mk(), mk()];
-const doc = new El("document"); doc.body = new El("body"); doc.createElement = (tag) => new El(tag);
-const calls = [];
-let answer = {unread: 1, items: [{id: 1, created: "a", text: "<img src=x onerror=alert(1)>", actor: "Ada", when: "now", link: "/vault/", read: false, icon: "fa-solid fa-upload"}]};
-const intervals = [], later = [], gone = [];
-let open = false;
-const bell = createBell({roots, document: doc, location: {assign: (u) => gone.push(u)},
-  live: {isOpen: () => open}, visible: () => true,
-  fetch: (url, options) => { calls.push([url, (options || {}).method || "GET", (options || {}).headers || {}, (options || {}).body]);
-    return Promise.resolve({ok: true, json: () => Promise.resolve(JSON.parse(JSON.stringify(answer)))}); },
-  setTimeout: (fn, ms) => { later.push({fn, ms}); return later.length; },
-  setInterval: (fn, ms) => { intervals.push({fn, ms}); }});
 const tick = () => new Promise(r => setImmediate(r));
+const settle = async () => { for (let i = 0; i < 6; i++) await tick(); };
+
+// The long poll, against a door faked just far enough.
+const timers = [];          // {fn, ms, cleared}
+const asked = [];           // every request: {url, options, resolve, reject, aborted}
+const events = [];
+let clock = 0, shown = true;
+class Abort { constructor() { this.signal = {owner: this}; this.aborted = false; }
+  abort() { this.aborted = true; const call = asked.find(c => c.options.signal === this.signal);
+            if (call) { call.aborted = true; call.reject(new Error("AbortError")); } } }
+const env = {url: "/notify/api/wait/", AbortController: Abort, now: () => clock, visible: () => shown,
+  setTimeout: (fn, ms) => { const t = {fn, ms, cleared: false}; timers.push(t); return t; },
+  clearTimeout: (t) => { if (t) t.cleared = true; },
+  fetch: (url, options) => new Promise((resolve, reject) => { asked.push({url, options, resolve, reject}); }),
+  dispatch: (name, detail) => { events.push([name, detail]); }};
+const answer = (call, data, status) => call.resolve({status: status || 200, ok: !status || status < 300,
+                                                     json: () => Promise.resolve(data)});
+const due = () => timers.filter(t => !t.cleared && !t.done);
+const fire = () => { const t = due()[0]; t.done = true; t.fn(); return t.ms; };
+
 (async () => {
+  const live = createLive(env);
+  live.watch(7);
+  live.start(); live.start();
+  out.firstUrl = asked[0].url;
+  out.firstOptions = [asked[0].options.credentials, asked[0].options.headers.Accept, asked[0].options.method || "GET"];
+  out.oneAtATime = asked.length;
+  out.openBeforeAnswer = live.isOpen();
+  // An answer at once: the cursor is kept, and the next question waits its second.
+  clock = 20;
+  answer(asked[0], {cursor: "c1", notifications: false, folders: [7], files: {"7": {"3": "aa"}}});
+  await settle();
+  out.openAfterAnswer = live.isOpen();
+  out.gapAfterQuickAnswer = fire();
+  out.secondUrl = asked[1].url;
+  // A held request answered after 25 s: asked again without delay.
+  clock += 25000;
+  answer(asked[1], {cursor: "c2", notifications: true, folders: [], name: "<b>x</b>"});
+  await settle();
+  out.gapAfterHeldAnswer = fire();
+  out.events = events.slice();
+  // A folder opened while a request is held: that request is dropped (no
+  // failure counted) and the next names both folders, each once.
+  live.watch(7); live.watch("x"); live.watch(9);
+  await settle();
+  out.droppedForWatch = asked[2].aborted === true;
+  out.reaskDelay = fire();
+  out.thirdUrl = asked[3].url;
+  // A hidden tab stops asking; looked at again, it asks with the cursor it had.
+  shown = false; live.pause();
+  await settle();
+  out.droppedWhenHidden = asked[3].aborted === true;
+  out.timersWhenHidden = due().length;
+  live.start();
+  out.askedWhileHidden = asked.length;
+  shown = true; live.start();
+  out.resumedUrl = asked[4].url;
+  // Failures: waiting longer each time, and "closed" said once.
+  const delays = [];
+  let n = 4;
+  for (let i = 0; i < 8; i++) { answer(asked[n], null, 500); await settle(); delays.push(fire()); n += 1; }
+  out.delays = delays;
+  out.closedEvents = events.filter(e => e[0] === "toto:live-closed").length;
+  out.openAfterFailures = live.isOpen();
+  // Sent home by the cap: it stays away as long as it was told.
+  answer(asked[n], {cursor: "c3", notifications: false, folders: [], retry: 25}); await settle();
+  out.retryDelay = fire(); n += 1;
+  out.opened = events.filter(e => e[0] === "toto:live-open").length;
+  // The session ended: it asks no more.
+  answer(asked[n], {}, 401); await settle();
+  out.timersAfter401 = due().length;
+  live.start();
+  out.askedAfter401 = asked.length - (n + 1);
+  out.backoff = BACKOFF; out.poll = POLL_MS; out.gap = MIN_GAP_MS;
+
+  // The bell, on a page faked just far enough.
+  class El { constructor(tag) { this.tagName = tag; this.children = []; this.dataset = {}; this.attrs = {};
+      this.hidden = false; this.className = ""; this._text = ""; this.handlers = {}; }
+    set textContent(v) { this._text = String(v); } get textContent() { return this._text + this.children.map(c => c.textContent).join(""); }
+    set innerHTML(v) { throw new Error("innerHTML is never used"); }
+    appendChild(c) { this.children.push(c); c.parent = this; return c; }
+    removeChild(c) { this.children = this.children.filter(x => x !== c); }
+    get firstChild() { return this.children[0] || null; }
+    setAttribute(k, v) { this.attrs[k] = v; }
+    addEventListener(name, fn) { (this.handlers[name] = this.handlers[name] || []).push(fn); }
+    contains() { return false; }
+    querySelector(sel) { return this.parts[sel] || null; } }
+  const mk = () => { const root = new El("div");
+    root.dataset = {listUrl: "/notify/api/", readUrl: "/notify/api/read/", readAllUrl: "/notify/api/read-all/",
+                    waitUrl: "/notify/api/wait/"};
+    const token = new El("input"); token.value = "tok";
+    root.parts = {"input[name=csrfmiddlewaretoken]": token, "[data-notify-count]": new El("span"),
+                  "[data-notify-list]": new El("ul"), "[data-notify-empty]": new El("p"),
+                  "[data-notify-read-all]": new El("button"), "[data-notify-panel]": new El("div"),
+                  "[data-notify-toggle]": new El("button")};
+    root.parts["[data-notify-panel]"].hidden = true; return root; };
+  const roots = [mk(), mk()];
+  const doc = new El("document"); doc.body = new El("body"); doc.createElement = (tag) => new El(tag);
+  const calls = [];
+  let listed = {unread: 1, items: [{id: 1, created: "a", text: "<img src=x onerror=alert(1)>", actor: "Ada", when: "now", link: "/vault/", read: false, icon: "fa-solid fa-upload"}]};
+  const intervals = [], later = [], gone = [];
+  let open = false;
+  const bell = createBell({roots, document: doc, location: {assign: (u) => gone.push(u)},
+    live: {isOpen: () => open}, visible: () => true,
+    fetch: (url, options) => { calls.push([url, (options || {}).method || "GET", (options || {}).headers || {}, (options || {}).body]);
+      return Promise.resolve({ok: true, json: () => Promise.resolve(JSON.parse(JSON.stringify(listed)))}); },
+    setTimeout: (fn, ms) => { later.push({fn, ms}); return later.length; },
+    setInterval: (fn, ms) => { intervals.push({fn, ms}); }});
   bell.start();
   later.shift().fn(); await tick(); await tick();
   out.firstList = calls.map(c => c[0] + " " + c[1]);
   out.count = roots.map(r => r.parts["[data-notify-count]"].textContent + (r.parts["[data-notify-count]"].hidden ? " hidden" : ""));
   out.rowText = roots[0].parts["[data-notify-list]"].textContent;
   out.toastsAtFirst = doc.body.children.length ? doc.body.children[0].children.length : 0;
-  // No socket: the minute's question, and what is new is toasted.
+  // The long poll is not working: the minute's question, and what is new is toasted.
   out.pollMs = intervals[0].ms;
-  answer = {unread: 2, items: [{id: 2, created: "b", text: "second", actor: "", when: "now", link: "//evil.example.com/", read: false}].concat(answer.items)};
+  listed = {unread: 2, items: [{id: 2, created: "b", text: "second", actor: "", when: "now", link: "//evil.example.com/", read: false}].concat(listed.items)};
   intervals[0].fn(); await tick(); await tick();
   out.polled = calls.length;
   out.toasts = doc.body.children[0].children.map(c => c.textContent);
   open = true; intervals[0].fn(); await tick();
   out.notPolledWhenOpen = calls.length;
-  // The socket's poke: one question after a burst.
+  // The long poll's word: one question after a burst.
   doc.handlers["toto:notification"].forEach(f => { f({}); f({}); f({}); });
   out.settles = later.filter(t => t.ms === 400).length;
+  out.bellListens = Object.keys(doc.handlers).sort();
   // A click marks read with the token, then follows only a path of this platform.
   const row = roots[0].parts["[data-notify-list]"].children[1].children[0];
   row.handlers.click[0](); await tick(); await tick();
@@ -195,23 +236,47 @@ class LiveScriptTests(SimpleTestCase):
             raise AssertionError(f"node failed: {done.stderr}")
         cls.out = json.loads(done.stdout.strip().splitlines()[-1])
 
-    def test_one_socket_to_the_platforms_own_address(self):
-        self.assertEqual(self.out["url"], "wss://portal.example.org/ws/live/")
+    def test_one_request_at_a_time_to_the_platforms_own_door(self):
+        self.assertEqual(self.out["firstUrl"], "/notify/api/wait/?folders=7")
+        self.assertEqual(self.out["firstOptions"], ["same-origin", "application/json", "GET"])
+        self.assertEqual(self.out["oneAtATime"], 1)
+        self.assertFalse(self.out["openBeforeAnswer"])
+        self.assertTrue(self.out["openAfterAnswer"])
 
-    def test_a_watch_asked_early_is_sent_once_the_socket_opens_and_never_twice(self):
-        self.assertEqual(self.out["sentBeforeOpen"], 0)
-        self.assertEqual(self.out["watchAfterOpen"], [{"type": "watch", "directory": 7}])
-        self.assertEqual(self.out["watches"], [7, 9])
+    def test_it_asks_again_with_the_cursor_it_was_given(self):
+        self.assertEqual(self.out["secondUrl"], "/notify/api/wait/?cursor=c1&folders=7")
+        # Never more than one question a second; none of that after a held one.
+        self.assertEqual(self.out["gap"], 1000)
+        self.assertEqual(self.out["gapAfterQuickAnswer"], 980)
+        self.assertEqual(self.out["gapAfterHeldAnswer"], 0)
 
-    def test_what_the_server_says_becomes_events_with_ids_only(self):
+    def test_what_the_answer_says_becomes_events_with_ids_only(self):
         self.assertEqual(self.out["events"], [
-            ["toto:live-open", {}], ["toto:notification", {}],
-            ["toto:folder", {"kind": "added", "file": 3, "directory": 7}]])
+            ["toto:live-open", {}],
+            ["toto:folder", {"directory": 7, "files": {"3": "aa"}}],
+            ["toto:notification", {}]])
 
-    def test_it_reconnects_waiting_longer_each_time_and_watches_again(self):
-        self.assertFalse(self.out["openAfterClose"])
+    def test_a_folder_opened_later_is_asked_about_at_once_and_never_twice(self):
+        self.assertTrue(self.out["droppedForWatch"])
+        self.assertEqual(self.out["reaskDelay"], 100)
+        self.assertEqual(self.out["thirdUrl"], "/notify/api/wait/?cursor=c2&folders=7,9")
+
+    def test_a_hidden_tab_stops_asking_and_resumes_with_its_cursor(self):
+        self.assertTrue(self.out["droppedWhenHidden"])
+        self.assertEqual(self.out["timersWhenHidden"], 0)
+        self.assertEqual(self.out["askedWhileHidden"], 4)
+        self.assertEqual(self.out["resumedUrl"], "/notify/api/wait/?cursor=c2&folders=7,9")
+
+    def test_a_failure_is_tried_again_waiting_longer_each_time(self):
         self.assertEqual(self.out["delays"], [1000, 2000, 5000, 10000, 30000, 60000, 60000, 60000])
-        self.assertEqual(self.out["rewatched"], [7, 9])
+        self.assertEqual(self.out["closedEvents"], 1)
+        self.assertFalse(self.out["openAfterFailures"])
+        self.assertEqual(self.out["opened"], 2)
+
+    def test_it_stays_away_when_told_to_and_stops_when_the_session_ended(self):
+        self.assertEqual(self.out["retryDelay"], 25000)
+        self.assertEqual(self.out["timersAfter401"], 0)
+        self.assertEqual(self.out["askedAfter401"], 0)
 
     def test_the_bell_draws_its_doors_answer_as_text(self):
         self.assertEqual(self.out["firstList"], ["/notify/api/ GET"])
@@ -219,12 +284,15 @@ class LiveScriptTests(SimpleTestCase):
         self.assertIn("<img src=x onerror=alert(1)>", self.out["rowText"])
         self.assertEqual(self.out["toastsAtFirst"], 0)
 
-    def test_without_a_socket_it_asks_every_minute_and_toasts_what_is_new(self):
+    def test_without_the_long_poll_it_asks_every_minute_and_toasts_what_is_new(self):
         self.assertEqual(self.out["pollMs"], 60000)
         self.assertEqual(self.out["polled"], 2)
         self.assertEqual(self.out["toasts"], ["second"])
         self.assertEqual(self.out["notPolledWhenOpen"], 2)
         self.assertEqual(self.out["settles"], 1)
+
+    def test_nobody_signing_in_or_out_is_listened_for(self):
+        self.assertEqual(self.out["bellListens"], ["click", "keydown", "toto:notification"])
 
     def test_a_click_marks_read_with_the_token_and_follows_only_this_platforms_paths(self):
         self.assertEqual(self.out["post"], ["/notify/api/read/", "tok", "id=1"])
@@ -234,3 +302,10 @@ class LiveScriptTests(SimpleTestCase):
         source = Path(finders.find("notify/live.js")).read_text(encoding="utf-8")
         for word in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
             self.assertNotIn(word, source)
+
+    def test_the_script_opens_no_socket(self):
+        source = Path(finders.find("notify/live.js")).read_text(encoding="utf-8")
+        for word in ("new WebSocket", "env.WebSocket", "wss://", "ws://", "toto:presence",
+                     "signed in"):
+            self.assertNotIn(word, source)
+        self.assertIn("visibilitychange", source)
