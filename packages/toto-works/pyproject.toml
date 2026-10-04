@@ -21,6 +21,9 @@ requires-python = ">=3.10"
 # scripts/release.py — never edit them by hand.
 dependencies = [
     "toto-base==2.0",
+    # kanban's models and 0001 migration key into locations (zones, addresses,
+    # routes), which left toto-base for toto-geo on 2026-10-04.
+    "toto-geo==2.0",
     # NO toto-economy edge any more. It was added 2026-08-22 solely because
     # toto.hesperis carried real foreign keys into assets.Asset and
     # assets.LedgerAccount, and a ForeignKey("assets.Asset") string is a HARD

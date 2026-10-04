@@ -16,8 +16,12 @@ requires-python = ">=3.10"
 # ForeignKey("people.Person") strings in company/models.py, and
 # company/migrations/0001_initial depending on vault, people, locations and
 # events.
+#
+# toto-geo since 2026-10-04: company/models.py and its 0001 migration key into
+# locations, which left toto-base for toto-geo that day.
 dependencies = [
     "toto-base==2.0",
+    "toto-geo==2.0",
 ]
 
 [tool.setuptools.packages.find]

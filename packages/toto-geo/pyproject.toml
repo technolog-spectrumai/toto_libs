@@ -4,11 +4,16 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# Geo/location-adjacent feature apps. Currently: weather (observations and
-# forecasts keyed off locations.Address, run by workflow nodes).
+# Everything with geography in it. locations (the map: addresses, territories,
+# zones, routes, layers, map domains, and the links from people, events and
+# communities to them — in toto-base until 2026-10-04, when that package lost
+# its geography) and weather (observations and forecasts keyed off
+# locations.Address, run by workflow nodes). locations is the only app in the
+# suite that may need GDAL (HAS_GIS on); a host that does not pin this wheel
+# needs none.
 name = "toto-geo"
 version = "2.0"
-description = "toto geo feature apps: weather"
+description = "toto geo apps: locations (the map) and weather"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
