@@ -1,0 +1,61 @@
+{% load i18n static %}{% comment %}The bell (2026-10-04): an icon and the unread count, no words on screen —
+   it is named by its title and aria-label. Drawn twice by the header: on the
+   desktop bar (hidden on a phone) and, as "mobile", inside the phone menu.
+   What it does is notify/live.js, which reads the addresses below from this
+   element and the CSRF token from its hidden input; nothing the server knows
+   is written into a script. The list is filled in the browser from the
+   bell's door, every text with textContent.{% endcomment %}
+{% if variant == "mobile" %}
+<div class="relative" data-notify-bell data-variant="mobile"
+     data-list-url="{{ notify_urls.list }}" data-read-url="{{ notify_urls.read }}"
+     data-read-all-url="{{ notify_urls.read_all }}" data-ws-path="{{ notify_ws_path }}"
+     data-msg-signed-in="{{ _('{name} signed in')|force_escape }}"
+     data-msg-signed-out="{{ _('{name} signed out')|force_escape }}">
+  {% csrf_token %}
+  <button type="button" data-notify-toggle id="header-bell-mobile"
+          title="{% trans 'Notifications' %}" aria-label="{% trans 'Notifications' %}"
+          aria-haspopup="true" aria-expanded="false"
+          class="flex w-full items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+    <i class="fas fa-bell text-base" aria-hidden="true"></i>
+    <span data-notify-count class="rounded-full bg-warn-light px-1.5 text-xs font-bold leading-5 text-white"{% if not notify_unread %} hidden{% endif %}>{% if notify_unread > 99 %}99+{% else %}{{ notify_unread }}{% endif %}</span>
+  </button>
+  <div data-notify-panel hidden
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+       class="mt-2 rounded-xl border shadow-lg">
+    <div class="flex items-center justify-between gap-2 border-b border-current/10 px-3 py-2">
+      <span class="text-sm font-bold">{% trans "Notifications" %}</span>
+      <button type="button" data-notify-read-all hidden
+              class="text-xs underline opacity-70 transition hover:opacity-100">{% trans "Mark all as read" %}</button>
+    </div>
+    <ul data-notify-list class="max-h-80 overflow-y-auto"></ul>
+    <p data-notify-empty class="px-3 py-6 text-center text-sm opacity-60">{% trans "No notifications." %}</p>
+  </div>
+</div>
+{% else %}
+<div class="relative hidden sm:block" data-notify-bell data-variant="bar"
+     data-list-url="{{ notify_urls.list }}" data-read-url="{{ notify_urls.read }}"
+     data-read-all-url="{{ notify_urls.read_all }}" data-ws-path="{{ notify_ws_path }}"
+     data-msg-signed-in="{{ _('{name} signed in')|force_escape }}"
+     data-msg-signed-out="{{ _('{name} signed out')|force_escape }}">
+  {% csrf_token %}
+  <button type="button" data-notify-toggle id="header-bell"
+          title="{% trans 'Notifications' %}" aria-label="{% trans 'Notifications' %}"
+          aria-haspopup="true" aria-expanded="false"
+          class="flex items-center gap-1 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+    <i class="fas fa-bell text-base" aria-hidden="true"></i>
+    <span data-notify-count class="rounded-full bg-warn-light px-1.5 text-xs font-bold leading-5 text-white"{% if not notify_unread %} hidden{% endif %}>{% if notify_unread > 99 %}99+{% else %}{{ notify_unread }}{% endif %}</span>
+  </button>
+  <div data-notify-panel hidden
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+       class="absolute right-0 top-full z-50 mt-2 w-80 max-w-[90vw] rounded-xl border shadow-lg">
+    <div class="flex items-center justify-between gap-2 border-b border-current/10 px-3 py-2">
+      <span class="text-sm font-bold">{% trans "Notifications" %}</span>
+      <button type="button" data-notify-read-all hidden
+              class="text-xs underline opacity-70 transition hover:opacity-100">{% trans "Mark all as read" %}</button>
+    </div>
+    <ul data-notify-list class="max-h-96 overflow-y-auto"></ul>
+    <p data-notify-empty class="px-3 py-6 text-center text-sm opacity-60">{% trans "No notifications." %}</p>
+  </div>
+</div>
+<script defer src="{% static 'notify/live.js' %}"></script>
+{% endif %}

@@ -21,7 +21,7 @@ APPS_WITH_MIGRATIONS = {
     "clearing", "comments", "company", "connectors", "core", "cyprian",
     "events", "fileservices", "formica", "forum", "gervazy", "gitea",
     "ingestor", "jess", "kanban", "ledger", "locations", "mail", "mana",
-    "mandragora", "manta", "memo", "mint", "monit", "ocr", "people", "quota",
+    "mandragora", "manta", "memo", "mint", "monit", "notify", "ocr", "people", "quota",
     "ravioli", "repo", "sabbia", "sketch", "social_login", "socialhub",
     "sql_neo4j_sync", "sso_client", "sso_core", "sso_master", "steven",
     "subscriptions", "tariffs", "tax", "transcription", "vault", "verbena",

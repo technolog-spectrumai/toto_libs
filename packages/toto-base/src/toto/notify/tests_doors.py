@@ -1,0 +1,115 @@
+"""The bell's three doors (2026-10-04): session, CSRF, the Fetch-Metadata
+guard, and nobody's notifications but the caller's.
+
+    manage.py test toto.notify.tests_doors
+"""
+
+from django.contrib.auth import get_user_model
+from django.test import Client, TestCase
+from django.urls import reverse
+
+from toto import notify
+from toto.notify.models import Notification
+from toto.people.models import Person
+from toto.socialhub.models import Clearance
+from toto.vault.models import Bucket, BucketClearance
+
+User = get_user_model()
+
+
+class DoorCase(TestCase):
+    def setUp(self):
+        self.ada = User.objects.create_user("ada", password="pw")
+        self.bob = User.objects.create_user("bob", password="pw")
+        self.mine = notify.send(self.ada, "account.password_changed", link="/account/")
+        self.theirs = notify.send(self.bob, "account.new_sign_in")
+        self.client.force_login(self.ada)
+
+
+class ListTests(DoorCase):
+    def test_it_lists_only_the_callers_own(self):
+        data = self.client.get(reverse("notify:api_list")).json()
+        self.assertEqual(data["unread"], 1)
+        self.assertEqual([item["id"] for item in data["items"]], [self.mine.pk])
+        item = data["items"][0]
+        self.assertEqual(item["text"], "Your password was changed")
+        self.assertEqual((item["link"], item["read"], item["actor"]), ("/account/", False, ""))
+
+    def test_it_is_never_cached_and_anonymous_gets_nothing(self):
+        response = self.client.get(reverse("notify:api_list"))
+        self.assertEqual(response["Cache-Control"], "no-store")
+        self.assertIn(Client().get(reverse("notify:api_list")).status_code, (302, 401))
+        self.assertEqual(self.client.post(reverse("notify:api_list")).status_code, 405)
+
+    def test_the_latest_twenty(self):
+        for n in range(25):
+            notify.send(self.ada, "job.transfer_done", once=f"t{n}", bucket="W")
+        data = self.client.get(reverse("notify:api_list")).json()
+        self.assertEqual((len(data["items"]), data["unread"]), (20, 26))
+
+    def test_a_row_about_a_bucket_hidden_from_the_reader_now_is_dropped(self):
+        owner = User.objects.create_user("owner", password="pw")
+        bucket = Bucket.objects.create(name="Payroll", slug="payroll", owner=owner)
+        Person.objects.create(user=self.ada, display_name="Ada")
+        row = notify.send(self.ada, "vault.uploaded", actor=owner, title="salaries.csv",
+                          bucket=bucket.name, bucket_id=bucket.pk)
+        ids = [i["id"] for i in self.client.get(reverse("notify:api_list")).json()["items"]]
+        self.assertIn(row.pk, ids)
+        BucketClearance.objects.create(bucket=bucket,
+                                       clearance=Clearance.objects.create(name="Payroll"))
+        body = self.client.get(reverse("notify:api_list"))
+        self.assertNotIn("salaries.csv", body.content.decode())
+        self.assertFalse(Notification.objects.filter(pk=row.pk).exists())
+
+
+class ReadTests(DoorCase):
+    def test_marking_ones_own_read(self):
+        data = self.client.post(reverse("notify:api_read"), {"id": self.mine.pk}).json()
+        self.assertEqual(data, {"ok": True, "unread": 0})
+        self.assertIsNotNone(Notification.objects.get(pk=self.mine.pk).read_at)
+
+    def test_another_members_notification_is_a_404_and_stays_unread(self):
+        for value in (self.theirs.pk, 999999, "x", "", "1 OR 1=1"):
+            with self.subTest(value=value):
+                response = self.client.post(reverse("notify:api_read"), {"id": value})
+                self.assertEqual(response.status_code, 404)
+        self.assertIsNone(Notification.objects.get(pk=self.theirs.pk).read_at)
+
+    def test_read_all_touches_only_the_callers(self):
+        notify.send(self.ada, "account.new_sign_in")
+        self.assertEqual(self.client.post(reverse("notify:api_read_all")).json()["unread"], 0)
+        self.assertEqual(Notification.objects.filter(recipient=self.ada,
+                                                     read_at__isnull=True).count(), 0)
+        self.assertIsNone(Notification.objects.get(pk=self.theirs.pk).read_at)
+
+    def test_the_writes_are_posts_and_need_the_csrf_token(self):
+        strict = Client(enforce_csrf_checks=True)
+        strict.force_login(self.ada)
+        for name in ("notify:api_read", "notify:api_read_all"):
+            with self.subTest(door=name):
+                self.assertEqual(self.client.get(reverse(name)).status_code, 405)
+                self.assertEqual(strict.post(reverse(name), {"id": self.mine.pk}).status_code, 403)
+        self.assertIsNone(Notification.objects.get(pk=self.mine.pk).read_at)
+        strict.get(reverse("notify:api_list"))
+        token = strict.cookies.get("csrftoken")
+        if token is not None:
+            response = strict.post(reverse("notify:api_read"), {"id": self.mine.pk},
+                                   HTTP_X_CSRFTOKEN=token.value)
+            self.assertEqual(response.status_code, 200)
+
+    def test_a_write_a_browser_sent_from_another_site_is_refused(self):
+        for site in ("cross-site", "same-site"):
+            for name in ("notify:api_read", "notify:api_read_all"):
+                with self.subTest(site=site, door=name):
+                    response = self.client.post(reverse(name), {"id": self.mine.pk},
+                                                HTTP_SEC_FETCH_SITE=site)
+                    self.assertEqual(response.status_code, 403)
+        response = self.client.post(reverse("notify:api_read_all"),
+                                    HTTP_ORIGIN="https://evil.example.com")
+        self.assertEqual(response.status_code, 403)
+        self.assertIsNone(Notification.objects.get(pk=self.mine.pk).read_at)
+
+    def test_no_door_takes_an_account(self):
+        self.client.post(reverse("notify:api_read_all"), {"user": self.bob.pk,
+                                                          "recipient": self.bob.pk})
+        self.assertIsNone(Notification.objects.get(pk=self.theirs.pk).read_at)

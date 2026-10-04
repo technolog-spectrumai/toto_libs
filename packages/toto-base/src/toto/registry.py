@@ -30,6 +30,18 @@ LOCATIONS_APPS = [
     "toto.locations",
 ]
 
+# Notifications and the live socket (toto-base, 2026-10-04): the bell in the
+# app bar, the table behind it, and the one WebSocket consumer (``ws/live/``)
+# that tells an open page of news and of files changing in a folder it
+# watches. Never part of CORE_APPS or BASE_APPS: a host adds it (or sets
+# BUILD_NOTIFY and composes from FEATURE_APPS), mounts ``toto.notify.urls``
+# and, for the socket, installs ``channels`` and routes
+# ``toto.notify.routing.websocket_urlpatterns``. Without the socket the bell
+# still works: it asks its door every minute.
+NOTIFY_APPS = [
+    "toto.notify",
+]
+
 # The historical auth block (ships in toto-auth since 1.8): the standalone
 # OIDC-provider default. Strategy-aware hosts compose [*CORE_APPS,
 # *toto.auth_config.auth_apps(cfg)] instead to pick provider/consumer/local.
@@ -53,6 +65,8 @@ FEATURE_APPS = {
         "toto.workflows",    # DAG workflow engine
     ],
     "chat": ["toto.forum"],
+    # The bell and the live socket (BUILD_NOTIFY) — see NOTIFY_APPS above.
+    "notify": NOTIFY_APPS,
     "weather": ["toto.weather"],
     # The media section, as of 1.21. There is no "media" key any more: the apps that
     # want a celery worker (manta + fileservices + transcription) moved to the
@@ -215,6 +229,10 @@ TASK_MODULES = [
     # My account. Queued on demand, never on beat — but a task the worker
     # does not know is the same KeyError either way.
     "toto.socialhub",
+    # toto.notify's prune_read (2026-10-04): read notifications older than
+    # thirty days. Scheduled by schedules.beat_schedule(notify_prune=...);
+    # inert where the app is not installed.
+    "toto.notify",
     # toto.core's nightly_housekeeping (2026-10-01, RODO): expired sessions,
     # dead sign-in rows, lapsed membership applications. Scheduled by
     # schedules.beat_schedule(housekeeping=...), so without this line the

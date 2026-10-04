@@ -47,6 +47,9 @@ def beat_schedule(
     housekeeping=False,
     housekeeping_hour=3,
     housekeeping_minute=5,
+    notify_prune=False,
+    notify_prune_hour=3,
+    notify_prune_minute=20,
 ):
     """Build the CELERY_BEAT_SCHEDULE dict for the enabled features."""
     schedule = {}
@@ -199,6 +202,17 @@ def beat_schedule(
         schedule["core-nightly-housekeeping"] = {
             "task": "toto.core.tasks.nightly_housekeeping",
             "schedule": crontab(hour=housekeeping_hour, minute=housekeeping_minute),
+        }
+
+    if notify_prune:
+        from celery.schedules import crontab
+
+        # 03:20, after the housekeeping (2026-10-04): the notifications read
+        # more than thirty days ago go (toto.notify.services.prune). An
+        # unread one waits. Idempotent — a second fire finds nothing due.
+        schedule["notify-prune-read"] = {
+            "task": "toto.notify.tasks.prune_read",
+            "schedule": crontab(hour=notify_prune_hour, minute=notify_prune_minute),
         }
 
     if tax:
