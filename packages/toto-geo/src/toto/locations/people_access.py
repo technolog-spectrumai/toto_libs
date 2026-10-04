@@ -31,14 +31,42 @@ def _person_for(user):
     return getattr(user, "community_profile", None)
 
 
+def home_of(person):
+    """The person's ``Home`` row, or None. The address and the sharing switch
+    were columns of Person until 2026-10-04; they are this app's own row now."""
+    from django.core.exceptions import ObjectDoesNotExist
+
+    if person is None or person.pk is None:
+        return None
+    try:
+        return person.home
+    except ObjectDoesNotExist:
+        return None
+
+
+def home_address(person):
+    """The address the person lives at on the map, or None."""
+    home = home_of(person)
+    return home.address if home is not None and home.address_id else None
+
+
+def sharing_of(person) -> str:
+    """``HomeSharing``: what the person shares of their home — OFF with no
+    Home row."""
+    from .models import HomeSharing
+
+    home = home_of(person)
+    return home.sharing if home is not None else HomeSharing.OFF
+
+
 def may_see_location(viewer, person) -> bool:
     """The door: may `viewer` see where `person` lives?"""
-    if person is None or person.address_id is None:
+    if person is None or home_address(person) is None:
         return False
     if not getattr(viewer, "is_authenticated", False):
         return False
 
-    from toto.people.models import LocationSharing
+    from .models import HomeSharing
 
     # Your own row is always yours to see, whatever the setting — otherwise
     # switching sharing off would hide your own pin from you and read as a bug.
@@ -46,7 +74,7 @@ def may_see_location(viewer, person) -> bool:
     if own is not None and own.pk == person.pk:
         return True
 
-    return person.location_sharing != LocationSharing.OFF
+    return sharing_of(person) != HomeSharing.OFF
 
 
 def shared_people(viewer):
@@ -56,19 +84,21 @@ def shared_people(viewer):
     asserts the two agree for every person, because this is precisely the pair
     that drifts.
     """
-    from toto.people.models import LocationSharing, Person
+    from toto.people.models import Person
+
+    from .models import HomeSharing
 
     if not getattr(viewer, "is_authenticated", False):
         return Person.objects.none()
 
-    visible = Q(address__isnull=False) & ~Q(location_sharing=LocationSharing.OFF)
+    visible = Q(home__address__isnull=False) & ~Q(home__sharing=HomeSharing.OFF)
 
     own = _person_for(viewer)
     if own is not None:
-        visible |= Q(pk=own.pk, address__isnull=False)
+        visible |= Q(pk=own.pk, home__address__isnull=False)
 
     return (Person.objects.filter(visible)
-            .select_related("address")
+            .select_related("home__address")
             .distinct())
 
 
@@ -102,17 +132,18 @@ def point_for(person):
     authoritative and would overwrite the floats from it anyway, but the real
     reason is that this is a view of the data, not a change to it.
     """
-    from toto.people.models import LocationSharing
+    from .models import HomeSharing
 
-    address = person.address if person.address_id else None
+    address = home_address(person)
     if address is None:
         return None
     lat, lon = _coordinates(address)
     if lat is None or lon is None:
         return None
-    if person.location_sharing == LocationSharing.APPROXIMATE:
+    sharing = sharing_of(person)
+    if sharing == HomeSharing.APPROXIMATE:
         return round(lat, _COARSE_PLACES), round(lon, _COARSE_PLACES)
-    if person.location_sharing == LocationSharing.EXACT:
+    if sharing == HomeSharing.EXACT:
         return lat, lon
     return None
 
@@ -124,12 +155,12 @@ def place_label(person) -> str:
     as much of a disclosure as the pin, and a street name beside a coarse marker
     would undo the coarsening.
     """
-    from toto.people.models import LocationSharing
+    from .models import HomeSharing
 
-    address = person.address if person.address_id else None
+    address = home_address(person)
     if address is None:
         return ""
-    if person.location_sharing == LocationSharing.EXACT:
+    if sharing_of(person) == HomeSharing.EXACT:
         return str(address)
     return ", ".join(part for part in (address.locality_name,
                                        address.state_or_province_name) if part)

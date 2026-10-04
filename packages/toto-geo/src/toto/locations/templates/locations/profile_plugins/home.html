@@ -1,0 +1,241 @@
+{% load i18n static quota_tags %}
+{% comment %}Home on the map: the owner's own pin, and who may see it
+(2026-10-04). Until then this was the "Where you live" section of the
+socialhub's Edit profile tab; toto-base carries no geography now (the
+profile's address is text there), so the picker, the place search and the
+three-way sharing setting are this app's, drawn on the owner's Overview by
+plugins/profile_plugins.py and posting to this app's doors (home_views.py).
+Leaflet, the pin and the tile layer load here, for the owner alone. The
+modal keeps focus (x-trap) and closes on Escape.{% endcomment %}
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}">
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
+<script src="{% static 'oya/pin.js' %}"></script>
+{% include "locations/_tiles.html" %}
+<div x-data="{ addressModal: false }" @keydown.escape.window="addressModal = false"
+     class="space-y-6">
+<!-- Where you live -->
+<section id="home-on-the-map"
+  :class="darkMode
+    ? 'border-accent-1 bg-bubble-bg-dark'
+    : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-map-pin"></i>{% trans "Where you live" %}</h2>
+  <p class="mt-1 text-sm opacity-75">
+    {% blocktrans trimmed %}
+      Whether other members can find you on the People map. Off unless you
+      turn it on, and turning it off removes you straight away.
+    {% endblocktrans %}
+  </p>
+  {% if home_address %}
+    <p class="mt-2 text-sm">{{ home_address }}</p>
+    <p class="mt-1 text-xs opacity-60 tabular-nums">{{ home_address.latitude|floatformat:4 }}, {{ home_address.longitude|floatformat:4 }}</p>
+  {% else %}
+    <p class="mt-2 text-xs opacity-70">
+      <i class="fa-solid fa-circle-info"></i>
+      {% trans "You have no address on your profile yet, so nothing is shown either way." %}
+    </p>
+  {% endif %}
+  <button type="button" id="open-address-modal" @click="addressModal = true"
+          :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+          class="mt-3 inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+    <i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i>
+    {% if home_address %}{% trans "Modify my address" %}{% else %}{% trans "Set my address" %}{% endif %}
+  </button>
+
+  <form method="post" action="{% url 'locations:set_home_sharing' %}"
+        class="mt-4 flex flex-wrap gap-3">
+    {% csrf_token %}
+        {% for value, label in sharing_choices %}
+      <button type="submit" name="sharing" value="{{ value }}"
+              {% if home_sharing == value %}aria-pressed="true"{% else %}aria-pressed="false"{% endif %}
+              :class="darkMode
+                ? '{% if home_sharing == value %}bg-accent-dark text-primary-bg-dark{% else %}border-accent-1 bg-sunken-dark{% endif %}'
+                : '{% if home_sharing == value %}bg-accent-light text-primary-bg-light{% else %}border-accent-2 bg-sunken-light{% endif %}'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        {{ label }}
+      </button>
+    {% endfor %}
+  </form>
+</section>
+
+{% comment %}The address picker. Click the map to place the pin, drag the
+view, search by name where the host allows geocoding; nothing is saved
+until Save is pressed, and Cancel discards everything. The map builds
+lazily on first open — leaflet cannot size itself inside a hidden box.
+A name search and "Save and look up the address" are charged place
+lookups (2026-09-28): each is its own priced button, and clicking the map
+or a plain Save costs nothing.
+{% endcomment %}
+<div x-show="addressModal" x-trap="addressModal" x-cloak x-transition.opacity
+     class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     role="dialog" aria-modal="true" aria-labelledby="address-modal-title">
+  <div class="absolute inset-0"
+       :class="darkMode ? 'bg-primary-bg-dark/80' : 'bg-primary-bg-light/80'"
+       @click="addressModal = false"></div>
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+       class="relative z-10 flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border shadow-xl">
+    <div class="flex items-center justify-between gap-4 border-b border-current/15 px-5 py-4">
+      <h2 id="address-modal-title" class="text-lg font-bold">
+        {% if home_address %}{% trans "Modify my address" %}{% else %}{% trans "Set my address" %}{% endif %}</h2>
+      <button type="button" @click="addressModal = false"
+              class="inline-flex h-9 w-9 items-center justify-center rounded"
+              aria-label="{% trans 'Close' %}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+    </div>
+    <form method="post" action="{% url 'locations:set_my_home' %}"
+          class="min-h-0 flex-1 overflow-auto p-5">
+      {% csrf_token %}
+            {% if geocoding_enabled %}
+        <div class="relative">
+          <label for="address-search" class="mb-1 block text-sm font-semibold">{% trans "Search for a place" %}</label>
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="address-search" type="search" autocomplete="off"
+                   placeholder="{% trans 'Street, town, landmark…' %}"
+                   class="min-w-0 flex-1 rounded-lg border border-current/30 bg-transparent px-3 py-2 text-sm text-inherit outline-none">
+            <button type="button" id="address-search-go" data-testid="address-search-go"
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-current/30 px-3 py-2 text-sm font-semibold disabled:opacity-40">
+              <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>{% trans "Search" %}</button>
+            {% price_hint "locations.geocode" %}
+          </div>
+          <p id="address-search-note" role="status" class="mt-1 hidden text-xs"></p>
+          <ul id="address-search-results"
+              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+              class="absolute z-20 mt-1 hidden max-h-48 w-full overflow-auto rounded-lg border text-sm shadow-lg"></ul>
+        </div>
+      {% endif %}
+      <div id="address-pick-map" style="height: 300px" class="mt-3 rounded"></div>
+      <p class="mt-2 text-xs opacity-60">
+        {% trans "Click the map to place your pin, then adjust it until it is right. Nothing is saved until you press Save." %}</p>
+      <div class="mt-3 flex flex-wrap gap-3">
+        <label class="text-sm">{% trans "Latitude" %}
+          <input type="number" name="latitude" id="address-lat" step="any" min="-90" max="90" required
+                 value="{{ home_address.latitude|default_if_none:'' }}"
+                 class="mt-1 w-36 rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none"></label>
+        <label class="text-sm">{% trans "Longitude" %}
+          <input type="number" name="longitude" id="address-lon" step="any" min="-180" max="180" required
+                 value="{{ home_address.longitude|default_if_none:'' }}"
+                 class="mt-1 w-36 rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none"></label>
+      </div>
+      {% if geocoding_enabled %}
+        <p class="mt-4 text-xs opacity-60">
+          {% trans "Save keeps the pin alone. Looking up its street and town is one place lookup." %}</p>
+      {% endif %}
+      <div class="mt-5 flex flex-wrap items-center justify-end gap-3">
+        <button type="button" @click="addressModal = false"
+                class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
+        {% comment %}First in the form, so Enter in a coordinate box is the
+           free Save, never the lookup.{% endcomment %}
+        <button type="submit" class="rounded-lg border px-4 py-2 text-sm font-bold">{% trans "Save" %}</button>
+        {% if geocoding_enabled %}
+          <button type="submit" name="lookup_address" value="1" data-testid="save-and-look-up"
+                  class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-bold">
+            {% trans "Save and look up the address" %}{% price_hint "locations.geocode" %}</button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  var built = false;
+  var pick = null;
+  var pin = null;
+  document.getElementById('open-address-modal')
+      .addEventListener('click', function () { setTimeout(build, 60); });
+
+  function place(lat, lon) {
+    if (pin) { pick.removeLayer(pin); }
+    pin = L.marker([lat, lon], {icon: classicPin()}).addTo(pick);
+    document.getElementById('address-lat').value = Math.round(lat * 1e6) / 1e6;
+    document.getElementById('address-lon').value = Math.round(lon * 1e6) / 1e6;
+  }
+
+  function build() {
+    if (built) { return; }
+    built = true;
+    var latInput = document.getElementById('address-lat');
+    var lonInput = document.getElementById('address-lon');
+    var start = [latInput.value || 52.2297, lonInput.value || 21.0122];
+    pick = L.map('address-pick-map').setView(start, latInput.value ? 12 : 5);
+    window.totoTileLayer(pick);   // dark with the page (oya/base.html)
+    if (latInput.value && lonInput.value) {
+      place(parseFloat(latInput.value), parseFloat(lonInput.value));
+    }
+    pick.on('click', function (event) {
+      place(event.latlng.lat, event.latlng.lng);
+    });
+    wireSearch();
+  }
+
+  function wireSearch() {
+    var box = document.getElementById('address-search');
+    if (!box) { return; }   // the host allows no geocoding
+    var list = document.getElementById('address-search-results');
+    var button = document.getElementById('address-search-go');
+    var note = document.getElementById('address-search-note');
+    var failed = '{% trans "Could not search right now." as failed %}{{ failed|escapejs }}';
+    // A search is a charged place lookup: it runs on Enter or the Search
+    // button, never per keystroke, and not again while one is running (a
+    // second Enter would pay twice). Enter must not submit the form around
+    // the box either, which would save the pin.
+    box.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') { event.preventDefault(); run(); }
+    });
+    button.addEventListener('click', run);
+
+    function say(text) {
+      note.textContent = text;
+      note.classList.toggle('hidden', !text);
+    }
+
+    function run() {
+      var query = box.value.trim();
+      if (!query || button.disabled) { return; }
+      button.disabled = true;
+      say('');
+      var body = new FormData();
+      body.append('q', query);
+      fetch('{% url "locations:search_home" %}', {
+        method: 'POST', body: body, credentials: 'same-origin',
+        headers: {'Accept': 'application/json', 'X-CSRFToken': '{{ csrf_token }}',
+                  'X-Requested-With': 'XMLHttpRequest'}})
+        .then(function (r) {
+          return r.json().catch(function () { return {}; })
+            .then(function (data) { return {ok: r.ok, data: data}; });
+        })
+        .then(function (answer) {
+          list.textContent = '';
+          if (!answer.ok) {
+            // The server's sentence: out of mana, too many lookups, down.
+            list.classList.add('hidden');
+            say(answer.data.error || failed);
+            return;
+          }
+          var hits = answer.data.results || [];
+          hits.forEach(function (hit) {
+            var item = document.createElement('li');
+            item.textContent = hit.label;
+            item.className = 'cursor-pointer px-3 py-2 hover:opacity-70';
+            item.addEventListener('click', function () {
+              list.classList.add('hidden');
+              var lat = parseFloat(hit.lat), lon = parseFloat(hit.lng);
+              pick.setView([lat, lon], 14);
+              place(lat, lon);
+            });
+            list.appendChild(item);
+          });
+          list.classList.toggle('hidden', !hits.length);
+          if (!hits.length) { say('{% trans "No place found." as none %}{{ none|escapejs }}'); }
+        })
+        .catch(function () {
+          list.classList.add('hidden');
+          say(failed);
+        })
+        .finally(function () { button.disabled = false; });
+    }
+  }
+})();
+</script>
+</div>

@@ -11,10 +11,12 @@ notice promises it is gone:
 * **the bodies of their files' saved versions** (``vault/versions/``) — the
   versions cascade with the files, the bodies have no link back
   (``vault.versions.drop_orphan_blobs``, as a purge does it);
-* **their home pin, and the addresses they added that nothing else uses** —
-  the key runs from the person to the address, so the row stayed on the map,
-  linked to nobody. A pin another person lives at, or a place is built on,
-  stays;
+* **on a host with the map (``toto.locations``, toto-geo): their home pin,
+  and the addresses they added that nothing else uses** — the pin is a row of
+  its own, so it stayed on the map, linked to nobody. A pin another person
+  lives at, or a place is built on, stays (``toto.locations.erasure``). The
+  address on the profile itself is text on the person's row since 2026-10-04
+  and goes with it;
 * **their membership application and its references** — keyed by address,
   not by account (``socialhub.applications.of_member``); the audit chain
   keeps the admission;
@@ -37,8 +39,6 @@ import logging
 from dataclasses import dataclass, field
 
 from django.apps import apps
-from django.db import router, transaction
-from django.db.models.deletion import Collector, ProtectedError, RestrictedError
 
 log = logging.getLogger("toto.core")
 
@@ -85,54 +85,15 @@ def _count(value) -> int:
         return value.count()
 
 
-def _used_elsewhere(address, *, but=None) -> bool:
-    """Does anything but ``but`` (a Person being erased) still point at it?
-    A place built on it (PROTECT), a route, an event, a community, a
-    territory's capital or another person (SET_NULL) — the collector asks."""
-    collector = Collector(using=router.db_for_write(type(address)))
-    try:
-        collector.collect([address])
-    except (ProtectedError, RestrictedError):
-        return True
-    for (fk, _value), batches in collector.field_updates.items():
-        for batch in batches:
-            rows = list(batch) if not isinstance(batch, (list, tuple)) else batch
-            if any(not (but is not None and type(row) is type(but) and row.pk == but.pk)
-                   for row in rows):
-                return True
-    return False
-
-
 def _addresses(user, person) -> tuple[int | None, list[int]]:
-    """The home pin (when no one else lives there and nothing is built on it)
-    and the addresses they added that nothing else uses."""
+    """On a host with the map: the home pin and the addresses they added
+    that nothing else uses (``toto.locations.erasure``). Nothing elsewhere —
+    the profile's address is text on the person's own row."""
     if not apps.is_installed("toto.locations"):
         return None, []
-    from toto.locations.models import Address
+    from toto.locations.erasure import addresses_of
 
-    home = None
-    if person is not None and person.address_id:
-        pin = Address.objects.filter(pk=person.address_id).first()
-        if pin is not None and not _home_kept(pin, person):
-            home = pin.pk
-    own = [address.pk for address in Address.objects.filter(created_by=user).exclude(pk=home)
-           if not _used_elsewhere(address, but=person)]
-    return home, own
-
-
-def _home_kept(pin, person) -> bool:
-    """A home pin stays only when another person lives there or a place is
-    built on it — an event or a route at their home loses its address."""
-    from toto.people.models import Person
-
-    if Person.objects.filter(address=pin).exclude(pk=person.pk).exists():
-        return True
-    collector = Collector(using=router.db_for_write(type(pin)))
-    try:
-        collector.collect([pin])
-    except (ProtectedError, RestrictedError):
-        return True
-    return False
+    return addresses_of(user, person)
 
 
 def report(user) -> tuple[dict, list[str]]:
@@ -222,14 +183,9 @@ def after_delete(left: Leftovers) -> None:
     the home pin and their unused addresses."""
     if not apps.is_installed("toto.locations"):
         return
-    from toto.locations.models import Address
+    from toto.locations.erasure import delete_addresses
 
-    for pk in ([left.home] if left.home else []) + list(left.addresses):
-        try:
-            with transaction.atomic():
-                Address.objects.filter(pk=pk).delete()
-        except (ProtectedError, RestrictedError):
-            continue                       # built on meanwhile: it stays
+    delete_addresses(([left.home] if left.home else []) + list(left.addresses))
 
 
 def after_commit(left: Leftovers) -> None:

@@ -110,9 +110,9 @@ def _box(latitude, longitude, radius_km):
     shrink = max(math.cos(math.radians(latitude)), 0.01)
     lon_span = radius_km / (111.32 * shrink)
     inside = Q(
-        address__latitude__gte=latitude - lat_span,
-        address__latitude__lte=latitude + lat_span,
-        address__longitude__gte=longitude - lon_span,
-        address__longitude__lte=longitude + lon_span,
+        home__address__latitude__gte=latitude - lat_span,
+        home__address__latitude__lte=latitude + lat_span,
+        home__address__longitude__gte=longitude - lon_span,
+        home__address__longitude__lte=longitude + lon_span,
     )
-    return inside | Q(address__latitude__isnull=True)
+    return inside | Q(home__address__latitude__isnull=True)

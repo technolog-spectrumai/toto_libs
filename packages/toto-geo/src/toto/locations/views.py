@@ -1449,7 +1449,7 @@ def people(request):
     from toto.socialhub.models import Community
 
     from . import nearby
-    from .people_access import place_label, point_for
+    from .people_access import home_address, place_label, point_for, sharing_of
 
     viewer = current_person(request)
 
@@ -1476,7 +1476,7 @@ def people(request):
                 "latitude": point[0],
                 "longitude": point[1],
                 "place": place_label(person),
-                "approximate": person.location_sharing == "approximate",
+                "approximate": sharing_of(person) == "approximate",
             })
 
     return render(request, "locations/people.html", PageProcessor().decorate({
@@ -1491,8 +1491,8 @@ def people(request):
         # search for others while you are invisible is worth saying out loud,
         # not because it is forbidden but because most people assume the
         # opposite.
-        "viewer_shares": bool(viewer and viewer.location_sharing != "off"),
-        "viewer_has_address": bool(viewer and viewer.address_id),
+        "viewer_shares": bool(viewer and sharing_of(viewer) != "off"),
+        "viewer_has_address": bool(viewer and home_address(viewer)),
     }, request))
 
 
@@ -1512,7 +1512,7 @@ def _search_centre(request, viewer):
     from — the page says so rather than silently listing nobody, because "no
     results" and "we do not know where you are" look identical otherwise.
     """
-    from .people_access import _coordinates
+    from .people_access import _coordinates, home_address
 
     raw_lat = (request.GET.get("lat") or "").strip()
     raw_lon = (request.GET.get("lon") or "").strip()
@@ -1525,9 +1525,10 @@ def _search_centre(request, viewer):
             if -90 <= lat <= 90 and -180 <= lon <= 180:
                 return (lat, lon), ""
 
-    if viewer is not None and viewer.address_id:
-        lat, lon = _coordinates(viewer.address)
+    home = home_address(viewer) if viewer is not None else None
+    if home is not None:
+        lat, lon = _coordinates(home)
         if lat is not None and lon is not None:
-            return (lat, lon), str(viewer.address)
+            return (lat, lon), str(home)
 
     return None, ""

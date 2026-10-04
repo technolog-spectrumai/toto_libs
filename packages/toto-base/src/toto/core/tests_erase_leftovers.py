@@ -25,8 +25,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from toto.core.management.commands.erase_user import plan
-from toto.locations.models import Address
-from toto.people.models import LocationSharing, Person
+from toto.people.models import Person
 from toto.socialhub.models import Community, MembershipApplication, ReferenceRequest
 
 User = get_user_model()
@@ -114,30 +113,6 @@ class ApplicationTests(LeftoverCase):
         self.assertFalse(MembershipApplication.objects.filter(pk=application.pk).exists())
         self.assertFalse(ReferenceRequest.objects.filter(message="I know her").exists())
         self.assertTrue(MembershipApplication.objects.filter(pk=other.pk).exists())
-
-
-class AddressTests(LeftoverCase):
-    def test_the_home_pin_and_their_unused_addresses_go(self):
-        home = Address.objects.create(street="Hidden Lane", latitude=52.0, longitude=21.0)
-        Person.objects.filter(pk=self.person.pk).update(address=home,
-                                                        location_sharing=LocationSharing.EXACT)
-        added = Address.objects.create(street="Their note", created_by=self.ada)
-        erase(self, "ada")
-        self.assertFalse(Address.objects.filter(pk__in=[home.pk, added.pk]).exists())
-
-    def test_an_address_others_use_stays(self):
-        from toto.events.models import ScheduledEvent
-
-        used = Address.objects.create(street="Town Hall", created_by=self.ada)
-        start = timezone.now() + timezone.timedelta(days=1)
-        ScheduledEvent.objects.create(title="Meeting", start_time=start,
-                                      end_time=start + timezone.timedelta(hours=1), address=used)
-        shared_home = Address.objects.create(street="Family Home")
-        Person.objects.filter(pk=self.person.pk).update(address=shared_home)
-        Person.objects.filter(pk=self.bob_person.pk).update(address=shared_home)
-        erase(self, "ada")
-        self.assertTrue(Address.objects.filter(pk=used.pk, created_by=None).exists())
-        self.assertTrue(Address.objects.filter(pk=shared_home.pk).exists())
 
 
 class NameTests(LeftoverCase):

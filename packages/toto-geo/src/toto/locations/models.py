@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.utils.translation import gettext_lazy as _
 from toto.core.domain import DomainEntity
 
 # BUILD_GEO switch. When on (the default), locations is a GeoDjango app with
@@ -434,6 +435,78 @@ class TerritoryInDomain(models.Model):
 
     def __str__(self):
         return f"{self.territory} in {self.domain.name}"
+
+
+# ---------------------------------------------------------------------------
+# What ties the map to people, events and communities (2026-10-04)
+# ---------------------------------------------------------------------------
+# Until 2026-10-04 these were keys ON toto-base's models: Person.address and
+# Person.location_sharing, ScheduledEvent.address, Community.location and
+# Community.territory. toto-base carries no geography now (a person's address,
+# an event's place and a community's seat are text there), and this app moved
+# to toto-geo; so the links live here, one row per person, event or community,
+# and a host without this app has none of them.
+
+
+class HomeSharing(models.TextChoices):
+    """How much of a person's whereabouts other members may see (it was
+    ``toto.people.models.LocationSharing``).
+
+    The order is deliberate: OFF first, so it is the default any new column,
+    any fixture and any forgotten argument lands on.
+    """
+
+    OFF = "off", _("Not shown to anyone")
+    APPROXIMATE = "approximate", _("Approximate area only")
+    EXACT = "exact", _("Exact address")
+
+
+class Home(models.Model):
+    """Where a person lives on the map, and whether others may see it.
+
+    OFF is the default and that is the whole point: a home location is the
+    most sensitive thing this app stores, so appearing on the People map is
+    something a person switches ON. One field rather than a boolean plus a
+    precision, because the pair can express "sharing, precision unset" and
+    this cannot. The rule is ``people_access``.
+    """
+
+    person = models.OneToOneField("people.Person", on_delete=models.CASCADE,
+                                  related_name="home")
+    address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True,
+                                related_name="homes")
+    sharing = models.CharField(max_length=12, choices=HomeSharing.choices,
+                               default=HomeSharing.OFF)
+
+    def __str__(self):
+        return f"{self.person} at {self.address}"
+
+
+class EventPlace(models.Model):
+    """The map address an event takes place at (the event's own ``address``
+    is text)."""
+
+    event = models.OneToOneField("events.ScheduledEvent", on_delete=models.CASCADE,
+                                 related_name="place_on_map")
+    address = models.ForeignKey(Address, on_delete=models.CASCADE, related_name="event_places")
+
+    def __str__(self):
+        return f"{self.event} at {self.address}"
+
+
+class CommunitySeat(models.Model):
+    """A community's seat on the map and the territory it covers (the
+    community's own ``seat`` is text)."""
+
+    community = models.OneToOneField("socialhub.Community", on_delete=models.CASCADE,
+                                     related_name="seat_on_map")
+    address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True,
+                                related_name="community_seats")
+    territory = models.ForeignKey(Territory, on_delete=models.SET_NULL, null=True, blank=True,
+                                  related_name="community_seats")
+
+    def __str__(self):
+        return f"{self.community} at {self.address}"
 
 
 # Metering (2026-09-28): server-side geocoding is charged per lookup, and the

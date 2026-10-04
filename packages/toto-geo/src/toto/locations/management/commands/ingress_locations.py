@@ -190,10 +190,17 @@ class Command(IngressCommand):
                 "end_time": end_time,
                 "owner": owner,
                 "category": self.event_categories.get(category_name),
-                "address": self.addresses.get(address_key) if address_key else None,
+                # The event's own place is text (2026-10-04); the map
+                # address is this app's link row, below.
+                "address": str(self.addresses[address_key])[:255] if address_key else "",
                 "public": public,
             },
         )
+        if address_key:
+            from toto.locations.models import EventPlace
+
+            EventPlace.objects.update_or_create(
+                event=event, defaults={"address": self.addresses[address_key]})
         if owner:
             event.organizers.add(owner)
 

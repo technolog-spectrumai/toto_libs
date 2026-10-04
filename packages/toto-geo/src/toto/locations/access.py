@@ -21,7 +21,7 @@ person's profile, a community or an event shows its own address by its own
 rule.
 
 **A home pin follows its person's sharing switch** (2026-10-01, 37c.21): an
-address that is somebody's home (``Person.address``) is on the Locations map,
+address that is somebody's home (a ``Home`` row) is on the Locations map,
 in its JSON, its pickers and its pages only where that person shares it
 EXACTLY — and always for the person themself. Off keeps it from everybody
 else; approximate shows it on the People map, coarsened there
@@ -171,12 +171,13 @@ def _homes(user):
         return None
     from django.db.models import Q
 
-    from toto.people.models import LocationSharing, Person
+    from .models import Home, HomeSharing
 
-    residents = Person.objects.filter(address__isnull=False)
-    opens = Q(location_sharing=LocationSharing.EXACT)
+    # Home rows, not Person rows (2026-10-04): the link is this app's own.
+    residents = Home.objects.filter(address__isnull=False)
+    opens = Q(sharing=HomeSharing.EXACT)
     if getattr(user, "is_authenticated", False):
-        opens |= Q(user=user)
+        opens |= Q(person__user=user)
     return residents, residents.filter(opens)
 
 
@@ -212,10 +213,10 @@ def home_pin_ids(addresses) -> set:
 
     if not apps.is_installed("toto.people"):
         return set()
-    from toto.people.models import Person
+    from .models import Home
 
     pks = {getattr(address, "pk", address) for address in addresses}
-    return set(Person.objects.filter(address__in=pks).values_list("address_id", flat=True))
+    return set(Home.objects.filter(address__in=pks).values_list("address_id", flat=True))
 
 
 def readable_zones(user, queryset=None):

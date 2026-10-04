@@ -153,11 +153,9 @@ def _account(user, person) -> list[Table]:
     if person is None:
         return tables
     tables.append(Table("profile", _("Your profile as other members see it, and your "
-                                     "settings (time zone, language, location sharing)."),
+                                     "settings (time zone, language, what of your contact "
+                                     "details others see)."),
                         [row_of(person)]))
-    if person.address_id:
-        tables.append(Table("address", _("The address on your profile."),
-                            [row_of(person.address)]))
     tables.append(Table("communities", _("The communities you belong to."),
                         list(person.communities.order_by("name").values("id", "name", "slug"))))
     tables.append(Table("clearances", _("The clearances you hold: what you are trusted to read."),

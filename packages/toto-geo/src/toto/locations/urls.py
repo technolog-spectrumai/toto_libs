@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import domain_views, views
+from . import domain_views, home_views, views
 from .api_views import (
     ZoneListApiView, AddressListCreateApiView, AddressDetailApiView,
     MapDataApiView, MapLayersApiView, RouteSearchApiView,
@@ -44,6 +44,12 @@ urlpatterns = [
     path("geocode/reverse/", views.geocode_reverse, name="geocode_reverse"),
     path("layers/import/", views.api_import_layer, name="api_import_layer"),
 
+    # One's own home on the map (2026-10-04; the socialhub's doors until
+    # toto-base lost its geography). Floats and text: no geometry needed.
+    path("home/set/", home_views.set_my_home, name="set_my_home"),
+    path("home/search/", home_views.search_home, name="search_home"),
+    path("home/sharing/", home_views.set_home_sharing, name="set_home_sharing"),
+
     # Map domains (2026-09-30): superusers group map items and keep the
     # groups to clearances.
     path("domains/", domain_views.domains, name="domains"),
@@ -64,13 +70,14 @@ urlpatterns = [
 # the include (as faros does). No-op on a GIS build.
 #
 # Geocoding is the exception (2026-09-28): it answers with text and floats,
-# needs no geometry column, and socialhub and the host's Places app use it on
-# any build. So do map domains (2026-09-30): a table of names and counts, and
+# needs no geometry column, and the home doors and a host's Places app use
+# it on any build. So do map domains (2026-09-30): a table of names and counts, and
 # the host's places sit in them whether or not the map can draw.
 from django.conf import settings as _settings  # noqa: E402
 
 GIS_FREE = {
     "geocode_search", "geocode_reverse",
+    "set_my_home", "search_home", "set_home_sharing",
     "domains", "domain_add", "domain_item_search", "domain_items", "domain_clearances",
     "domain_delete",
 }
