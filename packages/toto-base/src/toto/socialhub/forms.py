@@ -426,7 +426,7 @@ class AccountProfileForm(forms.ModelForm):
     class Meta:
         model = Person
         fields = ["display_name", "bio", "avatar", "phone", "show_phone", "show_email",
-                  "address", "show_address"]
+                  "address", "show_address", "show_online"]
         labels = {
             "display_name": _("Display name"),
             "bio": _("About you"),
@@ -436,6 +436,7 @@ class AccountProfileForm(forms.ModelForm):
             "show_email": _("Show my e-mail address to other members"),
             "address": _("Address"),
             "show_address": _("Show my address to other members"),
+            "show_online": _("Show others when I am online"),
         }
         help_texts = {
             "avatar": _("A JPEG, PNG, GIF or WebP picture, at most 2 MB."),
@@ -447,6 +448,9 @@ class AccountProfileForm(forms.ModelForm):
                          "it: nothing is looked up and nothing is put on a map."),
             "show_address": _("When this is off, only you and the administrators see your "
                               "address."),
+            "show_online": _("When this is on, the members of your communities are told "
+                             "when you sign in and out. Nothing is kept, and there is no "
+                             "list of who is online."),
         }
         widgets = {
             "bio": forms.Textarea(attrs={"rows": 4}),
