@@ -6,6 +6,10 @@
 
 {% block start_script %}
 <style>[x-cloak] { display: none !important; }</style>
+{% comment %}The upload queue (vault/upload_panel.js). Not deferred: the list's
+   component asks for it as Alpine starts, which is right after Alpine's own
+   deferred script.{% endcomment %}
+<script src="{% static 'vault/upload_panel.js' %}"></script>
 <script>
   const _encryptUrl          = "{% url 'vault:encrypt_file' %}";
   const _encryptStatusUrl    = "{% url 'vault:encrypt_status' %}";
@@ -212,6 +216,10 @@
             if (open) this.$nextTick(() => this.$refs.removeEncInput?.focus());
           });
           this.$watch('search', () => this._updateSearch());
+          // A file changed in a folder this page watches (the live socket,
+          // notify/live.js): the event names the file and the folder, never
+          // what the file is called — the row is asked for (fetchRow).
+          document.addEventListener('toto:folder', event => this.onFolderEvent(event.detail));
         },
 
         // ── search ──────────────────────────────────────────────
@@ -325,6 +333,7 @@
             this.closeDescendants(id);
           } else {
             this.openDirs[id] = true;
+            this.watchFolder(id);
           }
         },
         closeDescendants(dirId) {
@@ -869,46 +878,138 @@
         say(key) { return this.$root.dataset[key] || ''; },
 
         // ── Upload into an owned folder (no gateway) ──────────
-        // One request per file to the vault's upload door; what it refuses
-        // (an Office file, a spent quota, a full bucket) is reported by name
-        // with the door's own sentence, and the rest still land.
+        // One request per file to the vault's upload door, two at a time
+        // (vault/upload_panel.js): each file has a line in the panel with its
+        // bar, percent, speed and Cancel, and what the door refuses (an
+        // Office file, a spent quota, a full bucket, a file too large) is
+        // said on that file's line in the door's own sentence. The rest still
+        // land, and each that lands is drawn as its row (fetchRow) — no
+        // reload.
         uploadDir: null,
-        uploadBusy: false,
+        uploads: [],
+        dragDir: null,
+        _uploadQueue: null,
+        get uploadBusy() {
+          return this.uploads.some(u => u.status === 'queued' || u.status === 'uploading');
+        },
+        _queue() {
+          if (!this._uploadQueue) {
+            this._uploadQueue = window.totoUploads.createUploadQueue({
+              url: this.$root.dataset.uploadUrl,
+              csrf: () => this._csrf(),
+              XHR: window.XMLHttpRequest,
+              FormData: window.FormData,
+              concurrency: 2,
+              messages: {
+                network: this.say('msgNetwork'),
+                refused: this.say('msgUploadRefused'),
+                tooLarge: this.say('msgUploadTooLarge'),
+                cancelled: this.say('msgUploadCancelled'),
+              },
+              onChange: uploads => { this.uploads = uploads; },
+              onDone: fileId => { if (fileId) this.fetchRow(fileId); },
+            });
+          }
+          return this._uploadQueue;
+        },
+        queueUploads(files, dir) {
+          if (!files.length || !dir) return;
+          for (const file of files) {
+            this._queue().add(file, { bucketSlug: dir.bslug, directoryId: dir.id });
+          }
+          if (!this.openDirs[dir.id]) this.toggle(dir.id);
+        },
         pickUpload(dirItem) {
           this.uploadDir = dirItem;
           this.$refs.vaultUploadInput.value = '';
           this.$refs.vaultUploadInput.click();
         },
-        async uploadPicked(event) {
-          const files = Array.from(event.target.files || []);
-          const dir = this.uploadDir;
-          if (!files.length || !dir) return;
-          const csrf = document.cookie.split(';')
-            .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
-          const refused = [];
-          this.uploadBusy = true;
-          for (const file of files) {
-            const form = new FormData();
-            form.append('file', file);
-            form.append('title', file.name);
-            form.append('bucket_slug', dir.bslug);
-            form.append('directory_id', dir.id);
-            try {
-              const res = await fetch('{% url "vault:api_file_upload" %}', {
-                method: 'POST', headers: { 'X-CSRFToken': csrf },
-                credentials: 'same-origin', body: form,
-              });
-              if (res.status !== 201) {
-                const data = await res.json().catch(() => ({}));
-                refused.push(`${file.name}: ${data.detail || data.error || res.status}`);
-              }
-            } catch {
-              refused.push(`${file.name}: ${this.say('msgNetwork')}`);
+        uploadPicked(event) {
+          this.queueUploads(Array.from(event.target.files || []), this.uploadDir);
+        },
+        cancelUpload(id) { this._queue().cancel(id); },
+        clearUploads() { this._queue().clearFinished(); },
+        // Files dragged from the desktop onto a folder of one's own.
+        canDropOn(dirItem) { return !!dirItem.can_create && !dirItem.upload_url; },
+        dropOn(dirItem, event) {
+          this.dragDir = null;
+          if (!this.canDropOn(dirItem)) return;
+          this.queueUploads(Array.from(event.dataTransfer?.files || []), dirItem);
+        },
+
+        // ── Rows that change while the page is open ───────────
+        // The page asks the live socket to watch each folder it opens. An
+        // event says a file was added, changed or removed there; the row
+        // itself comes from the vault's row door, behind the reader's own
+        // permission, so nothing is drawn that a reload would not list.
+        watchFolder(id) {
+          if (!this.$root.dataset.live) return;
+          (window.totoLiveWatch = window.totoLiveWatch || []).push(id);
+        },
+        onFolderEvent(detail) {
+          if (!detail || !this.dirMap[detail.directory]) return;
+          if (detail.kind === 'removed') this.dropRow(detail.file, detail.directory);
+          else this.fetchRow(detail.file);
+        },
+        async fetchRow(id) {
+          const url = this.$root.dataset.rowUrl.replace('/0/', '/' + encodeURIComponent(id) + '/');
+          try {
+            const res = await fetch(url, {
+              credentials: 'same-origin', headers: { Accept: 'application/json' } });
+            // 404: not a row this reader is shown (any more).
+            if (res.status === 404) { this.dropRow(id, null); return; }
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.item) this.placeRow(data.item);
+          } catch { /* the next event, or a reload, brings it */ }
+        },
+        // Where a folder's own files end in the list: after the folder,
+        // everything under it, and the files it already has.
+        _endOfFolder(dirId) {
+          const under = id => {
+            const seen = new Set();
+            let pid = id;
+            while (pid !== null && pid !== undefined && !seen.has(pid)) {
+              if (pid === dirId) return true;
+              seen.add(pid);
+              const parent = this.dirMap[pid];
+              pid = parent ? parent.pid : null;
             }
+            return false;
+          };
+          let last = this.items.findIndex(i => i.t === 'dir' && i.id === dirId);
+          this.items.forEach((item, n) => {
+            if (under(item.t === 'dir' ? item.id : item.pid)) last = n;
+          });
+          return last + 1;
+        },
+        placeRow(row) {
+          const dir = row.pid === null ? null : this.dirMap[row.pid];
+          const at = this.items.findIndex(i => i.t === 'file' && i.id === row.id);
+          // A folder this page does not list: the file is not on the page.
+          if (row.pid !== null && !dir) { if (at !== -1) this.dropRow(row.id, null); return; }
+          row.depth = dir ? dir.depth + 1 : 0;
+          if (at !== -1 && this.items[at].pid === row.pid) {
+            this.items[at] = row;
+          } else {
+            if (at !== -1) this.dropRow(row.id, null);
+            const index = dir ? this._endOfFolder(dir.id) : this.items.length;
+            if (dir) dir.n_files += 1;
+            this.items.splice(index, 0, row);
           }
-          this.uploadBusy = false;
-          if (refused.length) window.alert(refused.join('\n'));
-          if (refused.length < files.length) window.location.reload();
+          this._updateSearch();
+        },
+        dropRow(id, directory) {
+          const at = this.items.findIndex(i => i.t === 'file' && i.id === id);
+          if (at === -1) return;
+          const old = this.items[at];
+          // Told that it left a folder it is no longer drawn in: it moved.
+          if (directory !== null && directory !== undefined && old.pid !== directory) return;
+          const dir = old.pid === null ? null : this.dirMap[old.pid];
+          if (dir && dir.n_files > 0) dir.n_files -= 1;
+          this.items.splice(at, 1);
+          if (this.selected[id]) delete this.selected[id];
+          this._updateSearch();
         },
 
         // ── New folder ────────────────────────────────────────
@@ -1128,13 +1229,73 @@
     {% comment %}data-msg-*: the sentences Upload and New folder say, handed
        to the script as data and read there with say() (see its comment).
        force_escape because a translated literal is not escaped by itself.{% endcomment %}
+    {% comment %}data-upload-url, data-row-url: the upload door and the row
+       door (its 0 stands for a file's id). data-live: whether the live
+       socket tells this page of changes in the folders it opens. A dropped
+       file that misses a folder is not opened by the browser instead.{% endcomment %}
     <div x-data="vaultTree()"
+         data-upload-url="{% url 'vault:api_file_upload' %}"
+         data-row-url="{% url 'vault:file_row' 0 %}"
+         data-live="{% if vault_live %}1{% endif %}"
+         @dragover.prevent @drop.prevent="dragDir = null"
          data-msg-network="{{ _('Network error. Please try again.')|force_escape }}"
          data-msg-folder-name="{{ _('Folder name')|force_escape }}"
-         data-msg-folder-failed="{{ _('The folder could not be made.')|force_escape }}">
+         data-msg-folder-failed="{{ _('The folder could not be made.')|force_escape }}"
+         data-msg-upload-refused="{{ _('The server refused this file')|force_escape }}"
+         data-msg-upload-too-large="{{ _('This file is too large to upload.')|force_escape }}"
+         data-msg-upload-cancelled="{{ _('Cancelled')|force_escape }}">
       {% comment %}One hidden picker for "Upload" on a folder with no gateway.{% endcomment %}
       <input type="file" multiple class="hidden" x-ref="vaultUploadInput"
              @change="uploadPicked($event)">
+
+      {% comment %}The upload panel: one line per file — its name, a bar, the
+         percent, the speed and Cancel while it travels; the door's own
+         sentence when it is refused. Drawn from what the queue hands over
+         (uploads), every text with x-text.{% endcomment %}
+      <div x-show="uploads.length > 0" x-cloak data-vault-control="upload-panel"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+           class="fixed bottom-4 right-4 z-40 w-80 max-w-[92vw] rounded-xl border shadow-2xl">
+        <div class="flex items-center justify-between gap-2 border-b border-current/10 px-3 py-2">
+          <span class="text-sm font-bold">
+            <i class="fa-solid fa-upload mr-1 text-xs opacity-60" aria-hidden="true"></i>{% trans "Uploads" %}
+          </span>
+          <button type="button" x-show="!uploadBusy" @click="clearUploads()"
+                  class="text-xs underline opacity-70 transition hover:opacity-100">{% trans "Close" %}</button>
+        </div>
+        <ul class="max-h-64 overflow-y-auto">
+          <template x-for="upload in uploads" :key="upload.id">
+            <li class="border-b border-current/10 px-3 py-2 text-xs last:border-b-0"
+                :data-upload-status="upload.status">
+              <div class="flex items-center gap-2">
+                <span class="min-w-0 flex-1 truncate font-semibold" x-text="upload.name"
+                      :title="upload.name"></span>
+                <span x-show="upload.status === 'uploading'" class="shrink-0 tabular-nums opacity-70"
+                      x-text="upload.percent + '%'"></span>
+                <span x-show="upload.status === 'uploading' && upload.speedText"
+                      class="shrink-0 tabular-nums opacity-70" x-text="upload.speedText"></span>
+                <span x-show="upload.status === 'queued'" class="shrink-0 opacity-60">{% trans "Waiting" %}</span>
+                <i x-show="upload.status === 'done'" class="fa-solid fa-circle-check shrink-0"
+                   :class="darkMode ? 'text-success-dark' : 'text-success-light'" aria-hidden="true"></i>
+                <button type="button" x-show="upload.status === 'queued' || upload.status === 'uploading'"
+                        @click="cancelUpload(upload.id)"
+                        title="{% trans 'Cancel' %}" aria-label="{% trans 'Cancel' %}"
+                        class="shrink-0 rounded-md p-1 opacity-70 transition hover:opacity-100">
+                  <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                </button>
+              </div>
+              <div x-show="upload.status === 'queued' || upload.status === 'uploading'"
+                   role="progressbar" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="upload.percent"
+                   :class="darkMode ? 'bg-white/10' : 'bg-black/10'"
+                   class="mt-1 h-1.5 w-full overflow-hidden rounded-full">
+                <div class="h-full rounded-full transition-[width] duration-200"
+                     :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                     :style="'width:' + upload.percent + '%'"></div>
+              </div>
+              <p x-show="upload.message" x-text="upload.message" class="mt-1 text-warn-light"></p>
+            </li>
+          </template>
+        </ul>
+      </div>
 
       <!-- Search bar -->
       <div x-show="items.length > 0" class="mb-3">
@@ -1308,10 +1469,14 @@
               <template x-if="item.t === 'dir'">
                 <div
                   @click="toggle(item.id)"
+                  @dragover="if (canDropOn(item)) { $event.preventDefault(); dragDir = item.id }"
+                  @dragleave="if (dragDir === item.id) dragDir = null"
+                  @drop.prevent.stop="dropOn(item, $event)"
                   :style="`padding-left: calc(${item.depth} * 1.5rem + 0.75rem)`"
-                  :class="darkMode
+                  :class="[darkMode
                     ? 'border-b border-accent-1/40 hover:bg-bubble-bg-dark'
-                    : 'border-b border-accent-2/40 hover:bg-bubble-bg-light'"
+                    : 'border-b border-accent-2/40 hover:bg-bubble-bg-light',
+                    dragDir === item.id ? 'ring-2 ring-inset ring-current' : '']"
                   class="flex items-center gap-2 cursor-pointer py-3 pr-4 transition-colors duration-150 select-none">
 
                   <i class="fa-solid fa-chevron-right w-3 shrink-0 text-xs opacity-40 transition-transform duration-200"
@@ -1379,10 +1544,10 @@
                        upload door (api/files/upload/), which applies the
                        same refusals, quota and charge as a gateway.{% endcomment %}
                     <button x-show="!item.upload_url && item.can_create"
-                            @click.stop="pickUpload(item)" :disabled="uploadBusy"
+                            @click.stop="pickUpload(item)"
                             data-vault-control="upload-here"
                             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-                            class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition hover:opacity-85 disabled:opacity-50">
+                            class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition hover:opacity-85">
                       <i class="fa-solid" :class="uploadBusy ? 'fa-spinner fa-spin' : 'fa-upload'"></i>
                       <span class="hidden sm:inline">{% trans "Upload" %}</span>
                     </button>
@@ -1411,6 +1576,15 @@
                          :aria-label="`{% trans 'Select' %} ${item.title}`"
                          class="h-3.5 w-3.5 shrink-0 cursor-pointer rounded">
                   <i x-show="item.owner !== currentUser" class="fa-regular fa-file w-3 shrink-0 text-xs opacity-30"></i>
+
+                  {% comment %}A small picture of a raster image (png, jpeg,
+                     gif, webp), drawn again by the server (vault:file_thumb).
+                     Nothing opens from it: the file still only downloads.{% endcomment %}
+                  <template x-if="item.thumb_url">
+                    <img :src="item.thumb_url" alt="" loading="lazy" width="24" height="24"
+                         @error="item.thumb_url = ''"
+                         class="h-6 w-6 shrink-0 rounded object-cover">
+                  </template>
 
                   <span class="font-medium truncate flex-1 min-w-0" x-text="item.title"></span>
 
@@ -1552,9 +1726,15 @@
                     <i class="fa-solid fa-lock text-xs text-yellow-400"></i>
                   </div>
 
-                  <!-- File icon -->
-                  <div class="flex items-center justify-center h-12 opacity-70">
-                    <i class="fa-solid text-3xl" :class="[fileTypeIcon(item.file_type), fileTypeColor(item.file_type)]"></i>
+                  <!-- File icon, or a small picture of a raster image -->
+                  <div class="flex items-center justify-center h-12">
+                    <i x-show="!item.thumb_url" class="fa-solid text-3xl opacity-70"
+                       :class="[fileTypeIcon(item.file_type), fileTypeColor(item.file_type)]"></i>
+                    <template x-if="item.thumb_url">
+                      <img :src="item.thumb_url" alt="" loading="lazy"
+                           @error="item.thumb_url = ''"
+                           class="h-12 max-w-full rounded object-contain">
+                    </template>
                   </div>
 
                   <!-- Title -->

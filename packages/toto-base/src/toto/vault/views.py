@@ -1,3 +1,4 @@
+import hashlib
 import json
 import mimetypes
 import os
@@ -14,6 +15,7 @@ from django.db.models.functions import TruncDate
 from django.http import (FileResponse, Http404, HttpResponse,
                          HttpResponseForbidden, JsonResponse)
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_safe
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.text import slugify
@@ -85,6 +87,128 @@ def available_create_types():
 # Public File Views
 # ============================================================
 
+def listed_files(user):
+    """The files the vault's list shows ``user`` (trashed ones never):
+    public ones and their own — and for a file in a bucket kept to clearances
+    (2026-09-30) the holders of one of them alone, not its owner, and the
+    public flag does not put it on the page. The page and its row door
+    (``file_row``) both ask here, so a row that appears while the page is
+    open is one a reload would list."""
+    if getattr(user, "is_authenticated", False):
+        visibility_q = Q(is_public=True) | Q(owner=user)
+    else:
+        visibility_q = Q(is_public=True)
+    return access.gate_by_bucket(user, VaultFile.objects.all(), open=visibility_q)
+
+
+#: What a thumbnail is drawn from (2026-10-04): raster pictures, by what the
+#: bytes ARE — the format Pillow reads them as — never by a name or a type
+#: somebody chose. An SVG is no picture here: it is a document, and downloads.
+THUMBNAIL_FORMATS = {"PNG": "image/png", "JPEG": "image/jpeg", "GIF": "image/gif",
+                     "WEBP": "image/webp"}
+#: The extensions worth asking the thumbnail door about at all.
+THUMBNAIL_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+#: The longest side of a thumbnail, in pixels.
+THUMBNAIL_SIDE = 192
+#: A picture larger than this, on disk or decoded, gets no thumbnail: the door
+#: decodes it in the web process.
+THUMBNAIL_MAX_BYTES = 25 * 1024 * 1024
+THUMBNAIL_MAX_PIXELS = 40_000_000
+#: How long a made thumbnail is kept, here and in the reader's browser.
+THUMBNAIL_CACHE_SECONDS = 24 * 3600
+
+
+def thumbnail_url(vault_file) -> str:
+    """The thumbnail door's address for a file that may have one, else "".
+
+    A raster picture whose bytes are on this server, not locked with a
+    password and not too large. The door decides again from the bytes; this
+    only keeps the page from asking for what cannot be drawn."""
+    if vault_file.file_type != "image" or vault_file.is_encrypted:
+        return ""
+    if access.is_mirror_row(vault_file) or not access.is_local_content(vault_file):
+        return ""
+    if not 0 < (vault_file.file_size_bytes or 0) <= THUMBNAIL_MAX_BYTES:
+        return ""
+    name = (getattr(vault_file.file, "name", "") or vault_file.title or "").lower()
+    if not name.endswith(THUMBNAIL_EXTENSIONS) and not (
+            vault_file.title or "").lower().endswith(THUMBNAIL_EXTENSIONS):
+        return ""
+    try:
+        url = reverse("vault:file_thumb", args=[vault_file.pk])
+    except NoReverseMatch:
+        return ""
+    # The address changes with the bytes, so a replaced picture is not drawn
+    # from the browser's copy of the old one.
+    version = (vault_file.content_hash or "")[:12] or str(vault_file.file_size_bytes or 0)
+    return f"{url}?v={version}"
+
+
+def file_item(f, *, pid, depth, clean_pks=None, fs_plugins=None) -> dict:
+    """One file as the list's script takes it — the row the page draws. The
+    listing builds every row with this and the row door answers one, so a
+    row that arrives while the page is open is the row a reload would draw."""
+    from toto.vault.models import storage_only
+    from toto.vault.plugins import FileServicePlugin, VaultEditorPlugin, VaultPlayPlugin
+
+    # A host that only stores files offers neither, whatever is registered.
+    _storage_only = storage_only()
+
+    play_url = ""
+    if not (f.is_encrypted or _storage_only):
+        plugin = VaultPlayPlugin.for_file_type(f.file_type)
+        # A plugin whose target URL isn't mounted (its feature flag is off) must
+        # not take down the whole listing — degrade to "no play link" instead.
+        try:
+            play_url = plugin.get_play_url(f) if plugin else ""
+        except NoReverseMatch:
+            play_url = ""
+
+    # Encrypted files hold ciphertext — never editable. Blanking the URL hides
+    # the "Open in editor" button in list, grid and the actions chooser at once
+    # (mirrors the play link above). Non-local content gets the same
+    # treatment: the editors open local handles, and a remote file's
+    # bytes are on another host — download works, editing does not.
+    editor_url = ""
+    if not (f.is_encrypted or _storage_only or not access.is_local_content(f)):
+        plugin = VaultEditorPlugin.for_file_type(f.file_type)
+        try:
+            editor_url = plugin.get_editor_url(f) if plugin else ""
+        except NoReverseMatch:
+            editor_url = ""
+
+    # The registry lives here now (toto.vault.plugins), so this no longer
+    # reaches into a wheel most hosts do not pin — and the wand finally
+    # appears on the host that owns the editors.
+    if fs_plugins is None:
+        fs_plugins = FileServicePlugin.all()
+
+    _url = f.get_public_url() or ""
+    return {
+        "t": "file",
+        "id": f.pk,
+        "pid": pid,
+        "depth": depth,
+        "title": f.title,
+        "file_type": f.file_type,
+        "owner": f.owner.username,
+        "uploaded": f.uploaded_at.strftime("%Y-%m-%d"),
+        "encrypted": f.is_encrypted,
+        "url": _url if not f.is_encrypted else "",
+        "raw_url": _url,
+        "bpk": f.bucket_id,
+        "play_url": play_url,
+        "editor_url": editor_url,
+        "has_services": any(p.accepts(f) for p in fs_plugins),
+        "scan_ok": f.pk in clean_pks if clean_pks else False,
+        # False in a mounted remote bucket: Delete is
+        # immediate there, and the dialog says so.
+        "trashable": f.can_be_trashed,
+        # A small picture of a raster image, or "" (2026-10-04).
+        "thumb_url": thumbnail_url(f),
+    }
+
+
 class PublicFileListView(TemplateView):
     """
     Renders the full vault tree for all public files.
@@ -95,48 +219,9 @@ class PublicFileListView(TemplateView):
 
     def _build_flat_items(self, dirs, files, dir_gateway_map, user_bucket_pks=None,
                           clean_pks=None):
-        from toto.vault.models import storage_only
-        from toto.vault.plugins import VaultPlayPlugin
-
-        # A host that only stores files offers neither, whatever is registered.
-        _storage_only = storage_only()
-
-        def _play_url_for(f):
-            if f.is_encrypted or _storage_only:
-                return ""
-            plugin = VaultPlayPlugin.for_file_type(f.file_type)
-            # A plugin whose target URL isn't mounted (its feature flag is off) must
-            # not take down the whole listing — degrade to "no play link" instead.
-            try:
-                return plugin.get_play_url(f) if plugin else ""
-            except NoReverseMatch:
-                return ""
-
-        from toto.vault.plugins import VaultEditorPlugin
-
-        def _editor_url_for(f):
-            # Encrypted files hold ciphertext — never editable. Blanking the URL hides
-            # the "Open in editor" button in list, grid and the actions chooser at once
-            # (mirrors _play_url_for above). Non-local content gets the same
-            # treatment: the editors open local handles, and a remote file's
-            # bytes are on another host — download works, editing does not.
-            if f.is_encrypted or _storage_only or not access.is_local_content(f):
-                return ""
-            plugin = VaultEditorPlugin.for_file_type(f.file_type)
-            try:
-                return plugin.get_editor_url(f) if plugin else ""
-            except NoReverseMatch:
-                return ""
-
-        # The registry lives here now (toto.vault.plugins), so this no longer
-        # reaches into a wheel most hosts do not pin — and the wand finally
-        # appears on the host that owns the editors.
         from toto.vault.plugins import FileServicePlugin
 
         _fs_plugins = FileServicePlugin.all()
-
-        def _has_services(f):
-            return any(p.accepts(f) for p in _fs_plugins)
 
         # NO git decorations here any more. The per-directory Git dropdown was
         # this browser's, and it made git a property of every folder — which
@@ -184,52 +269,14 @@ class PublicFileListView(TemplateView):
                 })
                 visit(d.pk, depth + 1)
                 for f in sorted(files_by_dir.get(d.pk, []), key=lambda x: x.title):
-                    _url = f.get_public_url() or ""
-                    flat.append({
-                        "t": "file",
-                        "id": f.pk,
-                        "pid": d.pk,
-                        "depth": depth + 1,
-                        "title": f.title,
-                        "file_type": f.file_type,
-                        "owner": f.owner.username,
-                        "uploaded": f.uploaded_at.strftime("%Y-%m-%d"),
-                        "encrypted": f.is_encrypted,
-                        "url": _url if not f.is_encrypted else "",
-                        "raw_url": _url,
-                        "bpk": f.bucket_id,
-                        "play_url": _play_url_for(f),
-                        "editor_url": _editor_url_for(f),
-                        "has_services": _has_services(f),
-                        "scan_ok": f.pk in clean_pks if clean_pks else False,
-                        # False in a mounted remote bucket: Delete is
-                        # immediate there, and the dialog says so.
-                        "trashable": f.can_be_trashed,
-                    })
+                    flat.append(file_item(f, pid=d.pk, depth=depth + 1,
+                                          clean_pks=clean_pks, fs_plugins=_fs_plugins))
 
         visit(None, 0)
 
         for f in sorted(files_by_dir.get(None, []), key=lambda x: x.title):
-            _url = f.get_public_url() or ""
-            flat.append({
-                "t": "file",
-                "id": f.pk,
-                "pid": None,
-                "depth": 0,
-                "title": f.title,
-                "file_type": f.file_type,
-                "owner": f.owner.username,
-                "uploaded": f.uploaded_at.strftime("%Y-%m-%d"),
-                "encrypted": f.is_encrypted,
-                "url": _url if not f.is_encrypted else "",
-                "raw_url": _url,
-                "bpk": f.bucket_id,
-                "play_url": _play_url_for(f),
-                "editor_url": _editor_url_for(f),
-                "has_services": _has_services(f),
-                "scan_ok": f.pk in clean_pks if clean_pks else False,
-                "trashable": f.can_be_trashed,
-            })
+            flat.append(file_item(f, pid=None, depth=0, clean_pks=clean_pks,
+                                  fs_plugins=_fs_plugins))
 
         return flat
 
@@ -256,16 +303,10 @@ class PublicFileListView(TemplateView):
 
         # Public files + the authenticated owner's own files (private files they
         # created/exported — e.g. .neojson graphs — must be visible to their owner,
-        # not only public ones or encrypted-privates).
-        if user.is_authenticated:
-            visibility_q = Q(is_public=True) | Q(owner=user)
-        else:
-            visibility_q = Q(is_public=True)
-        # A file in a bucket kept to clearances (2026-09-30) is listed to the
-        # holders of one of them alone — not its owner, and the public flag
-        # does not put it on this page.
-        file_qs = access.gate_by_bucket(user, VaultFile.objects.all(), open=visibility_q
-                                        ).select_related("owner", "bucket", "directory").order_by("title")
+        # not only public ones or encrypted-privates); a file in a bucket kept
+        # to clearances is listed to their holders alone (listed_files).
+        file_qs = listed_files(user).select_related(
+            "owner", "bucket", "directory").order_by("title")
         if bucket_slug:
             file_qs = file_qs.filter(bucket__slug=bucket_slug)
 
@@ -385,6 +426,11 @@ class PublicFileListView(TemplateView):
         # a 2000-line component for no behavioural gain.
         context["zip_enabled"] = False
         context["active_tab"] = "files"
+        # Whether a folder that is open on the page is told of its changes as
+        # they happen (toto.vault.live, 2026-10-04): a signed-in reader, on a
+        # host that serves the live socket.
+        context["vault_live"] = bool(user.is_authenticated
+                                     and apps.is_installed("toto.notify"))
 
         return PageProcessor().decorate(context, self.request)
 
@@ -533,6 +579,102 @@ class VaultFileDownloadView(View):
         # bucket's bytes are not on this disk, and before this seam existed a
         # non-local bucket could be copied INTO but never downloaded from.
         return _file_response_or_bad_gateway(file_obj)
+
+
+@require_safe
+def file_row(request, pk):
+    """One file's row, as the list's script takes it (2026-10-04).
+
+    The door a page asks when the live socket says a file in a folder it
+    watches was added or changed — and after its own upload lands. It answers
+    exactly the row the listing would have built (``file_item``) and only for
+    a file the listing would show this reader: ``access.may_read`` AND the
+    list's own rule (``listed_files``), so nothing can appear on an open page
+    that a reload would not list. Anything else is a 404 — a file that is not
+    there, one that is not theirs to see, one in the trash — the same answer,
+    so the door tells nobody that a file exists. GET, JSON, never cached.
+    """
+    vault_file = (listed_files(request.user)
+                  .select_related("owner", "bucket", "directory").filter(pk=pk).first())
+    if vault_file is None or not access.may_read(request.user, vault_file):
+        raise Http404("No such file.")
+    item = file_item(vault_file, pid=vault_file.directory_id, depth=0,
+                     clean_pks=scanning.clean_file_ids([vault_file]))
+    response = JsonResponse({"item": item})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+def _thumbnail_bytes(vault_file):
+    """``(bytes, content type)`` of a small picture of ``vault_file``, or
+    ``None`` when it is not a raster picture this door draws.
+
+    Drawn AGAIN by Pillow, never the stored bytes: what leaves is a PNG or a
+    JPEG this server encoded — no metadata, nothing a browser could take for
+    a page. The first frame of an animation; turned the way its EXIF says."""
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        return None
+    try:
+        with _storage_backends.open_file_stream(vault_file) as stream:
+            with Image.open(stream) as picture:
+                if picture.format not in THUMBNAIL_FORMATS:
+                    return None
+                width, height = picture.size
+                if width * height > THUMBNAIL_MAX_PIXELS:
+                    return None
+                if picture.format == "JPEG":
+                    picture.draft("RGB", (THUMBNAIL_SIDE, THUMBNAIL_SIDE))
+                small = ImageOps.exif_transpose(picture)
+                clear = small.mode in ("RGBA", "LA", "PA") or "transparency" in small.info
+                small = small.convert("RGBA" if clear else "RGB")
+                small.thumbnail((THUMBNAIL_SIDE, THUMBNAIL_SIDE))
+                out = BytesIO()
+                if clear:
+                    small.save(out, format="PNG", optimize=True)
+                    return out.getvalue(), "image/png"
+                small.save(out, format="JPEG", quality=80, optimize=True)
+                return out.getvalue(), "image/jpeg"
+    except Exception:  # noqa: BLE001 - bytes that are no picture get no thumbnail
+        return None
+
+
+@require_safe
+def file_thumbnail(request, pk):
+    """A small picture of a raster image in the vault (2026-10-04).
+
+    For the list's rows and nothing else: there is still no viewer, and the
+    file itself still only downloads. Behind ``access.may_read`` — checked
+    before anything is looked up in the cache — and 404 for everything it
+    does not draw: a file the reader may not read, one that is not there, a
+    file locked with a password, one whose bytes are on another host, an SVG
+    or anything else that is not a PNG, JPEG, GIF or WebP by its bytes, one
+    too large. Not counted as a download: no egress is metered and nothing
+    goes on the audit chain for a list drawing its rows.
+    """
+    vault_file = (VaultFile.objects.select_related("bucket", "directory")
+                  .filter(pk=pk).first())
+    if vault_file is None or not access.may_read(request.user, vault_file):
+        raise Http404("No such file.")
+    if not thumbnail_url(vault_file):
+        raise Http404("No such file.")
+    from django.core.cache import cache
+
+    version = vault_file.content_hash or f"{vault_file.file_size_bytes}.{vault_file.file.name}"
+    key = "vault.thumb." + hashlib.sha256(f"{vault_file.pk}:{version}".encode()).hexdigest()
+    made = cache.get(key)
+    if made is None:
+        made = _thumbnail_bytes(vault_file) or ()
+        cache.set(key, made, THUMBNAIL_CACHE_SECONDS)
+    if not made:
+        raise Http404("No such file.")
+    body, content_type = made
+    response = HttpResponse(body, content_type=content_type)
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Content-Security-Policy"] = "default-src 'none'; sandbox"
+    response["Cache-Control"] = f"private, max-age={THUMBNAIL_CACHE_SECONDS}"
+    return response
 
 
 @login_required
