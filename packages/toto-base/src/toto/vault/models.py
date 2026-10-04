@@ -617,6 +617,21 @@ def trash_days() -> int:
     return days if days > 0 else DEFAULT_TRASH_DAYS
 
 
+#: The columns whose change a listing shows (2026-10-04): where the file is,
+#: what it is called, whose it is, whether it is in the trash. ``save()``
+#: cannot tell a rename or a move from any other write without what the row
+#: said before, so ``from_db`` remembers these (``signals.file_changed``).
+LIVE_FIELDS = ("directory_id", "bucket_id", "title", "file_type", "content_hash",
+               "is_encrypted", "is_public", "owner_id", "trashed_at")
+
+
+def live_state(vault_file) -> dict:
+    """The row's ``LIVE_FIELDS`` as the instance holds them now. A deferred
+    column is left out, never fetched: asking would cost a query per row."""
+    held = vault_file.__dict__
+    return {name: held[name] for name in LIVE_FIELDS if name in held}
+
+
 class LiveFileManager(models.Manager):
     """``VaultFile.objects``: the files that are NOT in the trash.
 
@@ -856,6 +871,8 @@ class VaultFile(models.Model):
         # What the row said when read, so save() can tell a file MOVED into a
         # bucket from one that was always there.
         instance._loaded_bucket_id = instance.__dict__.get("bucket_id")
+        # And what a listing shows of it (signals.file_changed, 2026-10-04).
+        instance._loaded_live = live_state(instance)
         return instance
 
     def _refuse_closed_bucket(self):
