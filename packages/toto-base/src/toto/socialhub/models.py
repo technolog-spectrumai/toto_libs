@@ -17,7 +17,6 @@ from django.utils.translation import pgettext_lazy
 from toto.core.domain import DomainEntity
 from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
 from toto.core.models import Federation
-from toto.locations.models import Address, Territory
 from toto.people.models import Person
 from toto.verbena.models import AbstractSection, AbstractTag
 from toto.verbena.utils import unique_slug
@@ -61,8 +60,12 @@ class Community(DomainEntity):
         help_text="Type of organization"
     )
 
-    location = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True, related_name="community_locations")
-    territory = models.ForeignKey(Territory, on_delete=models.SET_NULL, null=True, blank=True, related_name="community_territories")
+    #: Where the community has its seat: text (2026-10-04). It was a key to a
+    #: map address, beside a key to a territory; toto-base carries no
+    #: geography now, so the seat is what somebody typed and the territory
+    #: link is gone.
+    seat = models.CharField(max_length=255, blank=True, default="",
+                            help_text="Where the community has its seat, as text.")
     established_year = models.IntegerField(null=True, blank=True)
 
     head = models.ForeignKey(
@@ -247,7 +250,7 @@ class CommunityPrivilege(models.Model):
     resolve.
 
     **A clearance grants nothing** (2026-09-28): clearances carry reading (a bucket's
-    files, a domain's map items) and mana refill speed, and no rights. A row naming one is refused here (``clean`` and ``save``), the
+    files, and whatever group an installed app adds) and mana refill speed, and no rights. A row naming one is refused here (``clean`` and ``save``), the
     admin offers no inline for it, and ``privileges.has_privilege`` skips
     clearances should a row exist anyway — three layers, one rule.
 

@@ -13,7 +13,6 @@ class Migration(migrations.Migration):
         ('core', '0001_initial'),
         ('socialhub', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('locations', '0003_initial'),
         ('vault', '0001_initial'),
         ('people', '0002_initial'),
     ]
@@ -66,11 +65,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name='community',
-            name='location',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='community_locations', to='locations.address'),
-        ),
-        migrations.AddField(
-            model_name='community',
             name='parent',
             field=models.ForeignKey(blank=True, help_text='Parent community in the hierarchy', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='children', to='socialhub.community'),
         ),
@@ -83,11 +77,6 @@ class Migration(migrations.Migration):
             model_name='community',
             name='statute',
             field=models.ForeignKey(blank=True, help_text="The community's statute, as a PDF in the vault.", null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='vault.vaultfile'),
-        ),
-        migrations.AddField(
-            model_name='community',
-            name='territory',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='community_territories', to='locations.territory'),
         ),
         migrations.AddConstraint(
             model_name='privacyacceptance',

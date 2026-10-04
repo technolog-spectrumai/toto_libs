@@ -81,7 +81,6 @@ class CommunityAdmin(TotoModelAdmin):
     list_filter = (
         'org_type',
         'established_year',
-        'location',
     )
 
     ordering = ('name',)

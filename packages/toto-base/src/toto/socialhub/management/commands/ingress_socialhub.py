@@ -12,7 +12,6 @@ from toto.socialhub.models import (
     CommunityNewsPost,
     CommunityNewsTopic,
 )
-from toto.locations.models import Address
 
 
 
@@ -58,8 +57,8 @@ class Command(IngressCommand):
         self.stdout.write(self.style.NOTICE("👤 Checking for existing users..."))
         self.ensure_fake_users(count=7)
 
-        self.stdout.write(self.style.NOTICE("📍 Creating address..."))
-        address = Address.objects.first()
+        # A seat is text (2026-10-04); it was the first address on the map.
+        address = "1 Example Square"
 
         self.stdout.write(self.style.NOTICE("🏢 Creating community..."))
         community = self.create_community(
@@ -138,7 +137,7 @@ class Command(IngressCommand):
         company, created = Community.objects.get_or_create(
             name=self.COMPANY_NAME,
             defaults={
-                "location": address,
+                "seat": address,
                 "established_year": 2021,
                 "org_type": Community.COMPANY,
                 "email": "desk@farfarele.example",
@@ -243,7 +242,7 @@ class Command(IngressCommand):
         community, created = Community.objects.get_or_create(
             name=name,
             defaults={
-                "location": address,
+                "seat": address,
                 "established_year": established_year,
             }
         )
@@ -341,7 +340,8 @@ class Command(IngressCommand):
             founder_user = available_users.pop(0)
 
         fake = self.FAKE_PEOPLE
-        address = Address.objects.first()
+        # No home address is invented for anybody: it is text a member types.
+        address = ""
 
         # Founder
         founder = self.create_member(
@@ -394,7 +394,7 @@ class Command(IngressCommand):
     # ---------------------------------------------------------
 
     def create_member(self, user, display_name, bio, community, patron=None,
-                      email=None, phone=None, address=None):
+                      email=None, phone=None, address=""):
         member = Person.objects.create(
             user=user,
             display_name=display_name,

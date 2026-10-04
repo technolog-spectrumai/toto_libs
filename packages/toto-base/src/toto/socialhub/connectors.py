@@ -10,7 +10,6 @@ from toto.core.connectors import (
     minimal_person,
     register_connector,
 )
-from toto.locations.connectors import serialize_address
 
 
 @register_connector
@@ -45,7 +44,7 @@ class SocialhubReadConnector(ReadOnlyModelConnector):
     def _execute_community(self, input_data: dict) -> dict:
         from toto.socialhub.models import Community
 
-        qs = Community.objects.all().select_related("location", "territory", "head")
+        qs = Community.objects.all().select_related("head")
         if self.config.get("action", "list") == "get":
             community = get_object_by_config(qs, self, input_data, default_lookup="slug")
             return {"data": {"community": serialize_community(community)}}
@@ -92,8 +91,8 @@ def serialize_community(community) -> dict:
         "is_foreign": community.is_foreign,
         "email": community.email,
         "head": minimal_person(community.head) if community.head else None,
-        "location": serialize_address(community.location) if community.location else None,
-        "territory": minimal_named(community.territory) if community.territory else None,
+        # Text since 2026-10-04 (it was a map address and a territory).
+        "seat": community.seat or None,
     }
 
 

@@ -45,6 +45,7 @@ class Migration(migrations.Migration):
                 ('name', models.CharField(help_text='Name of the community or organization', max_length=255)),
                 ('slug', models.SlugField(blank=True, help_text='URL-friendly identifier', unique=True)),
                 ('org_type', models.CharField(choices=[('guild', 'Guild'), ('company', 'Company'), ('non_profit', 'Non-Profit'), ('family', 'Family'), ('other', 'Other')], default='other', help_text='Type of organization', max_length=20)),
+                ('seat', models.CharField(blank=True, default='', help_text='Where the community has its seat, as text.', max_length=255)),
                 ('established_year', models.IntegerField(blank=True, null=True)),
                 ('logo', models.ImageField(blank=True, help_text='Optional logo for this federation', null=True, upload_to='community_logos/')),
                 ('is_autonomous', models.BooleanField(default=False, help_text='Marks this community as self-governing, with its own internal leadership and rules.')),
