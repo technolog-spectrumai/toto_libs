@@ -263,6 +263,16 @@ class LiveEnforcementTests(MatrixTestCase):
     LIVE_READ_URL = "locations:locations_all"
     LIVE_APP = "locations"
 
+    def setUp(self):
+        # toto.locations left toto-base for toto-geo on 2026-10-04, so it is
+        # no host's unconditional app any more: where it is not installed
+        # these live checks have no anchor and are skipped.
+        from django.apps import apps
+
+        if not apps.is_installed("toto.locations"):
+            self.skipTest("toto.locations is not installed: no live gated URL to ask")
+        super().setUp()
+
     def _post(self, combo):
         from django.urls import reverse
 

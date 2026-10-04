@@ -86,7 +86,6 @@ class SessionDoorTests(TestCase):
         "/vault/api/directories/",
         "/vault/api/files/create/",
         "/events/api/enigma/list/",
-        "/locations/api/addresses/",
         "/assets/api/wallet/pin/verify/",
         "/bourse/api/enigma/proposals/create/",
         "/vault/file/create/",

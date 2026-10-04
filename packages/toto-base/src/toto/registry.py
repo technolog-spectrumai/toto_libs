@@ -6,17 +6,28 @@ the portal host has always used.
 """
 
 # toto-base apps every host installs (portal settings base block, original order).
+# No "toto.locations" since 2026-10-04: the map moved to toto-geo with every
+# geometry-bearing piece, so toto-base needs no GIS and installs without GDAL.
+# A host that wants the map pins toto-geo and adds LOCATIONS_APPS itself, after
+# CORE_APPS (its 0004 migration follows people, events and socialhub).
 CORE_APPS = [
     "toto.core",
     "toto.api",
     "toto.gervazy",       # encryption and vault management
     "toto.vault",
     "toto.people",
-    "toto.locations",
     "toto.socialhub",
     "toto.events",
     "toto.verbena",
     "toto.quota",
+]
+
+# The map (toto-geo): addresses, territories, zones, routes, layers, map
+# domains, and the links from people, events and communities to them. Never
+# part of CORE_APPS or BASE_APPS; with it a host also sets HAS_GIS (and adds
+# django.contrib.gis and a spatial database when it is on).
+LOCATIONS_APPS = [
+    "toto.locations",
 ]
 
 # The historical auth block (ships in toto-auth since 1.8): the standalone

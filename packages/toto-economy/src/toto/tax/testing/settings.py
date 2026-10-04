@@ -2,8 +2,7 @@
 
 Same reasoning as the other per-app testing modules (clearing, jess, primula):
 no host has only tax, so the app is exercised end to end against a settings
-module of its own. GIS off via the usual pair, so this runs on any interpreter
-with no GDAL.
+module of its own. No geography: toto-base carries none since 2026-10-04 (``toto.locations`` is toto-geo's), so this runs on any interpreter with no GDAL.
 
 MEDIA_ROOT is real — the levy tests create VaultFiles with actual bytes — but it
 is a TEMP directory, not ``BASE_DIR / "media"``. That is where it used to point,
@@ -22,8 +21,6 @@ BASE_DIR = Path(__file__).resolve().parent
 SECRET_KEY = "tax-suite-not-a-secret"
 DEBUG = False
 ALLOWED_HOSTS = ["*"]
-
-HAS_GIS = False
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -73,8 +70,6 @@ TEMPLATES = [
         },
     },
 ]
-
-MIGRATION_MODULES = {"locations": "toto.locations.migrations_nogis"}
 
 DATABASES = {
     "default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"},

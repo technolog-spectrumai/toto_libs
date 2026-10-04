@@ -14,8 +14,7 @@ Two things here are load-bearing rather than incidental:
   blocks on SMTP, so a suite that silently ran the task inline would be testing a
   different program. Tests that want the send to happen call the task function directly.
 
-GIS is off, via the same ``HAS_GIS`` + ``MIGRATION_MODULES`` pair the other suites use,
-so this runs on any interpreter with no GDAL.
+No geography: toto-base carries none since 2026-10-04 (``toto.locations`` is toto-geo's), so this runs on any interpreter with no GDAL.
 """
 from pathlib import Path
 
@@ -26,9 +25,6 @@ BASE_DIR = Path(__file__).resolve().parent
 SECRET_KEY = "jess-suite-not-a-secret"
 DEBUG = False
 ALLOWED_HOSTS = ["*"]
-
-# locations loads without geometry; see the module docstring.
-HAS_GIS = False
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -80,8 +76,6 @@ TEMPLATES = [
         },
     },
 ]
-
-MIGRATION_MODULES = {"locations": "toto.locations.migrations_nogis"}
 
 DATABASES = {
     "default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"},

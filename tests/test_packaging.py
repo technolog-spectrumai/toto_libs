@@ -98,9 +98,9 @@ def test_migrations_are_packaged(all_names, owner):
 def test_gis_off_migration_graph_is_packaged(owner):
     # The BUILD_GEO=0 host selects this alternate locations graph via
     # MIGRATION_MODULES; it must ride in the toto-base wheel next to the GIS-on one.
-    assert owner.get("toto/locations/migrations_nogis/__init__.py") == "toto-base"
-    assert owner.get("toto/locations/migrations_nogis/0001_initial.py") == "toto-base"
-    assert owner.get("toto/locations/migrations/0001_initial.py") == "toto-base"
+    assert owner.get("toto/locations/migrations_nogis/__init__.py") == "toto-geo"
+    assert owner.get("toto/locations/migrations_nogis/0001_initial.py") == "toto-geo"
+    assert owner.get("toto/locations/migrations/0001_initial.py") == "toto-geo"
 
 
 def test_templates_are_packaged(all_names, owner):

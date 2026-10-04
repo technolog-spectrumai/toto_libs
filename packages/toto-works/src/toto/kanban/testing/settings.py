@@ -43,6 +43,10 @@ INSTALLED_APPS = [
     # inherits — reverses `sso:login`/`sso:logout`, so the view tests need the auth
     # block to render pages at all.
     *BASE_APPS,
+    # The map (toto-geo), named here since 2026-10-04: it left BASE_APPS with
+    # toto-base's geography, and kanban's models key into its zones,
+    # addresses and routes.
+    "toto.locations",
     "toto.editor",
     "toto.memo",
     "toto.cyprian",

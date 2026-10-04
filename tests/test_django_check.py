@@ -151,7 +151,7 @@ def test_gis_off_locations_urls_reverse_but_views_404(tmp_path):
         "  INSTALLED_APPS=['django.contrib.contenttypes','django.contrib.auth','django.contrib.admin',\n"
         "    'django.contrib.sessions','django.contrib.messages','django.contrib.staticfiles',\n"
         "    'corsheaders','django_jsonform','django_json_widget','rest_framework','colorfield',\n"
-        "    'reversion','markdownx','trix_editor', *BASE_APPS],\n"
+        "    'reversion','markdownx','trix_editor', *BASE_APPS, 'toto.locations'],\n"
         "  ROOT_URLCONF='rc', DEFAULT_AUTO_FIELD='django.db.models.AutoField', USE_TZ=True, STATIC_URL='/s/')\n"
         "rc = types.ModuleType('rc'); sys.modules['rc'] = rc\n"
         "django.setup()\n"

@@ -31,6 +31,9 @@ INSTALLED_APPS = [
     "markdownx",
     "trix_editor",
     *BASE_APPS,
+    # Named here since 2026-10-04: the map left BASE_APPS (and toto-base) for
+    # toto-geo, after the apps its 0004 migration follows.
+    "toto.locations",
 ]
 
 MIDDLEWARE = [

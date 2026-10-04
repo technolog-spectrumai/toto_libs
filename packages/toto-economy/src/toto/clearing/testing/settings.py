@@ -3,7 +3,7 @@
 Same reasoning as the other per-app testing modules (jess, primula): no host has
 only clearing, so the app is exercised end to end against a settings module of
 its own. Machine endpoints only — no oya chrome, so no auth url tree is needed.
-GIS off via the usual pair, so this runs on any interpreter with no GDAL.
+No geography: toto-base carries none since 2026-10-04 (``toto.locations`` is toto-geo's), so this runs on any interpreter with no GDAL.
 """
 from pathlib import Path
 
@@ -14,8 +14,6 @@ BASE_DIR = Path(__file__).resolve().parent
 SECRET_KEY = "clearing-suite-not-a-secret"
 DEBUG = False
 ALLOWED_HOSTS = ["*"]
-
-HAS_GIS = False
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -62,8 +60,6 @@ TEMPLATES = [
         },
     },
 ]
-
-MIGRATION_MODULES = {"locations": "toto.locations.migrations_nogis"}
 
 DATABASES = {
     "default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"},

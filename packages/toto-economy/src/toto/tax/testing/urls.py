@@ -23,5 +23,4 @@ urlpatterns = [
     path("assets/", include("toto.assets.urls", namespace="assets")),
     path("events/", include("toto.events.urls", namespace="events")),
     path("gervazy/", include("toto.gervazy.urls", namespace="gervazy")),
-    path("locations/", include("toto.locations.urls", namespace="locations")),
 ]

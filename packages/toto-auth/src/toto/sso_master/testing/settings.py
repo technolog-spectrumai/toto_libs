@@ -16,8 +16,7 @@ A provider-shaped tree fixes it. Two things here are not decoration:
 * ``toto.api`` is mounted — ``test_register_returns_token_that_works_as_bearer``
   exchanges its session key at an endpoint that lives there.
 
-GIS is off via the usual ``HAS_GIS`` + ``MIGRATION_MODULES`` pair, so it runs on
-any interpreter with no GDAL.
+No geography: toto-base carries none since 2026-10-04 (``toto.locations`` is toto-geo's), so this runs on any interpreter with no GDAL.
 """
 from pathlib import Path
 
@@ -28,7 +27,6 @@ BASE_DIR = Path(__file__).resolve().parent
 SECRET_KEY = "sso-master-suite-not-a-secret"
 DEBUG = False
 ALLOWED_HOSTS = ["*"]
-HAS_GIS = False
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -76,7 +74,6 @@ TEMPLATES = [
     },
 ]
 
-MIGRATION_MODULES = {"locations": "toto.locations.migrations_nogis"}
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
 
 STATIC_URL = "static/"

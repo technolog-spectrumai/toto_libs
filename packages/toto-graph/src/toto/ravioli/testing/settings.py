@@ -8,9 +8,7 @@ on: the base apps (the vault holds what they write), the app itself, and
 ``toto.neo_editor``, whose url the NeoJSON export answers with. The workflow
 engine is left out: the analysis door reaches it only through
 ``views._trigger_workflow``, which the tests stand in for, and the task
-module imports nothing of it but the registry. GIS is off via the usual
-``HAS_GIS`` + ``MIGRATION_MODULES`` pair, so this runs on any interpreter
-with no GDAL.
+module imports nothing of it but the registry. No geography: toto-base carries none since 2026-10-04 (``toto.locations`` is toto-geo's), so this runs on any interpreter with no GDAL.
 
 Run from a host directory, whose manage.py puts the vendored sources first:
 
@@ -30,9 +28,6 @@ BASE_DIR = Path(__file__).resolve().parent
 SECRET_KEY = "ravioli-suite-not-a-secret"
 DEBUG = False
 ALLOWED_HOSTS = ["*"]
-
-# locations loads without geometry; see the module docstring.
-HAS_GIS = False
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -79,8 +74,6 @@ TEMPLATES = [
         },
     },
 ]
-
-MIGRATION_MODULES = {"locations": "toto.locations.migrations_nogis"}
 
 DATABASES = {
     "default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"},

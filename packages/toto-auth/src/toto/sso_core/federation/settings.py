@@ -3,9 +3,7 @@
 No real host has this shape — a host is a provider or a consumer, never both —
 so the pair can only be exercised against a settings module of its own.
 
-GIS is off, via the same HAS_GIS + MIGRATION_MODULES pair that
-``tests/settings_min_nogis.py`` already proves, so the suite runs on any
-interpreter with no GDAL.
+No geography: toto-base carries none since 2026-10-04 (``toto.locations`` is toto-geo's), so this runs on any interpreter with no GDAL.
 """
 from pathlib import Path
 
@@ -16,9 +14,6 @@ BASE_DIR = Path(__file__).resolve().parent
 SECRET_KEY = "federation-suite-not-a-secret"
 DEBUG = False
 ALLOWED_HOSTS = ["*"]
-
-# locations loads without geometry; see the module docstring.
-HAS_GIS = False
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -71,8 +66,6 @@ TEMPLATES = [
         },
     },
 ]
-
-MIGRATION_MODULES = {"locations": "toto.locations.migrations_nogis"}
 
 DATABASES = {
     "default": {

@@ -1,9 +1,7 @@
 """Runnable settings for the Sketch suite.
 
 Same reasoning as ``toto.jess.testing.settings``: no host has *only* Sketch, so the
-app is exercised end to end against a settings module of its own. GIS is off via the
-usual ``HAS_GIS`` + ``MIGRATION_MODULES`` pair so this runs on any interpreter with no
-GDAL. ``toto.editor`` is installed because the suite proves the vault "open" button
+app is exercised end to end against a settings module of its own. No geography: toto-base carries none since 2026-10-04 (``toto.locations`` is toto-geo's), so this runs on any interpreter with no GDAL. ``toto.editor`` is installed because the suite proves the vault "open" button
 routes ``svg`` files to Sketch *instead of* the generic ACE editor — that comparison
 only exists when both plugin registries are populated.
 """
@@ -17,9 +15,6 @@ BASE_DIR = Path(__file__).resolve().parent
 SECRET_KEY = "sketch-suite-not-a-secret"
 DEBUG = False
 ALLOWED_HOSTS = ["*"]
-
-# locations loads without geometry; see the module docstring.
-HAS_GIS = False
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -70,8 +65,6 @@ TEMPLATES = [
         },
     },
 ]
-
-MIGRATION_MODULES = {"locations": "toto.locations.migrations_nogis"}
 
 DATABASES = {
     "default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"},

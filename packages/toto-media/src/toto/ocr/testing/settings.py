@@ -5,8 +5,7 @@ installs ``toto.ocr`` any more — it left zenobia for placidia in 9/2026 — so
 until this module existed its suites ran on no gate here, and a vault change
 that broke it (the trash, 2026-10-01) could not be seen. Only what the app
 stands on: the base apps (the vault holds the sources, quota meters the
-pages) and the app itself. GIS is off via the usual ``HAS_GIS`` +
-``MIGRATION_MODULES`` pair, so this runs on any interpreter with no GDAL.
+pages) and the app itself. No geography: toto-base carries none since 2026-10-04 (``toto.locations`` is toto-geo's), so this runs on any interpreter with no GDAL.
 
 Run from a host directory, whose manage.py puts the vendored sources first:
 
@@ -26,9 +25,6 @@ BASE_DIR = Path(__file__).resolve().parent
 SECRET_KEY = "ocr-suite-not-a-secret"
 DEBUG = False
 ALLOWED_HOSTS = ["*"]
-
-# locations loads without geometry; see the module docstring.
-HAS_GIS = False
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -74,8 +70,6 @@ TEMPLATES = [
         },
     },
 ]
-
-MIGRATION_MODULES = {"locations": "toto.locations.migrations_nogis"}
 
 DATABASES = {
     "default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"},
