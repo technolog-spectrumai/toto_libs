@@ -1,10 +1,11 @@
-"""Notifications: what happened to a member's files, shares, jobs and account,
-kept for them and shown in the app bar's bell (2026-10-04).
+"""Notifications: what somebody else did to the files in a bucket a member
+owns, kept for them and shown in the app bar's bell (2026-10-04).
 
     from toto import notify
 
-    notify.send(user, "job.transfer_done", bucket="Work", bucket_id=7,
-                link="/vault/transfers/12/")
+    notify.send(owner, "vault.uploaded", actor=ada, collapse="uploaded:7",
+                title="plan.pdf", bucket="Work", bucket_id=7,
+                link="/vault/public/?bucket=work")
 
 ``send`` writes one ``Notification`` row and, once the transaction commits,
 pokes the member's open pages through the live socket

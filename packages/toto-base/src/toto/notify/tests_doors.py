@@ -21,9 +21,14 @@ class DoorCase(TestCase):
     def setUp(self):
         self.ada = User.objects.create_user("ada", password="pw")
         self.bob = User.objects.create_user("bob", password="pw")
-        self.mine = notify.send(self.ada, "account.password_changed", link="/account/")
-        self.theirs = notify.send(self.bob, "account.new_sign_in")
+        self.bucket = Bucket.objects.create(name="Work", slug="work", owner=self.ada)
+        self.mine = self.tell(self.ada, link="/vault/")
+        self.theirs = self.tell(self.bob, kind="vault.trashed")
         self.client.force_login(self.ada)
+
+    def tell(self, user, *, kind="vault.uploaded", title="plan.pdf", **more):
+        return notify.send(user, kind, title=title, bucket=self.bucket.name,
+                           bucket_id=self.bucket.pk, **more)
 
 
 class ListTests(DoorCase):
@@ -32,8 +37,8 @@ class ListTests(DoorCase):
         self.assertEqual(data["unread"], 1)
         self.assertEqual([item["id"] for item in data["items"]], [self.mine.pk])
         item = data["items"][0]
-        self.assertEqual(item["text"], "Your password was changed")
-        self.assertEqual((item["link"], item["read"], item["actor"]), ("/account/", False, ""))
+        self.assertEqual(item["text"], "plan.pdf was uploaded to Work")
+        self.assertEqual((item["link"], item["read"], item["actor"]), ("/vault/", False, ""))
 
     def test_it_is_never_cached_and_anonymous_gets_nothing(self):
         response = self.client.get(reverse("notify:api_list"))
@@ -43,7 +48,7 @@ class ListTests(DoorCase):
 
     def test_the_latest_twenty(self):
         for n in range(25):
-            notify.send(self.ada, "job.transfer_done", once=f"t{n}", bucket="W")
+            self.tell(self.ada, title=f"scan{n}.png")
         data = self.client.get(reverse("notify:api_list")).json()
         self.assertEqual((len(data["items"]), data["unread"]), (20, 26))
 
@@ -76,7 +81,7 @@ class ReadTests(DoorCase):
         self.assertIsNone(Notification.objects.get(pk=self.theirs.pk).read_at)
 
     def test_read_all_touches_only_the_callers(self):
-        notify.send(self.ada, "account.new_sign_in")
+        self.tell(self.ada, kind="vault.restored")
         self.assertEqual(self.client.post(reverse("notify:api_read_all")).json()["unread"], 0)
         self.assertEqual(Notification.objects.filter(recipient=self.ada,
                                                      read_at__isnull=True).count(), 0)

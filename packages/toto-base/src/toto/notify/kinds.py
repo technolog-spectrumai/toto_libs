@@ -5,11 +5,13 @@ bell is drawn, in the reader's language. ``one`` is the sentence, ``many`` its
 form for a burst folded into one row (``params["count"]`` above one) — a
 lazy plural, so Polish gets its three forms.
 
-A sentence names only what its recipient could already see when it was sent
-(``sources.py`` asks the owning app's own access rule), and never who did it:
-the actor is a key on the row, shown beside the sentence and gone with the
-account. ``bucket_scoped`` kinds carry ``bucket_id``; the list drops such a
-row for a reader the bucket is hidden from now (``services.listing``).
+Four kinds, all about a file in a bucket the recipient owns (``sources.py``):
+uploaded, replaced, moved to the trash, restored. A sentence names only what
+its recipient could already see when it was sent (``sources.py`` asks the
+vault's own access rule), and never who did it: the actor is a key on the
+row, shown beside the sentence and gone with the account. ``bucket_scoped``
+kinds carry ``bucket_id``; the list drops such a row for a reader the bucket
+is hidden from now (``services.listing``).
 
 A kind this build does not know renders as nothing and is left out of the
 list, so a row written by a newer build never breaks an older one's bell.
@@ -75,7 +77,7 @@ def text_of(kind_key: str, params) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Files in my buckets
+# Files in a bucket of mine
 # ---------------------------------------------------------------------------
 
 VAULT_UPLOADED = register(Kind(
@@ -102,77 +104,3 @@ VAULT_RESTORED = register(Kind(
     ngettext_lazy("%(count)s file was restored from the trash in %(bucket)s",
                   "%(count)s files were restored from the trash in %(bucket)s", "count"),
     bucket_scoped=True))
-
-# ---------------------------------------------------------------------------
-# Shares and clearances
-# ---------------------------------------------------------------------------
-
-FOLDER_SHARED = register(Kind(
-    "vault.folder_shared", "fa-solid fa-folder-open",
-    _("You were given access to the folder %(folder)s in %(bucket)s"),
-    bucket_scoped=True))
-BUCKET_GIVEN = register(Kind(
-    "vault.bucket_given", "fa-solid fa-database",
-    _("The bucket %(bucket)s was set up for you"),
-    bucket_scoped=True))
-CLEARANCE_GRANTED = register(Kind(
-    "clearance.granted", "fa-solid fa-key",
-    _("You were given the clearance %(clearance)s")))
-CLEARANCE_REMOVED = register(Kind(
-    "clearance.removed", "fa-solid fa-key",
-    _("The clearance %(clearance)s was taken from you")))
-
-# ---------------------------------------------------------------------------
-# Transfers and background jobs
-# ---------------------------------------------------------------------------
-
-TRANSFER_DONE = register(Kind(
-    "job.transfer_done", "fa-solid fa-right-left",
-    _("Your transfer to %(bucket)s finished")))
-TRANSFER_FAILED = register(Kind(
-    "job.transfer_failed", "fa-solid fa-triangle-exclamation",
-    _("Your transfer to %(bucket)s failed")))
-ZIP_DONE = register(Kind(
-    "job.zip_done", "fa-solid fa-file-zipper",
-    _("Your archive is ready")))
-ZIP_FAILED = register(Kind(
-    "job.zip_failed", "fa-solid fa-triangle-exclamation",
-    _("Your archive could not be made")))
-REFRESH_DONE = register(Kind(
-    "job.refresh_done", "fa-solid fa-rotate",
-    _("The refresh of %(bucket)s finished")))
-REFRESH_FAILED = register(Kind(
-    "job.refresh_failed", "fa-solid fa-triangle-exclamation",
-    _("The refresh of %(bucket)s failed")))
-
-# ---------------------------------------------------------------------------
-# Account and security
-# ---------------------------------------------------------------------------
-
-NEW_SIGN_IN = register(Kind(
-    "account.new_sign_in", "fa-solid fa-right-to-bracket",
-    _("A new sign-in to your account")))
-PASSWORD_CHANGED = register(Kind(
-    "account.password_changed", "fa-solid fa-lock",
-    _("Your password was changed")))
-EMAIL_CHANGED = register(Kind(
-    "account.email_changed", "fa-solid fa-envelope",
-    _("Your e-mail address was changed")))
-EXPORT_READY = register(Kind(
-    "privacy.export_ready", "fa-solid fa-box-archive",
-    _("The copy of your data is ready")))
-EXPORT_FAILED = register(Kind(
-    "privacy.export_failed", "fa-solid fa-triangle-exclamation",
-    _("The copy of your data could not be made")))
-ERASURE_DECLINED = register(Kind(
-    "privacy.erasure_declined", "fa-solid fa-user-xmark",
-    _("Your request to erase your account was declined")))
-
-#: The mailed notices (``toto.core.notices``) that are said in the bell too.
-#: Not ``email_change_confirm`` — a link to act on, mailed to an address the
-#: account does not have yet — and not the operators' alerts.
-NOTICE_KINDS = {
-    "new_sign_in": NEW_SIGN_IN.key,
-    "password_changed": PASSWORD_CHANGED.key,
-    "email_changed": EMAIL_CHANGED.key,
-}

@@ -55,11 +55,6 @@ today the mail lands in the log; the moment SMTP is armed the same call
 delivers it. A notice carries no secret, no link that acts on the account and
 no content of the member's — only what happened, when, and from which address.
 
-**In the bell too** (2026-10-04). Where ``toto.notify`` is installed, a new
-sign-in and a changed password or e-mail address are also a notification in
-the member's bell (``_bell``): the event alone, without the address or the
-device the mail names.
-
 The e-mail change is the exception, on purpose (2026-09-30): its two kinds
 go elsewhere than ``user.email``, named by ``to=``. ``email_change_confirm``
 carries the single-use link that proves the member reads the NEW address and
@@ -199,9 +194,6 @@ def send_notice(user, kind: str, context: dict | None = None, *, to: str = "") -
         if kind not in KINDS:
             log.error("notice: unknown kind %r", kind)
             return False
-        # In the bell too (2026-10-04), before the address is looked at: an
-        # account with no e-mail address gets no mail and still hears of it.
-        _bell(user, kind)
         address = (to or getattr(user, "email", "") or "").strip()
         if not address:
             log.info("notice: %s not sent — account %s has no e-mail address",
@@ -236,26 +228,6 @@ def send_notice(user, kind: str, context: dict | None = None, *, to: str = "") -
             log.warning("notice: %s could not wait for the commit (%s); sent at once",
                         kind, type(exc).__name__)
     return not deliver(message)
-
-
-def _bell(user, kind: str) -> None:
-    """The same event as a notification in the member's bell, where
-    ``toto.notify`` is installed: a new sign-in, a changed password or e-mail
-    address (``toto.notify.kinds.NOTICE_KINDS`` — never the confirmation
-    link, never an operators' alert). It names the event and nothing else:
-    no address, no device. Never raises."""
-    if user is None or not getattr(user, "pk", None):
-        return
-    try:
-        from django.apps import apps
-
-        if not apps.is_installed("toto.notify"):
-            return
-        from toto.notify.sources import account_notice
-
-        account_notice(user, kind)
-    except Exception as exc:  # noqa: BLE001 - a notice never fails what it reports
-        log.warning("notice: %s not put in the bell (%s)", kind, type(exc).__name__)
 
 
 def _queue(message: dict) -> None:

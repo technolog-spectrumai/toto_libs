@@ -1,4 +1,4 @@
-"""``notify.send``: the row, the push, bursts, once, the prune (2026-10-04).
+"""``notify.send``: the row, the push, bursts, the prune (2026-10-04).
 
     manage.py test toto.notify.tests_send
 """
@@ -29,7 +29,7 @@ class WithALayerTests(Case):
     def test_the_row_is_written_and_the_members_pages_are_poked(self):
         mine, theirs = Listener(live.user_group(self.ada.pk)), Listener(live.user_group(self.bob.pk))
         with self.captureOnCommitCallbacks(execute=True):
-            row = notify.send(self.ada, "account.password_changed", link="/account/")
+            row = notify.send(self.ada, "vault.uploaded", link="/vault/")
         self.assertEqual(Notification.objects.get().pk, row.pk)
         self.assertEqual(mine.messages(), [{"type": "live.notification"}])
         self.assertEqual(theirs.messages(), [])
@@ -45,7 +45,7 @@ class WithALayerTests(Case):
     def test_nothing_is_pushed_for_a_change_that_rolled_back(self):
         mine = Listener(live.user_group(self.ada.pk))
         with self.captureOnCommitCallbacks(execute=False):
-            notify.send(self.ada, "account.password_changed")
+            notify.send(self.ada, "vault.uploaded")
         self.assertEqual(mine.messages(), [])
 
 
@@ -54,7 +54,7 @@ class WithoutALayerTests(Case):
     def test_the_row_is_still_written(self):
         self.assertFalse(live.available())
         with self.captureOnCommitCallbacks(execute=True):
-            row = notify.send(self.ada, "account.password_changed")
+            row = notify.send(self.ada, "vault.uploaded")
         self.assertIsNotNone(row)
         self.assertEqual(Notification.objects.filter(recipient=self.ada).count(), 1)
 
@@ -70,10 +70,12 @@ class RulesTests(Case):
     def test_an_inactive_account_and_an_unknown_kind_get_nothing(self):
         self.bob.is_active = False
         self.bob.save()
-        self.assertIsNone(notify.send(self.bob, "account.password_changed"))
-        with self.assertLogs("toto.notify", "ERROR"):
-            self.assertIsNone(notify.send(self.ada, "no.such.kind"))
-        self.assertIsNone(notify.send(None, "account.password_changed"))
+        self.assertIsNone(notify.send(self.bob, "vault.uploaded"))
+        for gone in ("no.such.kind", "account.password_changed", "job.transfer_done",
+                     "clearance.granted", "community.joined"):
+            with self.subTest(kind=gone), self.assertLogs("toto.notify", "ERROR"):
+                self.assertIsNone(notify.send(self.ada, gone))
+        self.assertIsNone(notify.send(None, "vault.uploaded"))
         self.assertEqual(Notification.objects.count(), 0)
 
     def test_a_burst_folds_into_one_row_with_a_count(self):
@@ -93,11 +95,10 @@ class RulesTests(Case):
         notify.send(self.ada, "vault.uploaded", collapse="uploaded:7", title="c", bucket="W")
         self.assertEqual(Notification.objects.count(), 3)
 
-    def test_once_is_said_once_read_or_not(self):
-        row = notify.send(self.ada, "job.transfer_done", once="transfer:5", bucket="Work")
-        services.mark_read(self.ada, row.pk)
-        self.assertIsNone(notify.send(self.ada, "job.transfer_done", once="transfer:5", bucket="Work"))
-        self.assertEqual(Notification.objects.count(), 1)
+    def test_a_row_of_a_kind_that_left_is_neither_listed_nor_counted(self):
+        notify.send(self.ada, "vault.uploaded", title="a", bucket="W")
+        Notification.objects.create(recipient=self.ada, kind="account.new_sign_in")
+        self.assertEqual(services.unread_count(self.ada), 1)
 
     def test_the_sentence_is_made_when_read_in_the_readers_language(self):
         row = notify.send(self.ada, "vault.uploaded", title="plan.pdf", bucket="Work")
@@ -116,9 +117,9 @@ class RulesTests(Case):
 class PruneTests(Case):
     def test_read_rows_older_than_thirty_days_go_and_unread_ones_wait(self):
         old = timezone.now() - timedelta(days=31)
-        read_old = notify.send(self.ada, "account.password_changed")
-        read_new = notify.send(self.ada, "account.new_sign_in")
-        unread_old = notify.send(self.ada, "account.email_changed")
+        read_old = notify.send(self.ada, "vault.uploaded")
+        read_new = notify.send(self.ada, "vault.replaced")
+        unread_old = notify.send(self.ada, "vault.trashed")
         Notification.objects.filter(pk=read_old.pk).update(read_at=old, created=old)
         Notification.objects.filter(pk=read_new.pk).update(read_at=timezone.now())
         Notification.objects.filter(pk=unread_old.pk).update(created=old)
@@ -139,7 +140,7 @@ class PruneTests(Case):
 
     def test_erasing_a_member_takes_what_they_did_out_of_other_bells(self):
         notify.send(self.ada, "vault.uploaded", actor=self.bob, title="a", bucket="W")
-        notify.send(self.bob, "account.password_changed")
+        notify.send(self.bob, "vault.trashed", title="b", bucket="W")
         self.bob.delete()
         self.assertEqual(Notification.objects.count(), 0)
 
@@ -149,7 +150,7 @@ class PersonalDataTests(Case):
         from toto.core import personal_data
 
         notify.send(self.ada, "vault.uploaded", actor=self.bob, title="a.txt", bucket="W")
-        notify.send(self.bob, "account.password_changed")
+        notify.send(self.bob, "vault.trashed", title="b.txt", bucket="W")
         plugin = [p for p in personal_data.plugins() if p.get_key() == "notify"][0]
         (table,) = plugin.tables(self.ada)
         self.assertEqual(table.name, "notifications")

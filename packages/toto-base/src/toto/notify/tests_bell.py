@@ -42,8 +42,8 @@ class BellTests(TestCase):
             return render_to_string("oya/header.html", {"header_nav_items": []}, request=request)
 
     def test_one_bell_on_each_bar_an_icon_and_a_count_and_no_words(self):
-        notify.send(self.ada, "account.password_changed")
-        notify.send(self.ada, "account.new_sign_in")
+        notify.send(self.ada, "vault.uploaded", title="a.txt", bucket="Work")
+        notify.send(self.ada, "vault.trashed", title="b.txt", bucket="Work")
         html = self.header()
         bells = BELL.findall(html)
         self.assertEqual(len(bells), 2)

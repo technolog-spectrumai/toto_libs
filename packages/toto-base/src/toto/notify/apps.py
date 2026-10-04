@@ -12,9 +12,9 @@ class NotifyConfig(AppConfig):
         # (toto.mana.apps) — one widget, no discovery.
         from .plugins import header_plugins  # noqa: F401
 
-        # What makes a notification: the vault's file events, shares,
-        # clearances, jobs, the data export and the erasure request
-        # (sources.py). Each only where its app is installed.
+        # What makes a notification: a file uploaded, replaced, trashed or
+        # restored in a bucket the recipient owns (sources.py), where the
+        # vault is installed.
         from . import sources
 
         sources.connect()

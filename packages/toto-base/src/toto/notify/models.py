@@ -17,9 +17,8 @@ class Notification(models.Model):
     their name there.
 
     ``collapse_key`` is what a burst folds on (forty uploads to one bucket
-    are one row with a count) and what makes a notification single (one per
-    finished job). Read rows are pruned thirty days after ``read_at``
-    (``services.prune``); an unread one waits.
+    are one row with a count). Read rows are pruned thirty days after
+    ``read_at`` (``services.prune``); an unread one waits.
     """
 
     recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,

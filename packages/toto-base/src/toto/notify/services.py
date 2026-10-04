@@ -2,7 +2,7 @@
 
 ``send`` is the one way a notification is made:
 
-    send(user, "vault.uploaded", actor=ada, collapse="vault.uploaded:7:3",
+    send(user, "vault.uploaded", actor=ada, collapse="uploaded:7",
          link="/vault/public/?bucket=work", title="plan.pdf", bucket="Work",
          bucket_id=7)
 
@@ -19,8 +19,6 @@
   the same key while the first is still unread and younger than
   ``COLLAPSE_WINDOW`` raises that row's count instead of adding a row
   ("12 files were uploaded to Work").
-* **Once.** ``once`` names a thing that is told one time (a finished job):
-  a row with that key, read or not, means it was said.
 * **Not to the one who did it**, and not to an account that cannot sign in.
 
 ``listing`` is what the bell draws: the latest rows and the unread count,
@@ -53,7 +51,7 @@ PRUNE_BATCH = 1000
 
 
 def send(recipient, kind: str, *, actor=None, link: str = "", collapse: str = "",
-         once: str = "", **params):
+         **params):
     """Tell ``recipient`` that ``kind`` happened; the row, or ``None`` when
     nothing was written. Never raises. See the module docstring."""
     try:
@@ -68,7 +66,7 @@ def send(recipient, kind: str, *, actor=None, link: str = "", collapse: str = ""
         if actor is not None and actor.pk == recipient.pk:
             return None
         with transaction.atomic():
-            row = _write(recipient, kind, actor, link, collapse, once, params)
+            row = _write(recipient, kind, actor, link, collapse, params)
         if row is None:
             return None
         from toto.core import live
@@ -81,14 +79,11 @@ def send(recipient, kind: str, *, actor=None, link: str = "", collapse: str = ""
         return None
 
 
-def _write(recipient, kind, actor, link, collapse, once, params):
+def _write(recipient, kind, actor, link, collapse, params):
     now = timezone.now()
-    key = (once or collapse or "")[:120]
+    key = (collapse or "")[:120]
     mine = Notification.objects.filter(recipient=recipient, kind=kind)
-    if once:
-        if mine.filter(collapse_key=key).exists():
-            return None
-    elif collapse:
+    if collapse:
         row = (mine.select_for_update()
                .filter(collapse_key=key, read_at__isnull=True,
                        created__gte=now - COLLAPSE_WINDOW)
@@ -124,9 +119,13 @@ def _plain(params: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def unread_count(user) -> int:
+    """How many of the member's notifications are unread — of the kinds this
+    build tells (``kinds.KINDS``): a row of a kind that left is counted by
+    no bell."""
     if not getattr(user, "is_authenticated", False):
         return 0
-    return Notification.objects.filter(recipient=user, read_at__isnull=True).count()
+    return Notification.objects.filter(recipient=user, read_at__isnull=True,
+                                       kind__in=list(kinds.KINDS)).count()
 
 
 def _hidden_bucket_ids(user, bucket_ids) -> set:
@@ -152,11 +151,12 @@ def listing(user, *, limit: int = LATEST):
     may still be told, newest first, and how many of all theirs are unread.
 
     A row about a bucket hidden from the reader now is deleted on the way;
-    one whose kind this build does not know is skipped, not deleted."""
+    one whose kind this build does not know is neither listed nor counted
+    (and not deleted)."""
     from django.apps import apps
 
     related = "actor__community_profile" if apps.is_installed("toto.people") else "actor"
-    rows = list(Notification.objects.filter(recipient=user)
+    rows = list(Notification.objects.filter(recipient=user, kind__in=list(kinds.KINDS))
                 .select_related(related)[:limit])
     scoped = {}
     for row in rows:
@@ -171,7 +171,6 @@ def listing(user, *, limit: int = LATEST):
     if gone:
         Notification.objects.filter(recipient=user, pk__in=gone).delete()
         rows = [row for row in rows if row.pk not in set(gone)]
-    rows = [row for row in rows if kinds.get(row.kind) is not None]
     return rows, unread_count(user)
 
 
