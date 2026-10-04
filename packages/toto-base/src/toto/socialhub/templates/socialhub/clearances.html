@@ -177,7 +177,7 @@ document.addEventListener('alpine:init', () => {
       <div>
         <h1 class="text-2xl font-extrabold">{% trans "Clearances" %}
           <span class="text-sm font-normal opacity-60">{% blocktrans with n=total max=max_clearances %}{{ n }} of {{ max }}{% endblocktrans %}</span></h1>
-        <p class="mt-1 max-w-prose text-sm opacity-70">{% trans "A clearance decides who may read — the files in a bucket, the map items in a domain, whatever an app keeps to clearances — and how fast its holders' mana refills — named after what it opens, never after who holds it. It offers no plan, gives no discount and holds no right; members never see it listed. Communities and clearances are kept apart on purpose." %}</p>
+        <p class="mt-1 max-w-prose text-sm opacity-70">{% trans "A clearance decides who may read — the files in a bucket, and whatever an installed app keeps to clearances — and how fast its holders' mana refills — named after what it opens, never after who holds it. It offers no plan, gives no discount and holds no right; members never see it listed. Communities and clearances are kept apart on purpose." %}</p>
       </div>
       {% include "socialhub/_tabs.html" with active_tab="clearances" %}
     </header>
@@ -227,7 +227,7 @@ document.addEventListener('alpine:init', () => {
           <span x-show="holders" class="inline-flex items-center gap-1"><span class="inline-block h-3 w-3 rounded-full border-2 border-gray-400"></span>{% trans "Holder" %}</span>
           <span x-show="leftOut" x-cloak class="opacity-70" x-text="'+' + leftOut + ' {% trans "holders not drawn" %}'"></span>
         </div>
-        <p class="text-xs opacity-60">{% trans "A clearance keeps groups — map domains, buckets — and everything in them: an item in several kept groups is read only by someone holding a clearance of each. Click a group to open it." %}</p>
+        <p class="text-xs opacity-60">{% trans "A clearance keeps groups — buckets, and whatever kind an installed app adds — and everything in them: an item in several kept groups is read only by someone holding a clearance of each. Click a group to open it." %}</p>
         <div x-ref="graph" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
              class="h-[65vh] min-h-[360px] w-full rounded-2xl border" :aria-busy="loading"></div>
         <p x-show="failed" x-cloak class="text-sm text-red-600">{% trans "The graph could not be loaded." %}</p>
@@ -373,7 +373,7 @@ document.addEventListener('alpine:init', () => {
           {% if target_kinds %}
           <div class="space-y-2" data-testid="clearance-targets">
             <label for="clearance-target-search" class="text-xs font-semibold opacity-70">{% trans "What it keeps" %}</label>
-            <p class="text-xs opacity-60">{% trans "Everything in the groups chosen here — a bucket's files, a domain's map items — is closed to everyone else: only superusers and whoever holds a clearance of every kept group it is in will read it. Not even its owner." %}</p>
+            <p class="text-xs opacity-60">{% trans "Everything in the groups chosen here — a bucket's files — is closed to everyone else: only superusers and whoever holds a clearance of every kept group it is in will read it. Not even its owner." %}</p>
             <ul class="flex flex-wrap gap-2" data-testid="clearance-targets-chosen">
               <template x-for="item in targets" :key="item.key + ':' + item.pk">
                 <li class="inline-flex items-center gap-1 rounded-full border border-current/30 px-2 py-0.5">
