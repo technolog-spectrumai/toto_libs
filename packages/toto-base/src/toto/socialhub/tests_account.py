@@ -55,7 +55,9 @@ class AccountTestCase(TestCase):
 
     def post_profile(self, **data):
         payload = {"display_name": self.person.display_name, "bio": self.person.bio or "",
-                   "phone": self.person.phone or ""}
+                   "phone": self.person.phone or "",
+                   # Ticked, as the form draws it: on by default (2026-10-04).
+                   "show_online": "on"}
         payload.update(data)
         return self.client.post(reverse("account:profile"), payload)
 
