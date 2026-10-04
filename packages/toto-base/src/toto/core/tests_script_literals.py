@@ -13,8 +13,9 @@ Two ways Django's escaping did not keep it out:
   ``@click`` …): Django turns ``'`` into ``&#x27;`` and the browser turns it
   back before Alpine evaluates the attribute, so a name like ``x'+alert(1)+'``
   ran. The map widget did it with each place's name; it reads the name from a
-  ``data-`` attribute now (the planning page's filter too:
-  ``toto.events.tests_more_access.PlanPageMarkupTests``).
+  ``data-`` attribute now (its test went with the widget to
+  ``toto.locations.tests_map_tiles`` on 2026-10-04; the planning page's
+  filter too: ``toto.events.tests_more_access.PlanPageMarkupTests``).
 
     manage.py test toto.core.tests_script_literals
 """
@@ -23,7 +24,6 @@ import re
 from html.parser import HTMLParser
 from pathlib import Path
 
-from django.template.loader import render_to_string
 from django.test import SimpleTestCase
 
 #: ``escapejs`` output between backticks on one line.
@@ -57,12 +57,3 @@ class ScriptLiteralTests(SimpleTestCase):
                     if IN_TEMPLATE_LITERAL.search(line):
                         offenders.append(f"{template}:{number}")
         self.assertEqual(offenders, [])
-
-    def test_the_map_widget_reads_a_places_name_as_data(self):
-        name = "Pier'+alert(document.domain)+'"
-        html = render_to_string("oya/partials/map.html", {"widget": {
-            "id": "w1", "title": "Harbour", "center": "[54.35, 18.65]", "zoom": 9,
-            "features": [{"name": name, "type": "Place", "geometry": None}]}})
-        self.assertEqual([(attr, value) for attr, value in alpine_directives(html)
-                          if "alert(document.domain)" in value], [])
-        self.assertIn('data-name="Pier&#x27;+alert(document.domain)+&#x27;"', html)

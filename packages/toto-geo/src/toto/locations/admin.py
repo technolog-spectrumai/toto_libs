@@ -1,5 +1,6 @@
 from django.contrib import admin
-from toto.core.base_admin import MapWidgetMixin, TotoGeoAdmin, TotoModelAdmin
+from toto.core.base_admin import TotoModelAdmin
+from toto.locations.admin_base import MapWidgetMixin, TotoGeoAdmin
 
 from .models import (
     HAS_GIS,

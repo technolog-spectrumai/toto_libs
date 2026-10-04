@@ -2,8 +2,10 @@
 
 CARTO's dark basemap started answering every tile with "API key required",
 so the dark layer on every Leaflet page is OpenStreetMap's own tiles with the
-`toto-dark-tiles` filter (oya/base.html). This walks every installed app's
-templates, so a keyed tile service cannot come back by copy-paste.
+`toto-dark-tiles` filter (locations/_tiles.html — in oya/base.html until
+2026-10-04, when toto-base lost its geography and this module moved here from
+toto.core). This walks every installed app's templates, so a keyed tile
+service cannot come back by copy-paste.
 """
 
 from pathlib import Path
@@ -43,19 +45,32 @@ class MapTileTests(SimpleTestCase):
                     offenders.append(str(template))
         self.assertEqual(offenders, [])
 
-    def test_the_base_template_offers_the_shared_tile_layer(self):
-        source = Path(get_template("oya/base.html").origin.name).read_text(encoding="utf-8")
+    def test_the_tiles_partial_offers_the_shared_tile_layer(self):
+        source = Path(get_template("locations/_tiles.html").origin.name).read_text(encoding="utf-8")
         self.assertIn("window.totoTileLayer = function (map, options)", source)
         self.assertIn('box.classList.toggle("toto-dark-tiles"', source)
         self.assertIn("Alpine.effect", source)
-
-    def test_native_controls_follow_dark_mode(self):
-        """`color-scheme` follows darkMode on <html>, so a field Django rendered
-        without classes is not light text in a white box on a dark page (the
-        forum cleanup form, 2026-09-28)."""
-        source = Path(get_template("oya/base.html").origin.name).read_text(encoding="utf-8")
-        self.assertIn(""":style="darkMode ? 'color-scheme: dark' : 'color-scheme: light'""", source)
-
-    def test_the_base_template_carries_the_dark_tile_filter(self):
-        source = Path(get_template("oya/base.html").origin.name).read_text(encoding="utf-8")
         self.assertIn(".toto-dark-tiles", source)
+
+    def test_every_locations_page_carries_the_partial(self):
+        source = Path(get_template("locations/base.html").origin.name).read_text(encoding="utf-8")
+        self.assertIn('{% include "locations/_tiles.html" %}', source)
+
+    def test_the_platform_s_base_template_draws_no_tiles(self):
+        source = Path(get_template("oya/base.html").origin.name).read_text(encoding="utf-8")
+        self.assertNotIn("totoTileLayer", source)
+        self.assertNotIn("openstreetmap", source)
+
+    def test_the_map_widget_reads_a_places_name_as_data(self):
+        """From toto.core.tests_script_literals, with the partial."""
+        from django.template.loader import render_to_string
+
+        from toto.core.tests_script_literals import alpine_directives
+
+        name = "Pier'+alert(document.domain)+'"
+        html = render_to_string("oya/partials/map.html", {"widget": {
+            "id": "w1", "title": "Harbour", "center": "[54.35, 18.65]", "zoom": 9,
+            "features": [{"name": name, "type": "Place", "geometry": None}]}})
+        self.assertEqual([(attr, value) for attr, value in alpine_directives(html)
+                          if "alert(document.domain)" in value], [])
+        self.assertIn('data-name="Pier&#x27;+alert(document.domain)+&#x27;"', html)

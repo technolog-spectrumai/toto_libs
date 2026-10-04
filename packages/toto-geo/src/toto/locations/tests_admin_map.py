@@ -4,7 +4,7 @@ TotoGeoAdmin was OSMGeoAdmin, which fetched OpenLayers 2 from
 cdnjs.cloudflare.com, and the map layer's and route chain's inline rows used
 Django's default geometry widget, OpenLayers 7 from cdn.jsdelivr.net over
 NASA's tiles. Every geometry field in the admin is now drawn by
-`toto.core.base_admin.LocalOSMWidget` — Django's OSMWidget with the image's
+`toto.locations.admin_base.LocalOSMWidget` — Django's OSMWidget with the image's
 OpenLayers (`vendor/openlayers/`) — through `MapWidgetMixin`, on a ModelAdmin
 and on an inline alike.
 """
@@ -17,7 +17,7 @@ from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, SimpleTestCase
 
-from toto.core.base_admin import LocalOSMWidget
+from toto.locations.admin_base import LocalOSMWidget
 
 
 @skipIf(LocalOSMWidget is None, "a GIS-off build draws no maps")
