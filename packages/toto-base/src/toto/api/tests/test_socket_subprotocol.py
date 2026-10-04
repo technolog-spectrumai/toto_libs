@@ -11,17 +11,25 @@ the path without the query.
 """
 
 import logging
+import unittest
 
 from asgiref.sync import async_to_sync
-from channels.generic.websocket import AsyncWebsocketConsumer
-from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.test import Client, SimpleTestCase, TestCase, override_settings
 
-from toto.api.middleware import BEARER_SUBPROTOCOL, TokenAuthMiddleware, bearer_offer
 from toto.api.server_logs import UVICORN_LOGGERS, NoQueryString
 from toto.audit.models import AuditRecord
+
+try:  # the socket layer is the host's choice (zenobia has none, 2026-10-04)
+    from channels.generic.websocket import AsyncWebsocketConsumer
+    from channels.testing import WebsocketCommunicator
+
+    from toto.api.middleware import BEARER_SUBPROTOCOL, TokenAuthMiddleware, bearer_offer
+    HAVE_CHANNELS = True
+except ImportError:
+    HAVE_CHANNELS = False
+    BEARER_SUBPROTOCOL = "toto.bearer"
 
 User = get_user_model()
 
@@ -73,6 +81,7 @@ class SocketCase(TestCase):
         return accepts[0].get("subprotocol")
 
 
+@unittest.skipUnless(HAVE_CHANNELS, "channels is not installed on this host")
 class SubprotocolKeyTests(SocketCase):
     def test_the_key_after_toto_bearer_signs_the_socket_in(self):
         scope, sent = self.open([BEARER_SUBPROTOCOL, session_key_for(self.ada)])
@@ -132,6 +141,7 @@ class SubprotocolKeyTests(SocketCase):
         self.assertFalse(seen["user"].is_authenticated)
 
 
+@unittest.skipUnless(HAVE_CHANNELS, "channels is not installed on this host")
 @override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
 class NoKeyInTheAnswerTests(SocketCase):
     def test_the_answer_never_carries_the_key(self):
@@ -182,6 +192,7 @@ class NoKeyInTheAnswerTests(SocketCase):
                          (False, 4401))
 
 
+@unittest.skipUnless(HAVE_CHANNELS, "channels is not installed on this host")
 class QueryTokenTests(SocketCase):
     """Today's desktop clients: ``?token=`` works as it did."""
 
@@ -203,6 +214,7 @@ class QueryTokenTests(SocketCase):
         self.assertIsNone(self.answered(sent))
 
 
+@unittest.skipUnless(HAVE_CHANNELS, "channels is not installed on this host")
 class BearerOfferTests(SimpleTestCase):
     def test_the_key_is_the_entry_after_toto_bearer(self):
         self.assertEqual(bearer_offer(["a", "toto.bearer", "k3y", "b"]),
@@ -219,6 +231,7 @@ class BearerOfferTests(SimpleTestCase):
         self.assertEqual(bearer_offer(["toto.bearer", ""]), (None, ["toto.bearer"]))
 
 
+@unittest.skipUnless(HAVE_CHANNELS, "channels is not installed on this host")
 class ServerLogTests(SimpleTestCase):
     """uvicorn's own lines keep the path without its query."""
 

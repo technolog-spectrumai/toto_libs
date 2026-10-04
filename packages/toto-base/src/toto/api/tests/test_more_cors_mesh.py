@@ -4,6 +4,7 @@ WebSocket token fallback and origin rule, and the desktop login endpoint's
 refusals — each asserted on the view or middleware itself."""
 
 import json
+import unittest
 from urllib.parse import urlparse
 
 from asgiref.sync import async_to_sync
@@ -24,10 +25,15 @@ from toto.api.cors import (
     render_access_denied,
 )
 from toto.api.fetch_metadata import cross_site_refusal
-from toto.api.middleware import TokenAuthMiddleware
 from toto.api.models import _reject_secret_like_json
-from toto.api.ws_origin import TotoOriginValidator, origin_of
 from toto.audit.models import AuditRecord
+
+try:  # the socket layer is the host's choice (zenobia has none, 2026-10-04)
+    from toto.api.middleware import TokenAuthMiddleware
+    from toto.api.ws_origin import TotoOriginValidator, origin_of
+    HAVE_CHANNELS = True
+except ImportError:
+    HAVE_CHANNELS = False
 
 User = get_user_model()
 
@@ -259,6 +265,7 @@ class MeshPageTests(TestCase):
         self.assertEqual(render_access_denied(request, status=401).status_code, 401)
 
 
+@unittest.skipUnless(HAVE_CHANNELS, "channels is not installed on this host")
 class SocketTokenTests(TestCase):
     def setUp(self):
         self.ada = User.objects.create_user("ada", password="pw")
@@ -297,6 +304,7 @@ class SocketTokenTests(TestCase):
         self.assertIsInstance(self.scope_after(scope), AnonymousUser)
 
 
+@unittest.skipUnless(HAVE_CHANNELS, "channels is not installed on this host")
 class SocketOriginTests(SimpleTestCase):
     def setUp(self):
         self.valid = TotoOriginValidator(lambda *a: None).valid_origin

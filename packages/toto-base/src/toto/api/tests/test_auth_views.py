@@ -235,7 +235,9 @@ class AppsDescriptorApiTests(TestCase):
                     "aster", "beacon"]:
             self.assertIn(key, apps)
             self.assertIsInstance(apps[key], bool)
-        self.assertTrue(apps["chat"])  # telegraph is installed wherever this endpoint runs
+        # The forum is the host's choice (zenobia parked it, 2026-10-04).
+        from django.apps import apps as django_apps
+        self.assertEqual(apps["chat"], django_apps.is_installed("toto.forum"))
 
     def test_uninstalled_app_reported_false(self):
         # Simulate a faros-style server without the knowledge graph (ravioli).
