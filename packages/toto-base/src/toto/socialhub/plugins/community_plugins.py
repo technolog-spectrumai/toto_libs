@@ -55,6 +55,12 @@ class CommunityForumPlugin(CommunityPlugin):
     section_icon = "fa-solid fa-comments"
     template_name = "socialhub/community_plugins/forum.html"
 
+    def is_visible(self, **kwargs) -> bool:
+        # A host without the forum shows no panel about one (2026-10-04).
+        from django.apps import apps
+
+        return apps.is_installed("toto.forum") and super().is_visible(**kwargs)
+
     def get_context(self, **kwargs) -> dict[str, Any]:
         context = super().get_context(**kwargs)
         community = kwargs["community"]

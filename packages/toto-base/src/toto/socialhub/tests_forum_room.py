@@ -117,3 +117,16 @@ class NewsIsGoneFromThePageOnlyTests(TestCase):
         keys = set(CommunityPlugin.registry)
         self.assertIn("community_forum", keys)
         self.assertNotIn("community_news", keys)
+
+    def test_no_forum_panel_on_a_host_without_the_forum(self):
+        from unittest.mock import patch
+
+        real = django_apps.is_installed
+        self.client.force_login(self.user)
+        with patch.object(django_apps, "is_installed",
+                          side_effect=lambda name: name != "toto.forum" and real(name)):
+            response = self.client.get(
+                reverse("socialhub:community_detail", args=["newsy"]))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "forum room")
+        self.assertNotContains(response, "Forum room")
