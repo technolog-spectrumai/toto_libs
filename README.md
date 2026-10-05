@@ -147,17 +147,19 @@ still build against it. What the repository itself shows:
 
 | Host | What this repository shows about it |
 |---|---|
-| **faros** | `scripts/make_faros_vendor.sh` builds a `faros_vendor` branch from a `faros` branch, leaving out seven packages. Code comments call it a Tor host that sets `VAULT_FILE_EDITS = False` and `VAULT_EXTERNAL_BUCKETS = False`, and `toto.core` and `toto.monit` keep `apps.is_installed` guards for `toto.nomad` and `toto.aster`, two apps that are not in this tree. No branch named `faros` exists any more; `legacy/faros` and `legacy/faros_vendor` do. |
-| **aurelian** | `scripts/make_aurelian_vendor.sh` does the same for an `aurelian` branch. `toto/quota/charge.py` names it as the host that pins no economy package and must still run every metered endpoint for free. Only `legacy/aurelian` and `legacy/aurelian_vendor` exist as branches. |
+| **faros** | `scripts/make_faros_vendor.sh` would build a `faros_vendor` branch, leaving out twelve packages and keeping `toto-base`, `toto-auth`, `toto-flow` and `toto-ops`; its header says it is not in use. Code comments call it a Tor host that sets `VAULT_FILE_EDITS = False` and `VAULT_EXTERNAL_BUCKETS = False`, and `toto.core` and `toto.monit` keep `apps.is_installed` guards for `toto.nomad` and `toto.aster`, two apps that are not in this tree. No branch named `faros` exists any more; `legacy/faros` and `legacy/faros_vendor` do. |
+| **aurelian** | `scripts/make_aurelian_vendor.sh` does the same for aurelian, keeping `toto-base`, `toto-auth`, `toto-flow`, `toto-works` and, beneath `toto-works`, `toto-geo`; it is not in use either. `toto/quota/charge.py` names it as the host that pins no economy package and must still run every metered endpoint for free. Only `legacy/aurelian` and `legacy/aurelian_vendor` exist as branches. |
 | **placidia** | No script. The `toto-repo` README describes it as a federation consumer (`TOTO_AUTH_MODE=consumer`) that owned the workspace labs, and `toto/features.py` says it is being dismantled. A `legacy/placidia_vendor` branch exists. |
 | **poseidon** | A `legacy/poseidon_vendor` branch exists. Otherwise the name appears only as a peer name in one vault test. |
 | **emilia** | No branch and no script. The name appears only as a peer name in the same vault test. |
 | **delta** | A `legacy/delta` branch exists. Comments in `toto.subscriptions` and `toto.antivirus` name it as the host whose apps some rules here were taken from. |
 
-Two things follow. First, both vendor scripts for other hosts name branches
-that no longer exist and exclusion lists written when the suite had fewer
-packages, so they are records of an older arrangement and will not run as
-they stand. Second, the library changes of September and October 2026 (see
+Two things follow. First, both vendor scripts for other hosts are records
+of an older arrangement: the `faros` and `aurelian` branches they were
+written for no longer exist. Since 2026-10-06 they read from `dev_django5`
+and their exclusion lists cover all sixteen packages, but each says at its
+top that nothing uses it, and the list for faros rests on the last vendor
+branch (suite 1.8), not on faros' own pins. Second, the library changes of September and October 2026 (see
 section 8) were made for zenobia; version 2.0 is a major release precisely
 because other hosts must act to follow it. Treat every other host as possibly
 behind or broken until its own repository says otherwise.
@@ -212,7 +214,7 @@ The scripts, by what they are for:
 | `scripts/build_wheels.py` | Builds wheels (and with `--sdist`, sdists first and the wheels from them) into `dist/`, clearing each package's stale `build/` tree first. |
 | `scripts/install_toto.sh` | Installs all sixteen packages editable in one pip call, which is the only way pip can satisfy their exact pins on each other. |
 | `scripts/clean_env_check.sh` | The clean-environment gate. See section 7. |
-| `scripts/make_zenobia_vendor.sh`, `make_faros_vendor.sh`, `make_aurelian_vendor.sh` | Built per-host `*_vendor` branches for `git subtree` vendoring. They name source branches that no longer exist; zenobia is re-vendored by rsync today (section 7). |
+| `scripts/make_zenobia_vendor.sh`, `make_faros_vendor.sh`, `make_aurelian_vendor.sh` | Built per-host `*_vendor` branches for `git subtree` vendoring. Not in use, and each says so at its top; they read from `dev_django5` since 2026-10-06. zenobia is re-vendored by rsync today (section 7). |
 | `scripts/clean_migrations.sh`, `reset.sh`, `dev_side.sh`, `nginx.conf.j2` | Older helpers: deleting migration directories, a container entry point that migrates and seeds, a local Redis and Celery starter, and an nginx template. Nothing else in this repository calls them. |
 
 ---
@@ -1322,8 +1324,13 @@ wheels, and then installs a list of dependency tiers one at a time and runs
 `tier_check.py` in each. Use the system interpreter: `settings_min.py`
 loads `toto.locations` with GeoDjango, which needs the system GDAL, and a
 conda Python usually cannot load it. The tier list in the script names
-eleven combinations and does not yet include `toto-economy`,
-`toto-business`, `toto-ambrosia`, `toto-anastasia` or `toto-media-ops`.
+sixteen combinations, and every package is in at least one (since
+2026-10-06; before, `toto-economy`, `toto-business`, `toto-ambrosia`,
+`toto-anastasia` and `toto-media-ops` were in none). A tier names its
+packages' whole dependency closure, because `tier_check.py` fails a tier
+whose installed set differs from the one named. The tiers added or
+changed on 2026-10-06 were checked from the source tree only; the gate
+itself has not been run with them yet.
 
 ### The apps' own tests
 
@@ -1401,12 +1408,16 @@ python scripts/release.py --check     # verify, write nothing
 python scripts/release.py 2.1         # VERSION, every pyproject, every sibling pin
 ```
 
-The repository has `v*` tags up to `v1.30` and no `v2.0` tag. Two other
-tags mark states worth returning to: `last-with-gis` and
-`company-parked-2026-09-28`. A host that builds from a git checkout of this
-repository with a strict deploy would need the tag `v2.0` on the commit it
-builds; zenobia builds from its vendored copy, which has no `.git`, so the
-tag is not asked for.
+The repository has `v*` tags up to `v1.30`, and then `v2.0`: an annotated
+tag made on 2026-10-06, not on the release commit `c01fbc6e` but on the
+state four days and about a hundred commits later, with `VERSION` still
+2.0. No version between 1.30 and 2.0 was tagged. Two other tags mark states
+worth returning to: `last-with-gis` and `company-parked-2026-09-28`. A host
+that builds from a git checkout of this repository with a strict deploy
+must have `HEAD` on the tag of the version it pins
+(`toto.versioning.verify_checkout`), so every commit after the tag fails
+that check until the next release is tagged; zenobia builds from its
+vendored copy, which has no `.git`, so the tag is not asked for.
 
 ### How zenobia re-vendors
 
@@ -1425,7 +1436,8 @@ The copy is an rsync from the monorepo's root (the monorepo's
 ```bash
 LIB=/home/janek/Desktop/dev/toto_libs/toto_libs
 rsync -a --delete --exclude .git --exclude __pycache__ --exclude 'build/' \
-      --exclude '*.egg-info' "$LIB/" vendor/toto_libs/
+      --exclude 'dist/' --exclude '*.egg-info' --exclude '.venv*' \
+      --exclude .pytest_cache "$LIB/" vendor/toto_libs/
 ```
 
 When `VERSION` moved, every pin in `zenobia/requirements.toto.txt` moves to
@@ -1570,8 +1582,13 @@ hashes.
   checked for packaging, but nothing deploys them today, so behaviour
   described for them is what the code says, not what a running platform
   was seen to do.
-- **Package READMEs.** They were not revised with this file and several
-  are out of date in their counts and in where apps live. The root
-  `pyproject.toml` comment, which lists eleven packages, and the
-  `*_vendor.sh` scripts are out of date in the same way.
+- **Package READMEs.** They were not rewritten with this file. On
+  2026-10-06 their package counts, their declared dependencies and where
+  `toto.locations` lives were corrected (the map's section moved from the
+  `toto-base` README to the `toto-geo` one), together with the root
+  `pyproject.toml` comment and the `*_vendor.sh` scripts. Their
+  descriptions of single apps were not re-read against the code: the
+  `toto-base` README has no section for six of its apps, and the
+  `toto-works` README has none for `toto.sketch`. Where a package README
+  and this file disagree, this file is the later one.
 - **Django 4.2.** The declared range includes it; no gate here proves it.
