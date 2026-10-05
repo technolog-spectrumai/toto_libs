@@ -226,8 +226,8 @@ Relevant settings:
 
 ## Build & packaging
 
-toto-ai is one of the nine lockstep-versioned wheels in the toto suite (siblings: `toto-base`,
-`toto-chat`, `toto-flow`, `toto-geo`, `toto-graph`, `toto-media`, `toto-ops`, `toto-works`). Every
+toto-ai is one of the sixteen lockstep-versioned wheels in the toto suite (the root README lists
+all of them). Every
 package shares a single version from the repo's `VERSION` file (currently **2.0**) and pins its
 siblings exactly. toto-ai declares just one sibling dependency: **`toto-base==2.0`**; its graph
 integration stays a lazy, one-directional coupling so `toto-graph` can depend on toto-ai and not the

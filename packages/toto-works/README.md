@@ -1,6 +1,8 @@
 # toto-works
 
-**toto file, document and data services.** `toto-works` is one wheel in the lockstep-versioned toto suite. It bundles four Django apps over the shared vault: **kanban** (project / mission / task management with sprint metrics), **memo** (a browser slide-deck editor and presenter), **cyprian** (a writer: long documents with real pages and a finished PDF), and **primula** (vault-backed spreadsheets). Three of the four are thin, database-light layers over the vault — memo, cyprian and primula store nothing at all, their content being one self-contained file each; kanban is the data-rich one. (**antaresia**, the old vault Python runner, was deleted in 1.45 — the name now belongs to zenobia's Python workspace app, ambrosia's successor.) All four ship under the shared `toto.*` PEP 420 namespace.
+**toto file, document and data services.** `toto-works` is one wheel in the lockstep-versioned toto suite. It bundles four Django apps over the shared vault: **kanban** (project / mission / task management with sprint metrics), **memo** (slide decks), **cyprian** (a writer: long documents with real pages and a finished PDF), and **sketch** (an SVG drawing board; a drawing is an ordinary `svg` vault file). Three of the four are thin, database-light layers over the vault — memo, cyprian and sketch keep their content in one self-contained vault file each and own only metering tables; kanban is the data-rich one. All four ship under the shared `toto.*` PEP 420 namespace.
+
+**Two apps this file used to name are gone from the package.** **primula** (vault-backed spreadsheets) was parked on 2026-09-02 and **antaresia** (the old vault Python runner) was deleted in 1.45; neither is in this tree. This file has no section for `sketch` yet. The repository root README (section 5.8) is the current description of all four apps; zenobia, the main host, installs none of them and unpinned the package on 2026-10-01.
 
 ## What it does (functional)
 
@@ -15,7 +17,7 @@ Author self-contained presentations entirely in the browser — no database, no 
 
 ## How it works (technical)
 
-The package contains four Django apps under `src/toto/`: `kanban`, `memo`, `cyprian` and `primula`. Each is a standard `AppConfig`. `cyprian` imports `toto.memo`'s sanitisers and media helpers, which is why the two share a wheel; it reaches `toto.notarius` only through `apps.is_installed` guards, so the wheel does not depend on the host that owns contracts. Cross-app model relationships are expressed as string-based Django foreign keys (e.g. `"vault.VaultFile"`, `"workflows.WorkflowRun"`, `"locations.Zone"`) and are resolved when the full portal Django project is assembled; the only *declared* wheel dependencies are `toto-base` and `toto-flow` (see Build & packaging).
+The package contains four Django apps under `src/toto/`: `kanban`, `memo`, `cyprian` and `sketch`. Each is a standard `AppConfig`. `cyprian` imports `toto.memo`'s sanitisers and media helpers, which is why the two share a wheel; it reaches `toto.notarius` only through `apps.is_installed` guards, so the wheel does not depend on the host that owns contracts. Cross-app model relationships are expressed as string-based Django foreign keys (e.g. `"vault.VaultFile"`, `"locations.Zone"`) and are resolved when the full portal Django project is assembled; the *declared* wheel dependencies are `toto-base` and `toto-geo` (see Build & packaging).
 
 ### kanban — project / mission / task management
 
@@ -104,8 +106,8 @@ See `src/toto/memo/README.md` for the full picture. In brief:
   git toolbar context).
 
 ### Cross-cutting design notes
-- **File-as-source-of-truth.** antaresia, memo and primula store no user content of their own beyond run records: antaresia's `PythonRun` points at a vault file, and memo and primula keep everything in the vault file itself. All integrate with the vault through its plugin system rather than owning storage.
-- **Workflow-backed, with a fallback.** antaresia runs scripts through a toto-flow `WorkflowRun` when the corresponding `Workflow` is configured, and degrades to a direct Celery task otherwise — the reason `toto-flow` is a hard dependency of this package.
+- **File-as-source-of-truth.** memo, cyprian and sketch store no user content of their own: each keeps everything in the vault file itself and integrates with the vault through its plugin system rather than owning storage.
+- **The map beneath the boards.** kanban's `Campaign` and `Mission` have foreign keys to `locations.Zone`, `locations.Address` and `locations.Route`. The map left `toto-base` for `toto-geo` on 2026-10-04, which is why `toto-geo` is a hard dependency of this package since that day. (The `toto-flow` dependency left with antaresia, the last thing here that touched the workflow engine; `toto-flow` still arrives beneath `toto-geo`.)
 
 ## Usage
 
@@ -118,34 +120,32 @@ These apps are normally consumed as part of an assembled toto portal, not standa
 ```python
 INSTALLED_APPS = [
     # ...
-    "toto.antaresia",
     "toto.kanban",
     "toto.memo",
 ]
 ```
 
-Include their URLconfs (`toto.antaresia.urls`, `toto.kanban.urls`, `toto.memo.urls`), run migrations (`python manage.py migrate`), and for antaresia also register its Channels routes (`toto.antaresia.routing.websocket_urlpatterns`) and run a Celery worker — script execution and the workflow/Celery path both require it.
+Include their URLconfs (`toto.kanban.urls`, `toto.memo.urls`) and run migrations (`python manage.py migrate`). kanban needs the map's apps installed as well (`toto.registry.LOCATIONS_APPS`, from `toto-geo`), because its models key into them.
 
 **Import** under the shared namespace, for example:
 
 ```python
 from toto.kanban.models import Project, Mission, Task
-from toto.antaresia.models import PythonRun
 ```
 
 **Run the tests** against a host portal, e.g.:
 
 ```bash
 cd portal && python manage.py test toto.kanban.tests_api
-cd portal && python manage.py test toto.antaresia toto.memo
+cd portal && python manage.py test toto.memo
 ```
 
 ## Build & packaging
 
-`toto-works` is part of the lockstep-versioned toto suite: all nine wheels share a single `VERSION`, kept in `VERSION` at the root of the tree and rewritten only by `scripts/release.py`. It declares its sibling pins in `pyproject.toml`:
+`toto-works` is part of the lockstep-versioned toto suite: all sixteen wheels share a single `VERSION`, kept in `VERSION` at the root of the tree and rewritten only by `scripts/release.py`. It declares its sibling pins in `pyproject.toml`:
 
 - `toto-base` at the suite version
-- `toto-flow` at the suite version — antaresia foreign-keys `workflows.WorkflowRun`
+- `toto-geo` at the suite version — kanban's models and its `0001` migration key into `locations` (zones, addresses, routes), which left `toto-base` for `toto-geo` on 2026-10-04
 
 Versions are rewritten only by `scripts/release.py` (never edited by hand), and `scripts/check_package_graph.py` enforces that each wheel owns a disjoint slice of the `toto.*` namespace. The build backend is setuptools with namespace package discovery under `src/`; package data bundles `templates/**/*`, `static/**/*`, and `graph/*.yaml`. Hosts pin the assembled suite in `requirements.toto.txt`.
 

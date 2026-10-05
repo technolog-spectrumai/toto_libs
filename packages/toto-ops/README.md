@@ -6,7 +6,7 @@ self-hosted alternative to Grafana. It periodically samples the health of the
 running deployment — system resources, backing services, and web-tier traffic —
 stores the samples in the app's own database, and renders an overview page
 for a superuser on the Superuser plan with live readings and 48-hour trend
-charts, plus a public health-check endpoint. It ships as one of nine lockstep-versioned wheels that
+charts, plus a public health-check endpoint. It ships as one of sixteen lockstep-versioned wheels that
 share the `toto.*` PEP 420 namespace and is pinned by host projects in
 `requirements.toto.txt`.
 
@@ -399,7 +399,7 @@ python manage.py test toto.monit
 
 ## Build & packaging
 
-`toto-ops` is one wheel in the lockstep-versioned toto suite. All nine
+`toto-ops` is one wheel in the lockstep-versioned toto suite. All sixteen
 distributions share a single VERSION (currently **2.0**) and pin their siblings
 exactly; here that is the sole dependency `toto-base==2.0`. Version strings are
 rewritten only by `scripts/release.py` and must never be edited by hand.

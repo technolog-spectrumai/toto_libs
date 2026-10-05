@@ -23,3 +23,10 @@ Moved host → wheel in 1.50 from `zenobia/zenobia/toto/` with app labels
 preserved (every migration was reset to a fresh initial on 2026-10-01). The ledger's
 immutability triggers hardcode the table name `ledger_ledgerentry`; the app
 label must therefore stay `ledger` forever.
+
+The wheel depends on `toto-base` and, since 2026-10-04, on `toto-geo`:
+`company`'s models and its `0001` migration have foreign keys to
+`locations.Address` (a company's headquarters, a party's location), and the
+map left `toto-base` for `toto-geo` that day. It is one of the suite's
+sixteen lockstep-versioned wheels; no host in the monorepo pins it (zenobia's
+register left for a separate product on 2026-09-20).

@@ -151,7 +151,7 @@ run = trigger_workflow("data-pipeline", {"data": {"item_id": 1}})
 
 ## Build & packaging
 
-`toto-flow` is one wheel in the lockstep **toto** suite (nine distributions sharing the `toto.*` PEP 420 namespace). It uses a `src/` layout built with `setuptools` (`build_meta`); `[tool.setuptools.packages.find]` gathers `toto*` with `namespaces = true`, and package data ships `templates/**/*`, `static/**/*` and `graph/*.yaml`.
+`toto-flow` is one wheel in the lockstep **toto** suite (sixteen distributions sharing the `toto.*` PEP 420 namespace). It uses a `src/` layout built with `setuptools` (`build_meta`); `[tool.setuptools.packages.find]` gathers `toto*` with `namespaces = true`, and package data ships `templates/**/*`, `static/**/*` and `graph/*.yaml`.
 
 - **Version:** currently `2.0`. All suite versions move together and are rewritten only by the repository's release script — never edit them by hand.
 - **Sibling pin:** depends on `toto-base==2.0`. Hosts pin `toto-flow` (and its siblings) in `requirements.toto.txt`.

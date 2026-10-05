@@ -141,6 +141,6 @@ python manage.py test \
 
 ## Build & packaging
 
-toto-chat is one of the 9 lockstep-versioned wheels in the toto suite. All siblings share a single `VERSION` (currently **2.0**) and pin each other exactly; this package depends on **`toto-base==2.0`**. Versions are rewritten only by the repo's release tooling (`scripts/release.py`) — never edit them by hand — and `scripts/check_package_graph.py` enforces that each wheel owns a disjoint slice of the `toto.*` namespace. Packaging is standard setuptools (`src/` layout, namespace packages, with `templates/`, `static/`, and `graph/*.yaml` bundled as package data). Hosts pin the whole set in `requirements.toto.txt`.
+toto-chat is one of the 16 lockstep-versioned wheels in the toto suite. All siblings share a single `VERSION` (currently **2.0**) and pin each other exactly; this package depends on **`toto-base==2.0`**. Versions are rewritten only by the repo's release tooling (`scripts/release.py`) — never edit them by hand — and `scripts/check_package_graph.py` enforces that each wheel owns a disjoint slice of the `toto.*` namespace. Packaging is standard setuptools (`src/` layout, namespace packages, with `templates/`, `static/`, and `graph/*.yaml` bundled as package data). Hosts pin the packages they install, all at one version, in `requirements.toto.txt`.
 
 For the full build, versioning, and release manual, see the repository root README.

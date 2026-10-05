@@ -157,7 +157,7 @@ From a host directory, whose `manage.py` puts the vendored sources first:
 
 ## Build & packaging
 
-One of twelve lockstep-versioned wheels in the toto suite, all sharing the `toto.*`
+One of sixteen lockstep-versioned wheels in the toto suite, all sharing the `toto.*`
 PEP 420 namespace. The suite ships at a single version held in `toto_libs/VERSION`,
 and every package pins its siblings at exactly that version.
 
