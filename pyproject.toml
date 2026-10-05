@@ -1,19 +1,24 @@
 # The repository root is deliberately NOT an installable distribution.
 #
-# toto ships as several lockstep-versioned packages under packages/, all filling
-# the PEP 420 `toto.*` namespace:
+# toto ships as sixteen lockstep-versioned packages under packages/, all
+# filling the PEP 420 `toto.*` namespace:
 #
-#   toto-base   foundation + host API (every host installs it)
-#   toto-auth   OIDC provider/consumer apps + login strategy (every host installs it)
-#   toto-flow   workflow engine and compute kernels
-#   toto-works  workflow-backed file/document/data services
-#   toto-business companies, share register, voting, decision ledger
-#   toto-geo    geo feature apps (weather)
-#   toto-media  video, transcription and media processing
-#   toto-chat   encrypted mesh chat
-#   toto-ops    onion identity, device directory, monitoring
-#   toto-ai     agents, embeddings, assistants
-#   toto-graph  Neo4j knowledge graph, ingestion, connectors
+#   toto-base       foundation + host API (every host installs it)
+#   toto-auth       OIDC provider/consumer apps + login strategy
+#   toto-flow       workflow engine and compute kernels
+#   toto-economy    money ledger, rate card, mint, tax, mana, clearing
+#   toto-ops        monitoring dashboard and alerts
+#   toto-chat       forum chat
+#   toto-geo        the map (locations) and weather
+#   toto-works      boards, document writer, slide decks, drawing board
+#   toto-business   companies, share register, voting, decision ledger
+#   toto-ai         agents, embeddings, assistants
+#   toto-graph      Neo4j knowledge graph, ingestion, connectors
+#   toto-media      video/audio playback and OCR over the vault
+#   toto-media-ops  ffmpeg, file services and transcription
+#   toto-repo       local git over vault directories, the Gitea remote
+#   toto-ambrosia   workspaces: the shared base under the language labs
+#   toto-anastasia  booked compute: capacity, Gears, disposable runners
 #
 # Install them with scripts/install_toto.sh (editable) or build wheels with
 # scripts/build_wheels.py. See README.md.
