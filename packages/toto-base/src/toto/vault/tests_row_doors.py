@@ -1,8 +1,9 @@
-"""Folders that update as they change (2026-10-04): what the vault publishes,
-who may watch a folder and what it lists for them, the row door and the
-thumbnail door.
+"""The file list's doors (2026-10-04, 2026-10-06): the row door, the
+thumbnail door and the listing door a page asks when its tab is looked at
+again; what ``file_changed`` says of a save; and that no page is told of a
+change — nothing is published, no folder is watched, nothing waits.
 
-    manage.py test toto.vault.tests_live
+    manage.py test toto.vault.tests_row_doors
 """
 
 import io
@@ -14,11 +15,9 @@ from django.core.files.base import ContentFile
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from toto.core import live as signal
 from toto.core.models import Platform
 from toto.people.models import Person
 from toto.socialhub.models import Clearance
-from toto.vault import live
 from toto.vault.models import Bucket, BucketClearance, VaultDirectory, VaultFile
 from toto.vault.signals import changes, file_changed
 
@@ -33,7 +32,7 @@ def png(size=(400, 300), colour=(200, 30, 30, 255), mode="RGBA", fmt="PNG"):
     return out.getvalue()
 
 
-@override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="vault-live-"), LIVE_REDIS_URL="")
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="vault-rows-"))
 class Case(TestCase):
     def setUp(self):
         cache.clear()
@@ -61,82 +60,63 @@ class Case(TestCase):
             vault_file.save()
         return VaultFile.objects.get(pk=vault_file.pk)
 
-    def stamps(self):
-        keys = [live.folder_key(self.folder.pk), live.folder_key(self.other.pk)]
-        found = signal.stamps(keys)
-        return found[keys[0]], found[keys[1]]
+    def said(self, function):
+        """The ``file_changed`` kinds ``function`` sends."""
+        seen = []
 
-    def act(self, function):
-        """Which of the two folders got a new stamp: ``(Papers, Other)``."""
-        before = self.stamps()
-        with self.captureOnCommitCallbacks(execute=True):
-            function()
-        after = self.stamps()
-        return after[0] != before[0], after[1] != before[1]
+        def listener(sender=None, file=None, kind="", was=None, **kwargs):
+            seen.append(kind)
+
+        file_changed.connect(listener)
+        try:
+            with self.captureOnCommitCallbacks(execute=True):
+                function()
+        finally:
+            file_changed.disconnect(listener)
+        return seen
 
 
-class EventTests(Case):
-    def test_an_upload_says_its_folder_changed_and_nothing_else(self):
-        self.assertEqual(self.stamps(), ("", ""))
-        self.assertEqual(self.act(lambda: self.file("secret-plan.txt", capture=False)),
-                         (True, False))
-        stamp = self.stamps()[0]
-        self.assertTrue(stamp)
-        self.assertNotIn("secret", stamp)
-        self.assertEqual(live.folder_key(self.folder.pk), f"folder.{self.folder.pk}")
+class ChangeSignalTests(Case):
+    """``signals.file_changed``: what the bell's source listens to."""
 
-    def test_nothing_is_said_for_a_change_that_rolled_back(self):
-        with self.captureOnCommitCallbacks(execute=False):
-            self.file(capture=False)
-        self.assertEqual(self.stamps(), ("", ""))
-
-    def test_rename_replace_trash_restore(self):
+    def test_upload_rename_replace_trash_restore(self):
+        self.assertEqual(self.said(lambda: self.file("secret-plan.txt", capture=False)),
+                         ["uploaded"])
         vault_file = self.file()
 
         def rename():
             vault_file.title = "other.txt"
             vault_file.save(update_fields=["title"])
-        self.assertEqual(self.act(rename), (True, False))
+        self.assertEqual(self.said(rename), ["changed"])
         VaultFile.objects.filter(pk=vault_file.pk).update(content_hash="a" * 64)
         fresh = VaultFile.objects.get(pk=vault_file.pk)
 
         def replace():
             fresh.content_hash = "b" * 64
             fresh.save(update_fields=["content_hash"])
-        self.assertEqual(self.act(replace), (True, False))
+        self.assertEqual(self.said(replace), ["replaced"])
         self.assertEqual(
-            self.act(lambda: VaultFile.objects.get(pk=vault_file.pk).trash(by=self.owner)),
-            (True, False))
+            self.said(lambda: VaultFile.objects.get(pk=vault_file.pk).trash(by=self.owner)),
+            ["trashed"])
         from toto.vault.trash import restore_file
 
         self.assertEqual(
-            self.act(lambda: restore_file(VaultFile.all_objects.get(pk=vault_file.pk))),
-            (True, False))
+            self.said(lambda: restore_file(VaultFile.all_objects.get(pk=vault_file.pk))),
+            ["restored"])
 
-    def test_a_move_touches_the_folder_it_left_and_the_one_it_reached(self):
+    def test_a_move_a_save_that_changes_nothing_and_a_delete(self):
         vault_file = self.file()
 
         def move():
             vault_file.directory = self.other
             vault_file.save(update_fields=["directory"])
-        self.assertEqual(self.act(move), (True, True))
-        self.assertEqual(live.folders_of("moved", vault_file, {"directory_id": self.folder.pk}),
-                         [self.folder.pk, self.other.pk])
-
-    def test_a_file_at_a_buckets_top_and_a_save_that_changes_nothing_say_nothing(self):
-        self.assertEqual(self.act(lambda: self.file(folder=None, capture=False)), (False, False))
-        vault_file = self.file()
-        self.assertEqual(self.act(lambda: vault_file.save(update_fields=["notes"])),
-                         (False, False))
-        self.assertEqual(self.act(vault_file.save), (False, False))
-
-    def test_a_delete_outright_touches_its_folder_and_a_trashed_rows_purge_does_not(self):
-        vault_file = self.file()
-        self.assertEqual(self.act(vault_file.delete), (True, False))
+        self.assertEqual(self.said(move), ["moved"])
+        self.assertEqual(self.said(lambda: vault_file.save(update_fields=["notes"])), [])
+        self.assertEqual(self.said(vault_file.save), [])
+        self.assertEqual(self.said(vault_file.delete), ["deleted"])
         trashed = self.file()
         trashed.trash()
-        self.assertEqual(self.act(VaultFile.all_objects.get(pk=trashed.pk).delete),
-                         (False, False))
+        self.assertEqual(self.said(VaultFile.all_objects.get(pk=trashed.pk).delete), [])
 
     def test_the_kinds_of_one_save(self):
         base = {"directory_id": 1, "bucket_id": 1, "title": "a", "file_type": "text",
@@ -160,59 +140,90 @@ class EventTests(Case):
             file_changed.disconnect(broken)
 
 
-class AccessTests(Case):
-    def test_watched_is_the_listings_rule(self):
-        self.assertTrue(live.may_watch(self.reader, self.folder.pk))
-        self.assertFalse(live.may_watch(self.reader, 999999))
-        self.assertFalse(live.may_watch(self.reader, "x"))
-        from django.contrib.auth.models import AnonymousUser
+class NoLiveTests(Case):
+    """No page is told that a folder changed (2026-10-06)."""
 
-        self.assertFalse(live.may_watch(AnonymousUser(), self.folder.pk))
-        self.other.allowed_users.add(self.owner)
-        self.assertFalse(live.may_watch(self.reader, self.other.pk))
-        asked = [self.other.pk, "x", 999999, self.folder.pk, self.folder.pk]
-        self.assertEqual(live.watched(self.reader, asked), [self.folder.pk])
-        self.assertEqual(live.watched(self.owner, asked), [self.other.pk, self.folder.pk])
-        # One rule, not two: what the folder's own method says.
-        for user in (self.owner, self.reader, User.objects.create_superuser("root", "", "pw")):
-            for folder in (self.folder, self.other):
-                with self.subTest(user=user.username, folder=folder.name):
-                    self.assertEqual(live.may_watch(user, folder.pk),
-                                     folder.user_can_access(user))
+    def test_the_vault_publishes_nothing_and_watches_nothing(self):
+        import importlib.util
+
+        self.assertIsNone(importlib.util.find_spec("toto.vault.live"))
+        uids = [str(entry[0][0]) for entry in file_changed.receivers]
+        self.assertNotIn("toto.vault.live.publish", uids)
+        self.assertFalse([uid for uid in uids if ".live" in uid])
+
+    def test_a_change_touches_no_cache_key(self):
+        from unittest import mock
+
+        vault_file = self.file()
+        with mock.patch("django.core.cache.cache.set") as stamped:
+            with self.captureOnCommitCallbacks(execute=True):
+                vault_file.title = "renamed.txt"
+                vault_file.save(update_fields=["title"])
+        self.assertEqual([call for call in stamped.call_args_list
+                          if "live" in str(call.args[:1])], [])
+
+    def test_a_row_carries_no_version_tag(self):
+        vault_file = self.file()
+        item = self.client.get(reverse("vault:file_row", args=[vault_file.pk])).json()["item"]
+        self.assertNotIn("v", item)
+
+
+class ListingDoorTests(Case):
+    """``vault:public_list_items``: the page's own list, asked again."""
+
+    def items(self, client=None, **query):
+        response = (client or self.client).get(reverse("vault:public_list_items"), query)
+        self.assertEqual(response.status_code, 200)
+        return response.json()["items"]
+
+    def test_it_answers_exactly_what_the_page_lists(self):
+        self.file("note.txt"), self.file("photo.png", png(), file_type="image")
+        self.file("deep.txt", folder=self.other), self.file("top.txt", folder=None)
+        page = self.client.get(reverse("vault:public_list")).context["flat_items"]
+        self.assertEqual(self.items(), page)
+        self.assertEqual([i["t"] for i in page].count("file"), 4)
+        response = self.client.get(reverse("vault:public_list_items"))
+        self.assertEqual(response["Cache-Control"], "no-store")
+        self.assertEqual(self.client.post(reverse("vault:public_list_items")).status_code, 405)
+
+    def test_it_keeps_to_the_bucket_the_page_shows(self):
+        elsewhere = Bucket.objects.create(name="Home", slug="home", owner=self.owner)
+        VaultDirectory.objects.create(name="Attic", bucket=elsewhere, owner=self.owner)
+        self.file("note.txt")
+        page = self.client.get(reverse("vault:public_list"), {"bucket": "work"})
+        self.assertEqual(self.items(bucket="work"), page.context["flat_items"])
+        self.assertNotIn("Attic", [i.get("name") for i in self.items(bucket="work")])
+        self.assertIn("Attic", [i.get("name") for i in self.items()])
+        self.assertIn(f'data-items-url="{reverse("vault:public_list_items")}?bucket=work"',
+                      page.content.decode())
+
+    def test_a_reader_is_listed_what_a_reload_would_list_them(self):
+        private, public = self.file("mine.txt"), self.file("ours.txt", public=True)
+        trashed = self.file("gone.txt", public=True)
+        trashed.trash()
+        reader = Client()
+        reader.force_login(self.reader)
+        listed = [i["id"] for i in self.items(reader) if i["t"] == "file"]
+        self.assertEqual(listed, [public.pk])
+        self.assertNotIn("mine.txt", str(self.items(reader)))
+        mine = [i["id"] for i in self.items() if i["t"] == "file"]
+        self.assertEqual(sorted(mine), sorted([private.pk, public.pk]))
+        self.assertEqual(self.items(reader),
+                         reader.get(reverse("vault:public_list")).context["flat_items"])
+
+    def test_a_kept_bucket_is_hidden_from_its_owner_too(self):
+        self.file("salaries.txt", public=True)
         BucketClearance.objects.create(bucket=self.bucket,
                                        clearance=Clearance.objects.create(name="Payroll"))
         Person.objects.create(user=self.owner, display_name="Owner")
-        self.assertFalse(live.may_watch(self.owner, self.folder.pk))    # no owner bypass
-        self.assertEqual(live.watched(self.owner, asked), [])
+        self.assertNotIn("salaries.txt", str(self.items()))
 
-    def test_the_rows_of_a_folder_are_the_ones_the_list_shows_the_reader(self):
-        private, public = self.file(), self.file(public=True)
-        elsewhere, trashed = self.file(folder=self.other, public=True), self.file(public=True)
-        trashed.trash()
-        mine = live.rows(self.owner, self.folder.pk)
-        self.assertEqual(sorted(mine), sorted([str(private.pk), str(public.pk)]))
-        self.assertEqual(list(live.rows(self.reader, self.folder.pk)), [str(public.pk)])
-        self.assertNotIn(str(elsewhere.pk), mine)
-        # ids and a tag: no name, and the tag is the row's own.
-        self.assertEqual(mine[str(public.pk)], live.row_version(public))
-        self.assertNotIn("note", str(mine))
-        self.assertRegex(mine[str(public.pk)], r"^[0-9a-f]{10}$")
-
-    def test_the_tag_changes_when_the_row_does(self):
-        vault_file = self.file("photo.png")
-        before = live.row_version(vault_file)
-        self.assertEqual(before, live.row_version(VaultFile.objects.get(pk=vault_file.pk)))
-        vault_file.title = "renamed.png"
-        self.assertNotEqual(live.row_version(vault_file), before)
-        vault_file.title, vault_file.content_hash = "photo.png", "b" * 64
-        self.assertNotEqual(live.row_version(vault_file), before)
-
-    def test_a_folder_too_large_to_compare_is_not_listed(self):
-        from unittest import mock
-
-        self.file(), self.file()
-        with mock.patch.object(live, "MAX_ROWS", 1):
-            self.assertIsNone(live.rows(self.owner, self.folder.pk))
+    def test_somebody_elses_upload_is_there_when_the_page_asks_again(self):
+        before = self.items()
+        self.file("theirs.txt", public=True, owner=self.reader)
+        after = self.items()
+        self.assertEqual(len(after), len(before) + 1)
+        self.assertIn("theirs.txt", [i.get("title") for i in after])
 
 
 class RowDoorTests(Case):
@@ -234,8 +245,6 @@ class RowDoorTests(Case):
         self.assertEqual({k: v for k, v in item.items() if k != "depth"},
                          {k: v for k, v in listed.items() if k != "depth"})
         self.assertEqual(item["pid"], self.folder.pk)
-        # The tag the long poll's answer is compared with.
-        self.assertEqual(item["v"], live.rows(self.owner, self.folder.pk)[str(vault_file.pk)])
 
     def test_a_file_the_reader_is_not_shown_is_a_404_like_one_that_is_not_there(self):
         private, public = self.file(), self.file(public=True)
@@ -316,21 +325,46 @@ class ThumbnailTests(Case):
 
 
 class PageTests(Case):
-    def test_the_page_carries_the_doors_as_data_and_draws_small_pictures(self):
+    def body(self):
         self.file("photo.png", png(), file_type="image")
         response = self.client.get(reverse("vault:public_list"))
-        body = response.content.decode()
-        self.assertTrue(response.context["vault_live"])
+        self.assertNotIn("vault_live", response.context)
+        return response.content.decode()
+
+    def test_the_page_carries_the_doors_as_data_and_draws_small_pictures(self):
+        body = self.body()
         self.assertIn(f'data-row-url="{reverse("vault:file_row", args=[0])}"', body)
         self.assertIn(f'data-upload-url="{reverse("vault:api_file_upload")}"', body)
-        self.assertIn('data-live="1"', body)
-        self.assertIn("row.v !== listed[key]", body)
-        self.assertIn(f'data-wait-url="{reverse("notify:api_wait")}"', body)
-        for gone in ("WebSocket", "ws/live", "wss:"):
-            self.assertNotIn(gone, body)
+        self.assertIn(f'data-items-url="{reverse("vault:public_list_items")}"', body)
         self.assertIn(':src="item.thumb_url"', body)
         self.assertIn("vault/upload_panel.js", body)
         self.assertIn('data-vault-control="upload-panel"', body)
         for marker in ("<iframe", "<object", "<embed", "<video", "<audio", "openImageModal(item)\""):
             self.assertNotIn(marker, body)
         self.assertNotIn("window.location.reload();\n          if (refused", body)
+
+    def test_the_page_holds_no_request_and_asks_nothing_on_a_timer(self):
+        body = self.body()
+        for gone in ("setInterval", "WebSocket", "EventSource", "ws/live", "wss:", "api/wait",
+                     "data-wait-url", "data-live", "totoLive", "toto:folder", "onFolderEvent",
+                     "watchFolder", "row.v ", "cursor=", "AbortController"):
+            with self.subTest(gone=gone):
+                self.assertNotIn(gone, body)
+
+    def test_the_listing_is_asked_again_on_a_return_to_the_tab_and_after_ones_own_change(self):
+        body = self.body()
+        self.assertIn("const LISTING_GAP_MS = 30000;", body)
+        for event in ("'visibilitychange'", "'focus'", "'pageshow'"):
+            self.assertIn(f"addEventListener({event}", body)
+        refresh = body[body.index("async refreshListing(force) {"):body.index("takeListing(items) {")]
+        self.assertIn("Date.now() - this._listingAsked < LISTING_GAP_MS", refresh)
+        self.assertEqual(refresh.count("await fetch("), 1)
+        for word in ("setTimeout", "setInterval", "location.reload"):
+            self.assertNotIn(word, refresh)
+        self.assertNotRegex(refresh, r"\bwhile\s*\(")
+        self.assertIn("attempt < 2", refresh)       # asked at most twice, never in a loop
+        # One's own move, trash, bulk action and rename ask at once; an
+        # upload that landed draws its row from the row door.
+        self.assertEqual(body.count("this.refreshListing(true);"), 4)
+        self.assertEqual(body.count("this.refreshListing(false);"), 1)
+        self.assertIn("onDone: fileId => { if (fileId) this.fetchRow(fileId); }", body)

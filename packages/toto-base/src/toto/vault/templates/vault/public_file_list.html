@@ -27,6 +27,8 @@
   const _createZipUrl = "{% url 'vault:create_zip' %}";
   const _zipStatusUrl = "{% url 'vault:zip_status' %}";
   const _zipEnabled   = {{ zip_enabled|yesno:"true,false" }};
+  // The listing is asked again on a return to the tab, but not more often.
+  const LISTING_GAP_MS = 30000;
 
   document.addEventListener('alpine:init', () => {
     Alpine.data('vaultTree', () => {
@@ -216,11 +218,11 @@
             if (open) this.$nextTick(() => this.$refs.removeEncInput?.focus());
           });
           this.$watch('search', () => this._updateSearch());
-          // A folder this page watches changed (the long poll,
-          // notify/live.js): the event names the folder and the ids of the
-          // files the reader is shown there, never what a file is called —
-          // the rows that are new to the page are asked for (fetchRow).
-          document.addEventListener('toto:folder', event => this.onFolderEvent(event.detail));
+          // Nothing tells this page that a folder changed. It asks for its
+          // listing again when its tab is looked at again (refreshListing).
+          document.addEventListener('visibilitychange', () => this.onReturn());
+          window.addEventListener('focus', () => this.onReturn());
+          window.addEventListener('pageshow', event => { if (event.persisted) this.onReturn(); });
         },
 
         // ── search ──────────────────────────────────────────────
@@ -334,7 +336,6 @@
             this.closeDescendants(id);
           } else {
             this.openDirs[id] = true;
-            this.watchFolder(id);
           }
         },
         closeDescendants(dirId) {
@@ -546,6 +547,7 @@
               const item = this.items.find(i => i.id === this.moveFileId);
               if (item) item.pid = data.new_pid;
               this.moveModal = false;
+              this.refreshListing(true);
             } else {
               this.moveError = data.error || '{{ _("Move failed.")|escapejs }}';
             }
@@ -577,6 +579,7 @@
             if (data.ok) {
               this.items = this.items.filter(i => i.id !== this.deleteFileId);
               this.deleteModal = false;
+              this.refreshListing(true);
             } else {
               this.deleteError = data.error || '{{ _("Delete failed.")|escapejs }}';
             }
@@ -652,6 +655,7 @@
           for (const r of data.results) if (r.status === 'refused') selected[r.id] = true;
           this.selected = selected;
           if (!this.bulkRefused.length) this.bulkModal = null;
+          this.refreshListing(true);
         },
         async submitBulkTrash() {
           const data = await this._bulkPost(_bulkTrashUrl,
@@ -716,6 +720,7 @@
               const item = this.items.find(i => i.id === this.renameFileId);
               if (item) { item.title = data.title; item.file_type = data.file_type; }
               this.renameModal = false;
+              this.refreshListing(true);
             } else {
               this.renameError = data.error || '{{ _("Rename failed.")|escapejs }}';
             }
@@ -938,35 +943,70 @@
           this.queueUploads(Array.from(event.dataTransfer?.files || []), dirItem);
         },
 
-        // ── Rows that change while the page is open ───────────
-        // The page names each folder it opens to the long poll. An answer
-        // says the folder changed and which files the reader is shown there
-        // now ({id: version tag}); the page compares that with its rows.
-        // A row itself comes from the vault's row door, behind the reader's
-        // own permission, so nothing is drawn that a reload would not list.
-        watchFolder(id) {
-          if (!this.$root.dataset.live) return;
-          (window.totoLiveWatch = window.totoLiveWatch || []).push(id);
+        // ── The listing, asked again ──────────────────────────
+        // (2026-10-06) No request is held open and nothing is asked on a
+        // timer, so nobody tells this page that a folder changed. It asks
+        // the listing door for the whole list again — what a reload would
+        // draw — when its tab is looked at again (not more often than every
+        // LISTING_GAP_MS) and after its reader's own trash, rename or move.
+        // Somebody else's change shows then, or at the next load. Open
+        // folders, the search and the ticks stay as they are.
+        _listingAsked: Date.now(),      // the page itself was the first listing
+        _listingBusy: false,
+        _rowEdits: 0,
+        onReturn() {
+          if (document.visibilityState === 'hidden') return;
+          this.refreshListing(false);
         },
-        onFolderEvent(detail) {
-          // files null: a folder too large to compare — the next load draws it.
-          if (!detail || !detail.files || !this.dirMap[detail.directory]) return;
-          const listed = detail.files;
-          const mine = {};
-          for (const item of this.items) if (item.t === 'file') mine[item.id] = item;
-          // Rows drawn in this folder that are not listed there any more.
-          for (const item of Object.values(mine)) {
-            if (item.pid === detail.directory && !(String(item.id) in listed)) {
-              this.dropRow(item.id, detail.directory);
+        async refreshListing(force) {
+          const url = this.$root.dataset.itemsUrl;
+          if (!url) return;
+          if (this._listingBusy) {
+            // One's own change while an answer is on its way: that answer
+            // is older than the page, and is not drawn.
+            if (force) this._rowEdits += 1;
+            return;
+          }
+          if (!force && Date.now() - this._listingAsked < LISTING_GAP_MS) return;
+          this._listingBusy = true;
+          this._listingAsked = Date.now();
+          try {
+            for (let attempt = 0; attempt < 2; attempt++) {
+              const edits = this._rowEdits;
+              const res = await fetch(url, {
+                credentials: 'same-origin', cache: 'no-store',
+                headers: { Accept: 'application/json' } });
+              if (!res.ok) break;
+              const data = await res.json();
+              if (!Array.isArray(data.items)) break;
+              // A row was drawn or dropped meanwhile (an upload landed):
+              // this answer is older than the page — ask once more.
+              if (edits !== this._rowEdits) continue;
+              this.takeListing(data.items);
+              break;
             }
-          }
-          // Listed there and not drawn so, or drawn from an older version.
-          for (const key of Object.keys(listed)) {
-            const id = Number(key);
-            const row = mine[id];
-            if (!row || row.pid !== detail.directory || row.v !== listed[key]) this.fetchRow(id);
-          }
+          } catch { /* the next return to the tab, or a reload, brings it */ }
+          this._listingBusy = false;
         },
+        takeListing(items) {
+          const dirMap = {};
+          const files = {};
+          for (const item of items) {
+            if (item.t === 'dir') dirMap[item.id] = item;
+            else files[item.id] = true;
+          }
+          this.items = items;
+          this.dirMap = dirMap;
+          // A tick or an open folder whose row left goes with it.
+          for (const id of Object.keys(this.selected)) if (!files[id]) delete this.selected[id];
+          for (const id of Object.keys(this.openDirs)) if (!dirMap[id]) delete this.openDirs[id];
+          this._updateSearch();
+        },
+
+        // ── One row, after one's own upload ───────────────────
+        // A landed file is drawn from the vault's row door, behind the
+        // reader's own permission, so nothing is drawn that a reload would
+        // not list.
         async fetchRow(id) {
           const url = this.$root.dataset.rowUrl.replace('/0/', '/' + encodeURIComponent(id) + '/');
           try {
@@ -977,7 +1017,7 @@
             if (!res.ok) return;
             const data = await res.json();
             if (data.item) this.placeRow(data.item);
-          } catch { /* the next event, or a reload, brings it */ }
+          } catch { /* the next return to the tab, or a reload, brings it */ }
         },
         // Where a folder's own files end in the list: after the folder,
         // everything under it, and the files it already has.
@@ -1000,6 +1040,7 @@
           return last + 1;
         },
         placeRow(row) {
+          this._rowEdits += 1;
           const dir = row.pid === null ? null : this.dirMap[row.pid];
           const at = this.items.findIndex(i => i.t === 'file' && i.id === row.id);
           // A folder this page does not list: the file is not on the page.
@@ -1018,6 +1059,7 @@
         dropRow(id, directory) {
           const at = this.items.findIndex(i => i.t === 'file' && i.id === id);
           if (at === -1) return;
+          this._rowEdits += 1;
           const old = this.items[at];
           // Told that it left a folder it is no longer drawn in: it moved.
           if (directory !== null && directory !== undefined && old.pid !== directory) return;
@@ -1246,13 +1288,14 @@
        to the script as data and read there with say() (see its comment).
        force_escape because a translated literal is not escaped by itself.{% endcomment %}
     {% comment %}data-upload-url, data-row-url: the upload door and the row
-       door (its 0 stands for a file's id). data-live: whether the long
-       poll tells this page of changes in the folders it opens. A dropped
-       file that misses a folder is not opened by the browser instead.{% endcomment %}
+       door (its 0 stands for a file's id). data-items-url: the listing
+       door, asked when the tab is looked at again and after one's own
+       trash, rename or move. A dropped file that misses a folder is not
+       opened by the browser instead.{% endcomment %}
     <div x-data="vaultTree()"
          data-upload-url="{% url 'vault:api_file_upload' %}"
          data-row-url="{% url 'vault:file_row' 0 %}"
-         data-live="{% if vault_live %}1{% endif %}"
+         data-items-url="{% url 'vault:public_list_items' %}{% if selected_bucket %}?bucket={{ selected_bucket|urlencode }}{% endif %}"
          @dragover.prevent @drop.prevent="dragDir = null"
          data-msg-network="{{ _('Network error. Please try again.')|force_escape }}"
          data-msg-folder-name="{{ _('Folder name')|force_escape }}"

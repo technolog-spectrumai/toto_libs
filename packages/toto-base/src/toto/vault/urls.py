@@ -66,9 +66,12 @@ urlpatterns = [
     # The wand's listing half. In the vault because the registry is, and
     # because a host without toto-media-ops still has files to act on.
     path("files/<int:file_pk>/services/", views.file_services, name="file_services"),
-    # One row of the list, for a page that is told a folder changed (the long
-    # poll) or whose own upload landed; and a small picture of a raster
-    # image, for the rows (2026-10-04). Both behind access.may_read.
+    # The listing again as JSON, for a page whose tab is looked at again or
+    # whose reader just trashed, renamed or moved something (2026-10-06).
+    path("public/items/", views.file_list_items, name="public_list_items"),
+    # One row of the list, for a page whose own upload landed; and a small
+    # picture of a raster image, for the rows (2026-10-04). Both behind
+    # access.may_read.
     path("files/<int:pk>/row/", views.file_row, name="file_row"),
     path("files/<int:pk>/thumb/", views.file_thumbnail, name="file_thumb"),
     path("gateways/dir/<int:dir_pk>/", FileGatewayPageView.as_view(), name="gateway_page"),

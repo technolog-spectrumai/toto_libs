@@ -29,7 +29,6 @@ from django.contrib import messages
 from django.utils.decorators import method_decorator
 from toto.ui import PageProcessor
 from . import access, scanning
-from .live import row_version
 from . import storage_backends as _storage_backends
 from .models import (VaultFile, Bucket, FileGateway, VaultDirectory,
                      BucketCopyLog, StorageBackend)
@@ -92,9 +91,9 @@ def listed_files(user):
     """The files the vault's list shows ``user`` (trashed ones never):
     public ones and their own — and for a file in a bucket kept to clearances
     (2026-09-30) the holders of one of them alone, not its owner, and the
-    public flag does not put it on the page. The page and its row door
-    (``file_row``) both ask here, so a row that appears while the page is
-    open is one a reload would list."""
+    public flag does not put it on the page. The page, the listing door
+    (``file_list_items``) and the row door (``file_row``) all ask here, so
+    a row that appears while the page is open is one a reload would list."""
     if getattr(user, "is_authenticated", False):
         visibility_q = Q(is_public=True) | Q(owner=user)
     else:
@@ -207,9 +206,6 @@ def file_item(f, *, pid, depth, clean_pks=None, fs_plugins=None) -> dict:
         "trashable": f.can_be_trashed,
         # A small picture of a raster image, or "" (2026-10-04).
         "thumb_url": thumbnail_url(f),
-        # The row's version tag (toto.vault.live): what the long poll's
-        # answer is compared with, so a row that changed is fetched again.
-        "v": row_version(f),
     }
 
 
@@ -284,20 +280,12 @@ class PublicFileListView(TemplateView):
 
         return flat
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        bucket_slug = self.request.GET.get("bucket", "")
-        user = self.request.user
-
-        # The rename dialog's type dropdown, from the one list that defines
-        # them. It used to be hand-written in the template and had drifted:
-        # it still offered the retired "notebook" and was missing half the
-        # real classes. That is not cosmetic — the dialog posts the selected
-        # type back on every rename, and a browser shown no matching option
-        # selects the FIRST one, so renaming a file of an unlisted type
-        # silently retyped it to "pdf".
-        context["file_types"] = VaultFile.FILE_TYPES
-
+    def listing_items(self, user, bucket_slug=""):
+        """The flat list the page draws for ``user`` (one bucket's, with
+        ``bucket_slug``): every folder they may open and every file
+        ``listed_files`` shows them. The page puts it into its HTML, and
+        the listing door (``file_list_items``) answers the same list as
+        JSON when the page asks again."""
         dir_qs = VaultDirectory.objects.select_related(
             "bucket", "parent"
         ).prefetch_related("allowed_users")
@@ -338,8 +326,8 @@ class PublicFileListView(TemplateView):
             dir_gateway_map[_d.pk] = _gw_url if _gw_pk == _d.pk else f"{_gw_url}?target_dir={_d.pk}"
 
         user_bucket_pks = (
-            set(Bucket.objects.filter(owner=self.request.user).values_list("pk", flat=True))
-            if self.request.user.is_authenticated else set()
+            set(Bucket.objects.filter(owner=user).values_list("pk", flat=True))
+            if user.is_authenticated else set()
         )
         # One query for the whole listing, not one per row — and an empty set on
         # a host without antivirus, which is what keeps this page byte-identical
@@ -348,6 +336,23 @@ class PublicFileListView(TemplateView):
         clean_pks = scanning.clean_file_ids(_files)
         flat_items = self._build_flat_items(accessible_dirs, _files, dir_gateway_map,
                                             user_bucket_pks, clean_pks)
+        return flat_items
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        bucket_slug = self.request.GET.get("bucket", "")
+        user = self.request.user
+
+        # The rename dialog's type dropdown, from the one list that defines
+        # them. It used to be hand-written in the template and had drifted:
+        # it still offered the retired "notebook" and was missing half the
+        # real classes. That is not cosmetic — the dialog posts the selected
+        # type back on every rename, and a browser shown no matching option
+        # selects the FIRST one, so renaming a file of an unlisted type
+        # silently retyped it to "pdf".
+        context["file_types"] = VaultFile.FILE_TYPES
+
+        flat_items = self.listing_items(user, bucket_slug)
 
         context["flat_items"] = flat_items
         context["selected_bucket"] = bucket_slug
@@ -430,11 +435,6 @@ class PublicFileListView(TemplateView):
         # a 2000-line component for no behavioural gain.
         context["zip_enabled"] = False
         context["active_tab"] = "files"
-        # Whether a folder that is open on the page is told of its changes as
-        # they happen (toto.vault.live, 2026-10-04): a signed-in reader, on a
-        # host that serves the long-poll door.
-        context["vault_live"] = bool(user.is_authenticated
-                                     and apps.is_installed("toto.notify"))
 
         return PageProcessor().decorate(context, self.request)
 
@@ -586,11 +586,31 @@ class VaultFileDownloadView(View):
 
 
 @require_safe
+def file_list_items(request):
+    """The listing again, as JSON (2026-10-06): ``{"items": [...]}``, the
+    flat list ``PublicFileListView`` puts into its page, for the same reader
+    and the same ``?bucket=``.
+
+    Nothing tells an open page that a folder changed — no request is held
+    open and nothing is asked on a timer. The page asks here when its tab is
+    looked at again (not more often than every 30 s) and after its reader's
+    own trash, rename or move, and draws what comes back; somebody else's
+    change shows then, or at the next load. Exactly what a reload would
+    list, built by the same code, so the door opens nothing the page does
+    not. GET, never cached.
+    """
+    items = PublicFileListView().listing_items(request.user, request.GET.get("bucket", ""))
+    response = JsonResponse({"items": items})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@require_safe
 def file_row(request, pk):
     """One file's row, as the list's script takes it (2026-10-04).
 
-    The door a page asks when the long poll says a folder it watches holds
-    a file that is new to it or changed — and after its own upload lands. It answers
+    The door a page asks after its own upload landed, to draw the file
+    without a reload. It answers
     exactly the row the listing would have built (``file_item``) and only for
     a file the listing would show this reader: ``access.may_read`` AND the
     list's own rule (``listed_files``), so nothing can appear on an open page

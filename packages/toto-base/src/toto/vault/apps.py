@@ -8,14 +8,6 @@ class VaultConfig(AppConfig):
 
     def ready(self):
         import toto.vault.signals  # noqa: F401 — registers signal handlers
-        from django.apps import apps
-
-        # Folders that update as they change (live.py, 2026-10-04): published
-        # only where the app that serves the long-poll door is installed.
-        if apps.is_installed("toto.notify"):
-            from toto.vault import live
-
-            live.connect()
         from toto.core.plugin_autodiscover import autodiscover_plugins
         autodiscover_plugins("plugins.vault_play_plugins")
         autodiscover_plugins("plugins.vault_editor_plugins")
