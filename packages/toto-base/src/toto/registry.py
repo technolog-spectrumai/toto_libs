@@ -30,14 +30,13 @@ LOCATIONS_APPS = [
     "toto.locations",
 ]
 
-# Notifications and the long poll (toto-base, 2026-10-04): the bell in the
-# app bar, the table behind it, and the one door (``notify:api_wait``) that
-# tells an open page of news and of files changing in a folder it watches.
-# Never part of CORE_APPS or BASE_APPS: a host adds it (or sets BUILD_NOTIFY
-# and composes from FEATURE_APPS) and mounts ``toto.notify.urls``. No
-# ``channels``: the door is an async view. ``LIVE_REDIS_URL`` names the
-# Redis whose pub/sub wakes the held requests of every web process
-# (``toto.core.live``); without it they look every second instead.
+# Notifications (toto-base, 2026-10-04): the bell in the app bar, the table
+# behind it and the bell's three doors. Never part of CORE_APPS or
+# BASE_APPS: a host adds it (or sets BUILD_NOTIFY and composes from
+# FEATURE_APPS) and mounts ``toto.notify.urls``. No ``channels``, no Redis
+# and no setting of its own: every door answers at once, and a page asks
+# when it loads or its tab is looked at again (the long-poll door,
+# ``LIVE_REDIS_URL`` and ``toto.core.live`` left 2026-10-06).
 NOTIFY_APPS = [
     "toto.notify",
 ]
@@ -65,7 +64,7 @@ FEATURE_APPS = {
         "toto.workflows",    # DAG workflow engine
     ],
     "chat": ["toto.forum"],
-    # The bell and the long-poll door (BUILD_NOTIFY) — see NOTIFY_APPS above.
+    # Notifications and the bell (BUILD_NOTIFY) — see NOTIFY_APPS above.
     "notify": NOTIFY_APPS,
     "weather": ["toto.weather"],
     # The media section, as of 1.21. There is no "media" key any more: the apps that
