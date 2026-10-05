@@ -1,14 +1,14 @@
 {% load i18n static %}{% comment %}The bell (2026-10-04): an icon and the unread count, no words on screen —
    it is named by its title and aria-label. Drawn twice by the header: on the
    desktop bar (hidden on a phone) and, as "mobile", inside the phone menu.
-   What it does is notify/live.js, which reads the addresses below from this
+   What it does is notify/bell.js, which reads the addresses below from this
    element and the CSRF token from its hidden input; nothing the server knows
    is written into a script. The list is filled in the browser from the
    bell's door, every text with textContent.{% endcomment %}
 {% if variant == "mobile" %}
 <div class="relative" data-notify-bell data-variant="mobile"
      data-list-url="{{ notify_urls.list }}" data-read-url="{{ notify_urls.read }}"
-     data-read-all-url="{{ notify_urls.read_all }}" data-wait-url="{{ notify_urls.wait }}">
+     data-read-all-url="{{ notify_urls.read_all }}">
   {% csrf_token %}
   <button type="button" data-notify-toggle id="header-bell-mobile"
           title="{% trans 'Notifications' %}" aria-label="{% trans 'Notifications' %}"
@@ -32,7 +32,7 @@
 {% else %}
 <div class="relative hidden sm:block" data-notify-bell data-variant="bar"
      data-list-url="{{ notify_urls.list }}" data-read-url="{{ notify_urls.read }}"
-     data-read-all-url="{{ notify_urls.read_all }}" data-wait-url="{{ notify_urls.wait }}">
+     data-read-all-url="{{ notify_urls.read_all }}">
   {% csrf_token %}
   <button type="button" data-notify-toggle id="header-bell"
           title="{% trans 'Notifications' %}" aria-label="{% trans 'Notifications' %}"
@@ -53,5 +53,5 @@
     <p data-notify-empty class="px-3 py-6 text-center text-sm opacity-60">{% trans "No notifications." %}</p>
   </div>
 </div>
-<script defer src="{% static 'notify/live.js' %}"></script>
+<script defer src="{% static 'notify/bell.js' %}"></script>
 {% endif %}

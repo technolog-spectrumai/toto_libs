@@ -1,4 +1,4 @@
-"""``notify.send``: the row, the signal, bursts, the prune (2026-10-04).
+"""``notify.send``: the row and no signal, bursts, the prune (2026-10-04).
 
     manage.py test toto.notify.tests_send
 """
@@ -7,11 +7,10 @@ from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.utils import timezone, translation
 
 from toto import notify
-from toto.core import live
 from toto.notify import kinds, services
 from toto.notify.models import Notification
 
@@ -24,59 +23,38 @@ class Case(TestCase):
         self.ada = User.objects.create_user("ada", password="pw")
         self.bob = User.objects.create_user("bob", password="pw")
 
-    def stamps(self):
-        keys = [live.user_key(self.ada.pk), live.user_key(self.bob.pk)]
-        found = live.stamps(keys)
-        return found[keys[0]], found[keys[1]]
 
+class NoSignalTests(Case):
+    """A notification is a row and nothing else (2026-10-06): nobody is
+    woken, nothing is published, nothing waits for it."""
 
-@override_settings(LIVE_REDIS_URL="")
-class SignalTests(Case):
-    def test_the_row_is_written_and_the_members_key_is_published(self):
-        self.assertEqual(self.stamps(), ("", ""))
-        with self.captureOnCommitCallbacks(execute=True):
+    def test_send_writes_the_row_and_tells_no_page(self):
+        from unittest import mock
+
+        with mock.patch("django.core.cache.cache.set") as stamped, \
+                self.captureOnCommitCallbacks(execute=True) as after_commit:
             row = notify.send(self.ada, "vault.uploaded", link="/vault/")
-        self.assertEqual(Notification.objects.get().pk, row.pk)
-        mine, theirs = self.stamps()
-        self.assertTrue(mine)
-        self.assertEqual(theirs, "")
-
-    def test_the_signal_carries_no_text_and_no_name(self):
-        with self.captureOnCommitCallbacks(execute=True):
-            notify.send(self.ada, "vault.uploaded", actor=self.bob, title="secret-plan.pdf",
-                        bucket="Payroll", bucket_id=1)
-        self.assertEqual(live.user_key(self.ada.pk), f"user.{self.ada.pk}")
-        stamp = self.stamps()[0]
-        for word in ("secret", "Payroll", "bob"):
-            self.assertNotIn(word, stamp)
-        self.assertLess(len(stamp), 24)
-
-    def test_nothing_is_published_for_a_change_that_rolled_back(self):
-        with self.captureOnCommitCallbacks(execute=False):
-            notify.send(self.ada, "vault.uploaded")
-        self.assertEqual(self.stamps(), ("", ""))
-
-    def test_the_digest_moves_with_the_bell_and_only_with_ones_own(self):
-        before = services.digest(self.ada), services.digest(self.bob)
-        row = notify.send(self.ada, "vault.uploaded", collapse="uploaded:7", title="a")
-        told = services.digest(self.ada)
-        self.assertNotEqual(told, before[0])
-        self.assertEqual(services.digest(self.bob), before[1])
-        notify.send(self.ada, "vault.uploaded", collapse="uploaded:7", title="b")
-        folded = services.digest(self.ada)
-        self.assertNotEqual(folded, told)
-        with self.captureOnCommitCallbacks(execute=True):
             services.mark_read(self.ada, row.pk)
-        self.assertNotEqual(services.digest(self.ada), folded)
-        self.assertTrue(self.stamps()[0])
-        self.assertRegex(services.digest(self.ada), r"^[0-9a-f]{12}$")
+            notify.send(self.ada, "vault.trashed")
+            services.mark_all_read(self.ada)
+        self.assertEqual(Notification.objects.filter(recipient=self.ada).count(), 2)
+        self.assertEqual(after_commit, [])
+        stamped.assert_not_called()
 
-    def test_a_cache_or_a_redis_that_is_away_never_fails_the_send(self):
+    def test_the_signal_and_the_digest_are_gone(self):
+        import importlib.util
+
+        for gone in ("_signal", "digest"):
+            self.assertFalse(hasattr(services, gone), gone)
+        for module in ("toto.notify.wait", "toto.core.live"):
+            with self.subTest(module=module):
+                self.assertIsNone(importlib.util.find_spec(module))
+
+    def test_a_cache_that_is_away_never_fails_the_send(self):
         from unittest import mock
 
         with mock.patch("django.core.cache.cache.set", side_effect=RuntimeError("down")), \
-                override_settings(LIVE_REDIS_URL="redis://127.0.0.1:1/0"), \
-                self.captureOnCommitCallbacks(execute=True):
+                mock.patch("django.core.cache.cache.get", side_effect=RuntimeError("down")):
             row = notify.send(self.ada, "vault.uploaded")
         self.assertIsNotNone(row)
         self.assertEqual(Notification.objects.filter(recipient=self.ada).count(), 1)

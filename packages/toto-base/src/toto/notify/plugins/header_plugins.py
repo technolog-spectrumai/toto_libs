@@ -2,9 +2,9 @@
 words — on the desktop bar, and in the phone menu (``variant="mobile"``).
 
 The markup is ``notify/plugins/_bell.html``; what it does is
-``notify/live.js``, which reads everything it needs — the three doors'
-addresses and the long-poll door's — from the element's ``data-``
-attributes. Nothing the server knows is written into a script.
+``notify/bell.js``, which reads everything it needs — the three doors'
+addresses — from the element's ``data-`` attributes. Nothing the server
+knows is written into a script.
 """
 
 from toto.core.plugin import HeaderPlugin
@@ -32,8 +32,7 @@ class BellPlugin(HeaderPlugin):
             request._toto_notify_unread = unread
         try:
             urls = {"list": reverse("notify:api_list"), "read": reverse("notify:api_read"),
-                    "read_all": reverse("notify:api_read_all"),
-                    "wait": reverse("notify:api_wait")}
+                    "read_all": reverse("notify:api_read_all")}
         except NoReverseMatch:      # installed, but the host mounts no doors
             urls = None
         context.update({

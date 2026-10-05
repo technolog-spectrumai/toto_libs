@@ -6,14 +6,11 @@
          link="/vault/public/?bucket=work", title="plan.pdf", bucket="Work",
          bucket_id=7)
 
-* **The row first, the signal second.** The row is written in the caller's
-  transaction; once it commits, the member's key is published
-  (``toto.core.live``), which wakes the long polls their open pages hold
-  (``views.api_wait``). The signal carries no text and no name — a page
-  that is told asks ``notify:api_list`` for the list, behind its own
-  session — and nothing depends on it: the door compares a digest read
-  from the database at every poll, so with Redis away the row is still
-  found, at the next poll instead of at once.
+* **The row, and nothing else.** The row is written in the caller's
+  transaction. No page is told: nothing is published, no cache key is
+  touched and no request waits for it (2026-10-06). The member's bell finds
+  the row when it next asks ``notify:api_list`` — at a page load, or when
+  its tab is looked at again.
 * **Never in the way.** A notification is never worth failing the change it
   reports: anything that goes wrong is logged and answered ``None``, inside
   a savepoint so the caller's transaction stays usable.
@@ -69,21 +66,11 @@ def send(recipient, kind: str, *, actor=None, link: str = "", collapse: str = ""
             return None
         with transaction.atomic():
             row = _write(recipient, kind, actor, link, collapse, params)
-        if row is None:
-            return None
-        _signal(recipient.pk)
         return row
     except Exception as exc:  # noqa: BLE001 - see the module docstring
         log.warning("notify: %s to account %s not written (%s)", kind,
                     getattr(recipient, "pk", None), type(exc).__name__)
         return None
-
-
-def _signal(user_pk) -> None:
-    """The member's bell changed: wake their open pages (after the commit)."""
-    from toto.core import live
-
-    live.publish(live.user_key(user_pk))
 
 
 def _write(recipient, kind, actor, link, collapse, params):
@@ -133,23 +120,6 @@ def unread_count(user) -> int:
         return 0
     return Notification.objects.filter(recipient=user, read_at__isnull=True,
                                        kind__in=list(kinds.KINDS)).count()
-
-
-def digest(user) -> str:
-    """A short word that changes whenever the member's bell would: a row
-    added, a burst folded into one (its ``created`` moves), one read, one
-    gone. What the long poll's cursor remembers and compares
-    (``wait.look``) — read from the database, one query."""
-    import hashlib
-
-    from django.db.models import Count, Max, Q
-
-    found = (Notification.objects.filter(recipient=user, kind__in=list(kinds.KINDS))
-             .aggregate(rows=Count("pk"), top=Max("pk"), newest=Max("created"),
-                        unread=Count("pk", filter=Q(read_at__isnull=True))))
-    newest = found["newest"].isoformat() if found["newest"] else ""
-    text = f"{found['rows']}.{found['top'] or 0}.{newest}.{found['unread']}"
-    return hashlib.blake2s(text.encode(), digest_size=6).hexdigest()
 
 
 def _hidden_bucket_ids(user, bucket_ids) -> set:
@@ -233,16 +203,12 @@ def mark_read(user, pk) -> bool:
     if row.read_at is None:
         row.read_at = timezone.now()
         row.save(update_fields=["read_at"])
-        _signal(user.pk)        # the member's other tabs drop their count too
     return True
 
 
 def mark_all_read(user) -> int:
-    marked = Notification.objects.filter(recipient=user, read_at__isnull=True).update(
+    return Notification.objects.filter(recipient=user, read_at__isnull=True).update(
         read_at=timezone.now())
-    if marked:
-        _signal(user.pk)
-    return marked
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 """The bell's three doors (2026-10-04): session, CSRF, the Fetch-Metadata
-guard, and nobody's notifications but the caller's.
+guard, and nobody's notifications but the caller's. And that there are
+three (2026-10-06): no door that holds a request.
 
     manage.py test toto.notify.tests_doors
 """
@@ -118,3 +119,54 @@ class ReadTests(DoorCase):
         self.client.post(reverse("notify:api_read_all"), {"user": self.bob.pk,
                                                           "recipient": self.bob.pk})
         self.assertIsNone(Notification.objects.get(pk=self.theirs.pk).read_at)
+
+
+class NoWaitDoorTests(DoorCase):
+    """The long-poll door left (2026-10-06): nothing is named wait, nothing
+    is mounted there, and no door of the bell is a coroutine."""
+
+    def test_no_url_is_named_wait(self):
+        from django.urls import NoReverseMatch
+
+        from toto.notify import urls
+
+        with self.assertRaises(NoReverseMatch):
+            reverse("notify:api_wait")
+        self.assertEqual(sorted(pattern.name for pattern in urls.urlpatterns),
+                         ["api_list", "api_read", "api_read_all"])
+        for pattern in urls.urlpatterns:
+            self.assertNotIn("wait", str(pattern.pattern))
+
+    def test_the_old_address_answers_404(self):
+        address = reverse("notify:api_list") + "wait/"
+        self.assertEqual(address, "/notify/api/wait/")
+        for method in (self.client.get, self.client.post):
+            self.assertEqual(method(address, {"folders": "1"}).status_code, 404)
+
+    def test_every_door_answers_at_once(self):
+        import inspect
+
+        from toto.notify import views
+
+        for name in ("api_list", "api_read", "api_read_all"):
+            with self.subTest(door=name):
+                self.assertFalse(inspect.iscoroutinefunction(getattr(views, name)))
+        self.assertFalse(hasattr(views, "api_wait"))
+        source = inspect.getsource(views)
+        for word in ("asyncio", "sync_to_async", "async def", "sleep("):
+            self.assertNotIn(word, source)
+
+    def test_the_doors_still_answer(self):
+        listed = self.client.get(reverse("notify:api_list"))
+        self.assertEqual((listed.status_code, listed.json()["unread"]), (200, 1))
+        read = self.client.post(reverse("notify:api_read"), {"id": self.mine.pk})
+        self.assertEqual(read.json(), {"ok": True, "unread": 0})
+        self.tell(self.ada, kind="vault.restored")
+        self.assertEqual(self.client.get(reverse("notify:api_list")).json()["unread"], 1)
+        self.assertEqual(self.client.post(reverse("notify:api_read_all")).json(),
+                         {"ok": True, "unread": 0})
+
+    def test_a_read_from_another_site_is_an_ordinary_read(self):
+        """The guard on reads existed for the held request alone."""
+        response = self.client.get(reverse("notify:api_list"), HTTP_SEC_FETCH_SITE="same-site")
+        self.assertEqual(response.status_code, 200)
