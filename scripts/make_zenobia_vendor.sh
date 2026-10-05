@@ -1,29 +1,42 @@
 #!/usr/bin/env bash
-# Regenerate the `zenobia_vendor` branch: the `zenobia` branch tree with limbo/
-# filtered out. zenobia is the full-platform host and pins the WHOLE suite (see
-# zenobia's requirements.toto.txt), so unlike the faros/aurelian filters this one
-# excludes no packages — only the parked apps in limbo/, which no host installs.
-# The zenobia repo vendors toto from THIS branch:
+# NOT IN USE (noted 2026-10-06). Kept as a record; nothing in this repository
+# or in zenobia's monorepo calls it.
+#
+# zenobia is re-vendored by rsync today: the whole repository is copied over
+# <monorepo>/vendor/toto_libs so the two are byte-identical (README.md, "How
+# zenobia re-vendors"). That copy keeps limbo/ and all sixteen packages, and
+# has no `zenobia_vendor` branch behind it. A tree made by this script, which
+# drops limbo/, is therefore not what the monorepo carries any more.
+#
+# What the script did, and still does when run: regenerate the
+# `zenobia_vendor` branch as the source branch's tree with limbo/ filtered
+# out, for
 #   git subtree pull --prefix=vendor/toto_libs ../toto_libs zenobia_vendor --squash
+# Each run chains a single filter commit onto the previous vendor commit (or
+# starts a fresh root on first use), so the branch is a linear record of
+# vendor states. A vendor branch is a derived artifact: never develop on it,
+# never merge it back.
 #
-# zenobia_vendor is a derived artifact — never develop on it, never merge it
-# back. Rerun this script whenever the zenobia branch moves. Each run chains a
-# single filter commit onto the previous vendor commit (or starts a fresh root
-# on first use), so the branch stays a linear record of vendor states.
+# The source branch is dev_django5, the one branch work happens on. The
+# `zenobia` branch this script named until 2026-10-06 no longer exists; its
+# last states are legacy/zenobia and legacy/zenobia_vendor.
 #
-# Because packages/ is vendored whole, zenobia's vendored tree is a complete
-# suite checkout: scripts/clean_env_check.sh and tests/ still apply to it (the
-# filtered faros/aurelian trees cannot run them).
+# zenobia PINS five of the sixteen packages (toto-base, toto-auth, toto-flow,
+# toto-ops, toto-economy; see its requirements.toto.txt). Its vendored tree
+# nevertheless carries all sixteen, because this library's own tests assert
+# whole-suite counts — so, unlike the faros/aurelian filters, this one
+# excludes no package, and scripts/clean_env_check.sh and tests/ still apply
+# to the result (the filtered faros/aurelian trees cannot run them).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-SOURCE_BRANCH="${1:-zenobia}"
+SOURCE_BRANCH="${1:-dev_django5}"
 VENDOR_BRANCH="zenobia_vendor"
-# zenobia installs every package, so nothing here. Kept so this script stays the
-# same shape as its faros/aurelian siblings: drop a name in if zenobia ever
-# stops pinning one.
+# Nothing here: zenobia's vendored tree carries every package, the eleven it
+# does not pin included (see the header). Kept so this script stays the same
+# shape as its faros/aurelian siblings.
 EXCLUDE=()
 
 src_commit=$(git rev-parse --verify "$SOURCE_BRANCH^{commit}")

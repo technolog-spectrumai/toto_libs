@@ -1,24 +1,39 @@
 #!/usr/bin/env bash
-# Regenerate the `aurelian_vendor` branch: the `aurelian` branch tree filtered
-# to the packages the aurelian host actually pins (see aurelian's
-# requirements.toto.txt) — limbo/ is filtered out too (aurelian carries its
-# revived ops apps in its own repo). The aurelian repo vendors toto from THIS
-# branch:
-#   git subtree pull --prefix=vendor/toto_libs ../toto_libs aurelian_vendor --squash
+# NOT IN USE (noted 2026-10-06). Kept as a record; nothing in this repository
+# calls it, and the aurelian host is not checked against this library today
+# (README.md, "Other hosts").
 #
-# aurelian_vendor is a derived artifact — never develop on it, never merge it
-# back. Rerun this script whenever the aurelian branch moves. Each run chains a
-# single filter commit onto the previous vendor commit (or starts a fresh root
-# on first use), so the branch stays a linear record of vendor states.
+# What the script does when run: regenerate the `aurelian_vendor` branch as
+# the source branch's tree filtered to the packages the aurelian host pins
+# (see aurelian's requirements.toto.txt) — limbo/ is filtered out too
+# (aurelian carries its revived ops apps in its own repo) — for
+#   git subtree pull --prefix=vendor/toto_libs ../toto_libs aurelian_vendor --squash
+# Each run chains a single filter commit onto the previous vendor commit (or
+# starts a fresh root on first use), so the branch is a linear record of
+# vendor states. aurelian_vendor is a derived artifact: never develop on it,
+# never merge it back.
+#
+# The source branch is dev_django5, the one branch work happens on. The
+# `aurelian` branch this script named until 2026-10-06 no longer exists, and
+# neither does `aurelian_vendor`; their last states are legacy/aurelian and
+# legacy/aurelian_vendor (2026-07-26, suite 1.8).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-SOURCE_BRANCH="${1:-aurelian}"
+SOURCE_BRANCH="${1:-dev_django5}"
 VENDOR_BRANCH="aurelian_vendor"
-# Everything the aurelian host does not install stays out of its vendored tree.
-EXCLUDE=(toto-ai toto-chat toto-geo toto-graph toto-media toto-ops toto-repo)
+# Everything the aurelian host does not pin stays out of its vendored tree:
+# eleven of the sixteen packages. aurelian pins toto-base, toto-auth,
+# toto-flow and toto-works (its requirements.toto.txt, at suite 1.50 when read
+# on 2026-10-06). toto-geo is kept as well: since 2026-10-04 toto-works
+# depends on it (kanban keys into the map's models), so a 2.0 tree with
+# toto-works and no toto-geo could not be installed.
+EXCLUDE=(
+    toto-ai toto-ambrosia toto-anastasia toto-business toto-chat toto-economy
+    toto-graph toto-media toto-media-ops toto-ops toto-repo
+)
 
 src_commit=$(git rev-parse --verify "$SOURCE_BRANCH^{commit}")
 
