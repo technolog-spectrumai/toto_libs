@@ -85,8 +85,9 @@ def beat_schedule(
     if monit:
         from celery.schedules import crontab
 
-        # Snapshot sampler for the toto.monit dashboard (faros-only app);
-        # history is pruned hourly to MONIT_RETENTION_HOURS.
+        # Snapshot sampler for the toto.monit dashboard (toto-ops; no longer
+        # a faros-only app: zenobia installs it under BUILD_MONIT); history
+        # is pruned hourly to MONIT_RETENTION_HOURS.
         schedule["monit-sample"] = {
             "task": "toto.monit.tasks.monit_sample",
             "schedule": crontab(minute=f"*/{monit_minutes}")
