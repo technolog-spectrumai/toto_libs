@@ -90,12 +90,25 @@ echo "==> jess suite + password reset, against the installed wheels"
     "$PY" -I -m django test toto.jess.tests toto.sso_master.tests.test_password_reset )
 
 echo "==> tier matrix: each dependency tier must stand on its own"
-# toto-base alone, then each package that only needs base, then the full stack.
-# A hidden import from a lower tier into a higher one fails here and nowhere else.
+# toto-base alone, then each package with everything beneath it: all sixteen
+# packages are named in some tier. A hidden import from a lower tier into a
+# higher one fails here and nowhere else.
+#
+# A tier must name its packages' whole dependency closure: pip installs a
+# package's declared siblings anyway, and tests/tier_check.py fails a tier
+# whose installed set is not exactly the set named here.
 TIERS=("toto-base" "toto-base toto-auth" "toto-base toto-flow" "toto-base toto-chat" "toto-base toto-ops" "toto-base toto-ai")
+# The other packages that need only base (named here since 2026-10-06).
+TIERS+=("toto-base toto-economy" "toto-base toto-ambrosia" "toto-base toto-anastasia")
 # toto-repo needs toto-flow beneath it: GitRun FKs workflows.WorkflowRun.
 TIERS+=("toto-base toto-flow toto-repo")
-TIERS+=("toto-base toto-flow toto-works" "toto-base toto-flow toto-media" "toto-base toto-flow toto-geo" "toto-base toto-flow toto-ai toto-graph")
+# toto-media-ops needs toto-flow for the same reason (named since 2026-10-06).
+TIERS+=("toto-base toto-flow toto-media" "toto-base toto-flow toto-geo" "toto-base toto-flow toto-media-ops" "toto-base toto-flow toto-ai toto-graph")
+# toto-works and toto-business sit on toto-geo since 2026-10-04 (kanban and
+# company key into the map's models), and toto-geo on toto-flow. The works
+# tier was "toto-base toto-flow toto-works" until 2026-10-06, which could no
+# longer pass: pip brought toto-geo in and the installed set differed.
+TIERS+=("toto-base toto-flow toto-geo toto-works" "toto-base toto-flow toto-geo toto-business")
 for tier in "${TIERS[@]}"; do
     TIER_VENV="$REPO_ROOT/.venv_tier"
     rm -rf "$TIER_VENV"
