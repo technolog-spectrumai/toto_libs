@@ -21,7 +21,7 @@ clearance is named after what it **opens**, never after who holds it.
 | Carries | plan offers, discounts, privileges, news, a page, a forum | who may **read** — through the GROUPS it keeps (vault buckets, map domains; never single items), by `clearance_access` — and how fast its holders' **mana refills** (`regen_security`/`regen_compute`/`regen_storage`, per hour; blank = the pool's own) |
 | Membership | `Person.communities` | `Person.clearances` |
 | Joined | by application, accepted by a referee | given by a superuser: the Clearances tab, the admin, the console |
-| Shown to members | yes — directory, profiles, map, API | never; it has no page |
+| Shown to members | yes — directory, profiles, API (and the map, on a host that installs `toto.locations`) | never; it has no page |
 | Tree (`parent`) | offers inherit down it | none: a clearance stands alone, membership is direct |
 | How many | any number | at most **seven** on a platform (`MAX_CLEARANCES`): an eighth is refused on save |
 
@@ -53,7 +53,8 @@ the platform — can therefore never grant access to anything.
 **Clearances go on groups, never on items** (2026-09-30). Each app keeps
 GROUPS to clearances and the rule reaches the items through them: the
 vault's **buckets** (a file through its bucket — sheets, decks and Markdown
-pages included) and locations' **map domains** (routes, map layers, places, addresses, zones
+pages included) and, on a host that installs `toto.locations` (toto-geo since
+2026-10-04), its **map domains** (routes, map layers, addresses, zones
 and territories through the domains they are in). One rule,
 `clearance_access.group_gate` / `group_hidden`: an item in no kept group
 follows its app's own rule; an item in kept groups is read by superusers and
@@ -64,7 +65,8 @@ hidden item answers as a missing one. Each group model carries a
 `(group, clearance)` table with a PROTECT on the clearance, so the Clearances
 list counts the groups each keeps and refuses deleting one still in use.
 Where a group's clearances are set is the group's own page, superusers only:
-a bucket's page in the vault, the Locations → Domains tab. zenobia's wiki
+a bucket's page in the vault, the Locations → Domains tab (where the map is
+installed; zenobia has none). zenobia's wiki
 kept its **topics** to clearances the same way until it was parked
 (2026-10-02, zenobia's `RETIRED.md`); a bucket that held a topic's files is
 an ordinary bucket, kept by whatever clearances its own page sets.
@@ -125,8 +127,8 @@ separate it logically") it lives on the member's own profile,
 
 | Tab | `?tab=` | Holds |
 |---|---|---|
-| **Overview** | (none: the default) | what others see — the hero, about you, the info grid (your own contact details and address marked where others do not see them), member since — and your communities |
-| **Edit profile** | `edit` | the profile form (display name, about you, avatar, phone, the two contact switches) and *Where you live* (the address picker, who may see it); Leaflet, the pin and the picker's modal load on this tab alone |
+| **Overview** | (none: the default) | what others see — the hero, about you, the info grid (your own contact details and address marked where others do not see them), member since — and your communities; on a host with the map, *Where you live* (`toto.locations`' profile plugin) |
+| **Edit profile** | `edit` | the profile form: display name, about you, avatar, phone, the address (text, since 2026-10-04) and the three switches saying whether other members see the e-mail address, the phone number and the address |
 | **Account** | `account` | the e-mail address (with a change waiting for its link), the password, the time zone, the language — or, for an account that signs in elsewhere, where to change them |
 | **Security** | `security` | sessions (end one, sign out everywhere else), recent sign-ins (`toto.audit`), the key store and the link to My keys (`toto.gervazy`) |
 | **Wallet** | `wallet` | the profile plugins that sit on it: mana, and the wallet where the economy is shown to the member (`ProfilePlugin.tab`) |
@@ -136,8 +138,8 @@ separate it logically") it lives on the member's own profile,
 **Somebody else's profile** — another member's, for a member, staff, or a
 superuser with or without the Superuser plan alike — has three
 (`VISITOR_TABS`): **Overview** (the same page, each detail by its own rule:
-the contact details by `contact_access.py`, the address by
-`toto.locations.people_access`), **Communities** (`?tab=communities`; on
+the contact details, the address among them since 2026-10-04, by
+`contact_access.py`), **Communities** (`?tab=communities`; on
 one's own it is part of the Overview) and **Activity** (the plugins on it,
 each by its own rules: the upcoming events by the calendar's, the recovery
 cards the owner's alone). No Edit profile, Account, Security, Wallet or Your
@@ -200,7 +202,7 @@ when there is none.
 same paths, names and methods; `require_POST`, sign-in, CSRF), and each acts
 on `request.user` alone — no door takes a person, a slug or a user id, and the
 page never creates or deletes an account (console only; a first save creates
-the `Person` row, as the map pin does). Each goes back to its own tab and
+the `Person` row). Each goes back to its own tab and
 section (`own_page_url`), where its message shows: the profile form to
 `?tab=edit#profile`, the account's to `?tab=account#…`, `security`, `data`;
 a reference request's Accept and Reject (`views/application.py`) to
@@ -209,9 +211,8 @@ a reference request's Accept and Reject (`views/application.py`) to
 tab with the form bound, at the door's address — so every link on the page
 is absolute (`page_url`, and `oya/partials/_server_pagination.html`'s
 `base_url`): a relative `?tab=` there would be a GET on the door, which
-answers 405. The socialhub's own doors on the page — the language, the map
-sharing and the pin — take the tab the form posts (`tab`, from `OWN_TABS`
-only) and go back to it; a form without one (another page, a script) keeps
+answers 405. The socialhub's own door on the page, the language, takes the tab the form posts (`tab`, from `OWN_TABS`
+only) and goes back to it; a form without one (another page, a script) keeps
 the Referer rule, a page on this site or the door's own landing page
 (`core.safe_next`). The tab is posted rather than read off the Referer:
 behind the cloud's nginx (`Referrer-Policy: strict-origin`) the browser sends
@@ -227,8 +228,8 @@ socialhub's prefix.
 
 - **Profile** (`/account/profile/`, `AccountProfileForm`, multipart;
   back to `#profile`): display name, about
-  you, avatar and phone, and whether other members see the phone number and
-  the e-mail address (two switches, off by default — [Data
+  you, avatar, phone and address, and whether other members see the phone
+  number, the e-mail address and the address (three switches, off by default — [Data
   protection](#data-protection-rodo--gdpr)) — nothing that decides access
   rides along. The avatar
   goes through the platform's upload rules without entering the vault: Pillow
@@ -249,12 +250,15 @@ socialhub's prefix.
   name with the extension of what is inside, never the member's filename, and
   the picture it replaces or clears is deleted from storage. The admin's
   Person form cleans an avatar the same way (`forms.clean_avatar_upload`).
-- **Where you live** (`socialhub:set_location_sharing`, `set_my_address`,
-  `search_address`; back to `#where-you-live`): whether the People map shows
-  the member and at what precision, and the pin, placed in a modal with
-  Leaflet (drawn on this tab alone). Its own doors rather than fields of the
-  profile form: the one setting whose wrong value publishes a home address
-  must not change as a side effect of saving something else.
+- **Address** (2026-10-04): a field of the profile form, `Person.address`,
+  text as the member would write it on an envelope, with its switch
+  (`Person.show_address`, off by default). Nothing is looked up, geocoded or
+  drawn, and the socialhub loads no map. Until that day this was *Where you
+  live*: a pin placed in a modal with Leaflet, a place search and a three-way
+  sharing setting behind doors of their own (`socialhub:set_location_sharing`,
+  `set_my_address`, `search_address`). Those belong to `toto.locations`
+  (toto-geo) now — `Home` and `HomeSharing`, the doors in its `home_views.py`,
+  drawn on the Overview by its profile plugin — on a host that installs it.
 
 ### The Account tab
 
@@ -408,8 +412,8 @@ socialhub's prefix.
   from the console). A declined request shows the member, under the note,
   that they may complain to the President of UODO or go to court, whatever
   the note says (2026-10-01, 37c.21). What the erase takes beyond the
-  cascade — the avatar's file, version bodies, the home pin, the
-  application and its references (`applications.of_member`), the forum's
+  cascade — the avatar's file, version bodies, on a host with the map the
+  home pin, the application and its references (`applications.of_member`), the forum's
   pictures and recordings — and the names it takes off what stays is
   `toto.core.erasure`; the dialog says it, and that the forum texts stay,
   signed "Former member", and backups until they age out. Django's admin
@@ -456,11 +460,12 @@ platform their data, and the rest in `toto.core`:
 - **Erasure** (art. 17) is *filed* on the member's own profile and
   *carried out* only at the console, by `toto.core`'s `erase_user` ([Erase my
   account](#the-your-data-tab)).
-- **Contact details hidden by default** (2026-10-01, 37c.25): other members
-  see a member's e-mail address and phone number only when the member
-  switched them on (the Edit profile tab of their own profile: `Person.show_email`,
-  `Person.show_phone`, both off). The member always sees their own and an
-  administrator — a superuser on the Superuser plan — keeps seeing both; the
+- **Contact details hidden by default** (2026-10-01, 37c.25; the postal
+  address since 2026-10-04): other members see a member's e-mail address,
+  phone number and address only when the member switched them on (the Edit
+  profile tab of their own profile: `Person.show_email`, `Person.show_phone`,
+  `Person.show_address`, all off). The member always sees their own and an
+  administrator — a superuser on the Superuser plan — keeps seeing them; the
   profile, the roster and the data-mesh org chart all ask
   `contact_access.py`. The org chart answers with what the member shows and
   nothing more, the caller's own included: the desktop client copies it on,
