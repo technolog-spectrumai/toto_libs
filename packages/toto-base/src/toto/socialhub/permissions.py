@@ -68,3 +68,34 @@ def can_manage_some_community_news(request):
             return True
     return any(can_manage_community_news(request, community)
                for community in communities.iterator())
+
+
+def is_community_member(user, community) -> bool:
+    """Does ``user`` belong to ``community`` (2026-10-06)? Among its members
+    (``Person.communities``), or its head, or one of its senior members: the
+    head and the seniors are not always among the members."""
+    if not getattr(user, "is_authenticated", False) or community is None:
+        return False
+    person = Person.objects.filter(user=user).first()
+    if person is None:
+        return False
+    if community.head_id == person.pk:
+        return True
+    if person.communities.filter(pk=community.pk).exists():
+        return True
+    return community.senior_members.filter(pk=person.pk).exists()
+
+
+def may_moderate_community(user, community) -> bool:
+    """May ``user`` decide for ``community`` (2026-10-06): its head, or an
+    administrator (``contact_access.is_administrator``: a real superuser on
+    the Superuser plan where the host sells it). Staff alone is not enough,
+    and neither is being a senior member."""
+    if not getattr(user, "is_authenticated", False) or community is None:
+        return False
+    from toto.socialhub.contact_access import is_administrator
+
+    if is_administrator(user):
+        return True
+    person = Person.objects.filter(user=user).first()
+    return person is not None and community.head_id == person.pk
