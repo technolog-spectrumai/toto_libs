@@ -14,6 +14,7 @@ from .models import (
     VaultQuotaPolicy, VaultUsageEvent,
     external_buckets_allowed,
 )
+from . import bucket_lifecycle
 from .forms import BucketPeerPairingForm
 from .peering import (
     BUCKET_RIGHTS,
@@ -152,6 +153,21 @@ class BucketAdmin(admin.ModelAdmin):
         return '—'
     sealed_credential_display.short_description = _('Sealed credential')
 
+    #: The AI shield is the assistant's field: a host without the assistant
+    #: (``bucket_lifecycle.shield_offered``) shows no column, no filter and no
+    #: checkbox for it, and a posted value is ignored.
+    def get_list_display(self, request):
+        columns = super().get_list_display(request)
+        if bucket_lifecycle.shield_offered():
+            return columns
+        return tuple(c for c in columns if c != bucket_lifecycle.SHIELD)
+
+    def get_list_filter(self, request):
+        filters = super().get_list_filter(request)
+        if bucket_lifecycle.shield_offered():
+            return filters
+        return tuple(f for f in filters if f != bucket_lifecycle.SHIELD)
+
     def get_readonly_fields(self, request, obj=None):
         """The POST-side half of the storage gate.
 
@@ -165,6 +181,8 @@ class BucketAdmin(admin.ModelAdmin):
             readonly += [f for f in ("storage_backend", "provider", "peer",
                                      "storage_config", "public_base_url")
                          if f not in readonly]
+        if not bucket_lifecycle.shield_offered() and bucket_lifecycle.SHIELD not in readonly:
+            readonly.append(bucket_lifecycle.SHIELD)
         return readonly
 
     def get_fieldsets(self, request, obj=None):
@@ -174,6 +192,11 @@ class BucketAdmin(admin.ModelAdmin):
         # at external storage; backend choice is superuser territory, like the
         # provider and peering admins below.
         fieldsets = super().get_fieldsets(request, obj)
+        if not bucket_lifecycle.shield_offered():
+            fieldsets = tuple(
+                (name, {**options, 'fields': tuple(f for f in options['fields']
+                                                   if f != bucket_lifecycle.SHIELD)})
+                for name, options in fieldsets)
         if external_buckets_allowed() and request.user.is_superuser:
             return fieldsets
         return tuple(fs for fs in fieldsets if fs[0] != 'Storage backend')

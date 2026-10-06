@@ -1,4 +1,5 @@
-{% load i18n %}{% comment %}The Edit modal: name, owner, storage quota, AI shield — nothing that
+{% load i18n %}{% comment %}The Edit modal: name, owner, storage quota — and the AI shield where
+   the assistant is installed (`ai_shield`, manage.html) — nothing that
    moves data. Where the files live, the provider, the region, the prefix, the
    pairing and the slug are fixed when the bucket is made, and the server
    refuses a post naming any of them (bucket_lifecycle.update_bucket). One
@@ -41,12 +42,14 @@
       <template x-for="e in (edit.errors.storage_quota_mb || [])"><span class="block text-xs text-red-600 dark:text-red-400" role="alert" x-text="e"></span></template>
     </label>
 
-    <label class="flex items-start gap-2">
+    {% if ai_shield %}
+    <label class="flex items-start gap-2" data-testid="bucket-edit-shield">
       <input type="hidden" name="ai_protected" value="0">
       <input type="checkbox" name="ai_protected" value="1" x-model="edit.ai" class="mt-0.5">
       <span><span class="font-semibold">{% trans "AI shield" %}</span>
         <span class="block text-xs opacity-70">{% trans "The assistant never reads files in this bucket." %}</span></span>
     </label>
+    {% endif %}
 
     <p class="text-xs opacity-60">{% trans "Where the files live — the kind, the provider, the region, the prefix, the connection — is fixed when a bucket is made. To move files elsewhere, make a new bucket and copy them." %}</p>
 

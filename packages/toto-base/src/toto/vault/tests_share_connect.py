@@ -41,7 +41,14 @@ from .peer_client import PeerClient
 from .peering import BucketGrant, BucketPeer, pairing_code_for
 from .tests_management import ManageFixture
 from .tests_mirror import DownHttp, LoopbackHttp
-from .tests_storage_adapters import PERSISTENT, audit_actions, audit_dump, private_dns, public_dns
+from .tests_storage_adapters import (
+    PERSISTENT,
+    assistant,
+    audit_actions,
+    audit_dump,
+    private_dns,
+    public_dns,
+)
 
 User = get_user_model()
 
@@ -722,6 +729,15 @@ class ConnectTests(ConnectFixture):
         self.assert_no_secret(response.content.decode(), secrets_of(code))
         self.assertNotIn(manage_views.DRAFT_KEY, self.client.session)
 
+    @assistant(False)
+    def test_connect_ignores_a_posted_shield_without_the_assistant(self):
+        code, grant, raw = self.exported(may_list=True, may_download=True)
+        self.assertEqual(self.connect(code).status_code, 200)       # posts ai_protected=1
+        self.assertFalse(Bucket.objects.get(name="Mounted Alpha").ai_protected)
+        self.assertNotIn("ai_protected", audit_dump())
+        self.assertNotIn('name="ai_protected"', self.page())
+
+    @assistant(True)
     def test_connect_makes_the_pairing_and_the_bucket(self):
         code, grant, raw = self.exported(may_list=True, may_download=True)
         with captured_logs() as logs:

@@ -508,7 +508,7 @@ and never branch on a provider.
 | `name`, `slug` | the name is editable; the slug is fixed at Create (links, peer grants and the audit chain name it) |
 | `owner` | **SET_NULL** (was CASCADE): deleting an account no longer deletes its buckets — a bucket holds other people's files, gateways and clearance keeping. Edit gives it a new owner |
 | `created_by`, `created_at` | who made it in Management and when — never edited, blank on older rows |
-| `storage_backend`, `provider`, `storage_config`, `peer` | fixed at Create: Edit (`bucket_lifecycle.update_bucket`) changes `name`, `owner`, `storage_quota_mb`, `ai_protected` only |
+| `storage_backend`, `provider`, `storage_config`, `peer` | fixed at Create: Edit (`bucket_lifecycle.update_bucket`) changes `name`, `owner`, `storage_quota_mb` only — and `ai_protected` on a host with the assistant (`bucket_lifecycle.editable()`) |
 | `last_probe_at`, `last_probe_error` | the last connection test, stamped by an operator's click (never a page render); a mount's health stays on its `BucketPeer` |
 | `deletion_requested_at`, `deletion_error` | the bucket is being deleted (and why the purge stopped, if it did) |
 
@@ -722,9 +722,9 @@ render probes, opens a sealed key or calls out.
 
 | door | url name | what |
 |---|---|---|
-| New bucket | `vault:manage_create` (POST) | kind from `StorageAdapter.creatable_adapters()` minus `GUIDED_KINDS` (another Zenobia has its own flow); name, owner (people search), quota, AI shield, then `adapter.fields()`; `adapter.create` (an S3 kind must pass its probe; its keys are sealed) |
+| New bucket | `vault:manage_create` (POST) | kind from `StorageAdapter.creatable_adapters()` minus `GUIDED_KINDS` (another Zenobia has its own flow); name, owner (people search), quota, then `adapter.fields()` (and the AI shield, drawn and taken only where the assistant is installed: `toto.core.assistant.installed`); `adapter.create` (an S3 kind must pass its probe; its keys are sealed) |
 | owner search | `vault:manage_people` (GET, JSON) | any ACTIVE account by name, username or e-mail; answers pk, name, username — never the e-mail |
-| Edit | `vault:manage_edit` (POST) | name, owner, quota, AI shield only; any other posted field refuses the whole post (`bucket_lifecycle.update_bucket`, `VAULT.BUCKET.UPDATED` before/after) |
+| Edit | `vault:manage_edit` (POST) | name, owner, quota only (and the AI shield where the assistant is installed; elsewhere it is "any other field"); any other posted field refuses the whole post (`bucket_lifecycle.update_bucket`, `VAULT.BUCKET.UPDATED` before/after) |
 | Test | `vault:manage_test` (POST, JSON) | `adapter.probe`, stamped (a mount's on its pairing) |
 | Delete | `vault:manage_delete` (POST) | the name typed exactly, checked again server-side; `bucket_lifecycle.request_deletion` hands the purge to a worker |
 

@@ -9,7 +9,7 @@ Management's views stay thin and the rules cannot drift between them.
 | action | when |
 |---|---|
 | ``VAULT.BUCKET.CREATED`` | a bucket is made in Management (kind, owner, target) |
-| ``VAULT.BUCKET.UPDATED`` | Edit changed its name, owner, quota or AI shield (each field before and after) |
+| ``VAULT.BUCKET.UPDATED`` | Edit changed its name, owner or quota — or, where the assistant is installed, its AI shield (each field before and after) |
 | ``VAULT.BUCKET.DELETE_REQUESTED`` | a superuser confirmed Delete (the files and bytes about to go) |
 | ``VAULT.BUCKET.DELETE_FAILED`` | the purge stopped (``success=False``, the reason) |
 | ``VAULT.BUCKET.DELETED`` | the purge finished: files, bucket (and a mount's pairing) gone |
@@ -89,6 +89,27 @@ OBJECT_TYPE = "vault.bucket"
 #: What Edit may change. Everything else — backend, provider, endpoint,
 #: region, remote bucket, prefix, peer, slug, creator — is fixed at Create.
 EDITABLE = ("name", "owner", "storage_quota_mb", "ai_protected")
+#: The AI shield: a field of the assistant's (``toto.core.assistant``). On a
+#: host without it Edit does not take the field, Create stores its default
+#: and no audit record names it — see ``editable``.
+SHIELD = "ai_protected"
+
+
+def shield_offered() -> bool:
+    """Whether a bucket's AI shield exists on this host: only where the
+    assistant is installed (``toto.core.assistant.installed``)."""
+    from toto.core import assistant
+
+    return assistant.installed()
+
+
+def editable() -> tuple:
+    """What Edit may change HERE: ``EDITABLE``, without the AI shield on a
+    host that has no assistant."""
+    if shield_offered():
+        return EDITABLE
+    return tuple(name for name in EDITABLE if name != SHIELD)
+
 
 #: Files handled per query while purging.
 PURGE_CHUNK = 200
@@ -110,16 +131,18 @@ def snapshot(bucket) -> dict:
     from .storage_adapters import StorageAdapter
 
     adapter = StorageAdapter.for_bucket(bucket)
-    return {
+    record = {
         "name": bucket.name,
         "slug": bucket.slug,
         "owner": bucket.owner.get_username() if bucket.owner_id else None,
         "storage_quota_mb": bucket.storage_quota_mb,
-        "ai_protected": bool(bucket.ai_protected),
         "kind": adapter.get_key() if adapter else bucket.storage_backend,
         "backend": bucket.storage_backend or "local",
         "target": adapter.target(bucket) if adapter else "",
     }
+    if shield_offered():
+        record[SHIELD] = bool(bucket.ai_protected)
+    return record
 
 
 def audit(action, bucket, actor, *, success=True, object_id=None, **metadata):
@@ -173,30 +196,34 @@ def _same_quota(raw, stored) -> bool:
 
 
 def _editable_view(bucket) -> dict:
-    return {
+    view = {
         "name": bucket.name,
         "owner": bucket.owner.get_username() if bucket.owner_id else None,
         "storage_quota_mb": bucket.storage_quota_mb,
-        "ai_protected": bool(bucket.ai_protected),
     }
+    if shield_offered():
+        view[SHIELD] = bool(bucket.ai_protected)
+    return view
 
 
 def update_bucket(bucket, actor, **changes):
-    """Edit: name, owner, quota, AI shield — nothing that moves data.
+    """Edit: name, owner, quota — and the AI shield where the assistant is
+    installed (``editable``) — nothing that moves data.
 
     Returns the list of fields that changed. Refuses, with a sentence, any
     other field, an owner who is not an active account, a taken name, and a
     bucket that is being deleted.
 
     A field is checked only when its value CHANGES. The modal always posts
-    all four, and what a bucket already has is not up for review: a legacy
+    all of them, and what a bucket already has is not up for review: a legacy
     twin name differing only in case, an owner whose account was deactivated
     since, a quota of 0 from the admin — none of them blocks changing
     something else.
     """
     from .storage_adapters import clean_name, clean_owner, clean_quota
 
-    fixed = sorted(set(changes) - set(EDITABLE))
+    fields = editable()
+    fixed = sorted(set(changes) - set(fields))
     if fixed:
         raise ValidationError(_("%(fields)s cannot be changed after the bucket is created.")
                               % {"fields": ", ".join(fixed)})
@@ -211,10 +238,10 @@ def update_bucket(bucket, actor, **changes):
     if "storage_quota_mb" in changes and not _same_quota(changes["storage_quota_mb"],
                                                          bucket.storage_quota_mb):
         bucket.storage_quota_mb = clean_quota(changes["storage_quota_mb"])
-    if "ai_protected" in changes:
-        bucket.ai_protected = bool(changes["ai_protected"])
+    if SHIELD in changes:
+        bucket.ai_protected = bool(changes[SHIELD])
     after = _editable_view(bucket)
-    changed = [k for k in EDITABLE if before[k] != after[k]]
+    changed = [k for k in fields if before[k] != after[k]]
     if not changed:
         return []
     with transaction.atomic():

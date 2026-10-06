@@ -83,7 +83,7 @@ from django.views.decorators.debug import sensitive_post_parameters, sensitive_v
 from django.views.decorators.http import require_POST, require_safe
 
 from . import bucket_lifecycle
-from .manage_views import _checked, _display_name, _owner_from, _scrub, person_row
+from .manage_views import _checked, _display_name, _owner_from, _scrub, _shield, person_row
 from .models import Bucket, StorageBackend, closed_bucket_sentence, external_buckets_allowed
 from .peering import BUCKET_RIGHTS, BucketGrant, BucketPeer, federated_host_choices, pairing_code_for
 from .plan_gate import superuser_plan_door
@@ -744,7 +744,7 @@ def manage_connect(request):
     if not errors:
         try:
             bucket = adapter.create(name, owner, request.user, config, secret,
-                                    ai_protected=_checked(data, "ai_protected"))
+                                    ai_protected=_shield(data))
         except ValidationError as exc:
             for field, sentences in _sentences(exc, secrets + list(secret.values())).items():
                 errors.setdefault(field, []).extend(sentences)

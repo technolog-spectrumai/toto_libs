@@ -1,4 +1,6 @@
-{% load i18n %}{% comment %}Wide screens (md+): a table, one row per bucket. Expects `rows`.{% endcomment %}
+{% load i18n %}{% comment %}Wide screens (md+): a table, one row per bucket. Expects `rows`, and
+   `ai_shield` (manage.html): the AI shield's badge only where the assistant
+   is installed.{% endcomment %}
 {% trans "no owner" as l_no_owner %}
 <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
      class="hidden overflow-x-auto rounded-2xl border shadow-sm md:block">
@@ -23,9 +25,9 @@
         <td class="px-4 py-3">
           <div class="break-words font-semibold">{{ row.bucket.name }}</div>
           <div class="font-mono text-xs opacity-50">{{ row.bucket.slug }}</div>
-          {% if row.bucket.ai_protected or row.bucket.storage_quota_mb %}
+          {% if ai_shield and row.bucket.ai_protected or row.bucket.storage_quota_mb %}
           <div class="mt-1 flex flex-wrap gap-1 text-[10px] uppercase tracking-wide opacity-60">
-            {% if row.bucket.ai_protected %}<span title="{% trans 'The assistant never reads files in this bucket.' %}"><i class="fa-solid fa-shield-halved mr-0.5" aria-hidden="true"></i>{% trans "AI shield" %}</span>{% endif %}
+            {% if ai_shield and row.bucket.ai_protected %}<span title="{% trans 'The assistant never reads files in this bucket.' %}"><i class="fa-solid fa-shield-halved mr-0.5" aria-hidden="true"></i>{% trans "AI shield" %}</span>{% endif %}
             {% if row.bucket.storage_quota_mb %}<span>{% blocktrans with mb=row.bucket.storage_quota_mb %}{{ mb }} MB quota{% endblocktrans %}</span>{% endif %}
           </div>
           {% endif %}
