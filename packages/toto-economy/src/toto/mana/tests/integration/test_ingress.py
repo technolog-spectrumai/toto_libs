@@ -61,6 +61,40 @@ class SeedTests(PricingTestCase):
         self.assertEqual(self.item("storage.request").price_per_unit_display, Decimal("7"))
         self.assertFalse(self.priced("repo.op"))
 
+    GEOGRAPHY = ("geography.lookup", "geography.route", "geography.pin", "geography.zone",
+                 "geography.note")
+
+    def geography_or_skip(self):
+        from django.apps import apps
+
+        if not apps.is_installed("toto.geography"):
+            self.skipTest("this host installs no geography")
+
+    def test_geography_s_prices_reach_the_rate_card_by_themselves(self):
+        """Stage 63 added no seeding of its own: its codes are in
+        ``colours.PRICES`` and the one ingress prices them, each in its
+        pool, on the rate card the staff price desk reads and edits."""
+        self.geography_or_skip()
+        self.ingress()
+        for code in self.GEOGRAPHY:
+            with self.subTest(code=code):
+                item = self.item(code)
+                self.assertEqual(item.price_per_unit_display, colours.PRICES[code])
+                self.assertEqual(item.charged_asset.unit_name,
+                                 colours.TICKER[colours.COLOUR_OF[code]])
+                self.assertEqual(item.receiving_account.code, "platform-usage-fees")
+        self.assertEqual(self.item("geography.route").charged_asset.unit_name, "RED")
+        self.assertEqual(self.item("geography.pin").charged_asset.unit_name, "GREEN")
+
+    @override_settings(MANA_PRICES={"geography.route": "3", "geography.note": None})
+    def test_a_host_overrides_a_geography_price_and_frees_another(self):
+        self.geography_or_skip()
+        self.ingress()
+        self.assertEqual(self.item("geography.route").price_per_unit_display, Decimal("3"))
+        self.assertFalse(self.priced("geography.note"))
+        self.assertEqual(self.item("geography.lookup").price_per_unit_display,
+                         colours.PRICES["geography.lookup"])
+
     @override_settings(MANA_SEED_PRICES=False)
     def test_the_seed_can_be_switched_off(self):
         self.ingress()

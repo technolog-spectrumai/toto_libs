@@ -300,3 +300,36 @@ class GeographyTests(EraseCase):
         kept = self.Address.objects.get(pk=self.seat)
         self.assertIsNone(kept.created_by_id)
         self.assertEqual(self.Address.objects.count(), 1)
+
+    def test_the_erase_hands_the_point_to_geography_itself(self):
+        """The test above passes without the erase's own step: the link goes
+        with the person, and the link's ``post_delete`` receiver deletes its
+        ``Address``. This one holds the step: the point's id is gathered
+        while the account is still there and handed to geography's delete
+        inside the erase, so the point goes even where no receiver ran."""
+        from toto.geography import erasure as geography_erasure
+
+        with mock.patch.object(geography_erasure, "delete_addresses",
+                               wraps=geography_erasure.delete_addresses) as handed:
+            code, out, _ = run("erase_user", "ada", "--confirm", "ada")
+        self.assertEqual(code, 0, out)
+        handed.assert_called_once()
+        self.assertEqual(list(handed.call_args.args[0]), [self.home])
+
+    def test_the_erase_deletes_the_point_with_the_receiver_away(self):
+        """The same, by its effect: with the link's receiver disconnected
+        (a state no deployment has), the erase's own step is all that is
+        left, and no ``Address`` of theirs outlives the account."""
+        from django.db.models.signals import post_delete
+
+        from toto.geography import receivers
+
+        uid = "geography.person_address_gone"
+        self.assertTrue(post_delete.disconnect(sender=self.PersonAddress, dispatch_uid=uid),
+                        "geography connects a receiver to its link row")
+        self.addCleanup(post_delete.connect, receivers._person_address_gone,
+                        sender=self.PersonAddress, dispatch_uid=uid)
+        code, out, _ = run("erase_user", "ada", "--confirm", "ada")
+        self.assertEqual(code, 0, out)
+        self.assertFalse(self.Address.objects.filter(pk=self.home).exists())
+        self.assertTrue(self.Address.objects.filter(pk=self.seat).exists())
