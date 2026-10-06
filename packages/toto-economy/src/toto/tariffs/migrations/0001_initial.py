@@ -84,7 +84,7 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('charged_asset', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='tariff_items', to='assets.asset')),
-                ('metric', models.ForeignKey(help_text='Billing metric this item charges for, e.g. storage.request, ai.input_tokens', on_delete=django.db.models.deletion.PROTECT, related_name='tariff_items', to='tariffs.billingmetric')),
+                ('metric', models.ForeignKey(help_text='Billing metric this item charges for, e.g. storage.request, storage.transfer_mb', on_delete=django.db.models.deletion.PROTECT, related_name='tariff_items', to='tariffs.billingmetric')),
                 ('receiving_account', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='tariff_items_receiving', to='assets.ledgeraccount')),
                 ('tariff', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='items', to='tariffs.tariff')),
                 ('unit', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='tariff_items', to='tariffs.billingunit')),

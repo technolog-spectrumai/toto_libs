@@ -169,7 +169,7 @@ class TariffItem(models.Model):
         "tariffs.BillingMetric",
         on_delete=models.PROTECT,
         related_name="tariff_items",
-        help_text=_("Billing metric this item charges for, e.g. storage.request, ai.input_tokens"),
+        help_text=_("Billing metric this item charges for, e.g. storage.request, storage.transfer_mb"),
     )
     charged_asset = models.ForeignKey(
         "assets.Asset",

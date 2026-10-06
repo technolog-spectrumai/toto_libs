@@ -408,10 +408,10 @@ class Command(IngressCommand):
         )
 
         if banana is not None:
-            metric = _metric("demo.ai_inference", "AI inference",
+            metric = _metric("demo.request", "Demo request",
                              app_label="demo", default_unit=request_unit)
-            _item(tariff, metric, "AI inference", banana, Decimal("1"), request_unit, revenue)
-            self.stdout.write("  +/✓ demo price demo.ai_inference = 1 BANANA/request")
+            _item(tariff, metric, "Demo request", banana, Decimal("1"), request_unit, revenue)
+            self.stdout.write("  +/✓ demo price demo.request = 1 BANANA/request")
 
         if makaroni is not None:
             metric = _metric("demo.graph_query", "Graph query",

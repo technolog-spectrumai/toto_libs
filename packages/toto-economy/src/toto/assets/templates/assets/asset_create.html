@@ -54,7 +54,7 @@
           {% trans "Name" %}
         </label>
         <input type="text" name="name" required maxlength="255"
-               placeholder="{% trans 'e.g. AI Usage Token' %}"
+               placeholder="{% trans 'e.g. Storage Token' %}"
                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
                class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
       </div>
@@ -63,7 +63,7 @@
           {% trans "Unit name / ticker" %}
         </label>
         <input type="text" name="unit_name" required maxlength="20"
-               placeholder="{% trans 'e.g. AI_TOKEN' %}"
+               placeholder="{% trans 'e.g. STORAGE_TOKEN' %}"
                x-model="unitName"
                @input="unitName = unitName.toUpperCase()"
                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
@@ -84,7 +84,7 @@
           {% trans "Description" %} <span class="font-normal opacity-60">({% trans "optional" %})</span>
         </label>
         <input type="text" name="description" maxlength="500"
-               placeholder="{% trans 'e.g. Credits for AI inference usage' %}"
+               placeholder="{% trans 'e.g. Credits for storage use' %}"
                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
                class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20 sm:col-span-2">
       </div>

@@ -338,8 +338,8 @@ class Command(IngressCommand):
                 reserve_account=platform_reserve,
                 reference="create-banana",
                 description=(
-                    "AI inference token. 1 BANANA = 1 banana (the fruit, ~120 g). "
-                    "A bunch of six ≈ 6 BANANA; a long conversation eats a few."
+                    "Demonstration token. 1 BANANA = 1 banana (the fruit, ~120 g). "
+                    "A bunch of six ≈ 6 BANANA; a busy afternoon eats a few."
                 ),
                 metadata={
                     "kind": "platform_token",

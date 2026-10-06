@@ -165,7 +165,7 @@ class UsageSimulationForm(forms.Form):
     metric_code = forms.CharField(
         max_length=100,
         label=_("Metric code"),
-        help_text=_("e.g. ai.input_tokens, storage.mb_hour"),
+        help_text=_("e.g. storage.request, storage.transfer_mb"),
     )
     quantity = forms.DecimalField(
         max_digits=30,
@@ -177,6 +177,6 @@ class UsageSimulationForm(forms.Form):
         max_length=100,
         required=False,
         label=_("Unit"),
-        help_text=_("e.g. request, token, mb_hour"),
+        help_text=_("e.g. request, mb, mb_hour"),
     )
 
