@@ -31,11 +31,9 @@ def installed() -> bool:
     """Whether this host has the assistant at all.
 
     The ONE question for everything outside toto-ai that exists only for the
-    assistant and is not an editor's button: a bucket's AI shield (the
-    checkbox in Storage → Management, its badge, the Django admin's column and
-    field, the key in a bucket's audit record), the clause of "How mana works"
-    that names assistant requests. A host without the app shows none of it
-    and stores nothing new for it. Templates ask through
+    assistant and is not an editor's button: the clause of "How mana works"
+    that names assistant requests, the manual's Assistant chapter. A host
+    without the app shows none of it. Templates ask through
     ``{% assistant_installed as has_assistant %}`` (``app_tags``).
     """
     from django.apps import apps
@@ -64,15 +62,19 @@ def surface_for(key: str) -> str:
 def allowed_for_file(vault_file) -> bool:
     """False when the file's bucket is shielded from the assistant.
 
-    The ONE rule for ``Bucket.ai_protected``, so every door — the editor
-    buttons, the file wand, the file-ask page — refuses identically and a
-    bucket owner has exactly one switch to reason about. Files outside any
-    bucket (``VaultFile.bucket`` is nullable) are unshielded: the shield is a
-    property of the bucket, and no bucket means nobody set one.
+    The ONE rule for a bucket's AI shield, so every door — the editor
+    buttons, the file wand, the file-ask page — refuses identically. Files
+    outside any bucket (``VaultFile.bucket`` is nullable) are unshielded.
+
+    ``vault.Bucket`` has no such switch any more: the field ``ai_protected``
+    and its column left toto-base on 2026-10-06, so with the vault as it
+    ships every bucket reads as unshielded and this answers True. The doors
+    still ask here, and only here.
     """
     try:
         bucket = getattr(vault_file, "bucket", None)
-        return not bool(bucket and bucket.ai_protected)
+        # The switch left toto-base on 2026-10-06: read with a default.
+        return not bool(bucket and getattr(bucket, "ai_protected", False))
     except Exception:  # noqa: BLE001 - a missing row must read as unshielded
         return True
 

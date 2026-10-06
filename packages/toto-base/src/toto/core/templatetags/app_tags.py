@@ -19,7 +19,7 @@ def assistant_installed():
     """Whether this host has the assistant (``toto.core.assistant.installed``).
 
     ``{% assistant_installed as has_assistant %}`` — for what a page draws
-    only for the assistant: a bucket's AI shield, a sentence that names it.
+    only for the assistant: a sentence that names it.
     """
     from toto.core import assistant
 
