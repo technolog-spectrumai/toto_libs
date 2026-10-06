@@ -508,9 +508,18 @@ and never branch on a provider.
 | `name`, `slug` | the name is editable; the slug is fixed at Create (links, peer grants and the audit chain name it) |
 | `owner` | **SET_NULL** (was CASCADE): deleting an account no longer deletes its buckets — a bucket holds other people's files, gateways and clearance keeping. Edit gives it a new owner |
 | `created_by`, `created_at` | who made it in Management and when — never edited, blank on older rows |
-| `storage_backend`, `provider`, `storage_config`, `peer` | fixed at Create: Edit (`bucket_lifecycle.update_bucket`) changes `name`, `owner`, `storage_quota_mb` only — and `ai_protected` on a host with the assistant (`bucket_lifecycle.editable()`) |
+| `storage_backend`, `provider`, `storage_config`, `peer` | fixed at Create: Edit (`bucket_lifecycle.update_bucket`) changes `name`, `owner`, `storage_quota_mb` only (`bucket_lifecycle.EDITABLE`) |
 | `last_probe_at`, `last_probe_error` | the last connection test, stamped by an operator's click (never a page render); a mount's health stays on its `BucketPeer` |
 | `deletion_requested_at`, `deletion_error` | the bucket is being deleted (and why the purge stopped, if it did) |
+
+**No AI shield (2026-10-06).** The field `ai_protected` (the assistant never
+read a shielded bucket's files) is gone from the model and from
+`migrations/0001_initial.py`, edited in place: no new migration. A database
+made before that still has the column, NOT NULL and with no database default,
+so creating a bucket on it fails; a kept database needs
+`ALTER TABLE vault_bucket DROP COLUMN ai_protected` once. The assistant's
+doors ask `toto.core.assistant.allowed_for_file`, which reads the field with
+a default and so answers "unshielded" for every bucket.
 
 `VaultFile.bucket` is **PROTECT** (was SET_NULL): a bucket with files cannot be
 deleted except by the purge, and no file ever ends with `bucket=None` — which
@@ -535,7 +544,7 @@ ones never put back in a page, a draft, a log or JSON), `validate(data) ->
 (config, secret)` (a `ValidationError` keyed by field, in sentences),
 `probe_candidate(config, secret)` (the test before saving — an S3 bucket must
 pass it, and `create` runs it again), `create(name, owner, actor, config, secret,
-storage_quota_mb=, ai_protected=)` (one transaction: the bucket with `created_by`,
+storage_quota_mb=)` (one transaction: the bucket with `created_by`,
 its sealed secret or pairing, `VAULT.BUCKET.CREATED`), `probe(bucket)` (bounded,
 stamped), `describe(bucket)` (`target`, `status`, `health` and their labels,
 the credential's hint — stamps only, no network, no secret) and
@@ -722,9 +731,9 @@ render probes, opens a sealed key or calls out.
 
 | door | url name | what |
 |---|---|---|
-| New bucket | `vault:manage_create` (POST) | kind from `StorageAdapter.creatable_adapters()` minus `GUIDED_KINDS` (another Zenobia is a card of the same dialog with steps and doors of its own, below); name, owner (people search), quota, then `adapter.fields()` (and the AI shield, drawn and taken only where the assistant is installed: `toto.core.assistant.installed`); `adapter.create` (an S3 kind must pass its probe; its keys are sealed) |
+| New bucket | `vault:manage_create` (POST) | kind from `StorageAdapter.creatable_adapters()` minus `GUIDED_KINDS` (another Zenobia is a card of the same dialog with steps and doors of its own, below); name, owner (people search), quota, then `adapter.fields()`; a posted field the door does not know is not read; `adapter.create` (an S3 kind must pass its probe; its keys are sealed) |
 | owner search | `vault:manage_people` (GET, JSON) | any ACTIVE account by name, username or e-mail; answers pk, name, username — never the e-mail |
-| Edit | `vault:manage_edit` (POST) | name, owner, quota only (and the AI shield where the assistant is installed; elsewhere it is "any other field"); any other posted field refuses the whole post (`bucket_lifecycle.update_bucket`, `VAULT.BUCKET.UPDATED` before/after) |
+| Edit | `vault:manage_edit` (POST) | name, owner, quota only; any other posted field refuses the whole post (`bucket_lifecycle.update_bucket`, `VAULT.BUCKET.UPDATED` before/after) |
 | Test | `vault:manage_test` (POST, JSON) | `adapter.probe`, stamped (a mount's on its pairing) |
 | Delete | `vault:manage_delete` (POST) | the name typed exactly, checked again server-side; `bucket_lifecycle.request_deletion` hands the purge to a worker |
 
