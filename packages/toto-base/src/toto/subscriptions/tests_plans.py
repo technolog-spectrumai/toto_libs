@@ -298,13 +298,23 @@ class TheFreeTierIsWhatItClaimsTests(SimpleTestCase):
     """
 
     def test_the_free_tier_is_identity_files_and_the_money(self):
+        from django.apps import apps
+
         from toto.subscriptions.catalogue import registry
 
         free = {e.feature_key for e in registry.all() if e.free}
+        expected = {"core", "socialhub", "people", "vault", "events",
+                    "assets", "quota", "subscriptions", "workflows", "jess"}
+        # Deliberate (2026-10-06): geography is free on every plan. The map,
+        # a person's point and a community's headquarters open to every
+        # member, and what costs is priced per action in mana, not by plan.
+        # The app declares it itself (toto/geography/entitlements.py, found
+        # by autodiscovery), so it is in the catalogue exactly on a host that
+        # installs toto-geo's app.
+        if apps.is_installed("toto.geography"):
+            expected.add("geography")
         self.assertEqual(
-            free,
-            {"core", "socialhub", "people", "vault", "events",
-             "assets", "quota", "subscriptions", "workflows", "jess"},
+            free, expected,
             "the free tier changed — if that is deliberate, say so here")
 
     def test_chat_and_the_exchange_are_not_free(self):
