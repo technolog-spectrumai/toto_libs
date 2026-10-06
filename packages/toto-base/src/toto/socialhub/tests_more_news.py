@@ -151,7 +151,9 @@ class ConnectorTests(NewsCase):
                                         "slug": "weavers"})["community"]
         self.assertEqual(community["slug"], "weavers")
         self.assertEqual(community["head"]["display_name"], "Head")
-        self.assertIsNone(community["location"])
+        # The seat is text since 2026-10-04; no map address is serialised.
+        self.assertIsNone(community["seat"])
+        self.assertNotIn("location", community)
 
     def test_an_unknown_resource_is_a_validation_error(self):
         from toto.socialhub.connectors import SocialhubReadConnector
