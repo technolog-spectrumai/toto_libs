@@ -941,8 +941,11 @@ class VaultPlayPluginRegistryTests(TestCase):
         plugin = VaultPlayPlugin.for_file_type("pdf")
         self.assertIsNone(plugin)
 
-    def test_no_plugin_for_text(self):
-        plugin = VaultPlayPlugin.for_file_type("text")
+    def test_no_plugin_for_a_type_nobody_claims(self):
+        # Asked of "text" until 2026-10-06. A host's own app may claim any
+        # type (zenobia's editor plays text), and this module runs on the
+        # host's settings; the lookup is exact, so an unclaimed type is None.
+        plugin = VaultPlayPlugin.for_file_type("no-such-type")
         self.assertIsNone(plugin)
 
     def test_no_plugin_for_image(self):
