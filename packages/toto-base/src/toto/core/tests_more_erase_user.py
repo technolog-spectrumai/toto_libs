@@ -19,11 +19,15 @@ from django.test import TestCase, override_settings
 
 from toto.audit.models import AuditRecord
 from toto.audit.services import record, verify_chain
-from toto.comments import services as comments
-from toto.comments.models import Comment
 from toto.core.management.commands.erase_user import plan
 
 User = get_user_model()
+
+# toto.comments is optional. On a host without it, importing its models
+# raises at load, so the cases that write a comment import it themselves and
+# are skipped there; the rest run everywhere.
+needs_comments = unittest.skipUnless(apps.is_installed("toto.comments"),
+                                     "no comments on this host")
 
 
 def run(*args):
@@ -61,7 +65,10 @@ class PlanReportTests(EraseCase):
         self.assertIn("audit chain keeps their records", notes)
         self.assertIn("Backups taken before now", notes)
 
+    @needs_comments
     def test_a_comment_they_wrote_is_listed_as_detached_not_deleted(self):
+        from toto.comments import services as comments
+
         comments.add(self.ada, "my two cents")
         report = plan(self.ada)
         self.assertEqual(report["detached"]["comments.Comment.author"], 1)
@@ -119,8 +126,9 @@ class PlanReportTests(EraseCase):
 
 class BlockedTests(EraseCase):
     def _blocked_by(self, error_class):
-        blocker = Comment(pk=1, body="x")
-        exc = error_class("cannot", {blocker, Comment(pk=2, body="y")})
+        # Any model does: the report names a blocker by its label. The audit
+        # record is on every host (this module imports it above).
+        exc = error_class("cannot", {AuditRecord(pk=1), AuditRecord(pk=2)})
         return mock.patch.object(Collector, "collect", side_effect=exc)
 
     def test_a_protected_row_is_named_and_the_erase_refused(self):
@@ -128,7 +136,7 @@ class BlockedTests(EraseCase):
             code, out, _ = run("erase_user", "ada", "--confirm", "ada")
         self.assertEqual(code, 1)
         self.assertIn("may not be deleted", out["error"])
-        self.assertEqual(out["report"]["blocked_by"], ["comments.Comment"])
+        self.assertEqual(out["report"]["blocked_by"], ["audit.AuditRecord"])
         self.assertTrue(User.objects.filter(username="ada").exists())
 
     def test_a_restricted_row_blocks_the_report_too(self):
@@ -136,13 +144,15 @@ class BlockedTests(EraseCase):
             code, out, _ = run("erase_user", "ada")
         self.assertEqual(code, 1)
         self.assertFalse(out["ok"])
-        self.assertEqual(out["report"]["blocked_by"], ["comments.Comment"])
+        self.assertEqual(out["report"]["blocked_by"], ["audit.AuditRecord"])
 
-    @unittest.skip("SUSPECTED BUG toto/core/management/commands/erase_user.py:63 - an "
-                   "account whose gervazy strongbox holds a data key is blocked_by "
-                   "gervazy.WrappedDataKey (PROTECT on vmk), although both rows are "
-                   "theirs and in the same cascade: anyone who ever encrypted cannot "
-                   "be erased.")
+    @unittest.skip("KNOWN BUG, confirmed 2026-10-06: an account whose gervazy strongbox "
+                   "holds a data key is blocked_by gervazy.WrappedDataKey, although both "
+                   "rows are theirs and in the same cascade, so anyone who ever encrypted "
+                   "cannot be erased. The cause is PROTECT on five same-owner links in "
+                   "toto/gervazy/models.py (WrappedDataKey.vmk and the four wrapped_key / "
+                   "encrypted_private_key links); RESTRICT would let them fall together. "
+                   "Not changed without the owner: an erase would then delete the keys.")
     def test_an_account_with_its_own_encryption_keys_can_be_erased(self):
         from toto.gervazy.models import UserStrongbox, VaultMasterKey, WrappedDataKey
 
@@ -181,7 +191,10 @@ class SuperuserGuardTests(EraseCase):
 
 
 class ErasedTests(EraseCase):
+    @needs_comments
     def test_a_comment_they_wrote_stays_in_its_thread_without_them(self):
+        from toto.comments import services as comments
+
         comment = comments.add(self.ada, "still useful")
         run("erase_user", "ada", "--confirm", "ada")
         comment.refresh_from_db()
@@ -202,13 +215,15 @@ class ErasedTests(EraseCase):
                          len(accounts))
 
     def test_the_erasure_is_on_the_chain_as_the_system_s_act(self):
-        comments.add(self.ada, "x")
+        from toto.vault.models import Bucket
+
+        Bucket.objects.create(name="Shared", slug="shared", owner=self.ada)
         code, out, _ = run("erase_user", "ada", "--confirm", "ada")
         erased = AuditRecord.objects.get(action="AUTH.ACCOUNT_ERASED")
         self.assertIsNone(erased.actor_user_id)
         self.assertEqual(erased.object_id, str(out["report"]["id"]))
         self.assertEqual(erased.metadata["deleted"]["auth.User"], 1)
-        self.assertEqual(erased.metadata["detached"]["comments.Comment.author"], 1)
+        self.assertEqual(erased.metadata["detached"]["vault.Bucket.owner"], 1)
         self.assertTrue(verify_chain().ok)
 
     def test_the_erase_stands_when_the_chain_cannot_record_it(self):
@@ -238,9 +253,6 @@ class ErasedTests(EraseCase):
         self.assertEqual(len(line.splitlines()), 1)
         self.assertEqual(line, json.dumps(json.loads(line), sort_keys=True))
 
-    @unittest.skip("SUSPECTED BUG toto/core/management/commands/erase_user.py:67-73 - plan() "
-                   "lists every related model with a count of 0 (about 90 lines on this "
-                   "host), so the console report buries what actually goes or stays.")
     def test_the_report_lists_only_what_is_actually_there(self):
         report = plan(self.ada)
         self.assertEqual([k for k, n in report["deleted"].items() if not n], [])
