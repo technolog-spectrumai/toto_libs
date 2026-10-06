@@ -144,6 +144,52 @@ class Community(DomainEntity):
 
 
 
+class CommunityPosition(models.Model):
+    """A position in a community's organisation chart (2026-10-06, stage 66).
+
+    For every kind of community, a company among them: a title, the person
+    assigned to it or nobody (a vacant position), and the position it
+    reports to or none (a top position). That is the whole chart; it is read
+    and changed through ``toto.socialhub.org_chart``, which refuses a ring of
+    positions reporting to one another and a superior from another
+    community, under a lock on the community's row.
+
+    It says who answers to whom and nothing else. It is not membership (the
+    person need not be a member: the head is not always one), it grants
+    nothing (``CommunityPrivilege`` does), and it knows nothing of shares: a
+    person's place here is what a manager set, whatever they hold.
+
+    SET_NULL on the person: an erased account leaves its position vacant,
+    not gone. SET_NULL on ``reports_to`` only as the database's last resort:
+    ``org_chart.delete`` hands a deleted position's reports to what it
+    reported to.
+    """
+
+    community = models.ForeignKey(
+        Community, on_delete=models.CASCADE, related_name="positions")
+    title = models.CharField(_("position"), max_length=120)
+    person = models.ForeignKey(
+        "people.Person", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="community_positions")
+    reports_to = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="reports")
+    order = models.PositiveIntegerField(_("order"), default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["order", "title", "pk"]
+        verbose_name = _("community position")
+        verbose_name_plural = _("community positions")
+        constraints = [
+            models.CheckConstraint(condition=~models.Q(reports_to=models.F("id")),
+                                   name="socialhub_position_not_its_own_superior"),
+        ]
+
+    def __str__(self):
+        return f"{self.title} in community {self.community_id}"
+
+
 class Clearance(models.Model):
     """What a person is trusted to read — ``internal``, ``confidential`` —
     and how fast their mana refills (2026-09-29; a Community with

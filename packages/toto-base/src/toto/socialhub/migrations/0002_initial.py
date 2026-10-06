@@ -109,4 +109,23 @@ class Migration(migrations.Migration):
             model_name='privacyacceptance',
             constraint=models.UniqueConstraint(fields=('person', 'version'), name='socialhub_privacy_acceptance_once'),
         ),
+        migrations.CreateModel(
+            name='CommunityPosition',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('title', models.CharField(max_length=120, verbose_name='position')),
+                ('order', models.PositiveIntegerField(default=0, verbose_name='order')),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('community', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='positions', to='socialhub.community')),
+                ('person', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='community_positions', to='people.person')),
+                ('reports_to', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='reports', to='socialhub.communityposition')),
+            ],
+            options={
+                'verbose_name': 'community position',
+                'verbose_name_plural': 'community positions',
+                'ordering': ['order', 'title', 'pk'],
+                'constraints': [models.CheckConstraint(condition=models.Q(('reports_to', models.F('id')), _negated=True), name='socialhub_position_not_its_own_superior')],
+            },
+        ),
     ]
