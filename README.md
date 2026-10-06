@@ -435,7 +435,12 @@ holdings of one company, never of anything else, and absent where nothing is
 recorded. A holding is independent of membership both ways. Free on every
 plan (`entitlements.py`); a host adds `registry.COMPANIES_APPS` and mounts
 `toto.companies.urls`. It is not `toto.company` of `toto-business` and needs
-none of it. zenobia installs it.
+none of it. zenobia installs it. `ingress_companies` seeds one sample
+company, `gizmo.inc` (slug `gizmoinc`), in `realistic` and `full` alike: its
+ID number and holdings for up to four persons that exist already (500, 300,
+150 and 50 shares, the admin's first; one person alone holds 1000). It makes
+no person and no member, runs once per database (a `core.BootstrapMarker`),
+and `SEED_SAMPLE_COMPANY=0` in the environment keeps it out.
 
 **`toto.events`** is scheduling. `ScheduledEvent` (built on the abstract
 `EventBase`, with an `EventCategory`) has an owner, organisers, a time
