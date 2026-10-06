@@ -43,7 +43,7 @@ CREATABLE_TYPES = [
     ("text", ".txt"), ("markdown", ".md"),
     ("json", ".json"), ("yaml", ".yaml"), ("xml", ".xml"),
     ("csv", ".csv"), ("html", ".html"), ("latex", ".tex"), ("bib", ".bib"),
-    ("svg", ".svg"), ("neojson", ".neojson"),
+    ("svg", ".svg"), ("neojson", ".neojson"), ("geojson", ".geojson"),
     # Presentations (toto.memo), contracts (toto.notarius) and notebooks
     # (toto.mandragora) are ordinary .xml files now — created/edited via their own
     # apps (which content-sniff the XML root), not the vault "New file" menu.
@@ -539,7 +539,10 @@ def _file_response_or_bad_gateway(file_obj):
     return FileResponse(
         stream,
         as_attachment=True,
-        filename=_os.path.basename(file_obj.file.name) or file_obj.key
+        filename=_os.path.basename(file_obj.file.name) or file_obj.key,
+        # None leaves the type to the name, as before; a map drawing says
+        # its own (VaultFile.DOWNLOAD_MIME).
+        content_type=VaultFile.DOWNLOAD_MIME.get(file_obj.file_type),
     )
 
 
@@ -1912,6 +1915,7 @@ class EncryptedDownloadView(LoginRequiredMixin, View):
         from decimal import Decimal as _D
 
         _record_egress(vault_file, _D(str(len(data))) / _D("1048576"))
+        content_type = VaultFile.DOWNLOAD_MIME.get(vault_file.file_type, content_type)
         return FileResponse(BytesIO(data), content_type=content_type, as_attachment=True, filename=filename)
 
 
@@ -2301,13 +2305,17 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
     #: `api_views` imports it, and because it is the record of what the vault
     #: can seed WITHOUT asking anybody.
     _ALLOWED = {"text", "markdown", "json", "yaml", "xml", "csv", "html", "latex",
-                "bib", "svg", "neojson"}
+                "bib", "svg", "neojson", "geojson"}
     _INITIAL = {
         "text":  "",
         # Empty, like "text". A starter heading would be a guess about what the
         # file is for, and every editor here opens an empty file happily.
         "markdown": "",
         "json":  "{}\n",
+        # A map drawing with nothing drawn: GeoJSON's own empty collection
+        # (RFC 7946). A host's map editor may start one its own way
+        # (VaultEditorPlugin.blank_content / new_file_content).
+        "geojson": '{\n  "type": "FeatureCollection",\n  "features": []\n}\n',
         "yaml":  "",
         "csv":   "",
         "xml":   '<?xml version="1.0" encoding="utf-8"?>\n<root>\n</root>\n',

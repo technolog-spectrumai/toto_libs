@@ -679,6 +679,11 @@ class VaultFile(models.Model):
         ('text', 'Text File'),
         ('markdown', 'Markdown'),
         ('json', 'JSON'),
+        # A map drawing (2026-10-06): `.geojson`, a GeoJSON FeatureCollection.
+        # Text, and JSON: whatever takes 'json' as text takes this too. It has
+        # a type of its own so a host's map editor can be the one that plays
+        # and edits it (zenobia: Morion); without one it is a plain file.
+        ('geojson', 'GeoJSON'),
         ('yaml', 'YAML'),
         ('xml', 'XML'),
         ('latex', 'LaTeX'),
@@ -748,6 +753,9 @@ class VaultFile(models.Model):
         ".svg": "svg",
         ".csv": "csv",
         ".json": "json",
+        # A map drawing says what it is in its name too (2026-10-06). Before,
+        # a `.geojson` was 'json' or 'text' by what the browser called it.
+        ".geojson": "geojson",
         # A sheet says what it is in its name (2026-10-02), so no JSON file
         # is ever sniffed for a workbook.
         ".uson": "uson",
@@ -773,6 +781,13 @@ class VaultFile(models.Model):
         ".zip": "zip",
     }
 
+    #: The content type a download is served with, for the types whose name
+    #: would not say it: Python's own table has no `.geojson` (and a slim
+    #: image has no /etc/mime.types to add it), and the name on disk is the
+    #: one a file was first stored under, which a rename does not change.
+    #: Every download is an attachment whatever this says.
+    DOWNLOAD_MIME = {"geojson": "application/geo+json"}
+
     @classmethod
     def detect_type(cls, mime: str, filename: str = "") -> str:
         # Extension-first for types browsers mis-label as text/plain
@@ -793,6 +808,8 @@ class VaultFile(models.Model):
             return "html"
         if "neojson" in mime:
             return "neojson"
+        if "geo+json" in mime:  # application/geo+json, before plain JSON
+            return "geojson"
         if "json" in mime:
             return "json"
         if "yaml" in mime:

@@ -18,6 +18,9 @@ from toto.vault.models import VaultFile, Bucket, VaultDirectory, file_edits_allo
 EDITABLE_FILE_TYPES = {
     "text", "markdown", "json", "yaml", "xml", "csv", "latex", "bib", "python",
     "svg", "html",
+    # A map drawing (`.geojson`, 2026-10-06) is JSON, so it is text wherever
+    # "json" is: read, written and created through this API like one.
+    "geojson",
     # Decks are text (XML) and zinnia reads and writes them through this API —
     # it is the authoring client now, so leaving pxml out 415s every cloud deck.
     # "presentation" is the legacy spelling of the same class.
@@ -468,7 +471,8 @@ class FileDownloadApiView(CorsApiView):
         # `vf.file.url` sent the client to a path with no auth on it at all;
         # there is now no such path, and `.url` raises by design.
         response = FileResponse(vf.file.open("rb"), as_attachment=True,
-                                filename=vf.title or vf.key)
+                                filename=vf.title or vf.key,
+                                content_type=VaultFile.DOWNLOAD_MIME.get(vf.file_type))
         _record_egress(vf)
         return response
 

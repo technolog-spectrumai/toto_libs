@@ -337,7 +337,7 @@ class Migration(migrations.Migration):
                 ('key', models.SlugField(blank=True, max_length=255)),
                 ('content_hash', models.CharField(blank=True, db_index=True, max_length=64)),
                 ('file', models.FileField(storage=toto.vault.storage.private_storage, upload_to='vault/files/')),
-                ('file_type', models.CharField(choices=[('pdf', 'PDF'), ('image', 'Image'), ('html', 'HTML'), ('text', 'Text File'), ('markdown', 'Markdown'), ('json', 'JSON'), ('yaml', 'YAML'), ('xml', 'XML'), ('latex', 'LaTeX'), ('bib', 'Bibliography'), ('csv', 'CSV'), ('svg', 'SVG File'), ('audio', 'Audio'), ('video', 'Video'), ('python', 'Python'), ('neojson', 'NeoJSON'), ('sheet', 'Primula Sheet'), ('uson', 'Sheet'), ('pxml', 'Presentation'), ('presentation', 'Presentation'), ('zip', 'Archive')], max_length=16)),
+                ('file_type', models.CharField(choices=[('pdf', 'PDF'), ('image', 'Image'), ('html', 'HTML'), ('text', 'Text File'), ('markdown', 'Markdown'), ('json', 'JSON'), ('geojson', 'GeoJSON'), ('yaml', 'YAML'), ('xml', 'XML'), ('latex', 'LaTeX'), ('bib', 'Bibliography'), ('csv', 'CSV'), ('svg', 'SVG File'), ('audio', 'Audio'), ('video', 'Video'), ('python', 'Python'), ('neojson', 'NeoJSON'), ('sheet', 'Primula Sheet'), ('uson', 'Sheet'), ('pxml', 'Presentation'), ('presentation', 'Presentation'), ('zip', 'Archive')], max_length=16)),
                 ('uploaded_at', models.DateTimeField(auto_now_add=True)),
                 ('is_encrypted', models.BooleanField(default=False)),
                 ('is_public', models.BooleanField(default=False, help_text='If true, file is visible to others')),

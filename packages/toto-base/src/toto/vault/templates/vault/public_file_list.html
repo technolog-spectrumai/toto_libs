@@ -177,12 +177,13 @@
             html:'fa-file-code', xml:'fa-file-code', svg:'fa-object-group',
             latex:'fa-file-lines', bib:'fa-book', notebook:'fa-book',
             pxml:'fa-person-chalkboard', presentation:'fa-person-chalkboard',
-            sheet:'fa-table-cells', zip:'fa-file-zipper' };
+            sheet:'fa-table-cells', zip:'fa-file-zipper', geojson:'fa-map-location-dot' };
           return map[ft] || 'fa-file';
         },
         fileTypeColor(ft) {
           const map = { pdf:'text-red-400', image:'text-pink-400', audio:'text-purple-400',
             video:'text-orange-400', text:'text-blue-400', json:'text-green-400',
+            geojson:'text-green-400',
             yaml:'text-green-400', csv:'text-teal-400', html:'text-amber-400' };
           return map[ft] || 'text-gray-400';
         },
