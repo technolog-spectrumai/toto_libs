@@ -186,10 +186,25 @@ class ListTests(ErasureFixture):
     def test_the_dialog_says_what_the_erase_takes_and_what_stays(self):
         self.client.force_login(self.ada)
         page = self.page()
-        for words in ("Also your profile picture", "pictures and voice recordings you sent",
-                      "signed “Former member” instead of your name",
+        for words in ("Also your profile picture",
                       "Backups taken before the erase, until they age out"):
             self.assertContains(page, words)
+        # The forum's three sentences only where there is a forum (stage 57).
+        forum = ("pictures and voice recordings you sent",
+                 "signed “Former member” instead of your name",
+                 "a forum room or a workflow you started")
+        if apps.is_installed("toto.forum"):
+            for words in forum:
+                self.assertContains(page, words)
+        else:
+            for words in forum:
+                self.assertNotContains(page, words)
+            self.assertContains(page, "and your membership application with its references.")
+            self.assertContains(page, "a workflow you started, a bucket that holds")
+        # Address rows exist only with the map; elsewhere the address is text
+        # on the profile and goes with it, so the dialog names none.
+        if not (apps.is_installed("toto.forum") or apps.is_installed("toto.locations")):
+            self.assertNotContains(page, "the addresses only you used")
 
     def test_a_member_cannot_decline(self):
         ticket = erasure.file_request(self.bob)

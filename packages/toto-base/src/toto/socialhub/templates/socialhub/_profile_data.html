@@ -113,8 +113,9 @@ and closes on Escape (core/tests_focus_trap.py).{% endcomment %}
         <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% translate "What goes" %}</h3>
         <p>{% translate "Your account and profile, your community and clearance memberships, your files, your subscriptions, sessions and everything else that exists only because of your account." %}</p>
         <!-- What the erase removes beyond the cascade (2026-10-01, 37c.21;
-             toto.core.erasure). -->
-        {% if "toto.forum"|app_installed %}<p>{% translate "Also your profile picture, the saved versions of your files, your map pin and the addresses only you used, your membership application with its references, and the pictures and voice recordings you sent in the forum." %}</p>{% else %}<p>{% translate "Also your profile picture, the saved versions of your files, the addresses only you used, and your membership application with its references." %}</p>{% endif %}
+             toto.core.erasure). Address rows exist only on a host with the
+             map: elsewhere the address is text on the profile (2026-10-06). -->
+        {% if "toto.forum"|app_installed %}<p>{% translate "Also your profile picture, the saved versions of your files, your map pin and the addresses only you used, your membership application with its references, and the pictures and voice recordings you sent in the forum." %}</p>{% elif "toto.locations"|app_installed %}<p>{% translate "Also your profile picture, the saved versions of your files, the addresses only you used, and your membership application with its references." %}</p>{% else %}<p>{% translate "Also your profile picture, the saved versions of your files, and your membership application with its references." %}</p>{% endif %}
       </div>
       <div class="space-y-1">
         <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% translate "What stays" %}</h3>
