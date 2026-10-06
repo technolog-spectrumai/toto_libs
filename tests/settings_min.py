@@ -2,7 +2,7 @@
 
 Deliberately imports toto.registry at module load: the settings themselves
 fail if the wheel is not importable.  Uses the spatialite backend because
-toto.locations declares GIS model fields.
+toto.locations and toto.geography declare GIS model fields.
 """
 from pathlib import Path
 
@@ -34,6 +34,8 @@ INSTALLED_APPS = [
     # Named here since 2026-10-04: the map left BASE_APPS (and toto-base) for
     # toto-geo, after the apps its 0004 migration follows.
     "toto.locations",
+    # Geography (2026-10-06), beside the map it does not need.
+    "toto.geography",
 ]
 
 MIDDLEWARE = [

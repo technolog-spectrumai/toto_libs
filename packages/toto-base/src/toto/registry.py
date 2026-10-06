@@ -30,6 +30,17 @@ LOCATIONS_APPS = [
     "toto.locations",
 ]
 
+# Geography (toto-geo, 2026-10-06): a person's point, a community's
+# headquarters and zone, place-name and route search. Two models with a
+# geometry (Address, Zone) and no stored route. Never part of CORE_APPS or
+# BASE_APPS: a host that wants it pins toto-geo, adds this after CORE_APPS
+# (its migration follows people and socialhub), installs django.contrib.gis
+# and runs a spatial database. It is not toto.locations, the map above, and
+# needs none of it; a host may install either, or both.
+GEOGRAPHY_APPS = [
+    "toto.geography",
+]
+
 # Notifications (toto-base, 2026-10-04): the bell in the app bar, the table
 # behind it and the bell's three doors. Never part of CORE_APPS or
 # BASE_APPS: a host adds it (or sets BUILD_NOTIFY and composes from
