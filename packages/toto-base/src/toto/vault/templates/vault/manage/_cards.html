@@ -1,6 +1,5 @@
 {% load i18n %}{% comment %}Narrow screens (below md): a card per bucket, the table's columns
-   as labelled lines. Expects `rows`, and `ai_shield` (manage.html): the AI
-   shield's badge only where the assistant is installed.{% endcomment %}
+   as labelled lines. Expects `rows`.{% endcomment %}
 {% trans "no owner" as l_no_owner %}
 <div class="space-y-4 md:hidden" data-testid="buckets-cards">
   {% for row in rows %}
@@ -21,9 +20,9 @@
       <dd class="min-w-0">{% include "vault/manage/_person.html" with person=row.owner none_label=l_no_owner %}</dd>
       <dt class="uppercase tracking-wide opacity-60">{% trans "Created by" %}</dt>
       <dd class="min-w-0">{% include "vault/manage/_person.html" with person=row.creator none_label="" %}</dd>
-      {% if ai_shield and row.bucket.ai_protected or row.bucket.storage_quota_mb %}
+      {% if row.bucket.storage_quota_mb %}
       <dt class="uppercase tracking-wide opacity-60">{% trans "Limits" %}</dt>
-      <dd class="min-w-0">{% if ai_shield and row.bucket.ai_protected %}<span class="mr-2"><i class="fa-solid fa-shield-halved mr-0.5" aria-hidden="true"></i>{% trans "AI shield" %}</span>{% endif %}{% if row.bucket.storage_quota_mb %}{% blocktrans with mb=row.bucket.storage_quota_mb %}{{ mb }} MB quota{% endblocktrans %}{% endif %}</dd>
+      <dd class="min-w-0">{% blocktrans with mb=row.bucket.storage_quota_mb %}{{ mb }} MB quota{% endblocktrans %}</dd>
       {% endif %}
     </dl>
     {% include "vault/manage/_status.html" %}

@@ -251,7 +251,7 @@ document.addEventListener('alpine:init', () => {
     // the browser's permission prompt — knows it was superseded.
     let scanSeq = 0;
     const fresh = () => ({step: 1, code: '', baseUrl: '', preview: null, error: '', errors: {}, busy: false,
-                          test: null, name: '', ai: false, renew: null, scanMsg: '', scanning: false,
+                          test: null, name: '', renew: null, scanMsg: '', scanning: false,
                           starting: false, filledHost: '', filledName: '', picker: picker(cfg.me)});
     return Object.assign(fresh(), {
       open: false, csrf: '', blocked: cfg.connect_blocked || '',

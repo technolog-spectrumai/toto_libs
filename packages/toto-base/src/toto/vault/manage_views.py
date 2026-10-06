@@ -14,18 +14,14 @@ bucket on a narrow one, and four doors:
   (``storage_adapters.StorageAdapter.creatable_adapters`` — this server, AWS S3,
   OVH S3), its own fields (``adapter.fields()``), a name, an owner found by
   searching people (``manage_people``, JSON: any active account) and the quota
-  every bucket has — and its AI shield, on a host with the assistant
-  (``bucket_lifecycle.shield_offered``: without it the field is neither drawn
-  nor taken from a post). The creator is whoever made it. An S3 kind
-  must pass its connection test before anything is saved (``adapter.create``
-  runs it). The kinds with a guided flow of their own (``GUIDED_KINDS``:
+  every bucket has; a posted field the door does not know is not read. The
+  creator is whoever made it. An S3 kind must pass its connection test
+  before anything is saved (``adapter.create`` runs it). The kinds with a guided flow of their own (``GUIDED_KINDS``:
   another Zenobia's pairing code) are a card in the same dialog whose steps
   post to their own doors (``share_views``); this door refuses them.
-* **Edit** (modal): the name, the owner, the quota — and the AI shield where
-  the assistant is installed — nothing else, and a post naming any other
-  field is refused whole (``bucket_lifecycle.update_bucket``, which records
-  before and after; on a host without the assistant the shield is such a
-  field).
+* **Edit** (modal): the name, the owner, the quota — nothing else, and a
+  post naming any other field is refused whole
+  (``bucket_lifecycle.update_bucket``, which records before and after).
 * **Test**: one bounded connection test on a click (``adapter.probe``,
   stamped), JSON. No page render ever probes.
 * **Delete** (modal): the bucket's name typed exactly; the server checks it
@@ -89,9 +85,8 @@ GUIDED_KINDS = frozenset({"zenobia_remote"})
 #: Inputs a draft never carries back besides each kind's secret fields: the
 #: access key id is half of a credential (the list shows its last four only).
 NEVER_CARRIED = frozenset({"access_key_id"})
-#: What Edit posts is ``bucket_lifecycle.editable()`` (without the AI shield
-#: on a host that has no assistant). Anything else in the post is refused,
-#: whole.
+#: What Edit posts is ``bucket_lifecycle.EDITABLE``. Anything else in the
+#: post is refused, whole.
 #: What every form post carries besides its fields.
 FORM_NOISE = frozenset({"csrfmiddlewaretoken"})
 
@@ -136,12 +131,6 @@ def _owner_from(raw):
 def _checked(data, name) -> bool:
     """A checkbox after its hidden ``0``: the last value wins."""
     return str(data.get(name, "") or "").strip().lower() in ("1", "on", "true", "yes")
-
-
-def _shield(data) -> bool:
-    """The posted AI shield — False, whatever was posted, on a host without
-    the assistant (``bucket_lifecycle.shield_offered``)."""
-    return bucket_lifecycle.shield_offered() and _checked(data, bucket_lifecycle.SHIELD)
 
 
 def _scrub(text, secrets) -> str:
@@ -237,7 +226,7 @@ def _script_row(row) -> dict:
     """What the Edit and Delete modals read for one bucket (json_script:
     names reach the page as text, never as markup)."""
     bucket = row["bucket"]
-    script = {
+    return {
         "pk": bucket.pk,
         "name": bucket.name,
         "owner": row["owner"],
@@ -249,9 +238,6 @@ def _script_row(row) -> dict:
         "edit_url": reverse("vault:manage_edit", args=[bucket.pk]),
         "delete_url": reverse("vault:manage_delete", args=[bucket.pk]),
     }
-    if bucket_lifecycle.shield_offered():
-        script["ai_protected"] = bool(bucket.ai_protected)
-    return script
 
 
 def _kinds(draft) -> list:
@@ -288,12 +274,9 @@ def _kinds(draft) -> list:
 
 
 def _empty_draft(request) -> dict:
-    draft = {"open": "", "kind": "", "pk": None, "name": "",
-             "owner": person_row(request.user), "storage_quota_mb": "",
-             "values": {}, "errors": {}, "error": ""}
-    if bucket_lifecycle.shield_offered():
-        draft["ai_protected"] = False
-    return draft
+    return {"open": "", "kind": "", "pk": None, "name": "",
+            "owner": person_row(request.user), "storage_quota_mb": "",
+            "values": {}, "errors": {}, "error": ""}
 
 
 def _page(request, draft):
@@ -410,8 +393,7 @@ def manage_create(request):
             try:
                 bucket = adapter.create(
                     name, owner, request.user, config, secret,
-                    storage_quota_mb=data.get("storage_quota_mb"),
-                    ai_protected=_shield(data))
+                    storage_quota_mb=data.get("storage_quota_mb"))
             except ValidationError as exc:
                 _merge(errors, exc, secrets)
             except IntegrityError:
@@ -422,7 +404,6 @@ def manage_create(request):
             "open": "create", "kind": key if adapter is not None else "",
             "name": name[:NAME_MAX], "owner": person_row(owner),
             "storage_quota_mb": str(data.get("storage_quota_mb", "") or "")[:12],
-            **({"ai_protected": _shield(data)} if bucket_lifecycle.shield_offered() else {}),
             "values": _carried(adapter, data),
             "errors": errors,
             "error": " ".join(general) or _("The bucket was not made. Nothing was saved."),
@@ -443,9 +424,8 @@ def manage_edit(request, pk):
     data = request.POST
     posted = set(data.keys()) - FORM_NOISE - {"page"}
     changes = {}
-    fields = set(bucket_lifecycle.editable())
-    # Anything but these is refused, whole — by the rule's own sentence (the
-    # AI shield among them where no assistant is installed).
+    fields = set(bucket_lifecycle.EDITABLE)
+    # Anything but these is refused, whole — by the rule's own sentence.
     for extra in sorted(posted - fields)[:8]:
         changes[str(extra)[:40]] = None
     if "name" in posted:
@@ -454,8 +434,6 @@ def manage_edit(request, pk):
         changes["owner"] = _owner_from(data.get("owner"))
     if "storage_quota_mb" in posted:
         changes["storage_quota_mb"] = data.get("storage_quota_mb")
-    if "ai_protected" in posted and "ai_protected" in fields:
-        changes["ai_protected"] = _checked(data, "ai_protected")
     try:
         changed = bucket_lifecycle.update_bucket(bucket, request.user, **changes)
     except ValidationError as exc:
@@ -469,8 +447,6 @@ def manage_edit(request, pk):
             "storage_quota_mb": str(data.get("storage_quota_mb", "") or "")[:12]
             if "storage_quota_mb" in posted else
             ("" if bucket.storage_quota_mb is None else str(bucket.storage_quota_mb)),
-            **({"ai_protected": changes.get("ai_protected", bucket.ai_protected)}
-               if "ai_protected" in fields else {}),
             "values": {}, "errors": errors,
             "error": " ".join(general) or _("Nothing was changed."),
         }

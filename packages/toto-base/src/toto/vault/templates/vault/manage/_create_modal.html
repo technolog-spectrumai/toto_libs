@@ -3,13 +3,11 @@
 
    * a kind from the adapter registry (`kinds`, manage_views._kinds — this
      server, AWS S3, OVH S3): the form — the name, owner and quota every
-     bucket has (and its AI shield where the assistant is installed:
-     `ai_shield`, manage.html), then the chosen kind's own fields. Only the
-     chosen kind's fieldset is enabled, so only its fields are posted. A
-     secret field is never filled back in; a refused post returns with
-     `draft` (open == "create") and each sentence beside its field. An S3
-     kind is saved only after its connection test passed (the server runs
-     it).
+     bucket has, then the chosen kind's own fields. Only the chosen kind's
+     fieldset is enabled, so only its fields are posted. A secret field is
+     never filled back in; a refused post returns with `draft`
+     (open == "create") and each sentence beside its field. An S3 kind is
+     saved only after its connection test passed (the server runs it).
    * "Another Zenobia" (`peer`: sc.connect_kind, share_views.page_config —
      on the page exactly where the connect doors answer, sc.connect_enabled):
      the guided steps of vault/manage/_connect_steps.html — the pairing code,
@@ -92,15 +90,6 @@
       </div>
 
       {% include "vault/manage/_owner_picker.html" with h="create" input_id="bucket-new-owner" errors=create_errors.owner %}
-
-      {% if ai_shield %}
-      <label class="flex items-start gap-2" data-testid="bucket-new-shield">
-        <input type="hidden" name="ai_protected" value="0">
-        <input type="checkbox" name="ai_protected" value="1" class="mt-0.5"{% if creating == "create" and draft.ai_protected %} checked{% endif %}>
-        <span><span class="font-semibold">{% trans "AI shield" %}</span>
-          <span class="block text-xs opacity-70">{% trans "The assistant never reads files in this bucket." %}</span></span>
-      </label>
-      {% endif %}
 
       {% for kind in kinds %}
       <fieldset x-show="create.kind === '{{ kind.key }}'" :disabled="create.kind !== '{{ kind.key }}'"

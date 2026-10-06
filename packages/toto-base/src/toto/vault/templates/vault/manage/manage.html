@@ -1,5 +1,5 @@
 {% extends "vault/base.html" %}
-{% load i18n vault_share app_tags %}
+{% load i18n vault_share %}
 {% comment %}Storage → Management (manage_views.py): every bucket, and the doors
    that make, edit, test and delete them. Superuser plan only — the view
    refuses anybody else, and the tab in vault/base.html shows to the same
@@ -11,11 +11,6 @@
    never a secret. Names reach the page through x-text or autoescaped
    template text only, never as markup. An open modal keeps focus (x-trap,
    oya/focus_trap.js) and closes on Escape.
-
-   A bucket's AI shield is the assistant's: `ai_shield` (worked out once
-   below, toto.core.assistant.installed) is false on a host without the
-   assistant, and then no dialog offers the checkbox, the list draws no
-   badge, and the doors do not take the field (manage_views._shield).
 
    Places for the share / connect flow with another Zenobia, each a partial
    of its own:
@@ -45,7 +40,6 @@
 
 {% block vault_content %}
 {% share_connect_config as sc %}
-{% assistant_installed as ai_shield %}
 <div x-data="bucketManage('{% url 'vault:manage_people' %}')" @keydown.escape.window="close()"
      data-csrf="{{ csrf_token }}" data-test-failed="{% trans 'The test could not run.' %}"
      class="space-y-6" data-testid="bucket-manage">

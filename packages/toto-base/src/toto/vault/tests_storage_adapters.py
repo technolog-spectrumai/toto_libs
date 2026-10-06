@@ -94,12 +94,12 @@ class NoHttp:
 
 
 def assistant(present: bool):
-    """A host with (or without) the assistant, for a test or a test class.
+    """A host with (or without) the assistant, for a test or a test class
+    (``toto.core.assistant.installed``).
 
-    A bucket's AI shield is the assistant's (``toto.core.assistant.installed``,
-    asked through ``bucket_lifecycle.shield_offered``): only a host that has
-    it takes, stores, shows and records the field. The suite runs under hosts
-    of both kinds, so a test of the shield says which one it is about."""
+    A bucket has no AI shield (the field ``ai_protected`` left the model on
+    2026-10-06), on a host of either kind: the tests that say so run under
+    both."""
     return mock.patch("toto.core.assistant.installed", new=lambda: present)
 
 
@@ -335,40 +335,53 @@ class RegistryTests(Fixture):
 class LocalAdapterTests(Fixture):
     adapter = property(lambda self: StorageAdapter.get("local"))
 
-    @assistant(False)
-    def test_a_host_without_the_assistant_stores_no_shield_and_records_none(self):
-        config, secret = self.adapter.validate({})
-        bucket = self.adapter.create("Plain files", self.owner, self.root, config, secret,
-                                     ai_protected=True)
-        bucket.refresh_from_db()
-        self.assertFalse(bucket.ai_protected)
-        self.assertNotIn("ai_protected", bucket_lifecycle.snapshot(bucket))
-        self.assertNotIn("ai_protected", audit_dump())
-        self.assertEqual(bucket_lifecycle.editable(), ("name", "owner", "storage_quota_mb"))
-        with self.assertRaises(ValidationError) as caught:
-            bucket_lifecycle.update_bucket(bucket, self.root, ai_protected=True)
-        self.assertIn("ai_protected cannot be changed", " ".join(caught.exception.messages))
-        bucket.refresh_from_db()
-        self.assertFalse(bucket.ai_protected)
+    def test_a_bucket_has_no_ai_shield_with_or_without_the_assistant(self):
+        """The field left the model on 2026-10-06: no column, no argument of
+        ``create``, no key in the record, and Edit refuses it as it refuses
+        any field it does not offer."""
+        self.assertNotIn("ai_protected", {f.name for f in Bucket._meta.get_fields()})
+        self.assertEqual(bucket_lifecycle.EDITABLE, ("name", "owner", "storage_quota_mb"))
+        for name in ("SHIELD", "shield_offered", "editable"):
+            self.assertFalse(hasattr(bucket_lifecycle, name), name)
+        for present in (False, True):
+            with self.subTest(assistant=present), assistant(present):
+                config, secret = self.adapter.validate({})
+                with self.assertRaises(TypeError):
+                    self.adapter.create(f"Shielded {present}", self.owner, self.root, config,
+                                        secret, ai_protected=True)
+                bucket = self.adapter.create(f"Plain files {present}", self.owner, self.root,
+                                             config, secret)
+                self.assertFalse(hasattr(bucket, "ai_protected"))
+                self.assertNotIn("ai_protected", bucket_lifecycle.snapshot(bucket))
+                self.assertNotIn("ai_protected", audit_dump())
+                with self.assertRaises(ValidationError) as caught:
+                    bucket_lifecycle.update_bucket(bucket, self.root, ai_protected=True)
+                self.assertIn("ai_protected cannot be changed",
+                              " ".join(caught.exception.messages))
+                with self.assertRaises(ValidationError) as other:     # any unknown field
+                    bucket_lifecycle.update_bucket(bucket, self.root, colour="red")
+                self.assertIn("colour cannot be changed", " ".join(other.exception.messages))
 
-    @assistant(True)
-    def test_a_host_with_the_assistant_records_the_shield(self):
-        config, secret = self.adapter.validate({})
-        bucket = self.adapter.create("Shielded files", self.owner, self.root, config, secret,
-                                     ai_protected=True)
-        self.assertTrue(bucket_lifecycle.snapshot(bucket)["ai_protected"])
-        self.assertEqual(bucket_lifecycle.editable(), bucket_lifecycle.EDITABLE)
+    def test_the_assistants_rule_reads_every_bucket_as_unshielded(self):
+        """``toto.core.assistant.allowed_for_file`` reads the field with a
+        default, so the assistant's doors do not break over a model without
+        it."""
+        from types import SimpleNamespace
 
-    @assistant(True)
+        from toto.core import assistant as rule
+
+        bucket = Bucket.objects.create(name="Read", slug="read-a", owner=self.owner)
+        self.assertTrue(rule.allowed_for_file(SimpleNamespace(bucket=bucket)))
+        self.assertTrue(rule.allowed_for_file(SimpleNamespace(bucket=None)))
+
     def test_create_records_the_creator_and_the_audit(self):
         config, secret = self.adapter.validate({})
         bucket = self.adapter.create("Team files", self.owner, self.root, config, secret,
-                                     storage_quota_mb="500", ai_protected=True)
+                                     storage_quota_mb="500")
         self.assertEqual((bucket.owner, bucket.created_by), (self.owner, self.root))
         self.assertEqual(bucket.slug, "team-files")
         self.assertEqual(bucket.storage_backend, "local")
         self.assertEqual(bucket.storage_quota_mb, 500)
-        self.assertTrue(bucket.ai_protected)
         self.assertIsNotNone(bucket.created_at)
         self.assertEqual(audit_actions(), ["VAULT.BUCKET.CREATED"])
 
@@ -788,16 +801,15 @@ class OwnerlessTests(Fixture):
 # Edit
 # ---------------------------------------------------------------------------
 
-@assistant(True)
 class UpdateTests(Fixture):
     def setUp(self):
         self.bucket = Bucket.objects.create(name="Edit me", slug="edit-me", owner=self.owner)
 
-    def test_the_four_editable_fields_and_their_record(self):
+    def test_the_three_editable_fields_and_their_record(self):
         changed = bucket_lifecycle.update_bucket(
-            self.bucket, self.root, name="Edited", storage_quota_mb="10", ai_protected=True,
+            self.bucket, self.root, name="Edited", storage_quota_mb="10",
             owner=self.stranger)
-        self.assertEqual(sorted(changed), ["ai_protected", "name", "owner", "storage_quota_mb"])
+        self.assertEqual(sorted(changed), ["name", "owner", "storage_quota_mb"])
         self.bucket.refresh_from_db()
         self.assertEqual((self.bucket.name, self.bucket.slug, self.bucket.storage_quota_mb),
                          ("Edited", "edit-me", 10))
@@ -995,7 +1007,6 @@ class DeletionTests(Fixture):
 # Regressions (review of 2026-09-30)
 # ---------------------------------------------------------------------------
 
-@assistant(True)
 class LegacyEditTests(Fixture):
     """Edit checks a field only when its value changes: what a bucket
     already has never blocks changing something else."""
@@ -1004,9 +1015,8 @@ class LegacyEditTests(Fixture):
         Bucket.objects.create(name="Finance", slug="finance-1", owner=self.owner)
         twin = Bucket.objects.create(name="finance", slug="finance-2", owner=self.owner)
         changed = bucket_lifecycle.update_bucket(twin, self.root, name="finance",
-                                                 owner=self.owner, storage_quota_mb="",
-                                                 ai_protected=True)
-        self.assertEqual(changed, ["ai_protected"])
+                                                 owner=self.owner, storage_quota_mb="7")
+        self.assertEqual(changed, ["storage_quota_mb"])
         with self.assertRaises(ValidationError) as caught:     # a NEW clash is still refused
             bucket_lifecycle.update_bucket(twin, self.root, name="FINANCE")
         self.assertIn("name", caught.exception.message_dict)
@@ -1016,7 +1026,7 @@ class LegacyEditTests(Fixture):
         User.objects.filter(pk=self.stranger.pk).update(is_active=False)
         gone = User.objects.get(pk=self.stranger.pk)
         changed = bucket_lifecycle.update_bucket(bucket, self.root, name="Kept", owner=gone,
-                                                 storage_quota_mb="50", ai_protected=False)
+                                                 storage_quota_mb="50")
         self.assertEqual(changed, ["storage_quota_mb"])
         bucket.refresh_from_db()
         self.assertEqual((bucket.owner_id, bucket.storage_quota_mb), (gone.pk, 50))
@@ -1028,9 +1038,9 @@ class LegacyEditTests(Fixture):
     def test_a_quota_of_zero_from_the_admin(self):
         bucket = Bucket.objects.create(name="Zero", slug="zero-l", owner=self.owner,
                                        storage_quota_mb=0)
-        changed = bucket_lifecycle.update_bucket(bucket, self.root, storage_quota_mb="0",
-                                                 ai_protected=True)
-        self.assertEqual(changed, ["ai_protected"])
+        changed = bucket_lifecycle.update_bucket(bucket, self.root, name="Zero Two",
+                                                 storage_quota_mb="0")
+        self.assertEqual(changed, ["name"])
         roomy = Bucket.objects.create(name="Roomy", slug="roomy-l", owner=self.owner,
                                       storage_quota_mb=5)
         with self.assertRaises(ValidationError):              # setting 0 anew is still refused
@@ -1039,7 +1049,7 @@ class LegacyEditTests(Fixture):
     def test_an_ownerless_bucket_can_be_edited_without_choosing_an_owner(self):
         orphan = Bucket.objects.create(name="Orphaned", slug="orphaned-l", owner=None)
         changed = bucket_lifecycle.update_bucket(orphan, self.root, name="Orphaned", owner=None,
-                                                 storage_quota_mb="3", ai_protected=False)
+                                                 storage_quota_mb="3")
         self.assertEqual(changed, ["storage_quota_mb"])
 
 

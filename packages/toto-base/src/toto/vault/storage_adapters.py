@@ -282,9 +282,8 @@ class StorageAdapter(BasePlugin):
         return (bucket.storage_backend or "local") == self.backend
 
     def fields(self) -> list[dict]:
-        """The kind's own inputs (name, owner and quota — and the AI shield
-        where the assistant is installed — are common to every kind and
-        belong to the view)."""
+        """The kind's own inputs (name, owner and quota are common to every
+        kind and belong to the view)."""
         return []
 
     def secret_field_names(self) -> set[str]:
@@ -345,8 +344,7 @@ class StorageAdapter(BasePlugin):
 
     # -- create ---------------------------------------------------------------
 
-    def create(self, name, owner, actor, config, secret, *, storage_quota_mb=None,
-               ai_protected=False):
+    def create(self, name, owner, actor, config, secret, *, storage_quota_mb=None):
         """Make the bucket in one transaction and return it."""
         from . import bucket_lifecycle
         from .models import Bucket
@@ -365,8 +363,6 @@ class StorageAdapter(BasePlugin):
             bucket = Bucket(
                 name=name, slug=unique_slug(name), owner=owner, created_by=actor,
                 storage_quota_mb=quota,
-                # The assistant's field: its default on a host without one.
-                ai_protected=bool(ai_protected) and bucket_lifecycle.shield_offered(),
                 storage_backend=self.backend,
             )
             self.build(bucket, config, secret)

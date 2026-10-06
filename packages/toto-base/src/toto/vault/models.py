@@ -340,19 +340,6 @@ class Bucket(models.Model):
     #: local stub rows, so this stamp is the honest answer to "as of when?" —
     #: a page never probes the peer to find out.
     last_refreshed_at = models.DateTimeField(null=True, blank=True)
-    #: The AI shield. A protected bucket's files are never offered to the
-    #: assistant and never readable by it: the editors drop their AI buttons,
-    #: the file wand disappears from the service menu, and the file-ask page
-    #: refuses outright. Enforced through toto.core.assistant.allowed_for_file
-    #: — one rule, consulted by every door — because a shield with a side
-    #: entrance is not a shield.
-    ai_protected = models.BooleanField(
-        default=False,
-        help_text=(
-            "The assistant never reads files in this bucket — no AI buttons "
-            "in editors, no file wand, no exceptions."
-        ),
-    )
     #: The last connection test (Management's Test button, and the probe a
     #: new S3 bucket must pass before it is saved). Stamped only by an
     #: operator's click — no page render ever probes. A mount's health lives

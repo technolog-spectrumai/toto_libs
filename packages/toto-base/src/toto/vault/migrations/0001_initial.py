@@ -37,7 +37,6 @@ class Migration(migrations.Migration):
                 ('public_base_url', models.URLField(blank=True, default='', help_text='Optional CDN or public base URL (e.g. https://cdn.example.com/vault/). When set, get_public_file_url() returns a direct link per file.')),
                 ('credential_mode', models.CharField(choices=[('ambient', 'Ambient (environment / legacy)'), ('sealed', 'Sealed under a storage PIN')], default='ambient', help_text="Sealed credentials are opened per action by an operator's storage PIN and are never recoverable from a database dump.", max_length=16)),
                 ('last_refreshed_at', models.DateTimeField(blank=True, null=True)),
-                ('ai_protected', models.BooleanField(default=False, help_text='The assistant never reads files in this bucket — no AI buttons in editors, no file wand, no exceptions.')),
                 ('last_probe_at', models.DateTimeField(blank=True, editable=False, null=True)),
                 ('last_probe_error', models.TextField(blank=True, default='', editable=False)),
                 ('deletion_requested_at', models.DateTimeField(blank=True, editable=False, null=True)),

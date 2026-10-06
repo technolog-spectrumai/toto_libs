@@ -1,9 +1,7 @@
 {% comment %}The Management page's Alpine state: which modal is open, what it
    holds, the owner searches and the Test buttons. Reads its data from the
    json_script blocks manage.html prints (bucket-manage-draft, -rows, -kinds).
-   Values are shown with x-text / x-model only. The Edit modal's `ai` (the AI
-   shield's checkbox) is state only where the assistant is installed.{% endcomment %}
-{% load app_tags %}{% assistant_installed as ai_shield %}
+   Values are shown with x-text / x-model only.{% endcomment %}
 <script>
 document.addEventListener('alpine:init', () => {
   const read = (id, fallback) => {
@@ -27,8 +25,8 @@ document.addEventListener('alpine:init', () => {
                             {kind: draft.kind || '', error: creating ? (draft.error || '') : ''}),
       edit: Object.assign(picker(editing ? draft.owner : null), editing ? {
         row: editing, name: draft.name || '', quota: draft.storage_quota_mb || '',
-        {% if ai_shield %}ai: !!draft.ai_protected, {% endif %}error: draft.error || '', errors: draft.errors || {},
-      } : {row: null, name: '', quota: '', {% if ai_shield %}ai: false, {% endif %}error: '', errors: {}}),
+        error: draft.error || '', errors: draft.errors || {},
+      } : {row: null, name: '', quota: '', error: '', errors: {}}),
       del: {row: deleting, typed: '', error: deleting ? (draft.error || '') : ''},
       tests: {}, testing: {}, csrf: '', failText: '',
       // A form of this page is on its way: Create can take seconds (an S3
@@ -61,7 +59,7 @@ document.addEventListener('alpine:init', () => {
         const row = find(pk);
         if (!row) return;
         Object.assign(this.edit, picker(row.owner), {
-          row, name: row.name, quota: row.storage_quota_mb, {% if ai_shield %}ai: !!row.ai_protected, {% endif %}error: '', errors: {},
+          row, name: row.name, quota: row.storage_quota_mb, error: '', errors: {},
         });
         this.modal = 'edit';
         this.$nextTick(() => this.$refs.editName && this.$refs.editName.focus());

@@ -50,7 +50,7 @@ _MEDIA = tempfile.mkdtemp(prefix="vault-manage-")
 
 AWS = {"kind": "aws_s3", "name": "Cloud Two", "bucket_name": "my-bucket", "region": "eu-west-1",
        "prefix": "", "access_key_id": KEY_ID, "secret_access_key": SECRET,
-       "storage_quota_mb": "", "ai_protected": "0"}
+       "storage_quota_mb": ""}
 
 TOKEN = "magic-token-0123456789"
 
@@ -448,17 +448,15 @@ class CreateTests(ManageFixture):
     def post(self, **data):
         return self.as_root().post(reverse("vault:manage_create"), data)
 
-    @assistant(True)
     def test_a_local_bucket(self):
         response = self.post(kind="local", name="Fresh", owner=self.member.pk,
-                             storage_quota_mb="50", ai_protected=["0", "1"])
+                             storage_quota_mb="50")
         self.assertRedirects(response, reverse("vault:manage"), fetch_redirect_response=False)
         bucket = Bucket.objects.get(name="Fresh")
         self.assertEqual(bucket.owner, self.member)
         self.assertEqual(bucket.created_by, self.root)
         self.assertEqual(bucket.storage_backend, StorageBackend.LOCAL)
         self.assertEqual(bucket.storage_quota_mb, 50)
-        self.assertTrue(bucket.ai_protected)
         self.assertIn("VAULT.BUCKET.CREATED", audit_actions())
         self.assertIsNone(self.draft())
 
@@ -554,29 +552,21 @@ class EditTests(ManageFixture):
     def post(self, bucket, **data):
         return self.as_root().post(reverse("vault:manage_edit", args=[bucket.pk]), data)
 
-    @assistant(True)
-    def test_the_four_fields_change_and_are_recorded(self):
+    def test_the_three_fields_change_and_are_recorded(self):
         response = self.post(self.local, name="Alpha Two", owner=self.staff.pk,
-                             storage_quota_mb="10", ai_protected=["0", "1"])
+                             storage_quota_mb="10")
         self.assertEqual(response.status_code, 302)
         self.local.refresh_from_db()
-        self.assertEqual((self.local.name, self.local.owner, self.local.storage_quota_mb,
-                          self.local.ai_protected), ("Alpha Two", self.staff, 10, True))
+        self.assertEqual((self.local.name, self.local.owner, self.local.storage_quota_mb),
+                         ("Alpha Two", self.staff, 10))
         from toto.audit.models import AuditRecord
 
         record = AuditRecord.objects.get(action="VAULT.BUCKET.UPDATED")
         changes = record.metadata["changes"]
         self.assertEqual(changes["name"], {"before": "Alpha", "after": "Alpha Two"})
         self.assertEqual(changes["owner"], {"before": "mg-member", "after": "mg-staff"})
-        self.assertEqual(changes["ai_protected"], {"before": False, "after": True})
-
-    @assistant(True)
-    def test_the_shield_goes_off_when_the_box_is_cleared(self):
-        Bucket.objects.filter(pk=self.local.pk).update(ai_protected=True)
-        self.post(self.local, name="Alpha", owner=self.member.pk, storage_quota_mb="",
-                  ai_protected="0")
-        self.local.refresh_from_db()
-        self.assertFalse(self.local.ai_protected)
+        self.assertEqual(changes["storage_quota_mb"], {"before": None, "after": 10})
+        self.assertEqual(sorted(changes), ["name", "owner", "storage_quota_mb"])
 
     def test_nothing_that_moves_data_can_be_posted(self):
         for field, value in (("storage_backend", "s3"), ("provider", "1"),
@@ -836,27 +826,31 @@ class StalledPurgeTests(ManageFixture):
         self.assertFalse(Bucket.objects.filter(pk=self.local.pk).exists())
 
 
-@assistant(True)
 class LegacyEditModalTests(ManageFixture):
-    """The Edit modal posts all four fields; unchanged ones are not re-judged."""
+    """The Edit modal posts all three fields; unchanged ones are not re-judged."""
 
     def test_a_bucket_whose_owner_was_deactivated_takes_a_new_quota(self):
         User.objects.filter(pk=self.member.pk).update(is_active=False)
         response = self.as_root().post(reverse("vault:manage_edit", args=[self.local.pk]), {
-            "name": "Alpha", "owner": self.member.pk, "storage_quota_mb": "25",
-            "ai_protected": ["0", "1"]})
+            "name": "Alpha", "owner": self.member.pk, "storage_quota_mb": "25"})
         self.assertEqual(response.status_code, 302)
         self.assertIsNone(self.draft())
         self.local.refresh_from_db()
-        self.assertEqual((self.local.owner_id, self.local.storage_quota_mb, self.local.ai_protected),
-                         (self.member.pk, 25, True))
+        self.assertEqual((self.local.owner_id, self.local.storage_quota_mb),
+                         (self.member.pk, 25))
 
 
 class ShieldTests(ManageFixture):
-    """A bucket's AI shield is the assistant's (2026-10-06). A host without
-    the assistant (``toto.core.assistant.installed``) draws no checkbox, no
-    badge and no admin field for it, takes it from no post and names it in no
-    audit record; a host with it has all of them. The column stays."""
+    """A bucket has no AI shield (2026-10-06): the field ``ai_protected`` and
+    its column are gone from the model and from the vault's one migration.
+    No dialog, no list and no admin page names a shield, whether or not the
+    assistant counts as installed (``toto.core.assistant.installed``), and a
+    posted ``ai_protected`` is what any unknown field is: Create does not
+    read it, Edit refuses the whole post."""
+
+    #: What the page drew for the shield, and the field's name.
+    WORDS = ("AI shield", "ai_protected", "bucket-new-shield", "bucket-edit-shield",
+             "bucket-connect-shield", "never reads files", "ai_shield", "edit.ai")
 
     def bucket_admin(self):
         from django.contrib import admin as django_admin
@@ -866,85 +860,112 @@ class ShieldTests(ManageFixture):
         request.user = self.root
         return django_admin.site._registry[Bucket], request
 
-    @assistant(False)
-    def test_the_page_says_nothing_of_it_without_the_assistant(self):
-        Bucket.objects.filter(pk=self.local.pk).update(ai_protected=True)
-        response = self.as_root().get(reverse("vault:manage"))
-        body = response.content.decode()
-        for word in ("AI shield", "assistant", "Assistant", "ai_protected"):
-            self.assertNotIn(word, body)
-        self.assertNotIn("ai_protected", response.context["draft"])
-        self.assertNotIn("ai_protected", response.context["script_rows"][0])
-        # A quota is still drawn on its own.
+    def test_the_model_has_no_such_field(self):
+        self.assertNotIn("ai_protected", {f.name for f in Bucket._meta.get_fields()})
+        self.assertFalse(hasattr(self.local, "ai_protected"))
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            columns = {c.name for c in connection.introspection.get_table_description(
+                cursor, Bucket._meta.db_table)}
+        self.assertNotIn("ai_protected", columns)
+        self.assertIn("storage_quota_mb", columns)
+
+    def test_the_migration_makes_no_such_column(self):
+        from django.db.migrations.loader import MigrationLoader
+
+        state = MigrationLoader(None, ignore_no_migrations=True).project_state()
+        fields = state.models["vault", "bucket"].fields
+        self.assertNotIn("ai_protected", fields)
+        self.assertIn("storage_quota_mb", fields)
+
+    def test_the_three_dialogs_and_the_list_name_no_shield(self):
         Bucket.objects.filter(pk=self.local.pk).update(storage_quota_mb=7)
-        self.assertIn("7 MB quota", self.page())
+        for present in (False, True):
+            with self.subTest(assistant=present), assistant(present):
+                response = self.as_root().get(reverse("vault:manage"))
+                self.assertEqual(response.status_code, 200)
+                body = response.content.decode()
+                # The three dialogs and both lists are on the page.
+                for testid in ("bucket-new-dialog", "bucket-edit", "buckets-table",
+                               "buckets-cards"):
+                    self.assertIn(f'data-testid="{testid}"', body)
+                for word in self.WORDS:
+                    self.assertNotIn(word, body)
+                self.assertNotIn("ai_protected", response.context["draft"])
+                for row in response.context["script_rows"]:
+                    self.assertNotIn("ai_protected", row)
+                # A quota is still drawn on its own, in the table and the card.
+                self.assertEqual(body.count("7 MB quota"), 2)
+        with assistant(False):
+            body = self.page()
+            for word in ("assistant", "Assistant"):
+                self.assertNotIn(word, body)
 
-    @assistant(True)
-    def test_the_page_offers_it_with_the_assistant(self):
-        Bucket.objects.filter(pk=self.local.pk).update(ai_protected=True)
-        response = self.as_root().get(reverse("vault:manage"))
-        body = response.content.decode()
-        for testid in ("bucket-new-shield", "bucket-edit-shield", "bucket-connect-shield"):
-            self.assertIn(f'data-testid="{testid}"', body)
-        self.assertEqual(body.count('type="checkbox" name="ai_protected"'), 3)
-        self.assertIn("The assistant never reads files in this bucket.", body)
-        self.assertIn('title="The assistant never reads files in this bucket."', body)   # the badge
-        self.assertIn("ai: !!row.ai_protected", body)           # Edit's state
-        rows = {r["pk"]: r for r in response.context["script_rows"]}
-        self.assertTrue(rows[self.local.pk]["ai_protected"])
-        self.assertFalse(response.context["draft"]["ai_protected"])
+    def test_create_does_not_read_a_posted_shield(self):
+        for present in (False, True):
+            with self.subTest(assistant=present), assistant(present):
+                name = f"Plain {present}"
+                response = self.as_root().post(reverse("vault:manage_create"), {
+                    "kind": "local", "name": name, "owner": self.member.pk,
+                    "storage_quota_mb": "", "ai_protected": ["0", "1"]})
+                self.assertRedirects(response, reverse("vault:manage"),
+                                     fetch_redirect_response=False)
+                bucket = Bucket.objects.get(name=name)
+                self.assertFalse(hasattr(bucket, "ai_protected"))
+                self.assertNotIn("ai_protected", audit_dump())
+                # A refused one carries no shield back either.
+                self.client.post(reverse("vault:manage_create"), {
+                    "kind": "local", "name": name, "owner": self.member.pk,
+                    "ai_protected": "1"})
+                draft = self.draft()
+                self.assertEqual(draft["open"], "create")
+                self.assertNotIn("ai_protected", json.dumps(draft))
 
-    @assistant(False)
-    def test_create_ignores_a_posted_shield_without_the_assistant(self):
-        response = self.as_root().post(reverse("vault:manage_create"), {
-            "kind": "local", "name": "Plain", "owner": self.member.pk,
-            "storage_quota_mb": "", "ai_protected": ["0", "1"]})
-        self.assertRedirects(response, reverse("vault:manage"), fetch_redirect_response=False)
-        self.assertFalse(Bucket.objects.get(name="Plain").ai_protected)
-        self.assertNotIn("ai_protected", audit_dump())
-        # A refused one carries no shield back either.
-        self.client.post(reverse("vault:manage_create"), {
-            "kind": "local", "name": "Plain", "owner": self.member.pk, "ai_protected": "1"})
-        self.assertNotIn("ai_protected", self.draft())
+    def test_edit_refuses_a_posted_shield_like_any_unknown_field(self):
+        for present in (False, True):
+            with self.subTest(assistant=present), assistant(present):
+                Bucket.objects.filter(pk=self.local.pk).update(name="Alpha",
+                                                               storage_quota_mb=None)
+                for field in ("ai_protected", "colour"):
+                    response = self.as_root().post(
+                        reverse("vault:manage_edit", args=[self.local.pk]), {
+                            "name": "Alpha Renamed", "owner": self.member.pk,
+                            "storage_quota_mb": "", field: ["0", "1"]})
+                    self.assertEqual(response.status_code, 302)
+                    self.local.refresh_from_db()
+                    self.assertEqual(self.local.name, "Alpha")
+                    draft = self.draft()
+                    self.assertEqual(draft["open"], "edit")
+                    self.assertIn(f"{field} cannot be changed", draft["error"])
+                    self.assertNotIn("ai_protected", draft)
+                self.assertNotIn("VAULT.BUCKET.UPDATED", audit_actions())
+                # The three fields the modal posts still change.
+                self.client.post(reverse("vault:manage_edit", args=[self.local.pk]), {
+                    "name": "Alpha Renamed", "owner": self.member.pk, "storage_quota_mb": "5"})
+                self.local.refresh_from_db()
+                self.assertEqual((self.local.name, self.local.storage_quota_mb),
+                                 ("Alpha Renamed", 5))
+                self.assertNotIn("ai_protected", audit_dump())
+                from toto.audit.models import AuditRecord
 
-    @assistant(False)
-    def test_edit_refuses_a_posted_shield_without_the_assistant(self):
-        response = self.as_root().post(reverse("vault:manage_edit", args=[self.local.pk]), {
-            "name": "Alpha Renamed", "owner": self.member.pk, "storage_quota_mb": "",
-            "ai_protected": ["0", "1"]})
-        self.assertEqual(response.status_code, 302)
-        self.local.refresh_from_db()
-        self.assertEqual((self.local.name, self.local.ai_protected), ("Alpha", False))
-        draft = self.draft()
-        self.assertEqual(draft["open"], "edit")
-        self.assertIn("ai_protected cannot be changed", draft["error"])
-        self.assertNotIn("ai_protected", draft)
-        self.assertNotIn("VAULT.BUCKET.UPDATED", audit_actions())
-        # The three fields the modal posts still change.
-        self.client.post(reverse("vault:manage_edit", args=[self.local.pk]), {
-            "name": "Alpha Renamed", "owner": self.member.pk, "storage_quota_mb": "5"})
-        self.local.refresh_from_db()
-        self.assertEqual((self.local.name, self.local.storage_quota_mb), ("Alpha Renamed", 5))
-        self.assertNotIn("ai_protected", audit_dump())
+                AuditRecord.objects.filter(action="VAULT.BUCKET.UPDATED").delete()
 
-    @assistant(False)
-    def test_the_admin_shows_and_takes_no_shield_without_the_assistant(self):
-        model_admin, request = self.bucket_admin()
-        self.assertNotIn("ai_protected", model_admin.get_list_display(request))
-        self.assertNotIn("ai_protected", model_admin.get_list_filter(request))
-        named = [f for _, options in model_admin.get_fieldsets(request, self.local)
-                 for f in options["fields"]]
-        self.assertNotIn("ai_protected", named)
-        self.assertIn("storage_quota_mb", named)
-        self.assertIn("ai_protected", model_admin.get_readonly_fields(request, self.local))
-        self.assertNotIn("ai_protected", model_admin.get_form(request, self.local).base_fields)
-
-    @assistant(True)
-    def test_the_admin_has_the_shield_with_the_assistant(self):
-        model_admin, request = self.bucket_admin()
-        self.assertIn("ai_protected", model_admin.get_list_display(request))
-        self.assertIn("ai_protected", model_admin.get_list_filter(request))
-        self.assertIn("ai_protected", model_admin.get_form(request, self.local).base_fields)
+    def test_the_admin_names_no_shield(self):
+        for present in (False, True):
+            with self.subTest(assistant=present), assistant(present):
+                model_admin, request = self.bucket_admin()
+                self.assertNotIn("ai_protected", model_admin.get_list_display(request))
+                self.assertNotIn("ai_protected", model_admin.get_list_filter(request))
+                named = [f for _, options in model_admin.get_fieldsets(request, self.local)
+                         for f in options["fields"]]
+                self.assertNotIn("ai_protected", named)
+                self.assertIn("storage_quota_mb", named)
+                self.assertNotIn("ai_protected",
+                                 model_admin.get_readonly_fields(request, self.local))
+                form = model_admin.get_form(request, self.local)
+                self.assertNotIn("ai_protected", form.base_fields)
+                self.assertIn("storage_quota_mb", form.base_fields)
 
 
 class DoubleSubmitTests(ManageFixture):

@@ -811,15 +811,25 @@ class ConnectTests(ConnectFixture):
         self.assert_no_secret(response.content.decode(), secrets_of(code))
         self.assertNotIn(manage_views.DRAFT_KEY, self.client.session)
 
-    @assistant(False)
-    def test_connect_ignores_a_posted_shield_without_the_assistant(self):
-        code, grant, raw = self.exported(may_list=True, may_download=True)
-        self.assertEqual(self.connect(code).status_code, 200)       # posts ai_protected=1
-        self.assertFalse(Bucket.objects.get(name="Mounted Alpha").ai_protected)
-        self.assertNotIn("ai_protected", audit_dump())
-        self.assertNotIn('name="ai_protected"', self.page())
+    def test_connect_does_not_read_a_posted_shield(self):
+        """A bucket has no AI shield (the field left the model on 2026-10-06):
+        the connect door reads a posted ``ai_protected`` as it reads any field
+        it does not know — not at all — with or without the assistant."""
+        self.assertNotIn("ai_protected", {f.name for f in Bucket._meta.get_fields()})
+        for present in (False, True):
+            with self.subTest(assistant=present), assistant(present):
+                code, grant, raw = self.exported(may_list=True, may_download=True)
+                name = f"Mounted {present}"
+                response = self.connect(code, name=name)             # posts ai_protected=1
+                self.assertEqual(response.status_code, 200)
+                self.assertFalse(hasattr(Bucket.objects.get(name=name), "ai_protected"))
+                self.assertNotIn("ai_protected", audit_dump())
+                body = self.page()
+                self.assertIn('data-testid="bucket-connect-root"', body)   # the third dialog
+                self.assertNotIn('name="ai_protected"', body)
+                self.assertNotIn("bucket-connect-shield", body)
+                self.assertNotIn("AI shield", body)
 
-    @assistant(True)
     def test_connect_makes_the_pairing_and_the_bucket(self):
         code, grant, raw = self.exported(may_list=True, may_download=True)
         with captured_logs() as logs:
@@ -830,7 +840,6 @@ class ConnectTests(ConnectFixture):
         bucket = Bucket.objects.get(name="Mounted Alpha")
         self.assertEqual(bucket.storage_backend, StorageBackend.REMOTE_TOTO)
         self.assertEqual((bucket.owner, bucket.created_by), (self.member, self.root))
-        self.assertTrue(bucket.ai_protected)
         peer = bucket.peer
         self.assertEqual(peer.base_url, PEER_HOST)
         self.assertEqual(str(peer.grant_uid), str(grant.grant_uid))

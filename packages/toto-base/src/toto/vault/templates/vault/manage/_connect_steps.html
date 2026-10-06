@@ -27,8 +27,7 @@
    Alpine component bucketConnect (vault/manage/_share_scripts.html), inside
    the page's bucketManage: `modal`, `create` and close() are the page's
    (Cancel closes the dialog), and so is the owner picker
-   (vault/manage/_owner_picker.html). Expects `sc` and `ai_shield`
-   (manage.html).{% endcomment %}
+   (vault/manage/_owner_picker.html). Expects `sc` (manage.html).{% endcomment %}
 {% trans "not stated" as l_not_stated %}{% trans "No end date" as l_no_end %}
 <div x-data="bucketConnect()" data-csrf="{{ csrf_token }}" data-testid="bucket-connect-root"
      x-show="create.kind === '{{ sc.connect_kind.key }}'" x-cloak
@@ -184,14 +183,6 @@
 
     {% include "vault/manage/_owner_picker.html" with h="picker" input_id="bucket-connect-owner" errors=None %}
     <template x-for="e in (errors.owner || [])"><p class="text-xs text-red-600 dark:text-red-400" role="alert" x-text="e"></p></template>
-
-    {% if ai_shield %}
-    <label class="flex items-start gap-2" data-testid="bucket-connect-shield">
-      <input type="checkbox" name="ai_protected" value="1" x-model="ai" class="mt-0.5">
-      <span><span class="font-semibold">{% trans "AI shield" %}</span>
-        <span class="block text-xs opacity-70">{% trans "The assistant never reads files in this bucket." %}</span></span>
-    </label>
-    {% endif %}
 
     <p class="text-xs opacity-60">{% trans "You are recorded as the bucket's creator. The connection test runs once more before anything is saved; the key is stored encrypted and never shown." %}</p>
 
