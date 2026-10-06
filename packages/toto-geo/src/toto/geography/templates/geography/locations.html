@@ -282,7 +282,8 @@ and on no other map of the platform; a route is shown and forgotten.{% endcommen
         <div data-geo="pin-tool" data-testid="geography-pin-tool" class="hidden space-y-3 rounded-xl border border-current/15 p-4">
           <p class="flex items-center gap-2 text-sm font-semibold">
             <i class="fa-solid fa-map-pin" aria-hidden="true"></i>{% trans "Save community pin" %}</p>
-          <p class="text-xs opacity-60">{% trans "Drag the pin to adjust it, or click the map to move it. Then press Continue: its community, name, address and note are asked in a dialog. Nothing is saved until you press Save there." %}</p>
+          <p class="text-xs opacity-60">{% trans "Drag the pin to adjust it, or click the map to move it. Nothing is saved until you press Save." %}
+            {% trans "Continue asks for its community, name, address and note in a dialog; Save is there." %}</p>
           <div class="flex flex-wrap items-center gap-3">
             <button type="button" data-geo="pin-continue" data-testid="geography-pin-continue"
                     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-bold disabled:opacity-40">{% trans "Continue" %}</button>
@@ -298,7 +299,8 @@ and on no other map of the platform; a route is shown and forgotten.{% endcommen
             <i class="fa-solid fa-draw-polygon" aria-hidden="true"></i>{% trans "Draw a community zone" %}</button>
           <div data-geo="zone-tool" data-testid="geography-zone-tool" class="mt-3 hidden space-y-3">
             <p class="text-xs opacity-60">
-              {% trans "Click the map to add a corner, drag a corner to move it, click a corner to take it out. The outline closes by itself and may not cross itself. Then press Continue: its community, name and description are asked in a dialog. Nothing is saved until you press Save there." %}</p>
+              {% trans "Click the map to add a corner, drag a corner to move it, click a corner to take it out. The outline closes by itself and may not cross itself. Nothing is saved until you press Save." %}
+              {% trans "Continue asks for its community, name and description in a dialog; Save is there." %}</p>
             <div class="flex flex-wrap items-center gap-3">
               <button type="button" data-geo="zone-undo" class="rounded-lg border px-3 py-1.5 text-sm font-semibold">{% trans "Undo last corner" %}</button>
               <button type="button" data-geo="zone-restart" class="rounded-lg border px-3 py-1.5 text-sm font-semibold">{% trans "Start over" %}</button>

@@ -95,7 +95,8 @@ hears "geography-dismiss" (Escape, the backdrop, the X).{% endcomment %}
     {# Beside the map: the geometry only. The words are asked in the dialog. #}
     <div data-geo="edit-point" class="mt-3 hidden space-y-3">
       <p class="text-xs opacity-60">
-        {% trans "Click the map, drag the pin, or pick a search result. Then press Continue: the name and the note are asked in a dialog. Nothing is saved until you press Save there." %}</p>
+        {% trans "Click the map, drag the pin, or pick a search result. Nothing is saved until you press Save." %}
+        {% trans "Continue asks for the name and the note in a dialog; Save is there." %}</p>
       <div class="flex flex-wrap items-center gap-3">
         <button type="button" data-geo="point-continue" data-testid="geography-point-continue" disabled
                 class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-bold disabled:opacity-40">
@@ -152,7 +153,8 @@ hears "geography-dismiss" (Escape, the backdrop, the X).{% endcomment %}
       {% if geo.zone %}{% trans "Change the zone" %}{% else %}{% trans "Draw the zone" %}{% endif %}</button>
     <div data-geo="edit-zone" class="mt-3 hidden space-y-3">
       <p class="text-xs opacity-60">
-        {% trans "Click the map to add a corner, drag a corner to move it, click a corner to take it out. The outline closes by itself and may not cross itself. Then press Continue: the name and the description are asked in a dialog. Nothing is saved until you press Save there." %}</p>
+        {% trans "Click the map to add a corner, drag a corner to move it, click a corner to take it out. The outline closes by itself and may not cross itself. Nothing is saved until you press Save." %}
+        {% trans "Continue asks for the name and the description in a dialog; Save is there." %}</p>
       <div class="flex flex-wrap items-center gap-3">
         <button type="button" data-geo="zone-undo" class="rounded-lg border px-3 py-1.5 text-sm font-semibold">{% trans "Undo last corner" %}</button>
         <button type="button" data-geo="zone-restart" class="rounded-lg border px-3 py-1.5 text-sm font-semibold">{% trans "Start over" %}</button>
