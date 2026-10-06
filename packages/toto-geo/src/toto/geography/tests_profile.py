@@ -287,6 +287,25 @@ class SaveTests(ProfileCase):
         self.assertFalse(Address.objects.exists())
         self.assertFalse(self.events().exists())
 
+    def test_input_no_database_takes_is_400_as_json_and_free(self):
+        """An integer past a float's range, a NUL (PostgreSQL refuses one
+        in text; SQLite would keep it) and a lone surrogate, each of which
+        JSON carries and each of which used to end in a 500."""
+        hostile = ({"lat": 10 ** 400}, {"lng": -(10 ** 400)}, {"name": "a\x00b"},
+                   {"note": "ring\x00twice"}, {"name": "a\ud800"}, {"note": "\udfff"})
+        for changes in hostile:
+            with self.subTest(changes=ascii(changes)[:40]):
+                response = self.save(**changes)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response["Cache-Control"], "no-store")
+                self.assertEqual(set(response.json()), {"error"})
+        self.assertFalse(Address.objects.exists())
+        self.assertFalse(self.events().exists())
+
+    def test_a_note_keeps_its_line_breaks(self):
+        self.assertEqual(self.save(note="third floor\nring twice\tthen wait").status_code, 200)
+        self.assertEqual(Address.objects.get().note, "third floor\nring twice\tthen wait")
+
     def test_get_is_405_and_a_member_saves_only_their_own(self):
         client = client_of(self.bob_user)
         self.assertEqual(client.get(self.url).status_code, 405)

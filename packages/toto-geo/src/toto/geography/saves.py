@@ -59,6 +59,9 @@ def _text(value, limit, what) -> str:
         return ""
     if not isinstance(value, str):
         raise Refusal(_("%(what)s must be text.") % {"what": what}, 400)
+    if not charging.storable(value):
+        raise Refusal(_("%(what)s holds a character that cannot be kept.") % {"what": what},
+                      400)
     text = value.strip()
     if len(text) > limit:
         raise Refusal(_("%(what)s is too long: at most %(n)d characters.")

@@ -55,7 +55,9 @@ def door(mark):
                 return _refuse(_("That request is too large."), 400)
             try:
                 data = json.loads(request.body.decode("utf-8") or "{}")
-            except (ValueError, UnicodeDecodeError):
+            except (ValueError, UnicodeDecodeError, RecursionError):
+                # RecursionError: a body of nothing but open brackets, nested
+                # past the parser's depth. It is no ValueError.
                 data = None
             if not isinstance(data, dict):
                 return _refuse(_("Send a JSON object."), 400)

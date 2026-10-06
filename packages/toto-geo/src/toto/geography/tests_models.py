@@ -121,6 +121,19 @@ class ShapeTests(SimpleTestCase):
             with self.subTest(lat=lat, lng=lng), self.assertRaises(shapes.BadShape):
                 shapes.clean_pair(lat, lng)
 
+    def test_an_integer_too_large_for_a_float_is_no_coordinate(self):
+        """JSON puts no limit on an integer's digits and Python reads them
+        all: ``float()`` of one past 1e308 is an OverflowError, which is no
+        ValueError and used to leave the door as a 500."""
+        huge = 10 ** 400
+        for lat, lng in ((huge, 0), (0, huge), (-huge, -huge)):
+            with self.subTest(lat=str(lat)[:6]), self.assertRaises(shapes.BadShape):
+                shapes.clean_pair(lat, lng)
+        with self.assertRaises(shapes.BadShape):
+            shapes.clean_end({"lat": huge, "lng": 0})
+        with self.assertRaises(shapes.BadShape):
+            shapes.clean_outline([[52, 21], [52, huge], [52.1, 21.1]])
+
     def test_a_route_end_is_a_pair_and_nothing_else(self):
         self.assertEqual(shapes.clean_end({"lat": 1, "lng": 2}), (1.0, 2.0))
         for end in ({"lat": 1, "lng": 2, "address": 3}, {"q": "Warsaw"}, {"address": 7},

@@ -158,6 +158,42 @@ class SaveTests(HeadquartersCase):
         self.assertFalse(Zone.objects.exists())
         self.assertFalse(self.events().exists())
 
+    def test_input_no_database_takes_is_400_as_json_and_free(self):
+        huge = 10 ** 400
+        calls = (
+            lambda: self.save_hq(lat=huge), lambda: self.save_hq(name="a\x00b"),
+            lambda: self.save_hq(note="\ud800"),
+            lambda: self.save_zone(outline=[[52, 21], [52, huge], [52.1, 21.1]]),
+            lambda: self.save_zone(name="a\x00b"), lambda: self.save_zone(description="a\x00b"),
+            lambda: self.save_zone(name="\udc00"), lambda: self.save_zone(description="a\ud800"),
+        )
+        for index, call in enumerate(calls):
+            with self.subTest(call=index):
+                response = call()
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response["Cache-Control"], "no-store")
+                self.assertEqual(set(response.json()), {"error"})
+        self.assertFalse(CommunityHeadquarters.objects.exists())
+        self.assertFalse(Address.objects.exists() or Zone.objects.exists())
+        self.assertFalse(self.events().exists())
+
+    def test_a_body_nested_past_python_s_depth_is_400_on_every_door(self):
+        """``json.loads`` of 100,000 open brackets is a RecursionError, which
+        is no ValueError: every door used to answer it with a 500."""
+        doors = [reverse("geography:search"), reverse("geography:route"),
+                 reverse("geography:my_address"), reverse("geography:my_address_clear"),
+                 *self.urls.values()]
+        self.assertEqual(len(doors), 8)
+        head = client_of(self.head_user)
+        for url in doors:
+            for body in ("[" * 100000, '{"a":' * 50000):
+                with self.subTest(url=url, body=body[:5]):
+                    response = head.post(url, data=body, content_type="application/json")
+                    self.assertEqual(response.status_code, 400)
+                    self.assertEqual(response["Cache-Control"], "no-store")
+                    self.assertEqual(set(response.json()), {"error"})
+        self.assertFalse(self.events().exists())
+
     def test_five_hundred_corners_are_saved_and_501_refused(self):
         self.assertEqual(self.save_zone(outline=ring(501)).status_code, 400)
         self.assertFalse(Zone.objects.exists())

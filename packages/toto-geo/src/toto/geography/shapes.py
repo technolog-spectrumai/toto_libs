@@ -30,7 +30,12 @@ class BadShape(ValueError):
 def _number(value):
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise BadShape(_("Latitude and longitude must be numbers."))
-    value = float(value)
+    try:
+        value = float(value)
+    except OverflowError:
+        # JSON puts no limit on an integer's digits; one past a float's range
+        # is as little a coordinate as infinity is.
+        raise BadShape(_("Latitude and longitude must be numbers.")) from None
     if not math.isfinite(value):
         raise BadShape(_("Latitude and longitude must be numbers."))
     return value

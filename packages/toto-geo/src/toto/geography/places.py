@@ -96,6 +96,8 @@ def clean_query(query) -> str:
     """``query`` with its whitespace folded, or 400."""
     if not isinstance(query, str):
         raise Refusal(_("Type at least %(n)d characters to search.") % {"n": QUERY_MIN}, 400)
+    if not charging.storable(query):
+        raise Refusal(_("That search holds a character that cannot be used."), 400)
     text = " ".join(query.split())
     if len(text) < QUERY_MIN:
         raise Refusal(_("Type at least %(n)d characters to search.") % {"n": QUERY_MIN}, 400)

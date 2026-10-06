@@ -297,6 +297,11 @@ class RefusalTests(ServiceTestCase):
             for query in ("", " ", "x", "x" * 201, None, 7, ["Gdansk"]):
                 with self.subTest(query=query):
                     self.assertRefused(400, lambda: places.search(self.user, query, op()))
+            # A lone surrogate (JSON's "\ud800") cannot be written as UTF-8:
+            # the cache key and the provider's address would both fail on it.
+            for query in ("ab\ud800", "\udfffGdansk", "Gda\x00nsk"):
+                with self.subTest(query=ascii(query)):
+                    self.assertRefused(400, lambda: places.search(self.user, query, op()))
             for key in (None, "", "not-a-uuid", 7, "123"):
                 with self.subTest(op=key):
                     self.assertRefused(400, lambda: places.search(self.user, "Gdansk", key))
@@ -533,6 +538,17 @@ class DoorTests(TestCase):
         for body in ("[]", "nonsense", '"Gdansk"'):
             response = self.client.post(self.url, data=body, content_type="application/json")
             self.assertEqual(response.status_code, 400, body)
+
+    def test_a_query_that_is_no_text_a_database_takes_is_400_as_json(self):
+        with mock.patch(URLOPEN) as opened:
+            for query in ("ab\ud800", "Gda\x00nsk"):
+                with self.subTest(query=ascii(query)):
+                    response = post(self.client, self.url, {"q": query, "op": op()})
+                    self.assertEqual(response.status_code, 400)
+                    self.assertEqual(response["Cache-Control"], "no-store")
+                    self.assertEqual(set(response.json()), {"error"})
+        opened.assert_not_called()
+        self.assertFalse(GeographyUsageEvent.objects.exists())
 
     def test_a_ledger_refusal_after_the_answer_is_402_with_no_results(self):
         with refusing_ledger(), answering(GDANSK):

@@ -116,13 +116,16 @@ class DoorTests(RouteTestCase):
             {"lat": 52.2, "lng": 21.0, "q": "home"}, {"id": 3}, {"person": "ada"},
             "Warsaw", 7, None, [52.2, 21.0], {"lat": "52.2", "lng": "21.0"},
             {"lat": 91, "lng": 0}, {"lat": 52.2},
+            {"lat": 10 ** 400, "lng": 0}, {"lat": 0, "lng": -(10 ** 400)},
         )
         with mock.patch(URLOPEN) as opened:
             for end in bad_ends:
                 for side in ("from", "to"):
-                    with self.subTest(end=end, side=side):
+                    with self.subTest(end=repr(end)[:60], side=side):
                         response = post(self.client, self.url, body(**{side: end}))
                         self.assertEqual(response.status_code, 400)
+                        self.assertEqual(response["Cache-Control"], "no-store")
+                        self.assertEqual(set(response.json()), {"error"})
             self.assertEqual(post(self.client, self.url, body(to=A)).status_code, 400)
         opened.assert_not_called()
         self.assertFalse(self.events().exists())

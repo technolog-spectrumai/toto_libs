@@ -103,6 +103,22 @@ def clean_op(value) -> str:
                       400) from None
 
 
+def storable(text: str) -> bool:
+    """Can ``text`` be kept, hashed and sent on? Not with a NUL in it:
+    PostgreSQL refuses one in a text column and SQLite keeps it, so the same
+    request would be a save on one and an error on the other. And not unless
+    it can be written as UTF-8: JSON's ``"\\ud800"`` makes half of a
+    surrogate pair, which no database, cache key or address takes. A door
+    refuses such text with 400 before anything else is touched."""
+    if "\x00" in text:
+        return False
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 def digest(user, op, body) -> str:
     """The keyed digest that binds an op to one request of one member."""
     material = json.dumps([user.pk, op, body], sort_keys=True, separators=(",", ":"),
