@@ -428,9 +428,17 @@ class PublicFileListView(TemplateView):
         from toto.vault.plugins import VaultEditorPlugin, VaultPlayPlugin, open_to
         # VAULT_STORAGE_ONLY: nothing is playable and nothing is made here —
         # no Play, no Edit, no image viewer, no New — whatever is registered.
-        # VAULT_STORAGE_ONLY_OPENS gives Play and Edit back, and those alone:
-        # the viewer and New (create_file_types, above) keep the first flag.
+        # VAULT_STORAGE_ONLY_OPENS gives Play, Edit and the one-field New
+        # back, and those alone: the viewer and the old New menu
+        # (create_file_types, above) keep the first flag.
         context["vault_storage_only"] = storage_only()
+        # The one-field New (stage 62b): the endings this member may name a
+        # new file with, asked of the editor plugins. Empty — a host that
+        # names no "new", a plan no editor is open to, an anonymous reader —
+        # and the page draws no New button and no modal.
+        from toto.vault import new_file
+        context["vault_new_extensions"] = (
+            new_file.offered_extensions(user) if user.is_authenticated else [])
         context["vault_has_play"] = (storage_only_opens("play") and any(
             open_to(plugin, user) for plugin in VaultPlayPlugin.all()))
         context["vault_has_editors"] = (storage_only_opens("edit") and any(

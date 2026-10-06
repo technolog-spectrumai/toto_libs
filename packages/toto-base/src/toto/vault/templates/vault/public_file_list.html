@@ -195,6 +195,9 @@
             this.createTypes = JSON.parse(document.getElementById('vault-create-types').textContent);
           } catch { this.createTypes = []; }
           try {
+            this.newFileExtensions = JSON.parse(document.getElementById('vault-new-extensions').textContent);
+          } catch { this.newFileExtensions = []; }
+          try {
             this.moveTargets = JSON.parse(document.getElementById('vault-move-targets').textContent);
           } catch { this.moveTargets = []; }
           const clearSearchAutofill = () => {
@@ -728,6 +731,73 @@
             this.renameError = '{{ _("Network error. Please try again.")|escapejs }}';
           }
           this.renameLoading = false;
+        },
+
+        // ── New: one file, named in one field (stage 62b) ─────
+        // The name's ending says what the file is; newFileExtensions is the
+        // list the server offers this member (filled in init()). The same
+        // rule is asked twice: here before the request, and by the door.
+        // A refusal leaves the modal open with the name and the sentence.
+        newFileModal: false,
+        newFileDir: null,
+        newFileName: '',
+        newFileError: '',
+        newFileLoading: false,
+        newFileExtensions: [],
+        openNewFile(dirItem) {
+          this.newFileDir = dirItem;
+          this.newFileName = '';
+          this.newFileError = '';
+          this.newFileLoading = false;
+          this.newFileModal = true;
+          this.$nextTick(() => { if (this.$refs.newFileName) this.$refs.newFileName.focus(); });
+        },
+        newFileRefusal(name) {
+          if (!name) return this.say('msgNewNameRequired');
+          const hasControl = Array.from(name).some(ch => {
+            const code = ch.charCodeAt(0);
+            return code < 32 || (code >= 127 && code <= 159) || code === 8232 || code === 8233;
+          });
+          if (name !== name.trim() || name.includes('/') || name.includes('\\')
+              || name.includes('..') || name.startsWith('.') || hasControl) {
+            return this.say('msgNewNameInvalid');
+          }
+          if (name.length > 120) return this.say('msgNewNameLong');
+          const lowered = name.toLowerCase();
+          const known = this.newFileExtensions.some(
+            ext => lowered.endsWith(ext) && name.length > ext.length);
+          if (known) return '';
+          if (!name.includes('.')) return this.say('msgNewNoExtension');
+          return this.say('msgNewUnsupported') + ' ' + this.newFileExtensions.join(', ');
+        },
+        async submitNewFile() {
+          if (this.newFileLoading) return;
+          const name = this.newFileName;
+          this.newFileError = this.newFileRefusal(name);
+          if (this.newFileError) return;
+          this.newFileLoading = true;
+          const dir = this.newFileDir;
+          const body = new URLSearchParams({ name });
+          if (dir) body.set('directory_id', dir.id);
+          try {
+            const res = await fetch(this.$root.dataset.newFileUrl, {
+              method: 'POST',
+              headers: { 'X-CSRFToken': this._csrf(), Accept: 'application/json' },
+              credentials: 'same-origin',
+              body,
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.status === 201 && data.file_pk) {
+              this.newFileModal = false;
+              if (dir && !this.openDirs[dir.id]) this.toggle(dir.id);
+              await this.fetchRow(data.file_pk);
+            } else {
+              this.newFileError = data.error || this.say('msgNewFailed');
+            }
+          } catch {
+            this.newFileError = this.say('msgNetwork');
+          }
+          this.newFileLoading = false;
         },
 
         // ── Create new file ───────────────────────────────────
@@ -1281,6 +1351,7 @@
     <!-- JSON data island -->
     {{ flat_items|json_script:"vault-items" }}
     {{ create_file_types|json_script:"vault-create-types" }}
+    {{ vault_new_extensions|json_script:"vault-new-extensions" }}
     {{ move_targets|json_script:"vault-move-targets" }}
 
     <!-- Tree -->
@@ -1302,7 +1373,14 @@
          data-msg-folder-failed="{{ _('The folder could not be made.')|force_escape }}"
          data-msg-upload-refused="{{ _('The server refused this file')|force_escape }}"
          data-msg-upload-too-large="{{ _('This file is too large to upload.')|force_escape }}"
-         data-msg-upload-cancelled="{{ _('Cancelled')|force_escape }}">
+         data-msg-upload-cancelled="{{ _('Cancelled')|force_escape }}"
+         data-new-file-url="{% url 'vault:new_file' %}"
+         data-msg-new-name-required="{{ _('Give the file a name.')|force_escape }}"
+         data-msg-new-name-invalid="{{ _('A file name is one name: no slash, no “..”, no control character, no dot at its start and no space at its ends.')|force_escape }}"
+         data-msg-new-name-long="{{ _('This name is too long: at most 120 characters.')|force_escape }}"
+         data-msg-new-no-extension="{{ _('Give the name an extension, for example notes.md.')|force_escape }}"
+         data-msg-new-unsupported="{{ _('This file type cannot be made here. Use one of:')|force_escape }}"
+         data-msg-new-failed="{{ _('The file could not be made.')|force_escape }}">
       {% comment %}One hidden picker for "Upload" on a folder with no gateway.{% endcomment %}
       <input type="file" multiple class="hidden" x-ref="vaultUploadInput"
              @change="uploadPicked($event)">
@@ -1443,12 +1521,26 @@
         </a>
         {% endif %}{% endif %}
 
+        {% comment %}New (stage 62b): a file at the top level of the
+           member's own bucket, named in one field. Drawn only where the
+           server offers this member an ending (vault_new_extensions): a
+           plan without the editor, or a host that names no "new", has none.
+           A file inside a folder is made from that folder's row.{% endcomment %}
+        {% if user.is_authenticated and vault_new_extensions %}
+        <button type="button" @click="openNewFile(null)"
+                :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+                class="{% if not antivirus_url %}ml-auto {% endif %}inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition"
+                title="{% trans 'New file' %}" data-vault-control="new-file">
+          <i class="fa-solid fa-file-circle-plus"></i>
+          <span class="hidden sm:inline">{% trans "New" %}</span>
+        </button>
+        {% endif %}
         {% comment %}New folder at the top level of the member's own bucket.
            A folder inside another is made from that folder's row.{% endcomment %}
         {% if user.is_authenticated %}
         <button type="button" @click="newFolder(null)"
                 :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
-                class="{% if not antivirus_url %}ml-auto {% endif %}inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition"
+                class="{% if not antivirus_url and not vault_new_extensions %}ml-auto {% endif %}inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition"
                 title="{% trans 'New folder' %}" data-vault-control="new-folder">
           <i class="fa-solid fa-folder-plus"></i>
           <span class="hidden sm:inline">{% trans "New folder" %}</span>
@@ -1571,6 +1663,19 @@
                             @click.stop="openCreateFile(item)"
                             :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-accent-dark/15' : 'border-accent-2 text-text-main-light hover:bg-accent-light/15'"
                             class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition">
+                      <i class="fa-solid fa-file-circle-plus text-xs"></i>
+                      <span class="hidden sm:inline">{% trans "New" %}</span>
+                    </button>
+                    {% endif %}
+                    {% comment %}New (stage 62b): the one-field modal, for
+                       a folder the member may put files into, where the
+                       server offers them an ending.{% endcomment %}
+                    {% if vault_new_extensions %}
+                    <button x-show="item.can_create"
+                            @click.stop="openNewFile(item)"
+                            :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-accent-dark/15' : 'border-accent-2 text-text-main-light hover:bg-accent-light/15'"
+                            class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition"
+                            title="{% trans 'New file' %}" data-vault-control="new-file">
                       <i class="fa-solid fa-file-circle-plus text-xs"></i>
                       <span class="hidden sm:inline">{% trans "New" %}</span>
                     </button>
@@ -2515,6 +2620,70 @@
               <span x-show="createLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
             </button>
             <button @click="createModal = false"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              {% trans "Cancel" %}
+            </button>
+          </div>
+
+        </div>
+      </div>
+      {% endif %}
+
+      {% comment %}── New file modal (stage 62b): one name, Create, Cancel.
+         The ending says what the file is. What the page or the door refuses
+         is said under the name, and the name stays as typed.{% endcomment %}
+      {% if vault_new_extensions %}
+      <div x-show="newFileModal"
+           x-cloak
+           @keydown.escape.window="newFileModal = false"
+           data-vault-control="new-file-modal"
+           role="dialog" aria-modal="true" aria-labelledby="vault-new-file-title"
+           class="fixed inset-0 z-50 flex items-center justify-center px-4">
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="newFileModal = false"></div>
+        <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-sm rounded-2xl border shadow-2xl p-6 space-y-4">
+
+          <h2 id="vault-new-file-title" class="text-base font-bold flex items-center gap-2">
+            <i class="fa-solid fa-file-circle-plus opacity-60"></i>{% trans "New file" %}
+            {% price_hint "storage.request" %}
+          </h2>
+          <p class="text-xs opacity-60 -mt-2 truncate" x-show="newFileDir">
+            <i class="fa-solid fa-folder mr-1" aria-hidden="true"></i><span x-text="newFileDir ? newFileDir.name : ''"></span>
+          </p>
+
+          <div>
+            <label for="vault-new-file-name" class="text-xs font-semibold opacity-55 uppercase tracking-wide block mb-1">{% trans "Filename" %}</label>
+            <input id="vault-new-file-name" x-ref="newFileName" x-model="newFileName"
+                   @keydown.enter.prevent="submitNewFile()"
+                   @input="newFileError = ''"
+                   type="text" maxlength="255" autocomplete="off" spellcheck="false"
+                   placeholder="notes.md"
+                   :aria-invalid="newFileError ? 'true' : 'false'"
+                   aria-describedby="vault-new-file-error vault-new-file-hint"
+                   :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                   class="w-full rounded-xl border px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-current/20 transition">
+            <p id="vault-new-file-hint" class="mt-1 text-xs opacity-60">
+              {% trans "The extension decides the type:" %}
+              <span class="font-mono">{{ vault_new_extensions|join:" " }}</span>
+            </p>
+          </div>
+
+          <p id="vault-new-file-error" x-show="newFileError" x-text="newFileError" role="alert"
+             data-vault-control="new-file-error"
+             :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+             class="text-xs font-semibold"></p>
+
+          <div class="flex gap-2 pt-1">
+            <button type="button" @click="submitNewFile()"
+                    :disabled="newFileLoading"
+                    data-vault-control="new-file-create"
+                    :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+              <span x-show="!newFileLoading"><i class="fa-solid fa-plus mr-1"></i>{% trans "Create" %}</span>
+              <span x-show="newFileLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button type="button" @click="newFileModal = false"
                     :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
                     class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
               {% trans "Cancel" %}
