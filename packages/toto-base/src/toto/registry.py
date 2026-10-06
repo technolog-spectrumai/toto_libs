@@ -43,6 +43,16 @@ GEOGRAPHY_APPS = [
     "toto.geography",
 ]
 
+# Companies (toto-base, 2026-10-06, stage 65): a company is a community
+# whose kind is "company"; this app adds its ID number and its register of
+# shareholdings, on the community's page and on a holder's profile. Never
+# part of CORE_APPS or BASE_APPS: a host adds it after CORE_APPS (its
+# migration follows people and socialhub) and mounts ``toto.companies.urls``.
+# It is not toto-business's ``toto.company`` and needs none of it.
+COMPANIES_APPS = [
+    "toto.companies",
+]
+
 # Notifications (toto-base, 2026-10-04): the bell in the app bar, the table
 # behind it and the bell's three doors. Never part of CORE_APPS or
 # BASE_APPS: a host adds it (or sets BUILD_NOTIFY and composes from
