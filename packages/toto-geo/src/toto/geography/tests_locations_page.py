@@ -32,6 +32,15 @@ def config_of(text):
     return json.loads(CONFIG.search(text).group(1))
 
 
+def _texts_of(node):
+    """Every text inside ``node``, in the page's order."""
+    for child in node["children"]:
+        if "text" in child:
+            yield child
+        else:
+            yield from _texts_of(child)
+
+
 @override_settings(LOCATIONS_GEOCODING={"enabled": True}, GEOGRAPHY_ROUTING=ROUTING)
 class PageTests(LocationsCase):
     def page(self, user, query=""):
@@ -331,6 +340,20 @@ class TabTests(LocationsCase):
                             (f"?community={self.guild.slug}&tool=route&open=pin:abc", "route")):
             with self.subTest(query=query):
                 self.assertEqual(self.open_tab(self.tree(query=query)), name)
+
+    def test_the_route_tab_says_what_keep_does_now(self):
+        """The owner, 2026-10-07: "if I add something to the map after
+        search it and I press "keep" it should be added yto my pins". Keep
+        saves the result as a community pin; a temporary point comes from a
+        click on the map. One button beside a result, under the same words."""
+        response = client_of(self.member_user).get(self.page_url)
+        text = response.content.decode()
+        route = element(tree_of(text), "data-geo-panel", "route")
+        said = " ".join(node["text"] for node in _texts_of(route))
+        self.assertIn("Keep on the map beside a result saves it as a community pin", said)
+        self.assertIn("A temporary point comes from a click on the map.", said)
+        self.assertNotIn("it stays as a temporary point", text)
+        self.assertEqual(config_of(text)["texts"]["keep_hit"], "Keep on the map")
 
     @override_settings(GEOGRAPHY_ROUTING={"enabled": False})
     def test_without_route_search_there_are_two_tabs_and_no_route_tab_to_ask_for(self):

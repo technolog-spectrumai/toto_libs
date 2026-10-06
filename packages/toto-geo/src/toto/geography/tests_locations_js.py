@@ -994,6 +994,173 @@ class DialogScriptTests(PageCase):
                          [f"{SITE}{self.page_url}?open=zone%3A{area.uid}"])
 
 
+class KeepScriptTests(PageCase):
+    """The owner, 2026-10-07: "if I add something to the map after search it
+    and I press "keep" it should be added yto my pins". The pins a member
+    saves on this page are a community's, so "Keep on the map" beside a
+    search result puts the pin to drag at the result and opens the pin's
+    dialog at once, with the result's words filled in. Save is the door a
+    clicked pin uses; nothing is sent before it."""
+
+    KRAKOW = {"label": "Kraków, województwo małopolskie, Polska", "lat": 50.0619474,
+              "lng": 19.9368564}
+    SEARCH = """
+      queue.push({status: 200, data: {results: HITS}});
+      part("q").value = "kraków"; press("search-go"); await settle();
+      const keeps = () => part("results").elements().map((line) => line.elements()[1]);
+      const asked = calls.length;
+    """
+
+    def run_search(self, body, hits=None, **more):
+        return self.run_page((self.SEARCH + body).replace(
+            "HITS", json.dumps(hits or [self.KRAKOW])), **more)
+
+    def test_keep_opens_the_pin_s_dialog_filled_in_and_save_sends_it(self):
+        out = self.run_search("""
+          out.listed = [keeps().length, keeps()[0].tagName, keeps()[0].textContent,
+                        part("results").elements()[0].elements().length];
+          keeps()[0].fire("click");
+          out.kept = [shown("pin-dialog"), mode("pin-dialog"), hidden("pin-tool"), drawn("draft"),
+                      draft().at, draft().options.draggable, part("pin-continue").disabled];
+          out.words = [part("pin-name").value, part("pin-postal").value, part("pin-note").value,
+                       part("pin-community").value, options("pin-community")];
+          out.quiet = [calls.length - asked, mounted.controller.state.temporary.length,
+                       drawn("temporary"), assigned.length, hidden("search-note")];
+          // Still an end of a route while it is listed.
+          out.end = mounted.controller.ends().filter((end) => end.kind === "hit")
+            .map((end) => end.label);
+          part("pin-note").value = "the old town";
+          queue.push({status: 402, data: {error: "Not enough storage mana."}},
+                     {status: 200, data: {pin: {uid: "abc"}}});
+          press("pin-save"); await settle();
+          out.refused = [shown("pin-dialog"), part("pin-status").textContent,
+                         part("pin-name").value, part("pin-postal").value, part("pin-note").value,
+                         drawn("draft"), part("pin-save").disabled, assigned.length];
+          press("pin-save"); await settle();
+          out.sent = calls.slice(asked).map((call) => [call.url, call.method]);
+          out.bodies = calls.slice(asked).map((call) => call.body);
+        """)
+        self.assertEqual(out["listed"], [1, "BUTTON", "Keep on the map", 2],
+                         "one button beside a result, and no second one")
+        self.assertEqual(out["kept"], [True, ["new", "new", "new"], False, ["marker"],
+                                       [50.061947, 19.936856], True, False])
+        self.assertEqual(out["words"], ["Kraków", "Kraków, województwo małopolskie, Polska", "",
+                                        self.guild_slug, [[self.guild_slug, "Guild"],
+                                                          [self.other_slug, "Other"]]])
+        self.assertEqual(out["quiet"], [0, 0, [], 0, True],
+                         "nothing is sent, and no temporary point is made, by Keep")
+        self.assertEqual(out["end"], [self.KRAKOW["label"]])
+        self.assertEqual(out["refused"], [True, "Not enough storage mana.", "Kraków",
+                                          "Kraków, województwo małopolskie, Polska",
+                                          "the old town", ["marker"], False, 0])
+        door = self.url("pin_create", community=self.guild)
+        self.assertEqual(out["sent"], [[door, "POST"]] * 2, "one request for each press of Save")
+        first, second = out["bodies"]
+        self.assertEqual({key: value for key, value in second.items() if key != "op"},
+                         {"lat": 50.061947, "lng": 19.936856, "name": "Kraków",
+                          "postal_address": "Kraków, województwo małopolskie, Polska",
+                          "note": "the old town"})
+        self.assertTrue(first["op"] and second["op"])
+        self.assertNotEqual(first["op"], second["op"], "an answered refusal ends its op")
+        self.assertEqual(out["assigned"], [f"{SITE}{self.page_url}?open=pin%3Aabc"])
+        self.assertEqual(out["touched"], [])
+
+    def test_the_words_are_cut_to_what_the_fields_take(self):
+        label = "N" * 250 + " , " + "x" * 2100
+        out = self.run_search("""
+          keeps()[0].fire("click");
+          out.words = [part("pin-name").value, part("pin-postal").value];
+          out.most = [part("pin-name").getAttribute("maxlength"),
+                      part("pin-postal").getAttribute("maxlength")];
+          keeps()[1].fire("click");
+          out.plain = [part("pin-name").value, part("pin-postal").value, drawn("draft"), draft().at];
+        """, hits=[{"label": label, "lat": 50.1, "lng": 20.1},
+                   {"label": "  Wawel  ", "lat": 50.054, "lng": 19.935}])
+        self.assertEqual(out["most"], ["200", "2000"])
+        self.assertEqual(out["words"], ["N" * 200, label[:2000]])
+        # A label with no comma is the name whole; the second Keep moves the
+        # one pin to its own result.
+        self.assertEqual(out["plain"], ["Wawel", "  Wawel  ", ["marker"], [50.054, 19.935]])
+        self.assertEqual(len(out["calls"]), 1, "the search, and nothing else")
+
+    def test_leaving_the_dialog_leaves_the_pin_and_cancel_beside_the_map_drops_it(self):
+        out = self.run_search("""
+          tick(X.other, true);
+          keeps()[0].fire("click");
+          out.community = part("pin-community").value;
+          part("pin-name").value = "Old town";
+          dismiss("pin-dialog");
+          out.left = [shown("pin-dialog"), hidden("pin-tool"), drawn("draft"), draft().at];
+          clickMap(50.07, 19.95);
+          out.moved = [draft().at, hidden("click-menu")];
+          press("pin-continue");
+          out.again = [shown("pin-dialog"), part("pin-name").value, part("pin-postal").value];
+          press("pin-dialog-cancel");
+          out.cancelled = [shown("pin-dialog"), drawn("draft"), calls.length - asked];
+          press("pin-continue");
+          queue.push({status: 200, data: {pin: {uid: "abc"}}});
+          press("pin-save"); await settle();
+          out.sent = calls.slice(asked).map((call) => [call.url, call.body.lat, call.body.lng,
+                                                       call.body.name, call.body.postal_address]);
+        """)
+        self.assertEqual(out["community"], self.other_slug, "the one community the filter shows")
+        self.assertEqual(out["left"], [False, False, ["marker"], [50.061947, 19.936856]])
+        self.assertEqual(out["moved"], [[50.07, 19.95], True])
+        self.assertEqual(out["again"], [True, "Old town", self.KRAKOW["label"]])
+        self.assertEqual(out["cancelled"], [False, ["marker"], 0])
+        self.assertEqual(out["sent"], [[self.url("pin_create", community=self.other), 50.07, 19.95,
+                                        "Old town", self.KRAKOW["label"]]])
+
+    def test_cancel_beside_the_map_drops_the_kept_result_s_pin_and_its_words(self):
+        out = self.run_search("""
+          keeps()[0].fire("click");
+          dismiss("pin-dialog");
+          press("pin-cancel");
+          out.dropped = [hidden("pin-tool"), drawn("draft"), part("pin-name").value,
+                         part("pin-postal").value, calls.length - asked];
+          // Words typed for a clicked pin that was not saved are replaced.
+          clickMap(52.5, 21.5); press("click-pin"); press("pin-continue");
+          part("pin-name").value = "Typed"; part("pin-note").value = "a note";
+          press("pin-dialog-cancel");
+          keeps()[0].fire("click");
+          out.replaced_words = [shown("pin-dialog"), part("pin-name").value, part("pin-note").value,
+                                drawn("draft"), draft().at, hidden("click-menu")];
+        """)
+        self.assertEqual(out["dropped"], [True, [], "", "", 0])
+        self.assertEqual(out["replaced_words"], [True, "Kraków", "", ["marker"],
+                                                 [50.061947, 19.936856], True])
+        self.assertEqual(len(out["calls"]), 1, "the search, and nothing else")
+
+    def test_with_no_community_to_save_into_keep_makes_a_temporary_point(self):
+        out = self.run_search("""
+          keeps()[0].fire("click");
+          out.kept = [shown("pin-dialog"), hidden("pin-tool"), drawn("draft"), drawn("temporary"),
+                      mounted.controller.state.temporary.map((p) => [p.lat, p.lng, p.label]),
+                      part("search-note").textContent, hidden("search-note"),
+                      calls.length - asked];
+        """, user=self.staff_user)
+        self.assertEqual(out["kept"], [
+            False, True, [], ["circle"], [[50.061947, 19.936856, self.KRAKOW["label"]]],
+            "You belong to no community yet, so there is nowhere to save a pin.", False, 0])
+        self.assertEqual(len(out["calls"]), 1, "the search, and nothing else")
+        self.assertEqual((out["assigned"], out["touched"]), ([], []))
+
+    def test_a_result_s_name_with_markup_is_a_value_not_markup(self):
+        name = "<img src=x onerror=alert(1)>"
+        label = name + ", <b>Rynek</b>"
+        out = self.run_search("""
+          const line = part("results").elements()[0];
+          out.listed = [line.elements()[0].textContent, line.all().length];
+          keeps()[0].fire("click");
+          out.words = [part("pin-name").value, part("pin-postal").value,
+                       part("pin-name").children.length, part("pin-postal").children.length,
+                       part("pin-dialog").querySelectorAll("img").length
+                       + part("pin-dialog").querySelectorAll("b").length];
+        """, hits=[{"label": label, "lat": 50.1, "lng": 20.1}])
+        self.assertEqual(out["listed"], [label, 2], "the label is the button's text")
+        self.assertEqual(out["words"], [name, label, 0, 0, 0])
+
+
 class LocationsScriptSourceTests(SimpleTestCase):
     """What the script may not hold, read as text (no node needed)."""
 
