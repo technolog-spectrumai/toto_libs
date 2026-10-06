@@ -5,6 +5,13 @@ and the community page: the saved points and the zone the viewer may see,
 the doors the viewer may use, and the sentences the script shows. Nothing a
 viewer may not see goes in: the caller passes only what ``access`` let
 through.
+
+THE PAGE'S DATA HOLDS WHAT THE PAGE DRAWS, and no more: a point is its pin
+and the name on the pin; a zone is its outline. A point's note and a zone's
+name and description are drawn for nobody on the map, so they are not in
+``config``, which every viewer of the map can read in the page's source.
+Whoever may set them reads them in the form, which the template fills from
+``point`` and ``zone`` and only draws for that viewer.
 """
 
 from __future__ import annotations
@@ -32,12 +39,13 @@ def _texts() -> dict:
 
 
 def point_of(address, kind, label="") -> dict | None:
-    """A saved point as the widget draws it."""
+    """A saved point as the widget draws it: where the pin is and the name
+    on it. Not its note."""
     state = point_state(address)
     if state is None:
         return None
     return {"kind": kind, "lat": state["lat"], "lng": state["lng"],
-            "label": state["name"] or label, "note": state["note"]}
+            "label": state["name"] or label}
 
 
 def map_context(key, *, points=(), zone=None, edit_kind="", point_urls=None,
@@ -50,6 +58,7 @@ def map_context(key, *, points=(), zone=None, edit_kind="", point_urls=None,
     point form starts from."""
     points = [point for point in points if point is not None]
     zone_data = zone_state(zone)
+    outline = {"outline": zone_data["outline"]} if zone_data else None
     urls = {}
     search_on, route_modes = places.enabled(), routing.modes() if routing.enabled() else []
     if search_on:
@@ -65,7 +74,7 @@ def map_context(key, *, points=(), zone=None, edit_kind="", point_urls=None,
         "key": key,
         "config_id": f"{key}-config",
         "config": {
-            "center": center, "zoom": 13, "points": points, "zone": zone_data,
+            "center": center, "zoom": 13, "points": points, "zone": outline,
             "urls": urls, "edit_kind": edit_kind,
             "can_edit_point": bool(point_urls), "can_edit_zone": bool(zone_urls),
             "texts": _texts(),
@@ -75,5 +84,5 @@ def map_context(key, *, points=(), zone=None, edit_kind="", point_urls=None,
         "can_edit_point": bool(point_urls),
         "can_edit_zone": bool(zone_urls),
         "point": point_state(edited),
-        "zone": zone_data,
+        "zone": zone_data if zone_urls else None,
     }

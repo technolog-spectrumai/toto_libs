@@ -312,6 +312,26 @@ class PageTests(HeadquartersCase):
                              'data-geo="clear-zone"', "geography/zone_draw.js"):
                     self.assertNotIn(mark, html)
 
+    def test_the_page_s_data_is_the_pin_and_the_outline_and_the_texts_are_the_head_s_form(self):
+        """The headquarters' note and the zone's name and description are
+        drawn for nobody on the map: they are in no page's data, and in the
+        page of nobody but whoever may set them, whose form holds them."""
+        self.save_hq()
+        self.save_zone()
+        texts = (HQ["note"], AREA["name"], AREA["description"])
+        for user in (self.member_user, self.senior_user, self.staff_user, self.head_user,
+                     self.root):
+            with self.subTest(user=user.username):
+                html = self.page(user)
+                config = self.config(html)
+                self.assertEqual(config["points"], [{"kind": "headquarters", "lat": 54.352,
+                                                     "lng": 18.6466, "label": "Harbour house"}])
+                self.assertEqual(config["zone"], {"outline": SQUARE})
+                for text in texts:
+                    self.assertNotIn(text, CONFIG.search(html).group(1))
+                    self.assertEqual(html.count(text),
+                                     1 if user in (self.head_user, self.root) else 0, text)
+
     def test_the_form_has_no_postal_field(self):
         html = self.page(self.head_user)
         section = html[html.index('id="geography-headquarters-section"'):]

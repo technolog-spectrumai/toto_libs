@@ -110,6 +110,25 @@ class VisibilityTests(ProfileCase):
         for mark in ('data-geo="save-point"', 'data-geo="clear-point"', 'data-geo="open-point"'):
             self.assertNotIn(mark, html)
 
+    def test_the_page_holds_the_pin_and_its_name_and_the_note_only_in_the_owner_s_form(self):
+        """The note is drawn for nobody on the map, so it is in nobody's page
+        data; it used to be in every viewer's. The owner reads it in the
+        form, which only the owner's page has."""
+        self.save()
+        type(self.ada).objects.filter(pk=self.ada.pk).update(show_address=True)
+        for user in (self.bob_user, self.root):
+            with self.subTest(user=user.username):
+                html = self.page(user)
+                self.assertEqual(self.config(html)["points"],
+                                 [{"kind": "address", "lat": 52.2297, "lng": 21.0122,
+                                   "label": "Home"}])
+                self.assertNotIn("third floor", html)
+        own = self.page(self.ada_user)
+        self.assertEqual(set(self.config(own)["points"][0]), {"kind", "lat", "lng", "label"})
+        self.assertNotIn("third floor", CONFIG.search(own).group(1))
+        self.assertEqual(own.count("third floor"), 1)
+        self.assertRegex(own, r'<textarea data-geo="point-note-text"[^>]*>third floor</textarea>')
+
     def test_a_visitor_sees_no_section_where_there_is_no_point(self):
         type(self.ada).objects.filter(pk=self.ada.pk).update(show_address=True)
         html = self.page(self.bob_user)
