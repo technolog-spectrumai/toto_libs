@@ -48,8 +48,12 @@ def edit(comment: Comment, user, body: str) -> Comment:
     return comment
 
 
-def soft_delete(comment: Comment, user) -> Comment:
-    if not comment.may_modify(user):
+def soft_delete(comment: Comment, user, *, by_moderator: bool = False) -> Comment:
+    """Withdraw a comment. ``by_moderator=True`` is for a caller that has done
+    its own check (2026-10-06, geography: a community's head withdraws a
+    comment under a pin without being its author or staff); the rule below is
+    then not asked."""
+    if not by_moderator and not comment.may_modify(user):
         raise PermissionDenied("Only the author or staff may withdraw a comment.")
     if not comment.is_deleted:
         comment.deleted_at = timezone.now()

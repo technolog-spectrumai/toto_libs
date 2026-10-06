@@ -1,4 +1,4 @@
-{% load i18n %}
+{% load i18n quota_tags %}
 <section class="space-y-3" data-testid="comment-thread" aria-label="{% trans 'Comments' %}">
   <h2 class="text-lg font-bold">{% trans "Comments" %}</h2>
   {% for c in comments %}
@@ -7,12 +7,16 @@
       <span>{% if c.author %}{{ c.author.get_username }}{% else %}{% trans "a former member" %}{% endif %} · {{ c.created_at|date:"Y-m-d H:i" }}{% if c.edited_at %} · {% trans "edited" %}{% endif %}</span>
       {% if c.can_modify and not c.is_deleted %}
       <span class="flex items-center gap-2">
+        {% if c.can_edit %}
         <details class="inline"><summary class="cursor-pointer font-semibold">{% trans "Edit" %}</summary>
           <form method="post" action="{% url edit_url_name parent_pk c.pk %}" class="mt-2 space-y-2">{% csrf_token %}
             <textarea name="body" rows="3" class="w-full rounded border border-current/20 bg-inherit p-2">{{ c.body }}</textarea>
             <button type="submit" class="rounded border px-2 py-1 text-xs font-semibold">{% trans "Save" %}</button></form></details>
+        {% endif %}
+        {% if c.can_withdraw %}
         <form method="post" action="{% url delete_url_name parent_pk c.pk %}" class="inline" onsubmit="return confirm('{% trans "Withdraw this comment?" %}')">{% csrf_token %}
           <button type="submit" class="font-semibold hover:underline">{% trans "Withdraw" %}</button></form>
+        {% endif %}
       </span>
       {% endif %}
     </header>
@@ -22,8 +26,10 @@
     <details class="mt-2 text-xs"><summary class="cursor-pointer font-semibold opacity-70">{% trans "Reply" %}</summary>
       <form method="post" action="{{ post_url }}" class="mt-2 space-y-2">{% csrf_token %}
         <input type="hidden" name="reply_to" value="{{ c.pk }}">
+        {% if c.op %}<input type="hidden" name="op" value="{{ c.op }}">{% endif %}
         <textarea name="body" rows="2" class="w-full rounded border border-current/20 bg-inherit p-2"></textarea>
-        <button type="submit" class="rounded border px-2 py-1 font-semibold">{% trans "Reply" %}</button></form></details>
+        <button type="submit" class="rounded border px-2 py-1 font-semibold">{% trans "Reply" %}</button>
+        {% if price_metric %}{% price_hint price_metric %}{% endif %}</form></details>
     {% endif %}
   </article>
   {% empty %}
@@ -32,9 +38,11 @@
   {% if user.is_authenticated %}
   <form method="post" action="{{ post_url }}" class="space-y-2">{% csrf_token %}
     <label class="block text-sm font-semibold" for="comment-body">{% trans "Add a comment" %}</label>
+    {% if op %}<input type="hidden" name="op" value="{{ op }}">{% endif %}
     <textarea id="comment-body" name="body" rows="3" class="w-full rounded border border-current/20 bg-inherit p-2 text-sm"></textarea>
     <button type="submit" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
             class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm">{% trans "Comment" %}</button>
+    {% if price_metric %}{% price_hint price_metric %}{% endif %}
   </form>
   {% endif %}
 </section>
