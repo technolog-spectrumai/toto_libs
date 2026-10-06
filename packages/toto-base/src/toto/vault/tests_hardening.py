@@ -10,8 +10,15 @@ their flag explicitly, so the module passes on hosts that turn either off.
 ``VAULT_STORAGE_ONLY = True`` is the third (zenobia sets it, 2026-10-03) and
 the same rule holds for it: a test that needs the New-file door sets the flag
 off itself, wherever the test lives (``StorageOnlyFlagTests`` below).
+
+``VAULT_STORAGE_ONLY_OPENS`` (2026-10-06) gives such a host its Play and Edit
+buttons back, and those alone (``StorageOnlyOpensTests``). Those tests put
+their own plugins in the registries for as long as they run: a host may have
+registered some of its own.
 """
+import contextlib
 import tempfile
+from unittest import mock
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -19,7 +26,9 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from toto.vault.models import (Bucket, VaultDirectory, VaultFile,
-                               external_buckets_allowed, storage_only)
+                               external_buckets_allowed, storage_only,
+                               storage_only_opens)
+from toto.vault.plugins import VaultEditorPlugin, VaultPlayPlugin
 from toto.vault.storage_backends import (
     LocalVaultStorageDriver,
     S3CompatibleVaultStorageDriver,
@@ -303,6 +312,176 @@ class StorageOnlyFlagTests(TestCase):
                         silent.append(str(path))
         self.assertGreater(asking, 1, "the walk found this module alone: it is vacuous")
         self.assertEqual(silent, [])
+
+
+class _Play(VaultPlayPlugin):
+    """A Play plugin for plain text."""
+
+    file_type = "text"
+
+    def get_play_url(self, vault_file):
+        return f"/nowhere/play/{vault_file.pk}/"
+
+
+class _Edit(VaultEditorPlugin):
+    """Its Edit twin. It names an extension, so "New" would offer the type
+    wherever the vault makes files."""
+
+    file_type = "text"
+    new_file_extension = ".txt"
+
+    def get_editor_url(self, vault_file):
+        return f"/nowhere/edit/{vault_file.pk}/"
+
+
+@contextlib.contextmanager
+def _registered(play, edit):
+    """Both registries holding these two plugins and nothing else, for as
+    long as the ``with`` lasts."""
+    with mock.patch.dict(VaultPlayPlugin.registry, {"text": play}, clear=True), \
+            mock.patch.dict(VaultEditorPlugin.registry, {"text": edit}, clear=True):
+        yield
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="vault-hardening-"))
+class _ListedFile(TestCase):
+    """One public text file in a folder, and its owner."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.files.base import ContentFile
+
+        from toto.core.models import Platform
+
+        Platform.objects.get_or_create(active=True, defaults={
+            "site_name": "T", "author": "t", "publication_year": 2026})
+        cls.owner = User.objects.create_user("opener", "o@x.com", "pw")
+        cls.bucket = Bucket.objects.create(
+            name="Open", owner=cls.owner, slug="hardening-open")
+        cls.directory = VaultDirectory.objects.create(
+            bucket=cls.bucket, name="inbox", owner=cls.owner)
+        cls.note = VaultFile(owner=cls.owner, title="note.txt", key="hardening-note",
+                             file_type="text", bucket=cls.bucket,
+                             directory=cls.directory, is_public=True)
+        cls.note.file.save("note.txt", ContentFile(b"hello"), save=False)
+        cls.note.save()
+
+    def page(self, user=None):
+        self.client.force_login(user or self.owner)
+        response = self.client.get(reverse("vault:public_list"))
+        self.assertEqual(response.status_code, 200)
+        return response
+
+    def row(self, response):
+        [row] = [item for item in response.context["flat_items"] if item["t"] == "file"]
+        return row
+
+
+class StorageOnlyOpensTests(_ListedFile):
+    """``VAULT_STORAGE_ONLY_OPENS`` — Play and Edit on a host that otherwise
+    only stores files, for the plugins it registers. Named nowhere, the vault
+    is as ``VAULT_STORAGE_ONLY`` made it; naming both still makes no file and
+    views no picture."""
+
+    def test_the_words_it_takes(self):
+        from django.conf import settings
+
+        with self.settings(VAULT_STORAGE_ONLY=False, VAULT_STORAGE_ONLY_OPENS=()):
+            # Not storage only: nothing was closed, so nothing needs naming.
+            self.assertTrue(storage_only_opens("play"))
+            self.assertTrue(storage_only_opens("edit"))
+        with self.settings(VAULT_STORAGE_ONLY=True, VAULT_STORAGE_ONLY_OPENS=("play",)):
+            self.assertTrue(storage_only_opens("play"))
+            self.assertFalse(storage_only_opens("edit"))
+            del settings.VAULT_STORAGE_ONLY_OPENS   # a host that never named it
+            self.assertFalse(storage_only_opens("play"))
+            self.assertFalse(storage_only_opens("edit"))
+        with self.settings(VAULT_STORAGE_ONLY=True, VAULT_STORAGE_ONLY_OPENS="edit"):
+            self.assertTrue(storage_only_opens("edit"))
+            self.assertFalse(storage_only_opens("play"))
+        with self.settings(VAULT_STORAGE_ONLY=True,
+                           VAULT_STORAGE_ONLY_OPENS=("play", "edit", "new")):
+            self.assertTrue(storage_only_opens("play"))
+            self.assertTrue(storage_only_opens("edit"))
+            # It opens the two buttons and nothing else.
+            self.assertFalse(storage_only_opens("new"))
+            self.assertTrue(storage_only())
+
+    @override_settings(VAULT_STORAGE_ONLY=True, VAULT_STORAGE_ONLY_OPENS=())
+    def test_named_nowhere_nothing_is_shown_even_with_a_plugin(self):
+        with _registered(_Play(), _Edit()):
+            response = self.page()
+            row = self.row(response)
+            self.assertEqual(row["play_url"], "")
+            self.assertEqual(row["editor_url"], "")
+            self.assertFalse(response.context["vault_has_play"])
+            self.assertFalse(response.context["vault_has_editors"])
+            body = response.content.decode()
+            self.assertNotIn("/nowhere/", body)
+            self.assertNotIn('x-show="item.play_url"', body)
+            self.assertNotIn("chooseAction('edit')", body)
+
+    @override_settings(VAULT_STORAGE_ONLY=True, VAULT_STORAGE_ONLY_OPENS=("play",))
+    def test_play_alone(self):
+        with _registered(_Play(), _Edit()):
+            response = self.page()
+            row = self.row(response)
+            self.assertEqual(row["play_url"], f"/nowhere/play/{self.note.pk}/")
+            self.assertEqual(row["editor_url"], "")
+            self.assertTrue(response.context["vault_has_play"])
+            self.assertFalse(response.context["vault_has_editors"])
+            body = response.content.decode()
+            self.assertIn('x-show="item.play_url"', body)
+            self.assertNotIn("chooseAction('edit')", body)
+
+    @override_settings(VAULT_STORAGE_ONLY=True, VAULT_FILE_EDITS=True,
+                       VAULT_STORAGE_ONLY_OPENS=("play", "edit"))
+    def test_both_and_still_no_new_file_and_no_picture_viewer(self):
+        import json
+
+        from toto.vault.views import available_create_types
+
+        with _registered(_Play(), _Edit()):
+            response = self.page()
+            row = self.row(response)
+            self.assertEqual(row["play_url"], f"/nowhere/play/{self.note.pk}/")
+            self.assertEqual(row["editor_url"], f"/nowhere/edit/{self.note.pk}/")
+            self.assertTrue(response.context["vault_has_play"])
+            self.assertTrue(response.context["vault_has_editors"])
+            body = response.content.decode()
+            self.assertIn('x-show="item.play_url"', body)
+            self.assertIn("chooseAction('edit')", body)
+            # The plugin names an extension; a storage-only host still
+            # offers no type, and the page draws no New and no viewer.
+            self.assertTrue(response.context["vault_storage_only"])
+            self.assertEqual(available_create_types(), [])
+            self.assertEqual(response.context["create_file_types"], [])
+            for marker in ('@click.stop="openCreateFile(item)"',
+                           '@click.stop="openImageModal(item)"',
+                           'x-show="imageModalOpen"'):
+                with self.subTest(marker=marker):
+                    self.assertNotIn(marker, body)
+            # Both empty-file doors are still gone, and nothing is written.
+            made = self.client.post(reverse("vault:create_file"), {
+                "title": "a.txt", "file_type": "text",
+                "directory_id": self.directory.pk})
+            self.assertEqual(made.status_code, 404)
+            made = self.client.post(
+                reverse("vault:api_file_create"),
+                json.dumps({"bucket_slug": self.bucket.slug, "title": "b.txt",
+                            "file_type": "text"}),
+                content_type="application/json")
+            self.assertEqual(made.status_code, 404)
+            self.assertEqual(VaultFile.objects.count(), 1)
+
+    @override_settings(VAULT_STORAGE_ONLY=True,
+                       VAULT_STORAGE_ONLY_OPENS=("play", "edit"))
+    def test_an_encrypted_file_gets_neither(self):
+        VaultFile.objects.filter(pk=self.note.pk).update(is_encrypted=True)
+        with _registered(_Play(), _Edit()):
+            row = self.row(self.page())
+            self.assertEqual(row["play_url"], "")
+            self.assertEqual(row["editor_url"], "")
 
 
 _SCRATCH_MEDIA = tempfile.mkdtemp(prefix="vault-hardening-")

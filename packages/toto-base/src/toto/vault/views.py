@@ -148,14 +148,13 @@ def file_item(f, *, pid, depth, clean_pks=None, fs_plugins=None) -> dict:
     """One file as the list's script takes it — the row the page draws. The
     listing builds every row with this and the row door answers one, so a
     row that arrives while the page is open is the row a reload would draw."""
-    from toto.vault.models import storage_only
+    from toto.vault.models import storage_only_opens
     from toto.vault.plugins import FileServicePlugin, VaultEditorPlugin, VaultPlayPlugin
 
-    # A host that only stores files offers neither, whatever is registered.
-    _storage_only = storage_only()
-
+    # A host that only stores files offers neither, whatever is registered —
+    # unless it names the button in VAULT_STORAGE_ONLY_OPENS.
     play_url = ""
-    if not (f.is_encrypted or _storage_only):
+    if storage_only_opens("play") and not f.is_encrypted:
         plugin = VaultPlayPlugin.for_file_type(f.file_type)
         # A plugin whose target URL isn't mounted (its feature flag is off) must
         # not take down the whole listing — degrade to "no play link" instead.
@@ -170,7 +169,8 @@ def file_item(f, *, pid, depth, clean_pks=None, fs_plugins=None) -> dict:
     # treatment: the editors open local handles, and a remote file's
     # bytes are on another host — download works, editing does not.
     editor_url = ""
-    if not (f.is_encrypted or _storage_only or not access.is_local_content(f)):
+    if storage_only_opens("edit") and not (
+            f.is_encrypted or not access.is_local_content(f)):
         plugin = VaultEditorPlugin.for_file_type(f.file_type)
         try:
             editor_url = plugin.get_editor_url(f) if plugin else ""
@@ -417,14 +417,16 @@ class PublicFileListView(TemplateView):
         # Whether any Play or Edit control is drawn at all. A host that only
         # stores files registers neither kind of plugin, and then the page
         # carries no such button — not a hidden one.
-        from toto.vault.models import storage_only
+        from toto.vault.models import storage_only, storage_only_opens
         from toto.vault.plugins import VaultEditorPlugin, VaultPlayPlugin
         # VAULT_STORAGE_ONLY: nothing is playable and nothing is made here —
         # no Play, no Edit, no image viewer, no New — whatever is registered.
+        # VAULT_STORAGE_ONLY_OPENS gives Play and Edit back, and those alone:
+        # the viewer and New (create_file_types, above) keep the first flag.
         context["vault_storage_only"] = storage_only()
-        context["vault_has_play"] = (not storage_only()
+        context["vault_has_play"] = (storage_only_opens("play")
                                      and bool(VaultPlayPlugin.registry))
-        context["vault_has_editors"] = (not storage_only() and any(
+        context["vault_has_editors"] = (storage_only_opens("edit") and any(
             plugin.is_available() for plugin in VaultEditorPlugin.all()))
 
         # Archiving moved to the Archive tab, which is the same tree carrying
