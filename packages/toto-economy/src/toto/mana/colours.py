@@ -44,6 +44,8 @@ COLOUR_OF: dict[str, str] = {
     "geography.pin": "storage",
     "geography.zone": "storage",
     "geography.note": "storage",
+    # A comment under a community's pin or zone (2026-10-06, stage 64).
+    "geography.comment": "storage",
     # -- compute ------------------------------------------------------------
     "workflows.run": "compute",
     "repo.run": "compute",
@@ -126,6 +128,7 @@ PRICES: dict[str, Decimal] = {
     "geography.pin": Decimal("0.5"),
     "geography.zone": Decimal("1"),
     "geography.note": Decimal("0.2"),
+    "geography.comment": Decimal("0.2"),
     "security.plain_gb_day": Decimal("20"),
 }
 

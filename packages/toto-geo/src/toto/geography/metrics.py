@@ -5,7 +5,8 @@ when they are answered: a place-name search and a route. Three things kept,
 charged storage mana once: a saved point, a saved zone, and a later change to
 either (a note typed when the point or zone is first saved is covered by its
 own price). Looking at a map, placing a temporary point and removing what
-was saved are free. ``charging`` says when a charge is made and when not.
+was saved are free. Since stage 64 a comment under a community's pin or zone is
+a fourth thing kept. ``charging`` says when a charge is made and when not.
 """
 
 from django.utils.translation import gettext_lazy as _
@@ -18,6 +19,7 @@ ROUTE = "geography.route"
 PIN = "geography.pin"
 ZONE = "geography.zone"
 NOTE = "geography.note"
+COMMENT = "geography.comment"
 
 registry.register(Metric(
     code=LOOKUP, label=_("Place search"), app_label=APP, unit="lookup",
@@ -44,7 +46,13 @@ registry.register(Metric(
     description=_("One later change to a saved point or zone."),
     default_limit=200,
 ))
+registry.register(Metric(
+    code=COMMENT, label=_("Comment on a pin or zone"), app_label=APP, unit="comment",
+    description=_("One comment written under a community's pin or zone."),
+    default_limit=200,
+))
 
 #: Every metric of this app, for the lookup of a known ``op``.
-ALL = (LOOKUP, ROUTE, PIN, ZONE, NOTE)
-UNIT = {LOOKUP: "lookup", ROUTE: "route", PIN: "point", ZONE: "zone", NOTE: "change"}
+ALL = (LOOKUP, ROUTE, PIN, ZONE, NOTE, COMMENT)
+UNIT = {LOOKUP: "lookup", ROUTE: "route", PIN: "point", ZONE: "zone", NOTE: "change",
+        COMMENT: "comment"}

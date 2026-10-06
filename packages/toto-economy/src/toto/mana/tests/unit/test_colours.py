@@ -35,9 +35,11 @@ class MapTests(SimpleTestCase):
         self.assertEqual(COLOUR_OF["storage.egress_mb"], "storage")
         self.assertNotIn("storage.egress_mb", PRICES)
 
-    def test_geography_s_five_prices(self):
-        """Two questions to an outside service draw on compute, three things
-        kept draw on storage (2026-10-06). Seeds; staff own the numbers."""
+    def test_geography_s_six_prices(self):
+        """Two questions to an outside service draw on compute, four things
+        kept draw on storage: a point, a zone, a later change, and a comment
+        under a community's pin or zone (2026-10-06). Seeds; staff own the
+        numbers."""
         from decimal import Decimal
 
         expected = {
@@ -46,6 +48,7 @@ class MapTests(SimpleTestCase):
             "geography.pin": ("storage", "0.5"),
             "geography.zone": ("storage", "1"),
             "geography.note": ("storage", "0.2"),
+            "geography.comment": ("storage", "0.2"),
         }
         for code, (role, price) in expected.items():
             with self.subTest(code=code):
@@ -61,7 +64,8 @@ class MapTests(SimpleTestCase):
             self.skipTest("this host installs no geography")
         codes = {code for code in registry.codes() if code.startswith("geography.")}
         self.assertEqual(codes, {"geography.lookup", "geography.route", "geography.pin",
-                                 "geography.zone", "geography.note"})
+                                 "geography.zone", "geography.note",
+                                 "geography.comment"})
         for code in codes:
             self.assertEqual(registry.get(code).app_label, "geography")
 
