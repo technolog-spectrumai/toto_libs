@@ -264,8 +264,9 @@ TRAPPED = {
     "socialhub/_profile_data.html": ["confirming"],
     "socialhub/clearances.html": ["open"],
     "socialhub/erasure_requests.html": ["decline"],
-    # The address picker, on the profile's Edit profile tab since stage 50.
-    "socialhub/_profile_edit.html": ["addressModal"],
+    # The address picker: on the map's profile plugin since 2026-10-04, when
+    # the profile's own address became text. A host without the map skips it.
+    "locations/profile_plugins/home.html": ["addressModal"],
 }
 
 #: Where a modal's Escape handler is when it is not in the modal's own
