@@ -38,7 +38,9 @@ class DiscountRenderingTests(SimpleTestCase):
 
     def test_a_full_discount_shows_nothing_to_pay_and_the_list_price(self):
         out = self.hint(MANA_CARD, 100, "security")
-        self.assertRegex(out, r'fa-droplet" aria-hidden="true"></i>−0<')
+        # "−0" and nothing more of a number: a per-unit span (a registered
+        # metric) or, after the template's line break, the discount tag follows.
+        self.assertRegex(out, r'fa-droplet" aria-hidden="true"></i>−0\s*<')
         self.assertIn("list price 0.1", out)
         self.assertIn('data-discount="100"', out)
 
