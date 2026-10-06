@@ -343,13 +343,25 @@ def _manual_features(request):
     from django.apps import apps  # noqa: PLC0415
 
     features = _manual_feature_map(request, apps)
+    # What the vault's own switches leave of the storage chapter
+    # (2026-10-06). A host that only stores files draws Play and Edit only
+    # where it names them (VAULT_STORAGE_ONLY_OPENS), and never the picture
+    # viewer; every other host draws all three, as before.
+    play = edit = pictures = features["vault"]
+    if features["vault"]:
+        from toto.vault.models import storage_only, storage_only_opens  # noqa: PLC0415
+
+        play, edit = storage_only_opens("play"), storage_only_opens("edit")
+        pictures = not storage_only()
+    features.update(vault_play=play, vault_edit=edit, image_viewer=pictures)
+    features["morion"] = features["morion"] and (play or edit)
     # Whether the storage chapter may promise Play / Edit buttons at all: a
-    # host that only stores files installs none of these, and its chapter
-    # says a file comes back as a download instead.
-    features["viewers"] = any(
+    # host that only stores files installs none of these (or names neither
+    # button), and its chapter says a file comes back as a download instead.
+    features["viewers"] = (play or edit) and any(
         features[name] for name in (
             "vod", "markdown", "memo", "notarius", "editor", "sketch",
-            "notebooks", "latex"))
+            "notebooks", "latex", "morion"))
     return features
 
 
@@ -385,6 +397,11 @@ def _manual_feature_map(request, apps):
         # of the antivirus desk, which a host without the app does not sell.
         "antivirus": _mounted("antivirus:index"),
         "sketch": apps.is_installed("toto.sketch"),
+        # The editor a host serves behind the vault's own Play and Edit
+        # buttons (zenobia's toto.morion, 2026-10-06): a host app's page, so
+        # mounted — a host without it documents no button it does not draw.
+        # `_manual_features` adds the vault's switch to it.
+        "morion": _mounted("morion:open"),
         "chat": apps.is_installed("toto.forum"),
         # Mounted, not installed — and the distinction is load-bearing here.
         # toto.workflows is the platform's job runner: the antivirus queues

@@ -137,6 +137,53 @@ class ManualFeatureGateTests(TestCase):
         self.assertContains(response, "formulas written between")
         self.assertNotContains(response, "/wiki/")
 
+    def test_the_storage_chapter_follows_the_vaults_switches(self):
+        # 2026-10-06. A host that only stores files promises no Play, no Edit
+        # and no picture viewer, whatever is installed; a button it names in
+        # VAULT_STORAGE_ONLY_OPENS comes back into the chapter only where an
+        # app draws one (a host's editor behind the vault's buttons).
+        from django.apps import apps
+        from django.test import RequestFactory
+        from django.contrib.auth.models import AnonymousUser
+        from toto.core.views import _manual_features, _mounted
+
+        if not apps.is_installed("toto.vault"):
+            self.skipTest("this host has no vault")
+        request = RequestFactory().get("/core/manual/")
+        request.user = AnonymousUser()
+        editor = _mounted("morion:open")
+        with self.settings(VAULT_STORAGE_ONLY=False):
+            features = _manual_features(request)
+            self.assertTrue(features["image_viewer"])
+            self.assertTrue(features["vault_play"] and features["vault_edit"])
+            self.assertEqual(features["morion"], editor)
+        with self.settings(VAULT_STORAGE_ONLY=True, VAULT_STORAGE_ONLY_OPENS=()):
+            features = _manual_features(request)
+            self.assertFalse(features["image_viewer"])
+            self.assertFalse(features["vault_play"] or features["vault_edit"])
+            self.assertFalse(features["morion"])
+            self.assertFalse(features["viewers"])
+        with self.settings(VAULT_STORAGE_ONLY=True, VAULT_STORAGE_ONLY_OPENS=("play",)):
+            features = _manual_features(request)
+            self.assertFalse(features["image_viewer"])
+            self.assertTrue(features["vault_play"])
+            self.assertFalse(features["vault_edit"])
+            self.assertEqual(features["morion"], editor)
+            self.assertGreaterEqual(features["viewers"], editor)
+
+        Platform.objects.get_or_create(site_name="Test", defaults={
+            "author": "t", "publication_year": 2026, "active": True})
+        self.client.force_login(User.objects.create_user("reader", password="pw"))
+        with self.settings(VAULT_STORAGE_ONLY=True, VAULT_STORAGE_ONLY_OPENS=()):
+            response = self.client.get(reverse("core:manual"), HTTP_ACCEPT_LANGUAGE="en")
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, "nothing is opened or edited in the browser")
+            self.assertNotContains(response, "images open in a preview window")
+            self.assertNotContains(response, "the editor that runs in your browser")
+        with self.settings(VAULT_STORAGE_ONLY=False):
+            response = self.client.get(reverse("core:manual"), HTTP_ACCEPT_LANGUAGE="en")
+            self.assertContains(response, "images open in a preview window")
+
 
 @override_settings(
     CACHES={
