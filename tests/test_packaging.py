@@ -19,7 +19,7 @@ NO_MIGRATION_APPS = {"editor", "neo_editor"}
 APPS_WITH_MIGRATIONS = {
     "ambrosia", "anastasia", "antivirus", "api", "assets", "audit", "bento",
     "clearing", "comments", "company", "connectors", "core", "cyprian",
-    "events", "fileservices", "formica", "forum", "gervazy", "gitea",
+    "events", "fileservices", "formica", "forum", "geography", "gervazy", "gitea",
     "ingestor", "jess", "kanban", "ledger", "locations", "mail", "mana",
     "mandragora", "manta", "memo", "mint", "monit", "notify", "ocr", "people", "quota",
     "ravioli", "repo", "sabbia", "sketch", "social_login", "socialhub",
@@ -101,6 +101,17 @@ def test_gis_off_migration_graph_is_packaged(owner):
     assert owner.get("toto/locations/migrations_nogis/__init__.py") == "toto-geo"
     assert owner.get("toto/locations/migrations_nogis/0001_initial.py") == "toto-geo"
     assert owner.get("toto/locations/migrations/0001_initial.py") == "toto-geo"
+
+
+def test_geography_rides_in_toto_geo_beside_the_map(owner):
+    # Geography (2026-10-06) is an app of its own beside toto.locations, in
+    # the same wheel; its copy of the geocoder adapter ships there too.
+    assert owner.get("toto/geography/models.py") == "toto-geo"
+    assert owner.get("toto/geography/migrations/0001_initial.py") == "toto-geo"
+    assert owner.get("toto/geography/geocode.py") == "toto-geo"
+    assert owner.get("toto/locations/geocode.py") == "toto-geo"
+    assert owner.get("toto/geography/static/geography/map.js") == "toto-geo"
+    assert owner.get("toto/geography/templates/geography/_map.html") == "toto-geo"
 
 
 def test_templates_are_packaged(all_names, owner):
