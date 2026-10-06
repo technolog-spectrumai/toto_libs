@@ -135,7 +135,7 @@ not described here.
 
 What zenobia is today shapes what is exercised in this library. It is a file
 storage platform: it sets `VAULT_STORAGE_ONLY = True` (and, since 2026-10-06,
-names Play and Edit in `VAULT_STORAGE_ONLY_OPENS` for the one editor it
+names Play, Edit and New in `VAULT_STORAGE_ONLY_OPENS` for the one editor it
 serves, an app of its own), runs as the identity provider only, installs no
 map, no forum, none of this library's editors, no antivirus and no PDF
 renderer, and opens no WebSocket and holds no request open. The apps and
@@ -961,9 +961,16 @@ Other packages add registries of their own in the same way
 When `VAULT_STORAGE_ONLY` is true, the vault draws no Play and no Edit
 button whatever plugins are registered, no picture viewer and no *New*, and
 its empty-file doors answer 404. `VAULT_STORAGE_ONLY_OPENS` (a tuple of
-`"play"` and `"edit"`, empty by default) gives such a host those two buttons
-back for the plugins it registers, and nothing else
-(`toto.vault.models.storage_only_opens`). A Play or Edit plugin may also
+`"play"`, `"edit"` and `"new"`, empty by default) gives such a host those
+buttons back for the plugins it registers, and nothing else
+(`toto.vault.models.storage_only_opens`). `"new"` is a New button with one
+field, the file's name (`toto.vault.new_file`, `POST /vault/file/new/`): an
+editor plugin names the endings a new file of its type may carry
+(`new_file_extensions`) and what it starts with (`new_file_content`); the
+name is refused, never mended (one name, no path, an offered ending); a name
+already in the folder is 409; and the file is made as an upload is, with the
+same right to the folder, quota, charge and audit record. The old menu of
+type pills and the empty-file doors stay closed. A Play or Edit plugin may also
 say which member is offered its button: `is_open_to(user)`, true by default,
 is asked by the listing for the member it is built for, so a plugin whose
 page a plan sells shows no button to a member whose plan lacks it.
@@ -1481,6 +1488,9 @@ hashes.
 - `2f857275` A Play or Edit plugin may close its button to a member
   (`is_open_to`).
 - `58c7ea6d` The manual's storage chapter follows both switches.
+- `91f4ab5b`, `40307740`, `8b1bcba3` A third word, `"new"`: a New button
+  with one field, the file's name, and the door that makes the file as an
+  upload is made (`toto.vault.new_file`).
 
 **2026-10-06 — nothing is held open**
 
