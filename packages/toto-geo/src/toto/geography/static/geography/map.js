@@ -17,6 +17,9 @@
  *    a throttle) repeats its `op`, so a retry is never charged twice.
  *  - A route request holds two coordinate pairs and nothing else about its
  *    ends: no row id, no name. The browser sends the points it already holds.
+ *  - A page that was given no route door (`urls.route`; only a page that
+ *    asked for route search has one) sends no route request, whatever is
+ *    called: the profile's map and a community's have no route search.
  *  - Each end of the next route is remembered by the id of the point it
  *    means (an id of this page: `s0` a saved point, `h7` a search hit, `t8` a
  *    temporary point; a number is used once), never by a place in a list.
@@ -224,8 +227,13 @@
         });
       },
 
-      /* `from` and `to` are any two of `ends()`; only their coordinates go. */
+      /* `from` and `to` are any two of `ends()`; only their coordinates go.
+       * On a page with no route door nothing is sent and nothing is found. */
       route: function (from, to, mode) {
+        if (!urls.route) {
+          state.route = null;
+          return Promise.resolve({ok: false, status: 0, data: {}, op: null});
+        }
         var body = {from: pair(from), to: pair(to), mode: mode};
         return press("route", urls.route, body).then(function (answer) {
           state.route = (answer.ok && answer.data.line) ? answer.data : null;
@@ -236,6 +244,7 @@
       /* The route between the two chosen ends. Null, and no request, while
        * one of them is not chosen. */
       routeChosen: function (mode) {
+        if (!urls.route) { return null; }
         var now = this.selection();
         if (!now.from || !now.to) { return null; }
         return this.route(now.from, now.to, mode);
@@ -397,8 +406,10 @@
      * chosen point is gone the button itself says to choose again. */
     var goLabel = q("route-go-label");
     var goText = goLabel ? goLabel.textContent : "";
+    var routed = !!(config.urls && config.urls.route && q("route-go"));
 
     function fillEnds() {
+      if (!routed) { return; }       // a page with no route search has no ends
       var now = controller.selection();
       ["from", "to"].forEach(function (name) {
         var select = q(name);
@@ -430,7 +441,7 @@
 
     ["from", "to"].forEach(function (name) {
       var select = q(name);
-      if (!select) { return; }
+      if (!routed || !select) { return; }
       select.addEventListener("change", function () {
         controller.chooseEnd(name, select.value);
         fillEnds();
@@ -518,7 +529,7 @@
 
     /* --- route -------------------------------------------------------- */
     var routeGo = q("route-go");
-    if (routeGo) {
+    if (routed) {
       routeGo.addEventListener("click", function () {
         var asked = controller.routeChosen(q("mode").value);
         if (!asked) { fillEnds(); return; }

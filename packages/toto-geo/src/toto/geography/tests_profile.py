@@ -157,26 +157,38 @@ class VisibilityTests(ProfileCase):
         self.assertIsNotNone(access.visible_point(self.bob_user, self.ada))
         self.assertIsNone(access.visible_point(AnonymousUser(), self.ada))
 
-    def test_the_page_that_draws_the_map_has_the_search_the_route_panel_and_both_hints(self):
+    def test_the_page_that_draws_the_map_has_the_search_and_no_route_search(self):
+        """Route search is the Locations page's alone (the owner,
+        2026-10-06): the profile's map draws no route control and no route
+        price, and its data does not name the route door. For the owner and
+        for a visitor alike."""
+        self.save()
+        type(self.ada).objects.filter(pk=self.ada.pk).update(show_address=True)
         Economy(self)
         from django.core.cache import cache
 
         cache.clear()       # the rate card is read through the cache
-        html = self.page(self.ada_user)
-        for mark in ('data-geo="q"', 'data-geo="search-go"', 'data-geo="route-go"',
-                     'data-geo="from"', 'data-geo="to"', 'data-geo="mode"',
-                     '<option value="car">', '<option value="bicycle">', '<option value="foot">'):
-            self.assertIn(mark, html)
-        self.assertNotIn("public_transport", html)
-        config = self.config(html)
-        self.assertEqual(config["urls"]["search"], reverse("geography:search"))
-        self.assertEqual(config["urls"]["route"], reverse("geography:route"))
-        # The three prices: a search (0.5), a route (1), the first save (0.5).
-        section = html[html.index('id="geography-address-section"'):]
+        for user in (self.ada_user, self.bob_user):
+            with self.subTest(user=user.username):
+                html = self.page(user)
+                for mark in ('data-geo="q"', 'data-geo="search-go"'):
+                    self.assertIn(mark, html)
+                for mark in ('data-geo="route', 'data-geo="from"', 'data-geo="to"',
+                             'data-geo="mode"', '<option value="car">', "geography-route-go",
+                             "Find route", "fa-route", reverse("geography:route"),
+                             "public_transport"):
+                    self.assertNotIn(mark, html)
+                config = self.config(html)
+                self.assertEqual(config["urls"]["search"], reverse("geography:search"))
+                self.assertNotIn("route", config["urls"])
+                self.assertEqual({key for key in config["texts"]
+                                  if "route" in key or "end" in key or "again" in key}, set())
+        # The two prices of the owner's page: a search (0.5) and a change (0.2).
+        section = self.page(self.ada_user)
+        section = section[section.index('id="geography-address-section"'):]
         section = section[:section.index("</section>")]
-        self.assertEqual(re.findall(r'data-mana-role="(\w+)"', section),
-                         ["compute", "compute", "storage"],
-                         "a price beside Search, Find route and Save")
+        self.assertEqual(re.findall(r'data-mana-role="(\w+)"', section), ["compute", "storage"],
+                         "a price beside Search and Save, and none for a route")
 
     @override_settings(LOCATIONS_GEOCODING={"enabled": False},
                        GEOGRAPHY_ROUTING={"enabled": False})

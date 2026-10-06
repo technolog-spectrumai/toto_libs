@@ -1,8 +1,9 @@
 """A person's point on their profile (2026-10-06).
 
 On the Overview, key ``geography_address``. The owner sees the map with a
-pin they can move, the search box, the route panel, a name and a note, Save
-and Remove. Another member sees the map only when ``access.visible_point``
+pin they can move, the search box, a name and a note, Save and Remove. No
+route search: that is the Locations page's alone (the owner, 2026-10-06), so
+this map does not ask ``map_context`` for it. Another member sees the map only when ``access.visible_point``
 says they may see the point (``Person.show_address``); otherwise the section
 is not drawn at all, so the page holds no map, no Leaflet tag and no map
 data.

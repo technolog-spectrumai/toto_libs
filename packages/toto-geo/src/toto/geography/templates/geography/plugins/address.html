@@ -1,7 +1,7 @@
 {% load i18n %}
 {% comment %}A person's point on their profile's Overview (2026-10-06),
-drawn by plugins/profile_plugins.py. The owner sees the map, the search, the
-route panel and the form; anybody else sees the map only where
+drawn by plugins/profile_plugins.py. The owner sees the map, the search
+and the form (no route search: that is the Locations page's); anybody else sees the map only where
 access.visible_point let the point through, and otherwise this template is
 not rendered at all (no Leaflet, no map data). The postal text stays
 Person.address, shown by the profile itself: this section has no postal

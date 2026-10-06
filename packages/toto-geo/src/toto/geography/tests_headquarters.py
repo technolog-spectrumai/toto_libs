@@ -299,15 +299,20 @@ class PageTests(HeadquartersCase):
         for user in (self.member_user, stranger_user, self.staff_user):
             with self.subTest(user=user.username):
                 html = self.page(user)
-                for mark in MAP_MARKS + ('data-geo="search-go"', 'data-geo="route-go"'):
+                for mark in MAP_MARKS + ('data-geo="search-go"',):
                     self.assertIn(mark, html)
+                # Route search is the Locations page's alone (2026-10-06).
+                for mark in ('data-geo="route', 'data-geo="from"', 'data-geo="to"',
+                             "geography-route-go", "Find route",
+                             reverse("geography:route")):
+                    self.assertNotIn(mark, html)
                 config = self.config(html)
                 self.assertEqual(config["points"][0]["kind"], "headquarters")
                 self.assertEqual((config["points"][0]["lat"], config["points"][0]["label"]),
                                  (54.352, "Harbour house"))
                 self.assertEqual(config["zone"]["outline"], SQUARE)
                 self.assertFalse(config["can_edit_point"] or config["can_edit_zone"])
-                self.assertEqual(set(config["urls"]) - {"search", "route"}, set())
+                self.assertEqual(set(config["urls"]), {"search"})
                 for mark in ('data-geo="save-point"', 'data-geo="save-zone"',
                              'data-geo="clear-zone"', "geography/zone_draw.js"):
                     self.assertNotIn(mark, html)
@@ -375,5 +380,7 @@ class BilledTests(HeadquartersCase):
         html = self.page(self.head_user)
         section = html[html.index('id="geography-headquarters-section"'):]
         section = section[:section.index("</section>")]
+        # A search, the first headquarters, the first zone. No route: that
+        # is the Locations page's alone (2026-10-06).
         self.assertEqual(re.findall(r'data-mana-role="(\w+)"', section),
-                         ["compute", "compute", "storage", "storage"])
+                         ["compute", "storage", "storage"])

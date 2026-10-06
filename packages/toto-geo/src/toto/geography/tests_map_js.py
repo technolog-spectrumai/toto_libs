@@ -224,6 +224,8 @@ POINT_FORM = {"open-point", "edit-point", "point-name", "point-note-text", "save
 ZONE_FORM = {"draw-zone", "edit-zone", "zone-undo", "zone-restart", "zone-count", "zone-name",
              "zone-description", "save-zone", "clear-zone", "zone-note"}
 ROUTE_PANEL = {"route", "from", "to", "mode", "route-go", "route-go-label", "route-note"}
+#: The sentences only a page with route search is given.
+ROUTE_TEXTS = {"no_route", "route_summary", "choose_end", "end_gone", "choose_again"}
 
 
 def template_parts():
@@ -407,6 +409,23 @@ class MapScriptTests(SimpleTestCase):
         self.assertEqual(across, [[10, 179], [10, 181], [11, 180]],
                          "a ring across the date line is not torn: the server refuses it")
         self.assertEqual(empty, [])
+
+    def test_a_page_with_no_route_door_sends_no_route_request(self):
+        """Route search is the Locations page's alone (2026-10-06): a page
+        that was not given the door asks nothing of it, whatever is called."""
+        out = self.run_js("""
+          const quiet = GeographyMap.createController({
+            fetch: fetchStub, csrf: "tok", saved: saved,
+            urls: {search: urls.search, savePoint: urls.savePoint}});
+          const a = quiet.placeTemporary(1, 1), b = quiet.placeTemporary(2, 2);
+          out.selection = [quiet.selection().from.id, quiet.selection().to.id];
+          out.chosen = quiet.routeChosen("car");
+          const answer = await quiet.route(a, b, "car");
+          out.answer = [answer.ok, answer.status, quiet.state.route];
+        """)
+        self.assertIsNone(out["chosen"])
+        self.assertEqual(out["answer"], [False, 0, None])
+        self.assertEqual(out["calls"], [])
 
     def test_the_outline_editor_keeps_its_ring_on_one_copy_of_the_world(self):
         out = self.run_js("""
@@ -778,6 +797,40 @@ class PageTests(PageCase):
                                        URLS["saveZone"]])
         self.assertEqual(set(out["asked"]) - names, set())
         self.assertEqual(names - set(out["asked"]), {"search", "route"})
+
+    def test_a_page_without_route_search_wires_nothing_for_routes(self):
+        """The profile's map and the community's: no panel, no route door in
+        the data. Clicks and a search go on as they did; nothing listens
+        for a route, and nothing reaches the route door."""
+        out = self.run_page("""
+          clickMap(1, 1); clickMap(2, 2);
+          await search("first", HITS3);
+          groups()[HITS].items[0].fire("click", {});
+          out.temporary = controller.state.temporary.length;
+          out.route = controller.routeChosen("car");
+          out.chosen = controller.state.chosen;
+          out.sent = calls.map((call) => call.url);
+        """, without=ROUTE_PANEL, points=[HEADQUARTERS], center=[54.352, 18.6466],
+            urls={key: value for key, value in URLS.items() if key != "route"},
+            texts={key: value for key, value in TEXTS.items() if key not in ROUTE_TEXTS})
+        self.assertEqual(out["temporary"], 2)
+        self.assertEqual(out["chosen"], {"from": {"id": None, "gone": False},
+                                         "to": {"id": None, "gone": False}})
+        self.assertIsNone(out["route"])
+        self.assertEqual(out["sent"], [URLS["search"]])
+
+    def test_a_panel_with_no_door_behind_it_is_left_alone(self):
+        """The panel's elements without the door in the data (it cannot
+        happen from ``map_context``; the script does not lean on that)."""
+        out = self.run_page("""
+          clickMap(1, 1); clickMap(2, 2);
+          out.options = options("from").length;
+          out.listens = [Object.keys(part("route-go").handlers), Object.keys(part("from").handlers)];
+          press("route-go"); await settle();
+        """, urls={key: value for key, value in URLS.items() if key != "route"})
+        self.assertEqual(out["options"], 0)
+        self.assertEqual(out["listens"], [[], []])
+        self.assertEqual(out["calls"], [])
 
     def test_a_viewer_s_page_has_no_form_and_the_script_wires_none(self):
         out = self.run_page("""

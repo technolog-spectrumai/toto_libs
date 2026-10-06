@@ -1,8 +1,9 @@
 """A community's headquarters and zone on its page (2026-10-06).
 
 Key ``geography_headquarters``. The map with the headquarters pin and the
-zone's outline, the search box and the route panel, for every signed-in
-member, as the seat's text is today. The head and an administrator
+zone's outline and the search box, for every signed-in member, as the seat's
+text is today. No route search: that is the Locations page's alone (the
+owner, 2026-10-06), so this map does not ask ``map_context`` for it. The head and an administrator
 (``socialhub.permissions.may_moderate_community``) also get the two forms.
 Where neither is set and the viewer may set neither, nothing is drawn.
 """
