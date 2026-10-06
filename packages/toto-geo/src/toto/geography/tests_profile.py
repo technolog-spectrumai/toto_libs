@@ -306,6 +306,21 @@ class SaveTests(ProfileCase):
         self.assertEqual(self.save(note="third floor\nring twice\tthen wait").status_code, 200)
         self.assertEqual(Address.objects.get().note, "third floor\nring twice\tthen wait")
 
+    def test_with_the_cache_down_the_page_loads_and_a_save_still_saves(self):
+        """The limiter cannot count (Redis away: django-redis answers None).
+        Search and routes refuse then (``tests_places``, ``tests_routes``);
+        what asks no limiter and no provider goes on: the page that draws
+        the map, a save, a removal."""
+        with mock.patch("toto.core.ratelimit.cache.incr", return_value=None):
+            self.assertEqual(self.save().json(), {"address": HOME, "charged": True})
+            html = self.page(self.ada_user)
+            self.assertEqual(self.config(html)["points"][0]["lat"], HOME["lat"])
+            for mark in MAP_MARKS:
+                self.assertIn(mark, html)
+            self.assertTrue(post(client_of(self.ada_user), self.clear_url, {}).json()["removed"])
+        self.assertEqual(self.events().count(), 1)
+        self.assertFalse(Address.objects.exists())
+
     def test_get_is_405_and_a_member_saves_only_their_own(self):
         client = client_of(self.bob_user)
         self.assertEqual(client.get(self.url).status_code, 405)

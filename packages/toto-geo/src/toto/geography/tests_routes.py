@@ -335,6 +335,25 @@ class DoorTests(RouteTestCase):
         opened.assert_not_called()
         self.assertFalse(self.events().exists())
 
+    def test_with_the_cache_down_the_router_is_not_asked_and_nothing_is_charged(self):
+        """Redis away: the limiter lets everything through uncounted. A
+        fresh route, and the replay of one already paid for (which skips the
+        afford check and is charged nothing), both answer 503 instead."""
+        key = op()
+        with answering():
+            self.assertEqual(post(self.client, self.url, body(op=key)).status_code, 200)
+        with mock.patch("toto.core.ratelimit.cache.incr", return_value=None), \
+                mock.patch(URLOPEN) as opened, self.assertLogs("toto.core.ratelimit", "WARNING"):
+            fresh = post(self.client, self.url, body())
+            replays = [post(self.client, self.url, body(op=key)) for _again in range(3)]
+        for response in (fresh, *replays):
+            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response["Cache-Control"], "no-store")
+            self.assertIn("nothing was charged", response.json()["error"])
+            self.assertIn("Retry-After", response)
+        opened.assert_not_called()
+        self.assertEqual(self.events().count(), 1)
+
     @override_settings(GEOGRAPHY_ROUTING={"enabled": False})
     def test_a_host_with_routing_off_answers_404(self):
         with mock.patch(URLOPEN) as opened:

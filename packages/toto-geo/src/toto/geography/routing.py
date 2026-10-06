@@ -13,7 +13,8 @@ it already holds.
 The doors, cheapest refusal first::
 
     signed in -> routing on here -> ends, mode and op valid
-    -> per-member limit (10 a minute)
+    -> per-member limit (10 a minute); 503 while the limiter cannot count
+       (the cache is away: ``places``), for a replay as for a fresh op
     -> known op: a replay (calculated again, charged nothing more), or 409
     -> fresh op: quota and funds (402 before the router is asked)
     -> the router, behind one throttle for everybody (one call a second)

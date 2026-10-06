@@ -8,7 +8,7 @@ the page asks on Enter or the button, and each press carries its own ``op``
 Every search walks the same doors, cheapest refusal first::
 
     signed in -> search on here -> query and op valid
-    -> per-member limit (20 a minute)
+    -> per-member limit (20 a minute); 503 while the limiter cannot count
     -> known op: a replay, or 409
     -> fresh op: quota and funds (402 before anybody is asked)
     -> answer cache (one hour) -> provider, on a miss only, behind one
@@ -29,8 +29,19 @@ query, so nobody who reads the cache can tell what was asked; the value is
 the provider's answer and names no member.
 
 THE PROVIDER THROTTLE is one ``toto.core.ratelimit`` key shared by all
-members, one call a second: Nominatim's usage policy. It lives in the cache
-and does not hold while the cache is down.
+members, one call a second: Nominatim's usage policy.
+
+WITH THE CACHE DOWN THE DOOR IS SHUT. Both limits are counters in the cache,
+and the platform's limiter lets an attempt through when it cannot count it
+(``Hit.counted`` False). Here that would leave nothing between a member and
+the provider: a replayed op skips the afford check and is charged nothing,
+and an empty answer or a provider failure is free too, so one paid search
+would buy as many provider calls as fit into ten minutes. So both limits
+refuse an attempt nobody counted: 503 with Retry-After, before the op is
+looked up, before funds are asked and before the provider is; nothing is
+charged. The route door walks through the same two (``routing``). The save
+doors ask no limiter and no provider, and the pages that draw the map
+charge nothing: all of them go on working.
 
 THE PROVIDER'S ANSWER is read with a cap and under a deadline (``provider``)
 and trimmed before it is cached, charged or shown: a hit is a label that is
@@ -84,6 +95,8 @@ PROVIDER_LIMIT = 1
 PROVIDER_WINDOW = 1
 #: How long a call may wait for the provider's next free second (seconds).
 PROVIDER_WAIT = 2.0
+#: What Retry-After says while the limiter cannot count (seconds).
+BLIND_RETRY = 30
 #: The most the provider's answer may weigh. Five hits with their address
 #: parts are a few kilobytes.
 ANSWER_MAX = 1024 * 1024
@@ -161,20 +174,33 @@ def _cache_set(key, value):
         logger.warning("places: cache unavailable, answer not kept")
 
 
+def _uncounted() -> Refusal:
+    """The limiter let an attempt through without counting it (the cache is
+    away): no limit holds, so the door does not open."""
+    return Refusal(_("The map service cannot be asked at the moment. Try again shortly; "
+                     "nothing was charged."), 503, retry_after=BLIND_RETRY)
+
+
 def throttle_member(user, kind, limit, window):
     hit = ratelimit.hit(f"geography:{kind}:user:{user.pk}", limit=limit, window=window)
+    if not hit.counted:
+        raise _uncounted()
     if not hit.allowed:
         raise Refusal(_("Too many searches. Try again in %(s)d s.") % {"s": hit.retry_after},
                       429, retry_after=hit.retry_after)
 
 
 def wait_for_provider(key, *, limit=None, wait=None):
-    """Take the provider's one call this second, waiting briefly for it."""
+    """Take the provider's one call this second, waiting briefly for it.
+    503 where the call could not be counted: uncounted, it is not taken."""
     limit = PROVIDER_LIMIT if limit is None else limit
     wait = PROVIDER_WAIT if wait is None else wait
     deadline = time.monotonic() + wait
     while True:
-        if ratelimit.hit(key, limit=limit, window=PROVIDER_WINDOW).allowed:
+        hit = ratelimit.hit(key, limit=limit, window=PROVIDER_WINDOW)
+        if not hit.counted:
+            raise _uncounted()
+        if hit.allowed:
             return
         pause = PROVIDER_WINDOW - (time.time() % PROVIDER_WINDOW) + 0.01
         if time.monotonic() + pause > deadline:

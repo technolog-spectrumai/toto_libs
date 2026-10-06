@@ -404,6 +404,41 @@ class RefusalTests(ServiceTestCase):
         opened.assert_not_called()
         self.assertFalse(self.events().exists())
 
+    def test_with_the_cache_down_nobody_is_asked_and_nothing_is_charged(self):
+        """django-redis with IGNORE_EXCEPTIONS answers None while Redis is
+        away, and the limiter then lets everything through without counting.
+        The search door does not: uncounted, it would ask the provider as
+        often as a member liked, and for a replayed op for free."""
+        with mock.patch("toto.core.ratelimit.cache.incr", return_value=None), \
+                mock.patch(URLOPEN) as opened, self.assertLogs("toto.core.ratelimit", "WARNING"):
+            refusal = self.assertRefused(503, lambda: places.search(self.user, "Gdansk", op()))
+        self.assertIn("nothing was charged", str(refusal))
+        self.assertGreaterEqual(refusal.retry_after, 1)
+        opened.assert_not_called()
+        self.assertFalse(self.events().exists())
+
+    def test_with_the_cache_down_a_paid_op_buys_no_replays(self):
+        key = op()
+        with answering(GDANSK):
+            self.assertTrue(places.search(self.user, "Gdansk", key)[1])
+        for broken in ({"return_value": None}, {"side_effect": ConnectionError("down")}):
+            with self.subTest(broken=list(broken)[0]), \
+                    mock.patch("toto.core.ratelimit.cache.incr", **broken), \
+                    mock.patch("toto.geography.places.cache.get", side_effect=RuntimeError("down")), \
+                    mock.patch(URLOPEN) as opened, self.assertLogs("toto.core.ratelimit", "WARNING"):
+                for _again in range(3):
+                    self.assertRefused(503, lambda: places.search(self.user, "Gdansk", key))
+                opened.assert_not_called()
+        self.assertEqual(self.events().count(), 1)
+
+    def test_the_provider_s_own_throttle_refuses_too_when_it_cannot_count(self):
+        from toto.core import ratelimit
+
+        blind = ratelimit.Hit(True, 1, 0, counted=False)
+        with mock.patch("toto.geography.places.ratelimit.hit", return_value=blind):
+            refusal = self.assertRefused(503, lambda: places.wait_for_provider("some:key"))
+        self.assertIn("nothing was charged", str(refusal))
+
     def test_funds_are_asked_before_the_provider(self):
         from toto.quota.charge import InsufficientFunds
 
@@ -484,7 +519,10 @@ class AnswerCacheTests(ServiceTestCase):
             places.search(self.user, "Gdansk", op())
         self.assertEqual(opened.call_count, 2)
 
-    def test_a_cache_outage_is_a_miss_not_a_refusal(self):
+    def test_an_answer_cache_that_cannot_be_read_is_a_miss_not_a_refusal(self):
+        """The answer cache alone: its get and set fail while the limiter's
+        counters still count. (With the whole cache away the limiter cannot
+        count either, and the door refuses before it gets here.)"""
         with mock.patch("toto.geography.places.cache.get", side_effect=RuntimeError("down")), \
                 mock.patch("toto.geography.places.cache.set", side_effect=RuntimeError("down")), \
                 answering(GDANSK), self.assertLogs("toto.geography.places", "WARNING"):
@@ -635,6 +673,17 @@ class DoorTests(TestCase):
             response = post(self.client, self.url, {"q": "Gdansk", "op": op()})
         self.assertEqual(response.status_code, 429)
         self.assertIn("Retry-After", response)
+
+    def test_with_the_cache_down_the_door_is_503_as_json_with_retry_after(self):
+        with mock.patch("toto.core.ratelimit.cache.incr", return_value=None), \
+                mock.patch(URLOPEN) as opened, self.assertLogs("toto.core.ratelimit", "WARNING"):
+            response = post(self.client, self.url, {"q": "Gdansk", "op": op()})
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response["Cache-Control"], "no-store")
+        self.assertEqual(set(response.json()), {"error"})
+        self.assertIn("Retry-After", response)
+        opened.assert_not_called()
+        self.assertFalse(GeographyUsageEvent.objects.exists())
 
     def test_it_wants_a_csrf_token(self):
         from django.test import Client

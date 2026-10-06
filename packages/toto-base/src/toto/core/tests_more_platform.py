@@ -119,7 +119,7 @@ class RateLimitEdgeTests(SimpleTestCase):
         with mock.patch.object(ratelimit.cache, "incr", return_value=None), \
                 self.assertLogs("toto.core.ratelimit", "WARNING"):
             result = ratelimit.hit("none", limit=0, window=60)
-        self.assertEqual(result, ratelimit.Hit(True, 0, 0))
+        self.assertEqual(result, ratelimit.Hit(True, 0, 0, counted=False))
 
     def test_a_reset_on_a_broken_cache_is_quiet(self):
         with mock.patch.object(ratelimit.cache, "delete", side_effect=ConnectionError("down")):

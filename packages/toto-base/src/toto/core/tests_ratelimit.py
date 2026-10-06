@@ -39,6 +39,34 @@ class RateLimitTests(SimpleTestCase):
         with mock.patch.object(ratelimit.cache, "incr", side_effect=ValueError("down")):
             self.assertTrue(ratelimit.hit("d", limit=0, window=60).allowed)
 
+    def test_a_hit_says_whether_it_was_counted(self):
+        """Failing open is the rule, and a caller that must not go
+        uncounted (an outside service asked on a member's behalf) has to be
+        able to tell an allowed attempt from one nobody counted."""
+        self.assertTrue(ratelimit.hit("counted", limit=1, window=60).counted)
+        refused = ratelimit.hit("counted", limit=1, window=60)
+        self.assertEqual((refused.allowed, refused.counted), (False, True))
+        with mock.patch.object(ratelimit.cache, "incr", side_effect=ConnectionError("down")), \
+                self.assertLogs("toto.core.ratelimit", "WARNING"):
+            blind = ratelimit.hit("counted", limit=1, window=60)
+        self.assertEqual((blind.allowed, blind.counted), (True, False))
+        with mock.patch.object(ratelimit.cache, "incr", return_value=None), \
+                self.assertLogs("toto.core.ratelimit", "WARNING"):
+            blind = ratelimit.hit("counted", limit=1, window=60)
+        self.assertEqual((blind.allowed, blind.counted), (True, False))
+        with mock.patch.object(ratelimit.cache, "add", side_effect=ConnectionError("down")), \
+                self.assertLogs("toto.core.ratelimit", "WARNING"):
+            self.assertFalse(ratelimit.hit("counted", limit=1, window=60).counted)
+
+    def test_a_hit_built_by_hand_counts_unless_it_says_otherwise(self):
+        self.assertTrue(ratelimit.Hit(True, 3, 0).counted)
+        self.assertFalse(ratelimit.Hit(True, 3, 0, counted=False).counted)
+
+    def test_check_still_lets_an_uncounted_attempt_through(self):
+        with mock.patch.object(ratelimit.cache, "incr", return_value=None), \
+                self.assertLogs("toto.core.ratelimit", "WARNING"):
+            self.assertFalse(ratelimit.check("open", limit=0, window=60).counted)
+
     def test_reset(self):
         ratelimit.hit("e", limit=1, window=60, now=1000)
         ratelimit.reset("e", window=60, now=1000)

@@ -30,6 +30,11 @@ IGNORE_EXCEPTIONS answers None) the call is allowed and a warning is logged:
 refusing everything because Redis blinked is an outage, and the costly
 operations this guards carry their own cost (the Argon2 derivation) and
 nginx's `limit_req` as a backstop.
+
+**But it says so.** Such a hit is ``allowed`` with ``counted`` False
+(2026-10-06). Nothing here acts on that; it is for the caller with no cost
+of its own and no backstop (an outside service asked on a member's behalf,
+``toto.geography``), which refuses for itself rather than go unlimited.
 """
 
 from __future__ import annotations
@@ -48,6 +53,9 @@ class Hit:
     allowed: bool
     remaining: int
     retry_after: int
+    #: False where the cache could not count the attempt: it was let through
+    #: and no limit holds for it.
+    counted: bool = True
 
 
 class RateLimited(Exception):
@@ -73,10 +81,10 @@ def hit(key: str, *, limit: int, window: int, now: float | None = None) -> Hit:
         count = cache.incr(cache_key)
     except Exception:  # noqa: BLE001 — a cache outage is not a refusal
         log.warning("rate limiter: cache unavailable, allowing %s", key)
-        return Hit(True, limit, 0)
+        return Hit(True, limit, 0, counted=False)
     if count is None:
         log.warning("rate limiter: cache returned nothing, allowing %s", key)
-        return Hit(True, limit, 0)
+        return Hit(True, limit, 0, counted=False)
     return Hit(count <= limit, max(0, limit - count), retry_after)
 
 
