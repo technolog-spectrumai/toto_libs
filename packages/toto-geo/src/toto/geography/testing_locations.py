@@ -31,7 +31,12 @@ class LocationsCase(TestCase):
         fresh_cache(self)
         Platform.objects.get_or_create(active=True, defaults={
             "site_name": "Test", "author": "t", "publication_year": 2026})
-        self.economy = Economy(self) if self.billed else None
+        # ``billed``: True needs the host's ledger (the test is skipped
+        # without one); None takes it where there is one; False goes without.
+        self.economy = None
+        if self.billed or (self.billed is None and apps.is_installed("toto.tariffs")
+                           and apps.is_installed("toto.mana")):
+            self.economy = Economy(self)
         self.head_user, self.head = member("hugo")
         self.member_user, self.member = member("mia")
         self.senior_user, self.senior = member("sen")

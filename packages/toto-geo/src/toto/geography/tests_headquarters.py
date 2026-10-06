@@ -133,9 +133,12 @@ class WhoTests(HeadquartersCase):
             self.assertEqual(getattr(views, name).geography_door, "signed-in")
         from toto.geography import urls
 
+        # Stage 64 added the Locations app's routes, with three more marks
+        # (toto.geography.tests_access walks them by name).
         for pattern in urls.urlpatterns:
             self.assertIn(getattr(pattern.callback, "geography_door", None),
-                          ("signed-in", "moderator"), pattern.name)
+                          ("signed-in", "moderator", "community", "contribution", "author"),
+                          pattern.name)
 
 
 class SaveTests(HeadquartersCase):
