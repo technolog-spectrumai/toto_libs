@@ -257,3 +257,46 @@ class ErasedTests(EraseCase):
         report = plan(self.ada)
         self.assertEqual([k for k, n in report["deleted"].items() if not n], [])
         self.assertEqual([k for k, n in report["detached"].items() if not n], [])
+
+
+@unittest.skipUnless(apps.is_installed("toto.geography"), "no geography on this host")
+class GeographyTests(EraseCase):
+    """The member's own point goes with the account (2026-10-06): the link
+    row cascades with the person, and the ``Address`` behind it is deleted
+    too, so no point is left on nobody's map."""
+
+    def setUp(self):
+        super().setUp()
+        from django.contrib.gis.geos import Point
+
+        from toto.geography.models import Address, CommunityHeadquarters, PersonAddress
+        from toto.people.models import Person
+        from toto.socialhub.models import Community
+
+        self.Address, self.PersonAddress = Address, PersonAddress
+        person = Person.objects.filter(user=self.ada).first() \
+            or Person.objects.create(user=self.ada, display_name="Ada")
+        home = Address.objects.create(point=Point(21.0, 52.2, srid=4326), name="Home",
+                                      created_by=self.ada)
+        PersonAddress.objects.create(person=person, address=home)
+        # A headquarters she saved is the community's, and stays.
+        self.guild = Community.objects.create(name="Guild")
+        seat = Address.objects.create(point=Point(18.6, 54.3, srid=4326), name="HQ",
+                                      created_by=self.ada)
+        CommunityHeadquarters.objects.create(community=self.guild, address=seat)
+        self.home, self.seat = home.pk, seat.pk
+
+    def test_the_report_counts_the_point(self):
+        report = plan(self.ada)
+        self.assertEqual(report["beyond"]["map_points"], 1)
+        self.assertIn("their point on the map", " ".join(report["notes"]))
+        self.assertTrue(self.Address.objects.filter(pk=self.home).exists(), "a report writes nothing")
+
+    def test_after_the_erase_no_address_of_theirs_is_left(self):
+        code, out, _ = run("erase_user", "ada", "--confirm", "ada")
+        self.assertEqual(code, 0, out)
+        self.assertFalse(self.PersonAddress.objects.exists())
+        self.assertFalse(self.Address.objects.filter(pk=self.home).exists())
+        kept = self.Address.objects.get(pk=self.seat)
+        self.assertIsNone(kept.created_by_id)
+        self.assertEqual(self.Address.objects.count(), 1)

@@ -154,6 +154,32 @@ class BuildTests(DataExportTestCase):
         self.assertIsNone(rec.actor_user)
         self.assertEqual(rec.metadata["vault_file"], f.pk)
 
+    def test_the_member_s_point_on_the_map_is_in_the_copy(self):
+        """Geography (2026-10-06): where the point is, its name and its note;
+        nobody else's point, and no community's headquarters."""
+        from django.apps import apps
+
+        if not apps.is_installed("toto.geography"):
+            self.skipTest("no geography on this host")
+        from django.contrib.gis.geos import Point
+
+        from toto.geography.models import Address, PersonAddress
+
+        ada = Person.objects.get(user=self.ada)
+        bob = Person.objects.create(user=self.bob, display_name="Bob")
+        PersonAddress.objects.create(person=ada, address=Address.objects.create(
+            point=Point(21.0122, 52.2297, srid=4326), name="Home", note="third floor"))
+        PersonAddress.objects.create(person=bob, address=Address.objects.create(
+            point=Point(18.6466, 54.352, srid=4326), name="Bob's"))
+        export = self.build()
+        self.assertEqual(export.status, DataExport.READY)
+        with export.output.file.open("rb") as fh, zipfile.ZipFile(io.BytesIO(fh.read())) as zf:
+            rows = json.loads(zf.read("geography_address.json"))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["latitude"], rows[0]["longitude"], rows[0]["name"],
+                          rows[0]["note"]), (52.2297, 21.0122, "Home", "third floor"))
+        self.assertEqual(export.summary["tables"]["geography_address"], 1)
+
     def test_a_redelivered_job_does_nothing_twice(self):
         export = self.build()
         build_data_export(export.pk)

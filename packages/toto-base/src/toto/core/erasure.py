@@ -17,6 +17,9 @@ notice promises it is gone:
   lives at, or a place is built on, stays (``toto.locations.erasure``). The
   address on the profile itself is text on the person's row since 2026-10-04
   and goes with it;
+* **on a host with geography (``toto.geography``, toto-geo, 2026-10-06):
+  their own point** — the ``Address`` row behind their ``PersonAddress``
+  link, which belongs to nobody else (``toto.geography.erasure``);
 * **their membership application and its references** — keyed by address,
   not by account (``socialhub.applications.of_member``); the audit chain
   keeps the admission;
@@ -51,6 +54,8 @@ class Leftovers:
     version_blobs: set = field(default_factory=set)
     home: int | None = None
     addresses: list = field(default_factory=list)
+    #: Their own point's ``geography.Address`` ids (toto.geography).
+    geography_addresses: list = field(default_factory=list)
     forum_blobs: list = field(default_factory=list)
     counts: dict = field(default_factory=dict)
 
@@ -96,6 +101,17 @@ def _addresses(user, person) -> tuple[int | None, list[int]]:
     return addresses_of(user, person)
 
 
+def _geography_addresses(user, person) -> list[int]:
+    """On a host with geography: the member's own point
+    (``toto.geography.erasure``). A lazy import, as for the map above: no
+    package-graph edge from toto-base."""
+    if not apps.is_installed("toto.geography"):
+        return []
+    from toto.geography.erasure import addresses_of
+
+    return addresses_of(user, person)
+
+
 def report(user) -> tuple[dict, list[str]]:
     """``(beyond, notes)`` for ``plan``: counts and plain sentences. Writes
     nothing."""
@@ -104,6 +120,7 @@ def report(user) -> tuple[dict, list[str]]:
     beyond["version_bodies"] = len(_version_blobs(user))
     home, own = _addresses(user, person)
     beyond["addresses"] = int(home is not None) + len(own)
+    beyond["map_points"] = len(_geography_addresses(user, person))
     notes = []
     if apps.is_installed("toto.socialhub"):
         from toto.socialhub.applications import of_member
@@ -141,6 +158,7 @@ def report(user) -> tuple[dict, list[str]]:
                                    ("the bodies of their files' saved versions", "version_bodies"),
                                    ("their home pin and the addresses only they used",
                                     "addresses"),
+                                   ("their point on the map", "map_points"),
                                    ("their membership application and its references",
                                     "applications"))
             if beyond.get(key)]
@@ -158,6 +176,7 @@ def gather(user) -> Leftovers:
         left.avatar = person.avatar.name
     left.version_blobs = _version_blobs(user)
     left.home, left.addresses = _addresses(user, person)
+    left.geography_addresses = _geography_addresses(user, person)
     if apps.is_installed("toto.socialhub"):
         from toto.socialhub.applications import of_member
 
@@ -180,7 +199,11 @@ def gather(user) -> Leftovers:
 
 def after_delete(left: Leftovers) -> None:
     """Inside the transaction, once the account (and its person) is gone:
-    the home pin and their unused addresses."""
+    the home pin and their unused addresses, and their own point."""
+    if apps.is_installed("toto.geography") and left.geography_addresses:
+        from toto.geography.erasure import delete_addresses as delete_points
+
+        delete_points(left.geography_addresses)
     if not apps.is_installed("toto.locations"):
         return
     from toto.locations.erasure import delete_addresses
