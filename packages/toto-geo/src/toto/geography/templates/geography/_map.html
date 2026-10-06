@@ -55,7 +55,7 @@ reload: a route is calculated, shown and forgotten.{% endcomment %}
         <select data-geo="from" class="mt-1 block w-48 rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none"></select></label>
       <label class="text-sm">{% trans "To" %}
         <select data-geo="to" class="mt-1 block w-48 rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none"></select></label>
-      <label class="text-sm">{% trans "By" %}
+      <label class="text-sm">{% trans "Travel by" %}
         <select data-geo="mode" class="mt-1 block w-36 rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none">
           {% for value, label in geo.route_modes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
         </select></label>
