@@ -1,0 +1,158 @@
+{% load i18n %}
+{% comment %}The Organisation chart tab of a community's page (2026-10-06,
+stage 66): positions, the people assigned and who reports to whom, as a
+table; each position stands under the one it reports to, set in by its
+depth. For every kind of community. The forms are drawn only for who may
+change the chart, and every door checks again (views/org_chart.py). Names
+reach the page as text. The table scrolls sideways inside its own box on a
+narrow screen. The page's Org Chart button draws the same chart.{% endcomment %}
+<section data-testid="community-org-chart"
+  :class="darkMode
+    ? 'border-accent-1 bg-bubble-bg-dark'
+    : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+  <div class="mb-4">
+    <h2 class="flex items-center gap-2 text-lg font-bold">
+      <i class="{{ community_plugin_icon }}" aria-hidden="true"></i>{% translate "Organisation chart" %}</h2>
+    <p class="mt-1 text-sm opacity-70">{% blocktranslate with name=community.name %}The positions in {{ name }}, who holds each and who reports to whom.{% endblocktranslate %}</p>
+  </div>
+
+  {% if chart_rows %}
+  <div class="overflow-x-auto">
+    <table class="w-full text-left text-sm" data-testid="org-chart-table">
+      <caption class="sr-only">{% translate "Organisation chart" %}</caption>
+      <thead :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-xs uppercase opacity-70">
+        <tr>
+          <th scope="col" class="py-2 pr-3">{% translate "Position" %}</th>
+          <th scope="col" class="py-2 pr-3">{% translate "Person" %}</th>
+          <th scope="col" class="py-2 pr-3">{% translate "Reports to" %}</th>
+          {% if chart_may_manage %}<th scope="col" class="py-2"><span class="sr-only">{% translate "Actions" %}</span></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in chart_rows %}
+        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b align-top last:border-0">
+          <th scope="row" class="py-2 pr-3 font-semibold">
+            <span class="flex items-start">{% for step in row.indent %}<span class="inline-block w-4 shrink-0 opacity-40" aria-hidden="true">·</span>{% endfor %}<span class="min-w-0 break-words">{{ row.position.title }}</span></span>
+          </th>
+          <td class="py-2 pr-3">
+            {% if row.position.person %}
+            <a href="{% url 'socialhub:profile_details' row.position.person.slug %}"
+               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+               class="underline-offset-4 hover:underline">{{ row.position.person.display_name }}</a>
+            {% else %}<span class="italic opacity-70">{% translate "Vacant" %}</span>{% endif %}
+          </td>
+          <td class="py-2 pr-3">{% if row.position.reports_to %}{{ row.position.reports_to.title }}{% else %}—{% endif %}</td>
+          {% if chart_may_manage %}
+          <td class="py-2">
+            <details>
+              <summary class="cursor-pointer text-xs font-semibold underline-offset-4 hover:underline">{% translate "Change" %}</summary>
+              <form method="post" action="{% url 'socialhub:position_edit' community.slug row.position.pk %}"
+                    class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {% csrf_token %}
+                <label class="block space-y-1">
+                  <span class="text-xs font-semibold opacity-70">{% translate "Position" %}</span>
+                  <input type="text" name="title" value="{{ row.position.title }}" required maxlength="{{ chart_title_max }}"
+                         :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                         class="w-full rounded border px-2 py-1 outline-none focus:ring-2 focus:ring-current/20">
+                </label>
+                <label class="block space-y-1">
+                  <span class="text-xs font-semibold opacity-70">{% translate "Person" %}</span>
+                  <select name="person"
+                          :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                          class="w-full rounded border px-2 py-1">
+                    <option value="">{% translate "Nobody (vacant)" %}</option>
+                    {% for person in chart_people %}<option value="{{ person.slug }}"{% if person.pk == row.position.person_id %} selected{% endif %}>{{ person.display_name }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label class="block space-y-1">
+                  <span class="text-xs font-semibold opacity-70">{% translate "Reports to" %}</span>
+                  <select name="reports_to"
+                          :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                          class="w-full rounded border px-2 py-1">
+                    <option value="">{% translate "Nobody (a top position)" %}</option>
+                    {% for other in row.may_report_to %}<option value="{{ other.pk }}"{% if other.pk == row.position.reports_to_id %} selected{% endif %}>{{ other.title }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label class="block space-y-1">
+                  <span class="text-xs font-semibold opacity-70">{% translate "Order" %}</span>
+                  <input type="text" inputmode="numeric" pattern="[0-9]{1,4}" maxlength="4" name="order" value="{{ row.position.order }}"
+                         :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                         class="w-full rounded border px-2 py-1 outline-none focus:ring-2 focus:ring-current/20">
+                </label>
+                <div class="sm:col-span-2">
+                  <button type="submit"
+                          :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                          class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition hover:opacity-85">
+                    <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>{% translate "Save" %}</button>
+                </div>
+              </form>
+              <form method="post" action="{% url 'socialhub:position_delete' community.slug row.position.pk %}" class="mt-2">
+                {% csrf_token %}
+                <button type="submit"
+                        :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                        class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition hover:opacity-85">
+                  <i class="fa-solid fa-trash" aria-hidden="true"></i>{% translate "Remove" %}</button>
+              </form>
+            </details>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div
+    :class="darkMode
+      ? 'border-accent-1 bg-sunken-dark'
+      : 'border-accent-2 bg-sunken-light'"
+    class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70" data-testid="org-chart-empty">{% translate "This community has no positions yet." %}</div>
+  {% endif %}
+
+  <p class="mt-4 text-xs opacity-70">{% translate "A position is set by the community's head or an administrator. It is not membership and not ownership: holding shares gives nobody a position." %}</p>
+
+  {% if chart_may_manage %}
+  <form method="post" action="{{ chart_create_url }}" data-testid="org-chart-form"
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="mt-5 grid grid-cols-1 gap-3 border-t pt-4 sm:grid-cols-2 lg:grid-cols-4">
+    {% csrf_token %}
+    <label class="block space-y-1">
+      <span class="text-xs font-semibold opacity-70">{% translate "Position" %}</span>
+      <input type="text" name="title" required maxlength="{{ chart_title_max }}"
+             :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-current/20">
+    </label>
+    <label class="block space-y-1">
+      <span class="text-xs font-semibold opacity-70">{% translate "Person" %}</span>
+      <select name="person"
+              :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+              class="w-full rounded border px-2 py-2">
+        <option value="">{% translate "Nobody (vacant)" %}</option>
+        {% for person in chart_people %}<option value="{{ person.slug }}">{{ person.display_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="block space-y-1">
+      <span class="text-xs font-semibold opacity-70">{% translate "Reports to" %}</span>
+      <select name="reports_to"
+              :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+              class="w-full rounded border px-2 py-2">
+        <option value="">{% translate "Nobody (a top position)" %}</option>
+        {% for row in chart_rows %}<option value="{{ row.position.pk }}">{{ row.position.title }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="flex items-end">
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-plus" aria-hidden="true"></i>{% translate "Add position" %}</button>
+    </div>
+  </form>
+  <p class="mt-2 text-xs opacity-70">{% translate "A position reports to one position of this community, or to none. It cannot report to itself or to a position below it. Removing a position hands those below it to the one above." %}</p>
+  {% endif %}
+</section>

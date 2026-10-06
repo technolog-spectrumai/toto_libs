@@ -112,7 +112,19 @@ def community_tabs(request, community) -> dict:
 
 
 def community_org_chart_data_by_slug(request, company_slug):
+    """What the Org Chart button draws. Since stage 66 (2026-10-06): the
+    community's organisation chart where it has positions, for a signed-in
+    viewer (``org_chart.nodes_of``: a node per position, with the holder's
+    name or "Vacant" and the line to what it reports to); otherwise, as
+    before, its members hung by who vouched for whom."""
     community = get_object_or_404(Community.objects.all(), slug=company_slug)
+
+    if getattr(request.user, "is_authenticated", False):
+        from toto.socialhub import org_chart
+
+        positions = org_chart.nodes_of(community)
+        if positions:
+            return JsonResponse({"nodes": positions, "kind": "positions"})
 
     # Members belonging to this community
     members = Person.objects.filter(
@@ -130,7 +142,7 @@ def community_org_chart_data_by_slug(request, company_slug):
             "profile_url": f"/socialhub/profiles/{m.slug}/",
         })
 
-    return JsonResponse({"nodes": nodes})
+    return JsonResponse({"nodes": nodes, "kind": "patrons"})
 
 
 def community_chain_graph_data(request, slug):

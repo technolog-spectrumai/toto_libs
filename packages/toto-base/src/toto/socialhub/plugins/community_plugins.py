@@ -1,6 +1,7 @@
 from typing import Any, ClassVar
 
 from django.db.models import Q
+from django.utils.translation import gettext_lazy as _
 
 from toto.core.plugin import BasePlugin, RenderedPlugin
 from toto.socialhub.models import CommunityForum
@@ -175,3 +176,63 @@ class CommunityCalendarPlugin(CommunityPlugin):
             "calendar_colors": calendar_colors(context),
         })
         return context
+
+
+@CommunityPlugin.plugin(key="community_org_chart", title=_("Organisation chart"), order=60)
+class CommunityOrgChartPlugin(CommunityPlugin):
+    """The community's organisation chart, on a tab of its own (2026-10-06,
+    stage 66): positions, the people assigned and who reports to whom, as a
+    table, for every kind of community.
+
+    For a signed-in viewer, where the community has a position; for who may
+    change the chart (``may_moderate_community``: the head, an
+    administrator) also where it has none yet, with the forms. A community
+    with no position shows its other viewers no tab at all. The same chart
+    is what the page's Org Chart button draws (``views/community.py``).
+    """
+
+    section_icon = "fa-solid fa-sitemap"
+    template_name = "socialhub/community_plugins/org_chart.html"
+    tab = "chart"
+
+    @staticmethod
+    def _viewer(kwargs):
+        return getattr(kwargs.get("request"), "user", None)
+
+    def is_visible(self, **kwargs) -> bool:
+        from toto.socialhub.models import CommunityPosition
+        from toto.socialhub.permissions import may_moderate_community
+
+        if not super().is_visible(**kwargs):
+            return False
+        viewer = self._viewer(kwargs)
+        if not getattr(viewer, "is_authenticated", False):
+            return False
+        community = self.get_community_from_kwargs(**kwargs)
+        return (CommunityPosition.objects.filter(community=community).exists()
+                or may_moderate_community(viewer, community))
+
+    def get_context(self, **kwargs) -> dict[str, Any]:
+        from django.urls import reverse
+
+        from toto.socialhub import org_chart
+        from toto.socialhub.permissions import may_moderate_community
+
+        context = super().get_context(**kwargs)
+        community = kwargs["community"]
+        may_manage = may_moderate_community(self._viewer(kwargs), community)
+        context.update({
+            "chart_rows": org_chart.chart_of(community),
+            "chart_may_manage": may_manage,
+            "chart_create_url": reverse("socialhub:position_create",
+                                        kwargs={"slug": community.slug}),
+            "chart_title_max": org_chart.TITLE_MAX,
+            "chart_order_max": org_chart.ORDER_MAX,
+        })
+        if may_manage:
+            from toto.people.models import Person
+
+            # Every person, by name: who is assigned need not be a member.
+            context["chart_people"] = list(Person.objects.order_by("display_name", "pk"))
+        return context
+
