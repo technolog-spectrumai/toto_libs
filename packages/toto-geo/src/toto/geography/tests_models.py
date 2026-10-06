@@ -18,7 +18,8 @@ from django.db import models
 from django.test import SimpleTestCase, TestCase
 
 from toto.geography import saves, shapes
-from toto.geography.models import (Address, CommunityHeadquarters, GeographyQuotaPolicy,
+from toto.geography.models import (Address, CommunityHeadquarters, CommunityPin,
+                                   CommunityZone, GeographyQuotaPolicy,
                                    GeographyUsageEvent, PersonAddress, Zone)
 from toto.geography.testing import BOWTIE, SQUARE, community, member, op
 
@@ -74,8 +75,10 @@ class WholeProjectTests(SimpleTestCase):
 
     def test_the_models_of_the_app(self):
         names = sorted(model.__name__ for model in apps.get_app_config("geography").get_models())
-        self.assertEqual(names, ["Address", "CommunityHeadquarters", "GeographyQuotaPolicy",
-                                 "GeographyUsageEvent", "PersonAddress", "Zone"])
+        self.assertEqual(names, ["Address", "CommunityHeadquarters", "CommunityPin",
+                                 "CommunityZone", "GeographyQuotaPolicy",
+                                 "GeographyUsageEvent", "PersonAddress", "PinComment",
+                                 "Zone", "ZoneComment"])
 
     def test_the_admin_lists_no_geometry_and_no_link_to_one(self):
         registered = {model for model in admin.site._registry
@@ -183,10 +186,12 @@ class OneLinkPerGeometryTests(TestCase):
     def assertNoOrphans(self):
         for address in Address.objects.all():
             links = (PersonAddress.objects.filter(address=address).count()
-                     + CommunityHeadquarters.objects.filter(address=address).count())
+                     + CommunityHeadquarters.objects.filter(address=address).count()
+                     + CommunityPin.objects.filter(address=address).count())
             self.assertEqual(links, 1, f"address {address.pk} has {links} links")
         for zone in Zone.objects.all():
-            self.assertEqual(CommunityHeadquarters.objects.filter(zone=zone).count(), 1)
+            self.assertEqual(CommunityHeadquarters.objects.filter(zone=zone).count()
+                             + CommunityZone.objects.filter(zone=zone).count(), 1)
 
     def fill(self):
         saves.save_person_point(self.user, self.person, lat=52.2, lng=21.0, name="Home",

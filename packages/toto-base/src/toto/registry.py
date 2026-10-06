@@ -36,8 +36,10 @@ LOCATIONS_APPS = [
 # BASE_APPS: a host that wants it pins toto-geo, adds this after CORE_APPS
 # (its migration follows people and socialhub), installs django.contrib.gis
 # and runs a spatial database. It is not toto.locations, the map above, and
-# needs none of it; a host may install either, or both.
+# needs none of it; a host may install either, or both. Since stage 64 its
+# pins and zones carry comments, so toto.comments (toto-base) goes before it.
 GEOGRAPHY_APPS = [
+    "toto.comments",
     "toto.geography",
 ]
 

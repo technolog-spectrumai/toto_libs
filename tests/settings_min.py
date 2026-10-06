@@ -34,7 +34,9 @@ INSTALLED_APPS = [
     # Named here since 2026-10-04: the map left BASE_APPS (and toto-base) for
     # toto-geo, after the apps its 0004 migration follows.
     "toto.locations",
-    # Geography (2026-10-06), beside the map it does not need.
+    # Geography (2026-10-06), beside the map it does not need; comments
+    # before it, which its pins and zones carry (stage 64).
+    "toto.comments",
     "toto.geography",
 ]
 

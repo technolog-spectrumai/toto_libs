@@ -13,7 +13,16 @@ the community goes.
 
 toto-base keeps no geometry: a person's ``address`` and a community's
 ``seat`` stay the one postal text of each, and nothing here writes them.
+
+SINCE STAGE 64 (2026-10-06) a member's contribution is a third and a fourth
+kind of link: ``CommunityPin`` (an ``Address`` saved for one community) and
+``CommunityZone`` (a ``Zone`` saved for one community). They are plain rows:
+the geometry stays on ``Address`` and ``Zone``, and the rule above holds for
+them too. ``PinComment`` and ``ZoneComment`` tie a ``comments.Comment`` to
+one of them. Who sees a contribution is ``access.visible_to``.
 """
+
+import uuid
 
 from django.conf import settings
 from django.contrib.gis.db import models
@@ -107,6 +116,112 @@ class CommunityHeadquarters(models.Model):
 
     def __str__(self):
         return f"CommunityHeadquarters {self.pk or ''}".strip()
+
+
+class Contribution(models.Model):
+    """What a community pin and a community zone share: the community it was
+    saved for, who saved it, and whether a moderator has hidden it."""
+
+    #: The row's name in an address: never the database id.
+    uid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="+")
+    #: The ``op`` of the request that made the row: with the author it is
+    #: unique, so two creations sent at once under one ``op`` make one row.
+    op_key = models.CharField(max_length=36)
+    #: A discussion's slug where the host runs the forum. Text, never a key:
+    #: geography does not depend on the forum (``discussion``).
+    forum_thread = models.CharField(max_length=200, blank=True, default="")
+    hidden_at = models.DateTimeField(null=True, blank=True)
+    hidden_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+        ordering = ("-created_at", "-id")
+        constraints = [
+            models.UniqueConstraint(fields=["author", "op_key"],
+                                    name="%(app_label)s_%(class)s_author_op"),
+        ]
+
+    @property
+    def is_hidden(self) -> bool:
+        return self.hidden_at is not None
+
+    def discussion(self):
+        """The forum discussion of this row, or None: always None on a host
+        without ``toto.forum``, and no query is made there."""
+        from django.apps import apps
+
+        if not self.forum_thread or not apps.is_installed("toto.forum"):
+            return None
+        try:
+            room = apps.get_model("forum", "ForumChannel")
+            return room.objects.filter(slug=self.forum_thread).first()
+        except Exception:  # noqa: BLE001 - a missing room is not an error here
+            return None
+
+
+class CommunityPin(Contribution):
+    """A member's pin for one community: an ``Address`` and nothing else
+    geographic. Deleting the pin deletes its ``Address`` (``receivers``)."""
+
+    community = models.ForeignKey(
+        "socialhub.Community", on_delete=models.CASCADE, related_name="geography_pins")
+    address = models.OneToOneField(
+        Address, on_delete=models.CASCADE, related_name="pin_link")
+
+    class Meta(Contribution.Meta):
+        verbose_name = _("Community pin")
+        verbose_name_plural = _("Community pins")
+
+    def __str__(self):
+        return f"CommunityPin {self.pk or ''}".strip()
+
+
+class CommunityZone(Contribution):
+    """A member's zone for one community: a ``Zone``."""
+
+    community = models.ForeignKey(
+        "socialhub.Community", on_delete=models.CASCADE, related_name="geography_zones")
+    zone = models.OneToOneField(
+        Zone, on_delete=models.CASCADE, related_name="contribution_link")
+
+    class Meta(Contribution.Meta):
+        verbose_name = _("Community zone")
+        verbose_name_plural = _("Community zones")
+
+    def __str__(self):
+        return f"CommunityZone {self.pk or ''}".strip()
+
+
+class PinComment(models.Model):
+    """One comment under a community pin. The comment goes with its row
+    (``receivers``), as in ``toto.comments``' own example."""
+
+    pin = models.ForeignKey(CommunityPin, on_delete=models.CASCADE,
+                            related_name="comment_links")
+    comment = models.OneToOneField("comments.Comment", on_delete=models.CASCADE,
+                                   related_name="+")
+
+    def __str__(self):
+        return f"PinComment {self.pk or ''}".strip()
+
+
+class ZoneComment(models.Model):
+    """One comment under a community zone."""
+
+    zone = models.ForeignKey(CommunityZone, on_delete=models.CASCADE,
+                             related_name="comment_links")
+    comment = models.OneToOneField("comments.Comment", on_delete=models.CASCADE,
+                                   related_name="+")
+
+    def __str__(self):
+        return f"ZoneComment {self.pk or ''}".strip()
 
 
 class GeographyUsageEvent(AbstractUsageEvent):
