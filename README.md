@@ -129,13 +129,15 @@ Out of the five pinned packages zenobia installs these library apps today
 
 That is 22 library apps with monitoring on. zenobia also carries apps of its
 own as a PEP 420 portion of the same namespace (`zenobia/zenobia/toto/`; its
-settings install `toto.yamabiko`, `toto.operator` and, under `BUILD_BOURSE`,
-`toto.bourse`). Those are not part of this library and are not described
-here.
+settings install `toto.yamabiko`, `toto.operator`, `toto.morion` and, under
+`BUILD_BOURSE`, `toto.bourse`). Those are not part of this library and are
+not described here.
 
 What zenobia is today shapes what is exercised in this library. It is a file
-storage platform: it sets `VAULT_STORAGE_ONLY = True`, runs as the identity
-provider only, installs no map, no forum, no editors, no antivirus and no PDF
+storage platform: it sets `VAULT_STORAGE_ONLY = True` (and, since 2026-10-06,
+names Play and Edit in `VAULT_STORAGE_ONLY_OPENS` for the one editor it
+serves, an app of its own), runs as the identity provider only, installs no
+map, no forum, none of this library's editors, no antivirus and no PDF
 renderer, and opens no WebSocket and holds no request open. The apps and
 packages it does not install are still built, version-bumped and checked by
 this repository's gates, but nothing deploys them.
@@ -957,7 +959,14 @@ Other packages add registries of their own in the same way
 `toto.steven` one each).
 
 When `VAULT_STORAGE_ONLY` is true, the vault draws no Play and no Edit
-button whatever plugins are registered.
+button whatever plugins are registered, no picture viewer and no *New*, and
+its empty-file doors answer 404. `VAULT_STORAGE_ONLY_OPENS` (a tuple of
+`"play"` and `"edit"`, empty by default) gives such a host those two buttons
+back for the plugins it registers, and nothing else
+(`toto.vault.models.storage_only_opens`). A Play or Edit plugin may also
+say which member is offered its button: `is_open_to(user)`, true by default,
+is asked by the listing for the member it is built for, so a plugin whose
+page a plan sells shows no button to a member whose plan lacks it.
 
 ### 6.6 Clearances
 
@@ -1232,7 +1241,7 @@ complete; it is what a new host most needs.
 | Sign-in | `LOGIN_DELAY_AFTER`, `LOGIN_DELAY_MAX_SECONDS`, `LOGIN_LOCK_AFTER`, `LOGIN_LOCK_MINUTES`, `LOGIN_ADDRESS_LOCK_AFTER`, `LOGIN_FAILURE_WINDOW_MINUTES`; `TRUSTED_PROXIES` and `TRUST_X_REAL_IP` for the client address. |
 | `toto.core` | `REQUIRE_SMTP`, `NOTICES_VIA_WORKER`, `NIGHTLY_HOUSEKEEPING`, `CONTENT_SECURITY_POLICY`, `DASHBOARD_ITEMS`, `DASHBOARD_CATEGORIES`, `INGRESS_MODE`, `INGRESS_ALLOWED_APPS`, `TOTO_ADMIN_READONLY`. |
 | `toto.ui` | `HEADER_NAV_ITEMS`, `USE_EXTERNAL_FONTS`, `BRAND_FROM_FEDERATION`. |
-| `toto.vault` | `VAULT_STORAGE_ONLY`, `VAULT_FILE_EDITS`, `VAULT_REFUSED_FILE_TYPES`, `VAULT_ROOT`, `VAULT_TRASH_DAYS`, `VAULT_TRASH_PURGE`, `VAULT_EXTERNAL_BUCKETS`, `VAULT_OUTBOUND_ALLOWED_HOSTS`, `VAULT_OUTBOUND_ALLOW_PRIVATE`, `VAULT_ENCRYPT_ASYNC`, `VAULT_RUN_KEY`, `FIELD_ENCRYPTION_KEY`. |
+| `toto.vault` | `VAULT_STORAGE_ONLY`, `VAULT_STORAGE_ONLY_OPENS`, `VAULT_FILE_EDITS`, `VAULT_REFUSED_FILE_TYPES`, `VAULT_ROOT`, `VAULT_TRASH_DAYS`, `VAULT_TRASH_PURGE`, `VAULT_EXTERNAL_BUCKETS`, `VAULT_OUTBOUND_ALLOWED_HOSTS`, `VAULT_OUTBOUND_ALLOW_PRIVATE`, `VAULT_ENCRYPT_ASYNC`, `VAULT_RUN_KEY`, `FIELD_ENCRYPTION_KEY`. |
 | `toto.socialhub` | `PRIVACY_NOTICE_TEXTS`, `SOCIALHUB_EXPIRED_APPLICATION_DAYS`, `SOCIALHUB_AVATAR_MAX_BYTES`, `SOCIALHUB_ERASURE_COMMAND`. |
 | `toto.subscriptions` | `SUBSCRIPTION_PLANS_FILE`, `SUBSCRIPTION_GATE_READS`, `SUBSCRIPTION_GRACE_DAYS`, `SUBSCRIPTION_ENFORCEMENT`. |
 | `toto.quota` | `ECONOMY_STAFF_ONLY`. |
@@ -1463,6 +1472,15 @@ scoped change, so a larger piece of work is a run of small commits.
 About 310 commits landed between 2026-10-01 and 2026-10-06. The list below
 names the ones that changed what a host sees, by day, with their short
 hashes.
+
+**2026-10-06 — Play and Edit on a storage-only host**
+
+- `f2e95878` `VAULT_STORAGE_ONLY_OPENS` gives a storage-only host its Play
+  and Edit buttons back for the plugins it registers; *New*, the picture
+  viewer and the empty-file doors stay off.
+- `2f857275` A Play or Edit plugin may close its button to a member
+  (`is_open_to`).
+- `58c7ea6d` The manual's storage chapter follows both switches.
 
 **2026-10-06 — nothing is held open**
 
