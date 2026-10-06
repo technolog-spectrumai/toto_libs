@@ -62,7 +62,9 @@ class CommunityDetailView(DetailView):
             kwargs={"company_slug": community.slug}
         )
         context = PageProcessor().decorate(context, self.request)
-        context["community_plugin_sections"] = CommunityPlugin.render_all(
+        context.update(community_tabs(self.request, community))
+        context["community_plugin_sections"] = CommunityPlugin.render_tab(
+            context["active_community_tab"],
             request=self.request,
             community=community,
             base_context=context,
@@ -75,6 +77,38 @@ class CommunityDetailView(DetailView):
         context["viewer_is_federal_agent"] = privileges.has_privilege(
             self.request.user, "may_administer_communities")
         return context
+
+
+def community_page_url(community, tab: str = "") -> str:
+    """The community's page, on ``tab`` (the Overview without one)."""
+    from urllib.parse import urlencode
+
+    from toto.socialhub.plugins.community_plugins import TAB_PARAM
+
+    url = reverse("socialhub:community_detail", kwargs={"slug": community.slug})
+    return f"{url}?{urlencode({TAB_PARAM: tab})}" if tab else url
+
+
+def community_tabs(request, community) -> dict:
+    """The page's tabs (2026-10-06, stage 65): the Overview and one per tab
+    a plugin shows for this viewer (``CommunityPlugin.tabs_shown``).
+    ``community_tabs`` is empty where no plugin has a tab to show, and the
+    page then draws no strip at all. A tab the address asks for and the
+    viewer is not shown is the Overview: no 403, nothing of it built."""
+    from django.utils.translation import gettext as _
+
+    from toto.socialhub.plugins.community_plugins import TAB_PARAM
+
+    shown = CommunityPlugin.tabs_shown(request=request, community=community)
+    asked = request.GET.get(TAB_PARAM, "")
+    active = asked if any(tab["key"] == asked for tab in shown) else ""
+    strip = []
+    if shown:
+        strip = [{"key": "", "label": _("Overview"), "icon": "fa-solid fa-people-group",
+                  "url": community_page_url(community), "active": not active}]
+        strip += [{**tab, "url": community_page_url(community, tab["key"]),
+                   "active": tab["key"] == active} for tab in shown]
+    return {"community_tabs": strip, "active_community_tab": active}
 
 
 def community_org_chart_data_by_slug(request, company_slug):

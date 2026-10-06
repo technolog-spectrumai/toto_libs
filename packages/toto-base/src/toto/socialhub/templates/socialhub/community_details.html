@@ -257,11 +257,17 @@
       </div>
     </section>
 
+    {% comment %}Tabs (2026-10-06, stage 65): drawn only where a plugin has
+    a tab to show this viewer (views/community.py, community_tabs); the
+    Overview is the page as it always was.{% endcomment %}
+    {% if community_tabs %}{% include "socialhub/_community_tabs.html" %}{% endif %}
+
     <!-- Community Plugins -->
     {% for section in community_plugin_sections %}
       {{ section.html }}
     {% endfor %}
 
+    {% if not active_community_tab %}
     <!-- Members -->
     <section
       :class="darkMode
@@ -314,6 +320,7 @@
         {% endfor %}
       </div>
     </section>
+    {% endif %}
 
     <!-- Org Chart Modal -->
     <div

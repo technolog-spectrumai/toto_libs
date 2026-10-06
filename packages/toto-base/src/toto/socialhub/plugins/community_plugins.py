@@ -2,18 +2,69 @@ from typing import Any, ClassVar
 
 from django.db.models import Q
 
-from toto.core.plugin import BasePlugin
+from toto.core.plugin import BasePlugin, RenderedPlugin
 from toto.socialhub.models import CommunityForum
+
+
+#: The address parameter that names a tab of the community page.
+TAB_PARAM = "tab"
 
 
 class CommunityPlugin(BasePlugin):
     """
     Base class for plugins rendered on SocialHub community detail pages.
+
+    ``tab`` (2026-10-06, stage 65) puts a plugin's section on a tab of its
+    own instead of on the page: a short name for the address
+    (``?tab=<name>``), with ``tab_title`` as the strip's word for it (the
+    plugin's title when empty). A plugin without one is a section of the
+    Overview, as every plugin was. The strip is drawn only when a tabbed
+    plugin shows for this community and this viewer (``tabs_shown``), so a
+    community no tabbed plugin shows for looks as it always did; the page
+    draws the active tab's plugins alone, and the others are not asked for
+    anything but ``is_visible``.
     """
 
     registry: ClassVar[dict[str, "CommunityPlugin"]] = {}
 
     section_icon: ClassVar[str] = "fa-solid fa-puzzle-piece"
+    tab: ClassVar[str] = ""
+    tab_title: ClassVar[Any] = ""
+
+    @classmethod
+    def get_tab(cls) -> str:
+        return cls.tab or ""
+
+    @classmethod
+    def on_tab(cls, tab: str) -> list["CommunityPlugin"]:
+        """The plugins whose section is on ``tab`` (``""`` is the Overview),
+        in their order."""
+        return [plugin for plugin in cls.all() if plugin.get_tab() == (tab or "")]
+
+    @classmethod
+    def tabs_shown(cls, **kwargs) -> list[dict[str, Any]]:
+        """The tabs with a plugin that shows for this request, in the order
+        of their first plugin: ``[{"key", "label", "icon"}]``. Nothing is
+        rendered: each plugin answers by its own ``is_visible``."""
+        shown: dict[str, dict[str, Any]] = {}
+        for plugin in cls.all():
+            tab = plugin.get_tab()
+            if not tab or tab in shown or not plugin.is_visible(**kwargs):
+                continue
+            shown[tab] = {"key": tab, "label": plugin.tab_title or plugin.get_title(),
+                          "icon": plugin.section_icon}
+        return list(shown.values())
+
+    @classmethod
+    def render_tab(cls, tab: str, **kwargs) -> list[RenderedPlugin]:
+        """``render_all`` for one tab: the other tabs' plugins are not
+        rendered."""
+        rendered = []
+        for plugin in cls.on_tab(tab):
+            result = plugin.render(**kwargs)
+            if result is not None:
+                rendered.append(result)
+        return sorted(rendered)
 
     @staticmethod
     def get_community_from_kwargs(**kwargs):

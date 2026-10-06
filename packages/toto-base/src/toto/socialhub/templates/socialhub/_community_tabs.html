@@ -1,0 +1,23 @@
+{% load i18n %}
+{% comment %}The community page's tabs (2026-10-06, stage 65): the Overview
+and one tab per plugin section that has a tab of its own
+(CommunityPlugin.tab) and shows for this viewer. Each tab is a link, so the
+strip works without JavaScript and each tab has an address (?tab=…); the
+active one is aria-current, as on the profile's strip
+(socialhub/_profile_tabs.html), and it wraps onto more lines on a phone. The
+server draws the active tab alone.
+
+A tab's classes are whole strings in both branches, for the image's Tailwind
+build, which reads them from this file.{% endcomment %}
+<nav class="flex flex-wrap gap-2" aria-label="{% translate 'Community' %}" data-testid="community-tabs">
+  {% for tab in community_tabs %}
+  <a href="{{ tab.url }}" id="community-tab-{{ tab.key|default:'overview' }}"
+     {% if tab.active %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}
+     class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+    <i class="{{ tab.icon }}" aria-hidden="true"></i>{{ tab.label }}</a>
+  {% endfor %}
+</nav>
