@@ -17,7 +17,7 @@ from django.urls import reverse
 from toto.geography import saves
 from toto.geography.models import CommunityPin
 from toto.geography.testing import client_of, op
-from toto.geography.testing_locations import AREA, LocationsCase
+from toto.geography.locations_testing import AREA, LocationsCase
 
 CONFIG = re.compile(
     r'<script id="geography-headquarters-config" type="application/json">(.*?)</script>', re.S)

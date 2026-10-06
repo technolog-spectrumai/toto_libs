@@ -9,7 +9,7 @@ gets neither through any door. A reply answers a top-level comment only.
 from toto.comments.models import Comment
 from toto.geography.models import PinComment, ZoneComment
 from toto.geography.testing import client_of, no_funds, op, refusing_ledger
-from toto.geography.testing_locations import LocationsCase
+from toto.geography.locations_testing import LocationsCase
 
 
 class CommentCase(LocationsCase):

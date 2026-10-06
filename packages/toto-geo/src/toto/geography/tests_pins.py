@@ -8,7 +8,7 @@ are free; a refused ledger leaves nothing behind.
 
 from toto.geography.models import Address, CommunityPin, Zone
 from toto.geography.testing import client_of, no_funds, op, post, refusing_ledger
-from toto.geography.testing_locations import PIN, LocationsCase
+from toto.geography.locations_testing import PIN, LocationsCase
 
 
 class CreateTests(LocationsCase):

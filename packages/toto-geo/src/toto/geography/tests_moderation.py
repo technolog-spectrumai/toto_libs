@@ -10,7 +10,7 @@ from django.apps import apps
 
 from toto.geography.models import CommunityPin, CommunityZone
 from toto.geography.testing import client_of, post
-from toto.geography.testing_locations import LocationsCase
+from toto.geography.locations_testing import LocationsCase
 
 
 class ModerationTests(LocationsCase):

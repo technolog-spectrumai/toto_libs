@@ -15,7 +15,7 @@ from django.urls import reverse
 from toto.geography import access, saves
 from toto.geography.models import GeographyUsageEvent
 from toto.geography.testing import client_of, op
-from toto.geography.testing_locations import LocationsCase
+from toto.geography.locations_testing import LocationsCase
 
 CONFIG = re.compile(
     r'<script id="geography-locations-config" type="application/json">(.*?)</script>', re.S)

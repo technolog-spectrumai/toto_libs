@@ -9,7 +9,7 @@ import math
 
 from toto.geography.models import Address, CommunityZone, Zone
 from toto.geography.testing import BOWTIE, client_of, no_funds, op, post, refusing_ledger
-from toto.geography.testing_locations import AREA, LocationsCase
+from toto.geography.locations_testing import AREA, LocationsCase
 
 
 def ring(n):

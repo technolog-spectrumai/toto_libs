@@ -10,7 +10,7 @@ from django.urls import reverse
 from toto.comments.models import Comment
 from toto.geography.models import CommunityPin, CommunityZone
 from toto.geography.testing import client_of, op, post
-from toto.geography.testing_locations import PIN, LocationsCase
+from toto.geography.locations_testing import PIN, LocationsCase
 
 
 class FormerMemberTests(LocationsCase):

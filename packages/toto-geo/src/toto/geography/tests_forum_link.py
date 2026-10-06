@@ -13,7 +13,7 @@ from django.db import models
 
 from toto.geography.models import CommunityPin, CommunityZone
 from toto.geography.testing import client_of
-from toto.geography.testing_locations import LocationsCase
+from toto.geography.locations_testing import LocationsCase
 
 
 class ForumLinkTests(LocationsCase):

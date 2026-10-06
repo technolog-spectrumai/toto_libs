@@ -16,7 +16,7 @@ from toto.geography.erasure import contribution_rows
 from toto.geography.models import (Address, CommunityPin, CommunityZone, GeographyUsageEvent,
                                    Zone)
 from toto.geography.testing import client_of, op, post
-from toto.geography.testing_locations import LocationsCase
+from toto.geography.locations_testing import LocationsCase
 
 SECRETS = ("52.22", "21.01", "52.1", "21.1", "Well", "Rynek", "open on Sundays", "Meadow",
            "between the river", "Seen it", "Old well")

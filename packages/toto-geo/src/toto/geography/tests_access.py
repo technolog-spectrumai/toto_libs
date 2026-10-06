@@ -13,7 +13,7 @@ from django.urls import reverse
 from toto.geography import access, urls
 from toto.geography.models import CommunityPin, CommunityZone
 from toto.geography.testing import client_of, member, op, post
-from toto.geography.testing_locations import AREA, PIN, LocationsCase
+from toto.geography.locations_testing import AREA, PIN, LocationsCase
 
 MARKS = {"signed-in", "moderator", "community", "contribution", "author"}
 CONFIG = re.compile(
