@@ -243,6 +243,39 @@ class ChargingTests(ServiceTestCase):
         # The transaction is still usable after the caught duplicate.
         self.assertTrue(GeographyUsageEvent.objects.exists())
 
+    def test_two_at_once_under_one_op_with_another_query_is_409(self):
+        """Two searches sent at once under one op, each for another place:
+        the second passed its first check before the first one's event was
+        there (``known`` is patched to answer as that race does) and meets
+        the key at its own insert. It is no replay: 409, nothing served,
+        nothing charged."""
+        key = op()
+        with answering(GDANSK):
+            places.search(self.user, "Gdansk", key)
+        with answering(WARSAW), \
+                mock.patch("toto.geography.places.charging.known", return_value=False), \
+                mock.patch("toto.geography.charging.charge") as charged_again:
+            refusal = self.assertRefused(409, lambda: places.search(self.user, "Warsaw", key))
+        self.assertIn("already used", str(refusal))
+        charged_again.assert_not_called()
+        self.assertEqual(self.events().count(), 1)
+        self.assertEqual(self.events().get().metadata["request"],
+                         charging.digest(self.user, key, {"q": "gdansk"}))
+        # The transaction is still usable after the refused duplicate.
+        self.assertTrue(GeographyUsageEvent.objects.exists())
+
+    def test_a_key_taken_longer_ago_than_the_replay_window_is_409(self):
+        """The same request, but its event is older than the ten minutes:
+        the key bought that request once, not for ever."""
+        key = op()
+        with answering(GDANSK):
+            places.search(self.user, "Gdansk", key)
+            self.events().update(occurred_at=timezone.now()
+                                 - timedelta(seconds=charging.REPLAY_SECONDS + 5))
+            with mock.patch("toto.geography.places.charging.known", return_value=False):
+                self.assertRefused(409, lambda: places.search(self.user, "Gdansk", key))
+        self.assertEqual(self.events().count(), 1)
+
     def test_provider_failures_are_503_and_free(self):
         for name, exc in PROVIDER_FAILURES:
             cache.clear()
@@ -470,6 +503,20 @@ class DoorTests(TestCase):
         self.assertEqual(response.status_code, 405)
         self.assertEqual(response["Allow"], "POST")
         self.assertFalse(GeographyUsageEvent.objects.exists())
+
+    def test_a_lost_race_with_another_query_is_409_and_holds_no_result(self):
+        key = op()
+        with answering(GDANSK):
+            self.assertEqual(post(self.client, self.url, {"q": "Gdansk", "op": key}).status_code,
+                             200)
+        with answering(WARSAW), \
+                mock.patch("toto.geography.places.charging.known", return_value=False):
+            response = post(self.client, self.url, {"q": "Warsaw", "op": key})
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response["Cache-Control"], "no-store")
+        self.assertEqual(set(response.json()), {"error"})
+        self.assertNotIn("Warszawa", response.content.decode())
+        self.assertEqual(GeographyUsageEvent.objects.count(), 1)
 
     def test_no_op_is_400_and_a_used_one_409(self):
         with answering(GDANSK):

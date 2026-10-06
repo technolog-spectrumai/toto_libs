@@ -32,9 +32,16 @@ withholds the answer.
 THE EVENT is written in its own savepoint and a concurrent duplicate is
 caught outside it. ``record_usage`` swallows the uniqueness error inside the
 caller's ``atomic()``, and Postgres then refuses the rest of the block; so
-the row is created here, the savepoint rolls back alone, and ``Duplicate``
-leaves the outer block, undoing the loser's rows. The door answers the
-loser as a replay.
+the row is created here, the savepoint rolls back alone, and the loser
+leaves the outer block, which undoes its rows.
+
+A LOST RACE is judged as a known op is. Two requests sent at once under one
+op both pass ``known`` (neither event is there yet) and both do their work;
+the second meets the key at its own insert. ``settle`` then reads the event
+that holds the key and compares digests: the same request, within the replay
+time, is ``Duplicate`` and the door answers it as a replay, charged nothing;
+another request, or no event to compare with, is 409 and nothing is served.
+So ``Duplicate`` only ever means "this very request, settled by another".
 
 Imports only the quota gateway, never toto.mana or toto.tariffs: a host with
 no economy runs the same doors for free under the same caps.
@@ -72,7 +79,17 @@ class Refusal(Exception):
 
 
 class Duplicate(Exception):
-    """Another request settled this op first; nothing of this one was kept."""
+    """This very request was settled by another one first (the same op, the
+    same digest, within the replay time); nothing of this one was kept."""
+
+
+class _Taken(Exception):
+    """The op's key is held by an event another request wrote."""
+
+
+def _used() -> Refusal:
+    return Refusal(_("This request was already used. Press the button again to send a new one."),
+                   409)
 
 
 def clean_op(value) -> str:
@@ -97,6 +114,14 @@ def _key(metric, user, op) -> str:
     return f"{metric}:{user.pk}:{op}"
 
 
+def _replays(event, request) -> bool:
+    """Is ``event`` the event of the request with the digest ``request``,
+    and young enough to be answered again?"""
+    same = (event.metadata or {}).get("request") == request
+    fresh = timezone.now() - event.occurred_at <= timedelta(seconds=REPLAY_SECONDS)
+    return same and fresh
+
+
 def known(user, op, body) -> bool:
     """Is ``op`` a replay of this very request? False for a fresh op; 409 for
     an op that was used for another request, or too long ago."""
@@ -107,12 +132,9 @@ def known(user, op, body) -> bool:
              .first())
     if event is None:
         return False
-    same = (event.metadata or {}).get("request") == digest(user, op, body)
-    fresh = timezone.now() - event.occurred_at <= timedelta(seconds=REPLAY_SECONDS)
-    if same and fresh:
+    if _replays(event, digest(user, op, body)):
         return True
-    raise Refusal(_("This request was already used. Press the button again to send a new one."),
-                  409)
+    raise _used()
 
 
 def afford(user, metric, quantity=1) -> None:
@@ -131,25 +153,35 @@ def settle(user, metric, op, body, label, save=None):
     ``save()`` writes the rows of a save and its result is returned beside
     what the ledger posted: ``(result, charged)``, where ``charged`` is the
     ledger's answer (None on a host with no price for the metric). ``label``
-    names the kind of action and nothing else. Raises the ledger's refusal,
-    or ``Duplicate``, with nothing kept."""
+    names the kind of action and nothing else. With nothing kept, raises the
+    ledger's refusal; or, where another request took the op's key first,
+    ``Duplicate`` (it was this very request) or the 409 (it was another)."""
     from .models import GeographyUsageEvent
 
     source = {"source_type": metric, "source_id": op}
-    with transaction.atomic():
-        result = save() if save is not None else None
-        try:
-            with transaction.atomic():
-                GeographyUsageEvent.objects.create(
-                    metric_code=metric, quantity=1, unit=metrics.UNIT[metric],
-                    user=user, source_label=label,
-                    idempotency_key=_key(metric, user, op),
-                    metadata={"request": digest(user, op, body)},
-                    occurred_at=timezone.now(), **source)
-        except IntegrityError:
+    key, request = _key(metric, user, op), digest(user, op, body)
+    try:
+        with transaction.atomic():
+            result = save() if save is not None else None
+            try:
+                with transaction.atomic():
+                    GeographyUsageEvent.objects.create(
+                        metric_code=metric, quantity=1, unit=metrics.UNIT[metric],
+                        user=user, source_label=label, idempotency_key=key,
+                        metadata={"request": request},
+                        occurred_at=timezone.now(), **source)
+            except IntegrityError:
+                raise _Taken() from None
+            charged = charge(user, price_for(user, metrics.APP), metric, 1,
+                             unit=metrics.UNIT[metric], description=label, **source)
+    except _Taken:
+        # Out of the block: this request's own rows are undone. The key
+        # went to the request whose event holds it; what that request was
+        # is in the event, and only the same one is a replay.
+        event = GeographyUsageEvent.objects.filter(idempotency_key=key).first()
+        if event is not None and _replays(event, request):
             raise Duplicate() from None
-        charged = charge(user, price_for(user, metrics.APP), metric, 1,
-                         unit=metrics.UNIT[metric], description=label, **source)
+        raise _used() from None
     return result, charged
 
 

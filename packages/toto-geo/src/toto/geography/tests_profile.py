@@ -8,6 +8,7 @@ import io
 import json
 import re
 from decimal import Decimal
+from unittest import mock
 
 from django.apps import apps
 from django.core.management import call_command
@@ -216,6 +217,36 @@ class SaveTests(ProfileCase):
         self.assertEqual(response.status_code, 409)
         self.assertEqual(Address.objects.get().point.y, 52.2297)
         self.assertEqual(self.events().count(), 1)
+
+    def test_two_changes_at_once_under_one_op_the_second_is_409(self):
+        """Two changes sent at once under one op, each with another note:
+        the second passed its first check before the first one's event was
+        there (``known`` is patched to answer as that race does). Its rows
+        are undone and it is told 409; the first one's point stands."""
+        self.save()
+        key = op()
+        self.assertTrue(self.save(op=key, note="fourth floor").json()["charged"])
+        with mock.patch("toto.geography.charging.known", return_value=False), \
+                mock.patch("toto.geography.charging.charge") as charged_again:
+            response = self.save(op=key, note="fifth floor")
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(set(response.json()), {"error"})
+        charged_again.assert_not_called()
+        self.assertEqual(Address.objects.get().note, "fourth floor")
+        self.assertEqual(self.events().count(), 2)
+
+    def test_the_same_change_twice_at_once_is_answered_as_a_replay(self):
+        self.save()
+        key = op()
+        self.save(op=key, note="fourth floor")
+        with mock.patch("toto.geography.charging.known", return_value=False), \
+                mock.patch("toto.geography.charging.charge") as charged_again:
+            response = self.save(op=key, note="fourth floor")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"address": {**HOME, "note": "fourth floor"},
+                                           "charged": False})
+        charged_again.assert_not_called()
+        self.assertEqual(self.events().count(), 2)
 
     def test_an_unchanged_save_is_free(self):
         self.save()

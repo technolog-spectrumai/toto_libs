@@ -144,6 +144,39 @@ class DoorTests(RouteTestCase):
         self.assertEqual(opened.call_count, 1)
         self.assertEqual(self.events().count(), 1)
 
+    def test_two_at_once_under_one_op_with_other_ends_is_409_and_no_line(self):
+        """Two routes sent at once under one op, to two places: the second
+        passed its first check before the first one's event was there
+        (``known`` is patched to answer as that race does), was calculated,
+        and meets the key at its own insert. 409, no line, one charge."""
+        key = op()
+        with answering():
+            self.assertEqual(post(self.client, self.url, body(op=key)).status_code, 200)
+        with answering(), mock.patch("toto.geography.routing.charging.known",
+                                     return_value=False), \
+                mock.patch("toto.geography.charging.charge") as charged_again:
+            response = post(self.client, self.url,
+                            body(op=key, to={"lat": 50.06, "lng": 19.94}))
+            other_mode = post(self.client, self.url, body(op=key, mode="foot"))
+        self.assertEqual((response.status_code, other_mode.status_code), (409, 409))
+        self.assertEqual(set(response.json()), {"error"})
+        self.assertIsNone(FLOAT.search(response.content.decode()))
+        charged_again.assert_not_called()
+        self.assertEqual(self.events().count(), 1)
+
+    def test_two_at_once_under_one_op_for_the_same_route_is_a_replay(self):
+        key = op()
+        with answering():
+            post(self.client, self.url, body(op=key))
+            with mock.patch("toto.geography.routing.charging.known", return_value=False), \
+                    mock.patch("toto.geography.charging.charge") as charged_again:
+                response = post(self.client, self.url, body(op=key))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual((response.json()["charged"], response.json()["line"]["coordinates"]),
+                         (False, LINE))
+        charged_again.assert_not_called()
+        self.assertEqual(self.events().count(), 1)
+
     def test_a_replay_calculates_again_and_charges_nothing_more(self):
         key = op()
         with answering() as opened:
