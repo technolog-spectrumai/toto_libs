@@ -75,25 +75,28 @@ def storage_only() -> bool:
     download. Folders are still made (they are not files). The default, False,
     is every other host's vault as it was.
 
-    Play and Edit alone can be opened again on such a host
+    Play, Edit and the one-field "New" can be opened again on such a host
     (:func:`storage_only_opens`); everything else keeps reading this flag."""
     return bool(getattr(settings, "VAULT_STORAGE_ONLY", False))
 
 
-#: The two words ``VAULT_STORAGE_ONLY_OPENS`` takes.
-STORAGE_ONLY_OPENS = ("play", "edit")
+#: The words ``VAULT_STORAGE_ONLY_OPENS`` takes.
+STORAGE_ONLY_OPENS = ("play", "edit", "new")
 
 
 def storage_only_opens(kind: str) -> bool:
     """Whether the vault's pages may offer ``kind`` — ``"play"`` or
-    ``"edit"``, the buttons a registered plugin draws beside a file.
+    ``"edit"``, the buttons a registered plugin draws beside a file, or
+    ``"new"``, the New button with its one-field modal and the door behind
+    it (:mod:`toto.vault.new_file`, stage 62b).
 
     Always, on a host that is not storage only. On one that is, only where
     ``VAULT_STORAGE_ONLY_OPENS`` names the word (2026-10-06: zenobia names
-    both, for the one editor it serves). The default, ``()``, opens neither,
-    which is ``VAULT_STORAGE_ONLY`` as it was. The setting opens nothing
-    else: "New", the empty-file doors and the image viewer keep reading
-    :func:`storage_only`."""
+    all three, for the one editor it serves). The default, ``()``, opens
+    none, which is ``VAULT_STORAGE_ONLY`` as it was. The setting opens
+    nothing else: the old New menu with its type pills, the empty-file doors
+    (``file/create/``, the API's create without content) and the image
+    viewer keep reading :func:`storage_only`."""
     if not storage_only():
         return True
     opened = getattr(settings, "VAULT_STORAGE_ONLY_OPENS", ()) or ()

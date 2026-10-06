@@ -96,6 +96,14 @@ class VaultEditorPlugin(BasePlugin):
     #: inverts that the same way `VaultAccessPlugin` inverts "who may write".
     new_file_extension: ClassVar[str] = ""
 
+    #: The endings a file made by the vault's one-field "New" may be named
+    #: with for this type (stage 62b) — ``(".md", ".markdown")``, or a longer
+    #: one where a name has to say more than its last part does
+    #: (``".sheet.json"``). Empty, the default, offers nothing. Separate from
+    #: ``new_file_extension`` above, which feeds the old menu of type pills:
+    #: that one is closed on a storage-only host whatever it says.
+    new_file_extensions: ClassVar[tuple] = ()
+
     @classmethod
     def for_file_type(cls, file_type: str) -> "VaultEditorPlugin | None":
         plugin = cls.registry.get(file_type)
@@ -150,6 +158,14 @@ class VaultEditorPlugin(BasePlugin):
         ``title`` is the filename the user chose, so a format with a name inside
         it — a workbook, a deck — can agree with the file it lives in.
         """
+        return ""
+
+
+    def new_file_content(self, name: str) -> str:
+        """What a file called ``name``, made by the one-field "New", starts
+        with (stage 62b). Asked only for a name that ends in one of
+        ``new_file_extensions``, and it has to be something this plugin's
+        own editor opens: a deck or a workbook is never an empty file."""
         return ""
 
 
