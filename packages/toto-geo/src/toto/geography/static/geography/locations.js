@@ -30,9 +30,11 @@
  *    community. It is worked out here and sends nothing; the ticked ones go
  *    into the address (?community=a&community=b).
  *  - A pin's and a zone's words are typed in a dialog and nowhere else.
- *    Beside the map there is only the geometry: the pin to drag, the
- *    corners, Continue and Cancel. Cancel in the dialog leaves the geometry
- *    on the map; a refusal is shown in the dialog with what was typed kept.
+ *    Beside the map there is only the geometry: the pin to drag, Continue
+ *    and Cancel. Cancel in the dialog leaves the pin on the map; a refusal
+ *    is shown in the dialog with what was typed kept.
+ *  - No zone is drawn here. The zones that exist are rows like any other;
+ *    their author changes their words in the zone's dialog.
  */
 (function (root) {
   "use strict";
@@ -48,14 +50,6 @@
     var value = Number(lng);
     if (value >= -180 && value <= 180) { return value; }
     return ((value + 180) % 360 + 360) % 360 - 180;
-  }
-
-  /* A ring drawn on a repeated copy of the world, moved home as a whole. */
-  function homeRing(outline) {
-    var corners = outline || [];
-    if (!corners.length) { return []; }
-    var turn = Number(corners[0][1]) - wrapLng(corners[0][1]);
-    return corners.map(function (c) { return [round6(c[0]), round6(Number(c[1]) - turn)]; });
   }
 
   function haversineKm(a, b) {
@@ -287,7 +281,7 @@
 
   var api = {haversineKm: haversineKm, insideRing: insideRing, zoneKm: zoneKm, rowKm: rowKm,
              nearby: nearby, passes: passes, centreOf: centreOf, wrapLng: wrapLng,
-             homeRing: homeRing, createPresser: createPresser,
+             createPresser: createPresser,
              communityLabel: communityLabel, knownCommunities: knownCommunities,
              address: address, stepTab: stepTab, createTabs: createTabs};
   root.GeographyLocations = api;
@@ -341,8 +335,7 @@
       centre: null,        // the centre the next nearby search would use
       clicked: null,       // where the map was clicked last
       open: null,          // the opened row's id
-      draft: null,         // the draggable pin of the pin form
-      zoneEditor: null
+      draft: null          // the draggable pin of the pin form
     };
 
     function say(name, text, bad) {
@@ -418,7 +411,6 @@
         }
         tip(layer, row.name || kinds[row.kind] || "");
         layer.on("click", function (event) {
-          if (state.zoneEditor && state.zoneEditor.active()) { return; }
           L.DomEvent.stopPropagation(event);
           openRow(row);
         });
@@ -877,7 +869,6 @@
     function closeMenu() { menu.classList.add("hidden"); }
 
     map.on("click", function (event) {
-      if (state.zoneEditor && state.zoneEditor.active()) { return; }
       var lat = round6(event.latlng.lat), lng = round6(wrapLng(event.latlng.lng));
       if (state.draft) { state.draft.setLatLng([lat, lng]); return; }
       state.clicked = {lat: lat, lng: lng};
@@ -904,7 +895,7 @@
 
     /* --- the communities the member may save into ------------------------- */
     var mine = config.communities || [];
-    /* One community for a new pin or zone: a contribution belongs to one.
+    /* One community for a new pin: a contribution belongs to one.
      * What was chosen before stays chosen; else the one community the
      * filter shows, where it is one of the member's; else the first. */
     function fillCommunities(select) {
@@ -934,9 +925,10 @@
 
     /* --- the two dialogs: the only place a pin's or a zone's words are typed -
      * Each is the page's modal (the template: x-show, x-trap, Escape), opened
-     * and closed by GeographyMap.dialog. "new" asks the community too and
-     * names the price of a pin or a zone; "change" is the author's change of
-     * a saved row, with the price of a change. */
+     * and closed by GeographyMap.dialog. The pin's has two modes: "new" asks
+     * the community too and names the price of a pin; "change" is the
+     * author's change of a saved pin, with the price of a change. The zone's
+     * is a change only. */
     function setMode(dialogBox, mode) {
       Array.prototype.forEach.call(dialogBox.querySelectorAll("[data-geo-mode]"), function (node) {
         node.classList.toggle("hidden", node.dataset.geoMode !== mode);
@@ -1026,82 +1018,34 @@
       });
     });
 
-    /* --- a community zone: drawn on the map, named in the dialog ----------- */
-    var zoneTool = q("zone-tool"), zoneSave = q("zone-save"), zoneContinue = q("zone-continue");
+    /* --- a community zone: its author's change of its words --------------- */
+    var zoneSave = q("zone-save");
     var zoneDialog = root.GeographyMap.dialog(q("zone-dialog"));
-    var zoneChange = null, zoneWords = "";
+    var zoneChange = null;      // {row, url}: the saved zone whose words are open
 
-    function zoneFields(name, description) {
-      q("zone-name").value = name;
-      q("zone-description").value = description;
-    }
-
+    /* `change`: {row, url, name, description}. Always from the saved words. */
     function openZoneDialog(change) {
-      var whose = change ? change.row.id : "new";
-      if (change) { zoneFields(change.name, change.description); }
-      else if (zoneWords !== "new") { zoneFields("", ""); }
-      zoneWords = whose;
-      zoneChange = change ? {row: change.row, url: change.url} : null;
-      setMode(q("zone-dialog"), change ? "change" : "new");
-      if (change) {
-        q("zone-community-fixed").textContent = change.row.community ? change.row.community.name : "";
-      } else { fillCommunities(q("zone-community")); }
+      q("zone-name").value = change.name;
+      q("zone-description").value = change.description;
+      zoneChange = {row: change.row, url: change.url};
+      q("zone-community-fixed").textContent = change.row.community ? change.row.community.name : "";
       say("zone-status", "");
       zoneSave.disabled = false;
       zoneDialog.open();
     }
 
-    if (root.GeographyZone) {
-      state.zoneEditor = root.GeographyZone.attach(map, L, {
-        corners: [],
-        onChange: function (count) {
-          zoneContinue.disabled = count < 3 || !mine.length;
-          say("zone-count", fill(texts.corners, {n: count}));
-        }
-      });
-      q("zone-open").addEventListener("click", function () {
-        closeMenu(); closePin();
-        zoneTool.classList.remove("hidden");
-        say("zone-tool-status", mine.length ? "" : texts.no_community, !mine.length);
-        state.zoneEditor.start();
-      });
-      q("zone-cancel").addEventListener("click", function () {
-        if (!zoneChange) { zoneDialog.close(); }
-        state.zoneEditor.reset();
-        state.zoneEditor.stop();
-        zoneTool.classList.add("hidden");
-        if (zoneWords === "new") { zoneFields("", ""); zoneWords = ""; }
-      });
-      q("zone-undo").addEventListener("click", function () { state.zoneEditor.undo(); });
-      q("zone-restart").addEventListener("click", function () { state.zoneEditor.reset(); });
-      zoneContinue.addEventListener("click", function () {
-        if (state.zoneEditor.corners().length >= 3) { openZoneDialog(null); }
-      });
-    }
-    /* Cancel in the dialog: back to the map, the corners where they were. */
     q("zone-dialog-cancel").addEventListener("click", function () { zoneDialog.close(); });
     zoneSave.addEventListener("click", function () {
-      var words = {name: q("zone-name").value, description: q("zone-description").value};
-      if (zoneChange) {
-        var changed = zoneChange;
-        zoneSave.disabled = true;
-        press("edit:" + changed.row.id, changed.url, words).then(function (answer) {
-          zoneSave.disabled = false;
-          if (!answer.ok) { say("zone-status", refusal(answer), true); return; }
-          reloadTo(changed.row.id);
-        });
-        return;
-      }
-      var community = communityOf(q("zone-community"));
-      if (!community || !state.zoneEditor) { say("zone-status", texts.choose_community, true); return; }
+      if (!zoneChange) { return; }
+      var changed = zoneChange;
       zoneSave.disabled = true;
-      press("zone", community.zones, {
-        name: words.name, description: words.description,
-        outline: homeRing(state.zoneEditor.corners())
+      press("edit:" + changed.row.id, changed.url, {
+        name: q("zone-name").value, description: q("zone-description").value
       }).then(function (answer) {
         zoneSave.disabled = false;
+        /* Refused: said here, the dialog open, what was typed kept. */
         if (!answer.ok) { say("zone-status", refusal(answer), true); return; }
-        reloadTo("zone:" + answer.data.zone.uid);
+        reloadTo(changed.row.id);
       });
     });
 

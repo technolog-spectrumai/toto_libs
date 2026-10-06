@@ -30,6 +30,12 @@ fails on a route without one):
                    at ``me/contributions/``, deleting one's pin or zone,
                    withdrawing one's comment
 
+NO PAGE DRAWS A COMMUNITY ZONE (the owner, 2026-10-06: "remove 'draw
+community zone' from general locations tab"). The Locations page shows the
+zones that exist and lets their author change their words; the door that
+creates one (``communities/<slug>/zones/``) still stands and still asks for
+a member of the community, and no page of the platform calls it.
+
 Search nearby has no door: it is worked out in the page from the rows the
 page already holds, so a centre is never sent anywhere. A route's ends are
 sent, as coordinates only, to stage 63's route door, and nothing of a route
@@ -246,7 +252,7 @@ def _texts() -> dict:
         "clicked": _("The point you clicked"),
         "choose_community": _("Choose a community"),
         "no_community": _("You belong to no community yet, so there is nowhere to save a "
-                          "pin or a zone."),
+                          "pin."),
         "saved": _("Saved."),
         "confirm_delete": _("Delete this for good? Its comments go with it."),
         "by": _("by %(name)s"),
@@ -255,7 +261,6 @@ def _texts() -> dict:
         "open_community": _("Open the community"),
         "yours_note": _("Your own point. Other members see it only while \"show address\" "
                         "is on."),
-        "corners": _("%(n)s corners"),
         "keep_hit": _("Keep on the map"),
         "all_communities": _("All communities"),
         "n_communities": _("%(n)s communities"),
@@ -306,7 +311,6 @@ def page(request):
     for community in communities:
         slug = {"slug": community["slug"]}
         community["pins"] = reverse("geography:pin_create", kwargs=slug)
-        community["zones"] = reverse("geography:zone_create", kwargs=slug)
     counts = {kind: sum(1 for row in rows if row["kind"] == kind)
               for kind in ("person", "headquarters", "area", "pin", "zone")}
     config = {

@@ -159,11 +159,9 @@ class LocationsScriptTests(SimpleTestCase):
     def test_longitudes_come_home(self):
         out = self.run_js("""
           out.wrap = [G.wrapLng(381), G.wrapLng(-339), G.wrapLng(21), G.wrapLng(180)];
-          out.ring = G.homeRing([[52, 381], [52, 381.1], [52.1, 381.1]]);
           out.centre = G.centreOf(ROWS[3]);
         """)
         self.assertEqual(out["wrap"], [21, 21, 21, 180])
-        self.assertEqual(out["ring"], [[52, 21], [52, 21.1], [52.1, 21.1]])
         self.assertAlmostEqual(out["centre"]["lat"], 52.35)
 
     def test_the_community_filter_takes_several_one_or_none(self):
@@ -247,10 +245,10 @@ class LocationsScriptTests(SimpleTestCase):
         self.assertEqual((out["touched"], out["calls"]), ([], []))
 
 
-#: The page around ``mount()``. argv: locations.js, map.js, zone_draw.js and
+#: The page around ``mount()``. argv: locations.js, map.js and
 #: a file with ``{tree, config, href, fragments, extra}``.
 PAGE = r"""
-const DATA = JSON.parse(require("fs").readFileSync(process.argv[4], "utf8"));
+const DATA = JSON.parse(require("fs").readFileSync(process.argv[3], "utf8"));
 const X = DATA.extra;
 const touched = [];
 function spy(name) {
@@ -449,7 +447,6 @@ globalThis.document = {
   querySelectorAll: () => [],
 };
 require(process.argv[2]);
-require(process.argv[3]);
 const G = require(process.argv[1]);
 
 const part = (name) => box.querySelector('[data-geo="' + name + '"]');
@@ -549,7 +546,7 @@ class PageCase(LocationsCase):
                       "at": SITE + self.page_url},
         }
         scripts = [finders.find(f"geography/{name}")
-                   for name in ("locations.js", "map.js", "zone_draw.js")]
+                   for name in ("locations.js", "map.js")]
         with tempfile.TemporaryDirectory() as folder:
             handed = Path(folder) / "page.json"
             handed.write_text(json.dumps(data), encoding="utf-8")
@@ -894,56 +891,23 @@ class DialogScriptTests(PageCase):
         self.assertFalse(out["after"], "and a click offers its choices again")
         self.assertEqual(out["calls"], [])
 
-    def test_a_zone_is_drawn_on_the_map_and_named_in_the_dialog(self):
+    def test_no_zone_is_drawn_on_this_page(self):
+        """The owner, 2026-10-06: "remove 'draw community zone' from general
+        locations tab". The page has no control for it and the script holds
+        no editor: a click on the map offers a point, as before."""
         out = self.run_page("""
-          press("zone-open");
-          out.tool = [hidden("zone-tool"), part("zone-continue").disabled, shown("zone-dialog")];
-          clickMap(52.0, 21.0); clickMap(52.0, 21.1);
-          press("zone-continue");
-          out.two = [part("zone-continue").disabled, shown("zone-dialog")];
-          clickMap(52.1, 21.1);
-          out.three = [part("zone-continue").disabled, part("zone-count").textContent,
-                       shown("zone-dialog")];
-          press("zone-continue");
-          out.opened = [shown("zone-dialog"), mode("zone-dialog"), part("zone-community").value];
-          part("zone-name").value = "Meadow";
-          part("zone-description").value = "by the river";
-          press("zone-dialog-cancel");
-          out.cancelled = [shown("zone-dialog"), hidden("zone-tool"),
-                           mounted.state.zoneEditor.corners().length,
-                           mounted.state.zoneEditor.active()];
-          press("zone-continue");
-          out.kept = [part("zone-name").value, part("zone-description").value];
-          queue.push({status: 400, data: {error: "The outline crosses itself."}},
-                     {status: 200, data: {zone: {uid: "z1"}}});
-          press("zone-save"); await settle();
-          out.refused = [shown("zone-dialog"), part("zone-status").textContent,
-                         part("zone-name").value, mounted.state.zoneEditor.corners().length,
-                         assigned.length];
-          press("zone-save"); await settle();
-          out.sent = calls.map((call) => [call.url, call.method]);
-          out.bodies = calls.map((call) => call.body);
-          press("zone-cancel");
-          out.stopped = [hidden("zone-tool"), mounted.state.zoneEditor.active(),
-                         mounted.state.zoneEditor.corners().length, part("zone-name").value];
+          out.parts = ["zone-open", "zone-tool", "zone-continue", "zone-cancel",
+                       "zone-community"].map((name) => part(name) === null);
+          out.state = ["zoneEditor" in mounted.state, typeof globalThis.GeographyZone];
+          out.api = [typeof G.homeRing];
+          clickMap(52.5, 21.5);
+          out.menu = hidden("click-menu");
         """)
-        self.assertEqual(out["tool"], [False, True, False])
-        self.assertEqual(out["two"], [True, False], "two corners are no zone")
-        self.assertEqual(out["three"], [False, "3 corners", False])
-        self.assertEqual(out["opened"], [True, ["new", "new", "new"], self.guild_slug])
-        self.assertEqual(out["cancelled"], [False, False, 3, True],
-                         "back to the map, the corners where they were")
-        self.assertEqual(out["kept"], ["Meadow", "by the river"])
-        self.assertEqual(out["refused"], [True, "The outline crosses itself.", "Meadow", 3, 0])
-        door = self.url("zone_create", community=self.guild)
-        self.assertEqual(out["sent"], [[door, "POST"]] * 2)
-        first, second = out["bodies"]
-        self.assertEqual({key: value for key, value in second.items() if key != "op"},
-                         {"name": "Meadow", "description": "by the river",
-                          "outline": [[52.0, 21.0], [52.0, 21.1], [52.1, 21.1]]})
-        self.assertNotEqual(first["op"], second["op"])
-        self.assertEqual(out["assigned"], [f"{SITE}{self.page_url}?open=zone%3Az1"])
-        self.assertEqual(out["stopped"], [True, False, 0, ""])
+        self.assertEqual(out["parts"], [True] * 5)
+        self.assertEqual(out["state"], [False, "undefined"])
+        self.assertEqual(out["api"], ["undefined"])
+        self.assertFalse(out["menu"])
+        self.assertEqual(out["calls"], [])
 
     def test_the_author_s_change_opens_the_same_dialog_filled_in(self):
         changed = self.pin(name='A "well" <b>', note="line one\nline two")
@@ -997,24 +961,37 @@ class DialogScriptTests(PageCase):
           queue.push({status: 200, text: "ZONE"});
           rowButton(X.row).fire("click"); await settle();
           part("details").querySelector("[data-geo-change]").fire("click");
-          out.opened = [shown("zone-dialog"), mode("zone-dialog"), part("zone-name").value,
+          out.opened = [shown("zone-dialog"), part("zone-name").value,
                         part("zone-description").value, part("zone-community-fixed").textContent,
-                        shown("pin-dialog"), hidden("zone-tool")];
+                        shown("pin-dialog"), drawn("draft")];
           part("zone-description").value = "wider";
+          press("zone-dialog-cancel");
+          out.cancelled = [shown("zone-dialog"), calls.length];
+          part("details").querySelector("[data-geo-change]").fire("click");
+          out.again = [shown("zone-dialog"), part("zone-description").value];
+          part("zone-description").value = "wider";
+          queue.push({status: 409, data: {error: "This request was already used."}},
+                     {status: 200, data: {zone: {}}});
           press("zone-save"); await settle();
-          out.sent = [calls[1].url, calls[1].method, Object.keys(calls[1].body).sort(),
-                      calls[1].body.name, calls[1].body.description];
-          press("zone-open"); clickMap(1, 1); clickMap(1, 2); clickMap(2, 2);
-          press("zone-continue");
-          out.fresh = [mode("zone-dialog"), part("zone-name").value,
-                       part("zone-description").value];
+          out.refused = [shown("zone-dialog"), part("zone-status").textContent,
+                         part("zone-description").value, assigned.length];
+          press("zone-save"); await settle();
+          out.sent = calls.slice(1).map((call) => [call.url, call.method,
+                                                   Object.keys(call.body).sort(),
+                                                   call.body.name, call.body.description]);
         """.replace("X.row", json.dumps(f"zone:{area.uid}")), fragments={"ZONE": url})
-        self.assertEqual(out["opened"], [True, ["change", "change", "change"], "Meadow",
-                                         "between the river and the road", "Guild", False, True])
-        self.assertEqual(out["sent"], [url, "POST", ["description", "name", "op"], "Meadow",
-                                       "wider"])
-        self.assertEqual(out["fresh"], [["new", "new", "new"], "", ""],
-                         "a new zone does not start from another one's words")
+        self.assertEqual(out["opened"], [True, "Meadow", "between the river and the road",
+                                         "Guild", False, []],
+                         "filled in from what is saved; nothing is put on the map")
+        self.assertEqual(out["cancelled"], [False, 1], "Cancel sends nothing")
+        self.assertEqual(out["again"], [True, "between the river and the road"],
+                         "a change always starts from the saved words")
+        self.assertEqual(out["refused"], [True, "This request was already used.", "wider", 0])
+        # The words, and no outline: a saved zone is not redrawn here.
+        self.assertEqual(out["sent"], [[url, "POST", ["description", "name", "op"], "Meadow",
+                                        "wider"]] * 2)
+        self.assertEqual(out["assigned"],
+                         [f"{SITE}{self.page_url}?open=zone%3A{area.uid}"])
 
 
 class LocationsScriptSourceTests(SimpleTestCase):

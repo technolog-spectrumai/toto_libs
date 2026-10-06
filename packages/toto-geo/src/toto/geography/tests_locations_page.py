@@ -306,9 +306,9 @@ class TabTests(LocationsCase):
         self.assertFalse(holds(nearby, "data-mana-role"))
         # Shared by the three, so in none of them: the map, the place search
         # (a centre and a route's end are both taken from its hits), the
-        # click menu, the two tools that draw, the details, the dialogs.
-        for mark in ("map", "q", "search-go", "results", "click-menu", "pin-tool", "zone-open",
-                     "zone-tool", "details", "pin-dialog", "zone-dialog"):
+        # click menu, the tool that places a pin, the details, the dialogs.
+        for mark in ("map", "q", "search-go", "results", "click-menu", "pin-tool",
+                     "details", "pin-dialog", "zone-dialog"):
             node = element(tree, "data-geo", mark)
             self.assertIsNotNone(node, mark)
             for panel in (index, nearby, route):
@@ -369,7 +369,7 @@ class DialogMarkupTests(LocationsCase):
                 outside, inside = words_fields(text, "data-geography-locations")
                 self.assertEqual(outside, [])
                 self.assertEqual(inside, ["pin-community", "pin-name", "pin-postal", "pin-note",
-                                          "zone-community", "zone-name", "zone-description"])
+                                          "zone-name", "zone-description"])
 
     def test_the_two_dialogs_are_the_library_s_modal(self):
         tree = tree_of(client_of(self.member_user).get(self.page_url).content.decode())
@@ -378,10 +378,15 @@ class DialogMarkupTests(LocationsCase):
                    if node["attrs"].get("role") == "dialog"]
         self.assertEqual([node["attrs"]["data-geo"] for node in dialogs],
                          ["pin-dialog", "zone-dialog"])
-        for node, parts in zip(dialogs, (("pin-community", "pin-name", "pin-postal", "pin-note",
-                                          "pin-status", "pin-save", "pin-dialog-cancel"),
-                                         ("zone-community", "zone-name", "zone-description",
-                                          "zone-status", "zone-save", "zone-dialog-cancel"))):
+        # The pin's: a new one and a change (the title, the community and the
+        # price of each, one of the two drawn at a time). The zone's: its
+        # author's change only, for no zone is drawn on this page.
+        both = ["change"] * 3 + ["new"] * 3
+        for node, parts, expected in zip(dialogs, (
+                ("pin-community", "pin-name", "pin-postal", "pin-note",
+                 "pin-status", "pin-save", "pin-dialog-cancel"),
+                ("zone-community-fixed", "zone-name", "zone-description",
+                 "zone-status", "zone-save", "zone-dialog-cancel")), (both, [])):
             attrs = node["attrs"]
             with self.subTest(dialog=attrs["data-geo"]):
                 self.assertEqual((attrs["aria-modal"], attrs["x-show"], attrs["x-trap"]),
@@ -391,17 +396,13 @@ class DialogMarkupTests(LocationsCase):
                 self.assertIsNotNone(element(node["children"], "id", attrs["aria-labelledby"]))
                 for part in parts:
                     self.assertTrue(holds(node, "data-geo", part), part)
-                # A new one and a change: the title, the community and the
-                # price of each, one of the two drawn at a time.
                 modes = [n["attrs"]["data-geo-mode"] for n, _a in walk(node["children"])
                          if "data-geo-mode" in n["attrs"]]
-                self.assertEqual(sorted(modes), ["change"] * 3 + ["new"] * 3)
+                self.assertEqual(sorted(modes), expected)
 
     def test_beside_the_map_a_tool_holds_the_geometry_only(self):
         tree = tree_of(client_of(self.member_user).get(self.page_url).content.decode())
-        for tool, parts in (("pin-tool", ("pin-continue", "pin-cancel", "pin-tool-status")),
-                            ("zone-tool", ("zone-undo", "zone-restart", "zone-count",
-                                           "zone-continue", "zone-cancel", "zone-tool-status"))):
+        for tool, parts in (("pin-tool", ("pin-continue", "pin-cancel", "pin-tool-status")),):
             node = element(tree, "data-geo", tool)
             with self.subTest(tool=tool):
                 self.assertIn("hidden", node["attrs"]["class"].split())
@@ -412,6 +413,31 @@ class DialogMarkupTests(LocationsCase):
         for gone in ("pin-form", "zone-form"):
             self.assertIsNone(element(tree, "data-geo", gone))
 
+    def test_no_zone_is_drawn_on_this_page(self):
+        """The owner, 2026-10-06: "remove 'draw community zone' from general
+        locations tab". Nobody is offered it, the head and an administrator
+        included; the zones that exist are still rows of the page."""
+        self.zone()
+        for user in (self.member_user, self.head_user, self.staff_user, self.root):
+            with self.subTest(user=user.username):
+                text = client_of(user).get(self.page_url).content.decode()
+                tree = tree_of(text)
+                for gone in ("zone-open", "zone-tool", "zone-undo", "zone-restart",
+                             "zone-count", "zone-continue", "zone-cancel", "zone-community"):
+                    self.assertIsNone(element(tree, "data-geo", gone), gone)
+                self.assertIsNone(element(tree, "data-testid", "geography-draw-zone"))
+                self.assertNotIn("Draw a community zone", text)
+                self.assertNotIn("zone_draw.js", text)
+                # The door that makes one is named nowhere (a saved zone's
+                # own address is longer: it ends with the zone's uid).
+                door = reverse("geography:zone_create", kwargs={"slug": self.guild.slug})
+                self.assertNotIn(f'"{door}"', text)
+                config = config_of(text)
+                for community in config["communities"]:
+                    self.assertNotIn("zones", community)
+                if user in (self.member_user, self.head_user):
+                    self.assertIn("zone", [row["kind"] for row in config["rows"]])
+
 
 @override_settings(LOCATIONS_GEOCODING={"enabled": True}, GEOGRAPHY_ROUTING=ROUTING)
 class PriceTests(LocationsCase):
@@ -419,18 +445,21 @@ class PriceTests(LocationsCase):
 
     def test_every_charged_control_carries_its_price(self):
         text = client_of(self.member_user).get(self.page_url).content.decode()
-        # Search, Find route, and in each of the two dialogs the price of a
-        # new one and the price of a change.
-        self.assertGreaterEqual(text.count("data-mana-role="), 6)
+        # Search, Find route, in the pin's dialog the price of a new one and
+        # the price of a change, in the zone's the price of a change.
+        self.assertGreaterEqual(text.count("data-mana-role="), 5)
         self.assertIn('data-mana-role="compute"', text)
         self.assertIn('data-mana-role="storage"', text)
         tree = tree_of(text)
-        for name in ("pin-dialog", "zone-dialog"):
-            node = element(tree, "data-geo", name)
-            priced = [up["attrs"]["data-geo-mode"] for n, above in walk([node])
-                      if n["attrs"].get("data-mana-role") == "storage"
-                      for up in above if "data-geo-mode" in up["attrs"]]
-            self.assertEqual(sorted(set(priced)), ["change", "new"], name)
+        node = element(tree, "data-geo", "pin-dialog")
+        priced = [up["attrs"]["data-geo-mode"] for n, above in walk([node])
+                  if n["attrs"].get("data-mana-role") == "storage"
+                  for up in above if "data-geo-mode" in up["attrs"]]
+        self.assertEqual(sorted(set(priced)), ["change", "new"])
+        node = element(tree, "data-geo", "zone-dialog")
+        self.assertEqual(len([n for n, _a in walk([node])
+                              if n["attrs"].get("data-mana-role") == "storage"]), 1,
+                         "a zone's change, and no price of a new zone")
         row = self.pin()
         client_of(self.member_user).post(self.url("pin_comment_add", row),
                                          {"body": "Hello", "op": op()})
