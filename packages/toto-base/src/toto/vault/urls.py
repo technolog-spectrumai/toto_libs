@@ -5,6 +5,7 @@ from . import bulk
 from . import clearances
 from . import clearance_tab
 from . import manage_views
+from . import new_file
 from . import share_views
 from . import trash_views
 from django.views.generic import RedirectView
@@ -136,6 +137,7 @@ urlpatterns = [
     path("transfers/<int:pk>/", TransferDetailView.as_view(), name="transfer_detail"),
     path("transfers/<int:pk>/retry/", TransferRetryView.as_view(), name="transfer_retry"),
     path("file/create/", CreateEmptyFileView.as_view(), name="create_file"),
+    path("file/new/", new_file.NewFileView.as_view(), name="new_file"),
     path("directory/zip/", CreateZipView.as_view(), name="create_zip"),
     path("directory/zip/status/", ZipStatusView.as_view(), name="zip_status"),
 

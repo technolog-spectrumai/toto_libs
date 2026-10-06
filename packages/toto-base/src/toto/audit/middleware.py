@@ -34,6 +34,7 @@ VAULT_ACTIONS = {
     "api_file_upload": "FILE_UPLOADED",
     "api_file_create": "FILE_CREATED",
     "create_file": "FILE_CREATED",
+    "new_file": "FILE_CREATED",
     "api_file_content": "FILE_EDITED",
     "version_save": "FILE_EDITED",
     "version_restore": "FILE_RESTORED",
