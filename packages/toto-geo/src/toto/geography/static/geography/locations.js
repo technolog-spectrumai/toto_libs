@@ -33,6 +33,12 @@
  *    Beside the map there is only the geometry: the pin to drag, Continue
  *    and Cancel. Cancel in the dialog leaves the pin on the map; a refusal
  *    is shown in the dialog with what was typed kept.
+ *  - "Keep on the map" beside a search result saves it as a community pin
+ *    (the owner, 2026-10-07: "if I add something to the map after search it
+ *    and I press "keep" it should be added yto my pins"): the pin to drag is
+ *    put at the result and the pin's dialog opens at once with the result's
+ *    words filled in. Nothing is sent or charged before Save. A member with
+ *    no community to save into gets a temporary point, as before.
  *  - No zone is drawn here. The zones that exist are rows like any other;
  *    their author changes their words in the zone's dialog.
  */
@@ -763,17 +769,13 @@
           button.addEventListener("click", function () { chooseHit(hit); });
           item.appendChild(button);
           /* A new search replaces these hits, and an end of a route that
-           * meant one of them is then cleared. One press keeps a hit on the
-           * map as a temporary point (in this page only), so a route can
-           * run between the results of two searches. */
+           * meant one of them is then cleared. One press keeps a hit: as a
+           * community pin, named in the pin's dialog and saved there
+           * (keepHit, below). */
           var keep = el("button", "shrink-0 rounded-lg border border-current/30 px-2 py-1 text-xs font-semibold",
                         texts.keep_hit || "");
           keep.type = "button";
-          keep.addEventListener("click", function () {
-            controller.placeTemporary(hit.lat, hit.lng, hit.label);
-            drawTemporary();
-            fillEnds();
-          });
+          keep.addEventListener("click", function () { keepHit(hit); });
           item.appendChild(keep);
           list.appendChild(item);
         }
@@ -974,16 +976,55 @@
       pinDialog.open();
     }
 
-    q("click-pin").addEventListener("click", function () {
-      if (!state.clicked) { return; }
+    /* The pin to drag, put at a point, and the tool beside the map. */
+    function placeDraft(lat, lng) {
       closeMenu();
       layers.draft.clearLayers();
-      state.draft = L.marker([state.clicked.lat, state.clicked.lng],
+      state.draft = L.marker([lat, lng],
                              {icon: root.classicPin(), draggable: true}).addTo(layers.draft);
       pinTool.classList.remove("hidden");
       say("pin-tool-status", mine.length ? "" : texts.no_community, !mine.length);
       q("pin-continue").disabled = !mine.length;
+    }
+
+    q("click-pin").addEventListener("click", function () {
+      if (!state.clicked) { return; }
+      placeDraft(state.clicked.lat, state.clicked.lng);
     });
+
+    /* At most what the field takes: its own maxlength. */
+    function cut(text, field) {
+      var most = Number(q(field).getAttribute("maxlength")) || 0;
+      return most ? String(text).slice(0, most) : String(text);
+    }
+
+    /* "Keep on the map" beside a search result (the owner, 2026-10-07: "if
+     * I add something to the map after search it and I press "keep" it
+     * should be added yto my pins"). The pins a member saves here are a
+     * community's: the pin to drag is put at the result, and the pin's
+     * dialog opens at once, in its "new" mode, with the result's words: the
+     * name is the label up to its first comma, the address the whole label,
+     * the note empty. Nothing is sent and nothing is charged before Save;
+     * leaving the dialog leaves the pin and its tool beside the map, as for
+     * a pin that was clicked. Words typed for a clicked pin that was not
+     * saved are REPLACED by the result's: the member asked for this place.
+     * With no community to save into there is nowhere to save: the result
+     * is kept as a temporary point, as it was, and the page says why. */
+    function keepHit(hit) {
+      if (!mine.length) {
+        controller.placeTemporary(hit.lat, hit.lng, hit.label);
+        drawTemporary();
+        fillEnds();
+        say("search-note", texts.no_community);
+        return;
+      }
+      var label = String(hit.label || "");
+      chooseHit(hit);
+      placeDraft(round6(hit.lat), round6(wrapLng(hit.lng)));
+      pinFields(cut(label.split(",")[0].trim(), "pin-name"), cut(label, "pin-postal"), "");
+      pinWords = "new";
+      openPinDialog(null);
+    }
     q("pin-continue").addEventListener("click", function () {
       if (state.draft) { openPinDialog(null); }
     });
