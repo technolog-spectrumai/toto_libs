@@ -60,18 +60,30 @@ class MapTileTests(SimpleTestCase):
                          for part in [part[part.index("://") - 5:]] if part.startswith("https")}
                 self.assertLessEqual(hosts, {"{s}.tile.openstreetmap.org"}, str(template))
 
-    def test_the_widget_is_the_one_place_that_loads_leaflet(self):
+    def test_the_loader_is_the_one_place_that_loads_leaflet(self):
+        """Since stage 64 two templates draw a map, the widget and the
+        Locations page. Both include one loader, ``geography/_leaflet.html``,
+        and it alone names Leaflet's files, the pin and the tile helper: a
+        page that draws no map still carries none of them."""
+        loader = self.source("geography/_leaflet.html")
+        self.assertIn("{% static 'vendor/leaflet/leaflet.js' %}", loader)
+        self.assertIn("{% static 'vendor/leaflet/leaflet.css' %}", loader)
+        self.assertIn('{% include "geography/_tiles.html" %}', loader)
+        self.assertIn("{% static 'geography/pin.js' %}", loader)
+        self.assertNotIn("oya/pin.js", loader)
+        self.assertNotIn("locations/", loader)
+        including = []
+        for template in templates_of(apps.get_app_config("geography")):
+            text = template.read_text(encoding="utf-8")
+            if template.name != "_leaflet.html":
+                self.assertNotIn("vendor/leaflet", text, str(template))
+                self.assertNotIn("geography/pin.js", text, str(template))
+            if '{% include "geography/_leaflet.html" %}' in text:
+                including.append(template.name)
+        self.assertEqual(sorted(including), ["_map.html", "locations.html"])
         widget = self.source("geography/_map.html")
-        self.assertIn("{% static 'vendor/leaflet/leaflet.js' %}", widget)
-        self.assertIn("{% static 'vendor/leaflet/leaflet.css' %}", widget)
-        self.assertIn('{% include "geography/_tiles.html" %}', widget)
-        self.assertIn("{% static 'geography/pin.js' %}", widget)
         self.assertNotIn("oya/pin.js", widget)
         self.assertNotIn("locations/", widget)
-        for template in templates_of(apps.get_app_config("geography")):
-            if template.name != "_map.html":
-                self.assertNotIn("vendor/leaflet", template.read_text(encoding="utf-8"),
-                                 str(template))
 
     def test_the_platform_s_base_template_draws_no_tiles(self):
         source = self.source("oya/base.html")

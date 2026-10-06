@@ -256,6 +256,7 @@ def _texts() -> dict:
         "yours_note": _("Your own point. Other members see it only while \"show address\" "
                         "is on."),
         "corners": _("%(n)s corners"),
+        "keep_hit": _("Keep on the map"),
     }
 
 

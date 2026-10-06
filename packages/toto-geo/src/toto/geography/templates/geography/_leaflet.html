@@ -1,0 +1,9 @@
+{% load static %}
+{% comment %}Leaflet, the pin and the tile helper, loaded HERE and nowhere else
+(2026-10-06, stage 64): the map widget (_map.html) and the Locations page
+(locations.html) both include this, so a page that draws no map carries none
+of it and no template names Leaflet's files a second time.{% endcomment %}
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}">
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
+<script src="{% static 'geography/pin.js' %}"></script>
+{% include "geography/_tiles.html" %}

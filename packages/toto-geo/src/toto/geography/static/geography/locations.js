@@ -516,7 +516,7 @@
       layers.temporary.clearLayers();
       controller.state.temporary.forEach(function (point) {
         var made = L.circleMarker([point.lat, point.lng], {radius: 7, weight: 2, color: "#dc2626"});
-        made.bindTooltip(texts.temporary || "");
+        tip(made, point.label || texts.temporary || "");
         made.on("click", function (event) {
           L.DomEvent.stopPropagation(event);
           /* Click it again to take it away. */
@@ -543,11 +543,24 @@
         made.on("click", function (event) { L.DomEvent.stopPropagation(event); chooseHit(hit); });
         made.addTo(layers.hits);
         if (list) {
-          var item = el("li");
-          var button = el("button", "block w-full px-3 py-2 text-left hover:opacity-70", hit.label);
+          var item = el("li", "flex items-center gap-2");
+          var button = el("button", "min-w-0 flex-1 px-3 py-2 text-left hover:opacity-70", hit.label);
           button.type = "button";
           button.addEventListener("click", function () { chooseHit(hit); });
           item.appendChild(button);
+          /* A new search replaces these hits, and an end of a route that
+           * meant one of them is then cleared. One press keeps a hit on the
+           * map as a temporary point (in this page only), so a route can
+           * run between the results of two searches. */
+          var keep = el("button", "shrink-0 rounded-lg border border-current/30 px-2 py-1 text-xs font-semibold",
+                        texts.keep_hit || "");
+          keep.type = "button";
+          keep.addEventListener("click", function () {
+            controller.placeTemporary(hit.lat, hit.lng, hit.label);
+            drawTemporary();
+            fillEnds();
+          });
+          item.appendChild(keep);
           list.appendChild(item);
         }
       });
