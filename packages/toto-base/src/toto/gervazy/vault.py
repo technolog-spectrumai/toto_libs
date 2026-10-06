@@ -26,6 +26,25 @@ class VaultUnavailable(RuntimeError):
     """The sabbia vault is not usable (no password configured, or not initialized)."""
 
 
+#: What a host without ``toto.sabbia`` is told instead of a remedy it lacks.
+NO_VAULT_HERE = ("This server has no credential vault for API connectors, so a connector "
+                 "cannot hold a secret here.")
+
+
+def _has_sabbia() -> bool:
+    from django.apps import apps
+
+    return apps.is_installed("toto.sabbia")
+
+
+def _unavailable(remedy: str) -> str:
+    """Why the vault cannot be used, as its caller shows it (the Django
+    admin's API connectors print it). The remedy is a command of
+    ``toto.sabbia`` (toto-ai), so it is named only on a host that has that
+    app; any other host is told what is true there (2026-10-06)."""
+    return remedy if _has_sabbia() else NO_VAULT_HERE
+
+
 def load_vault_password() -> str:
     password = (getattr(settings, "SABBIA_VAULT_PASSWORD", "") or "").strip()
     if password:
@@ -43,10 +62,10 @@ def load_vault_password() -> str:
                 pass
     except Exception:
         pass
-    raise VaultUnavailable(
+    raise VaultUnavailable(_unavailable(
         "SABBIA_VAULT_PASSWORD is not set. Run `manage.py sabbia_init_vault` and "
         "configure this environment variable to enable encrypted agent credentials."
-    )
+    ))
 
 
 def system_strongbox():
@@ -71,9 +90,9 @@ def clear_cache() -> None:
 def open_session() -> GervazyCryptoSession:
     sb = system_strongbox()
     if not sb:
-        raise VaultUnavailable(
+        raise VaultUnavailable(_unavailable(
             "Sabbia vault not initialized. Run: manage.py sabbia_init_vault"
-        )
+        ))
     with _lock:
         session = _session_cache.get(sb.pk)
         if session is None:

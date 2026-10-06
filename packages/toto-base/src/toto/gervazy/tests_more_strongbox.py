@@ -8,6 +8,7 @@ trail must never carry a value.
 import json
 import tempfile
 from pathlib import Path
+from unittest import mock
 
 from cryptography.exceptions import InvalidTag
 from django.contrib.auth import get_user_model
@@ -188,15 +189,33 @@ class SabbiaVaultTests(TestCase):
             self.assertEqual(sabbia.load_vault_password(), "bundled")
 
     def test_nothing_anywhere_is_unavailable_with_the_fix_named(self):
-        with self.settings(SABBIA_VAULT_PASSWORD="", TOTO_RUN_DIR=self.run_dir):
+        with self.settings(SABBIA_VAULT_PASSWORD="", TOTO_RUN_DIR=self.run_dir), \
+                mock.patch.object(sabbia, "_has_sabbia", lambda: True):
             with self.assertRaisesMessage(sabbia.VaultUnavailable,
                                           "SABBIA_VAULT_PASSWORD is not set"):
                 sabbia.load_vault_password()
 
     def test_no_system_box_is_unavailable(self):
-        with self.settings(SABBIA_VAULT_PASSWORD="x", TOTO_RUN_DIR=self.run_dir):
+        with self.settings(SABBIA_VAULT_PASSWORD="x", TOTO_RUN_DIR=self.run_dir), \
+                mock.patch.object(sabbia, "_has_sabbia", lambda: True):
             with self.assertRaisesMessage(sabbia.VaultUnavailable, "not initialized"):
                 sabbia.open_session()
+            self.assertFalse(sabbia.is_available())
+
+    def test_a_host_without_the_agent_backend_is_not_sent_to_its_command(self):
+        """The remedy is ``manage.py sabbia_init_vault``, a command of
+        toto.sabbia (toto-ai). A host without that app is told what is true
+        there, and never the name of an app it does not have (2026-10-06)."""
+        with self.settings(SABBIA_VAULT_PASSWORD="", TOTO_RUN_DIR=self.run_dir), \
+                mock.patch.object(sabbia, "_has_sabbia", lambda: False):
+            for call in (sabbia.load_vault_password, sabbia.open_session):
+                with self.subTest(call=call.__name__):
+                    with self.assertRaises(sabbia.VaultUnavailable) as caught:
+                        call()
+                    sentence = str(caught.exception)
+                    self.assertEqual(sentence, sabbia.NO_VAULT_HERE)
+                    for word in ("sabbia", "Sabbia", "SABBIA", "manage.py"):
+                        self.assertNotIn(word, sentence)
             self.assertFalse(sabbia.is_available())
 
     def test_store_rotate_and_retire_a_connector_secret(self):
