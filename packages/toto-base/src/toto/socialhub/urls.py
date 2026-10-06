@@ -15,6 +15,7 @@ from toto.socialhub.views.community import (
     community_org_chart_data_by_slug,
     community_chain_graph_data,
 )
+from toto.socialhub.views.org_chart import position_create, position_delete, position_edit
 from toto.socialhub.views.community_news import (
     community_news_create,
     community_news_delete,
@@ -59,6 +60,13 @@ urlpatterns = [
     path("communities/<slug:community_slug>/news/new/", community_news_create, name="community_news_create"),
     path("communities/<slug:slug>/", CommunityDetailView.as_view(), name="community_detail"),
     path("communities/<slug:slug>/administrata/", AdministrataView.as_view(), name="administrata"),
+    # The organisation chart (2026-10-06, stage 66): POST only, for the
+    # community's head and administrators; a position is looked up within
+    # the community in the address and answers 404 otherwise.
+    path("communities/<slug:slug>/positions/", position_create, name="position_create"),
+    path("communities/<slug:slug>/positions/<int:pk>/", position_edit, name="position_edit"),
+    path("communities/<slug:slug>/positions/<int:pk>/delete/", position_delete,
+         name="position_delete"),
     path("communities/<slug:slug>/administrata/graph.json", community_chain_graph_data, name="community_chain_graph_data"),
     path("community-news/<int:pk>/edit/", community_news_update, name="community_news_update"),
     path("community-news/<int:pk>/delete/", community_news_delete, name="community_news_delete"),

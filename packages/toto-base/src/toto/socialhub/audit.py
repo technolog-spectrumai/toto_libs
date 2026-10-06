@@ -10,6 +10,7 @@ membership flow, the Clearances tab, the ingress, a shell:
 | `SOCIALHUB.CLEARANCE_CREATED` / `_CHANGED` / `_DELETED` | a clearance is made, edited (name, slug, the refill speeds), removed — with a `CLEARANCE_MEMBER_REMOVED` for everybody who held it, and their slugs in `holders` (2026-09-29) |
 | `SOCIALHUB.CLEARANCE_MEMBER_ADDED` / `_REMOVED` | a person is given or loses a clearance — `Person.clearances`, from either side, a `clear()` included |
 | `SOCIALHUB.SENIOR_ADDED` / `_REMOVED` | a senior member named or dropped |
+| `SOCIALHUB.POSITION_CREATED` / `_CHANGED` / `_DELETED` | a position of a community's organisation chart is made, changed (its name, the person assigned, what it reports to, its order: before and after) or removed — a position that is handed to another superior when its own is deleted is a `_CHANGED` of its own (2026-10-06, stage 66) |
 | `SOCIALHUB.PRIVILEGE_CHANGED` / `_REMOVED` | a community's grants (`may_*`) set or cleared |
 | `SOCIALHUB.APPLICATION_SUBMITTED` | somebody applies to join a community — every application and reference record names the application by its id and its community, never the applicant's e-mail address (2026-10-01, 37c.32; the sealed records before it keep theirs) |
 | `SOCIALHUB.APPLICATION_<STATUS>` | the application moves: verified, endorsed, invited, rejected |
@@ -42,6 +43,8 @@ APP_LABEL = "socialhub"
 
 #: The community fields whose change is worth a record.
 TRACKED = ("name", "slug", "org_type", "parent_id", "head_id")
+#: The fields of a position in an organisation chart (stage 66).
+TRACKED_POSITION = ("title", "person_id", "reports_to_id", "order")
 #: The clearance fields whose change is worth a record.
 TRACKED_CLEARANCE = ("name", "slug", "regen_security", "regen_compute", "regen_storage")
 
@@ -223,6 +226,63 @@ def _community_after(sender, instance, created, **kwargs):
 
 def _community_deleted(sender, instance, **kwargs):
     _community(instance, "community_deleted")
+
+
+# ---------------------------------------------------------------------------
+# The organisation chart (2026-10-06, stage 66)
+# ---------------------------------------------------------------------------
+
+
+def _position_facts(values) -> dict:
+    """A position's tracked values in the record's words: the person by
+    their slug, the superior by its id."""
+    from toto.people.models import Person
+
+    person_id = values.get("person_id")
+    slug = (Person.objects.filter(pk=person_id).values_list("slug", flat=True).first()
+            if person_id else None)
+    return {"title": values.get("title"), "person": slug,
+            "reports_to": values.get("reports_to_id"), "order": values.get("order")}
+
+
+def _position(position, action, **metadata):
+    try:
+        community = position.community.slug
+    except Exception:  # noqa: BLE001 - the community is going with its positions
+        community = None
+    return _record(action, object_type="socialhub.communityposition", object_id=position.pk,
+                   description=position.title,
+                   metadata={"community": community, "position": position.pk, **metadata})
+
+
+def _position_before(sender, instance, **kwargs):
+    instance._audit_before = (type(instance).objects.filter(pk=instance.pk)
+                              .values(*TRACKED_POSITION).first() if instance.pk else None)
+
+
+def _position_after(sender, instance, created, **kwargs):
+    now = {name: getattr(instance, name) for name in TRACKED_POSITION}
+    if created:
+        _position(instance, "position_created", **_position_facts(now))
+        return
+    before = getattr(instance, "_audit_before", None)
+    instance._audit_before = None
+    if not before:
+        return
+    changed = sorted(name for name in TRACKED_POSITION if before[name] != now[name])
+    if not changed:
+        return
+    names = {"person_id": "person", "reports_to_id": "reports_to"}
+    was, is_now = _position_facts(before), _position_facts(now)
+    keys = [names.get(name, name) for name in changed]
+    _position(instance, "position_changed", title=instance.title, changed=keys,
+              before={key: was[key] for key in keys},
+              after={key: is_now[key] for key in keys})
+
+
+def _position_deleted(sender, instance, **kwargs):
+    _position(instance, "position_deleted",
+              **_position_facts({name: getattr(instance, name) for name in TRACKED_POSITION}))
 
 
 # ---------------------------------------------------------------------------
@@ -419,7 +479,8 @@ def _reference_saved(sender, instance, created, **kwargs):
 def connect() -> None:
     from toto.people.models import Person
 
-    from .models import Clearance, Community, CommunityPrivilege, MembershipApplication, ReferenceRequest
+    from .models import (Clearance, Community, CommunityPosition, CommunityPrivilege,
+                         MembershipApplication, ReferenceRequest)
 
     uid = "toto.socialhub.audit."
     pre_save.connect(_community_before, sender=Community, weak=False, dispatch_uid=uid + "c_before")
@@ -428,6 +489,12 @@ def connect() -> None:
                         dispatch_uid=uid + "c_deleted")
     m2m_changed.connect(_members, sender=Person.communities.through, weak=False,
                         dispatch_uid=uid + "members")
+    pre_save.connect(_position_before, sender=CommunityPosition, weak=False,
+                     dispatch_uid=uid + "p_before")
+    post_save.connect(_position_after, sender=CommunityPosition, weak=False,
+                      dispatch_uid=uid + "p_after")
+    post_delete.connect(_position_deleted, sender=CommunityPosition, weak=False,
+                        dispatch_uid=uid + "p_deleted")
     pre_save.connect(_clearance_before, sender=Clearance, weak=False, dispatch_uid=uid + "cl_before")
     post_save.connect(_clearance_after, sender=Clearance, weak=False, dispatch_uid=uid + "cl_after")
     pre_delete.connect(_clearance_leaving, sender=Clearance, weak=False,
