@@ -163,11 +163,21 @@ file; the legacy `presentation` type stays plain either way.
 A file's type is `VaultFile.detect_type(mime, filename)`: the extension
 first (`_EXT_MAP`), then the browser's MIME type, and `text` when neither
 names anything. The types a file can be: PDF, image, HTML, text, Markdown,
-JSON, NeoJSON, YAML, XML, LaTeX, bibliography, CSV, SVG, audio, video,
+JSON, a map drawing (`.geojson`, typed `geojson`), NeoJSON, YAML, XML, LaTeX,
+bibliography, CSV, SVG, audio, video,
 Python, a sheet (`.uson`), a legacy Primula sheet (`.json`, typed `sheet`),
 a deck (`.pxml`) and a zip archive. Only svg, html,
 xml, json, pdf and pxml are read by the screener (`scanning.SCANNABLE_TYPES`);
 every other type is stored unscreened and recorded as unscreened.
+
+A map drawing (2026-10-06) is text and JSON: it is in the list of text types
+the API reads and writes (`api_views.EDITABLE_FILE_TYPES`), an empty one is
+GeoJSON's empty collection, and a download of one is served as
+`application/geo+json` (`VaultFile.DOWNLOAD_MIME`), an attachment like every
+download. A rename retypes a text file by its new ending
+(`VaultFile.type_after_rename`): `trip.json` renamed `trip.geojson` becomes a
+map drawing, unless another type was chosen with the name; a PDF, a picture,
+audio, video and an archive keep their type whatever they are called.
 
 Refused:
 
