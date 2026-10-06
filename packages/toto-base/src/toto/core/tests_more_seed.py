@@ -360,11 +360,11 @@ class IngressAllTests(TestCase):
             error = str(exc)
         return out.getvalue(), error
 
-    @override_settings(INGRESS_MODE="realistic", INGRESS_ALLOWED_APPS=["toto.comments"])
+    @override_settings(INGRESS_MODE="realistic", INGRESS_ALLOWED_APPS=["toto.people"])
     def test_an_app_with_nothing_to_seed_is_not_a_failure_even_when_strict(self):
         out, error = self.run_it(strict=True)
         self.assertIsNone(error)
-        self.assertIn("No ingress command found for 'comments'", out)
+        self.assertIn("No ingress command found for 'people'", out)
         self.assertIn("Not Found: 1", out)
 
     @override_settings(INGRESS_MODE="realistic", INGRESS_ALLOWED_APPS=["toto.verbena"])
@@ -375,7 +375,7 @@ class IngressAllTests(TestCase):
         self.assertIn("Failed: 0", out)
 
     @override_settings(INGRESS_MODE="realistic",
-                       INGRESS_ALLOWED_APPS=["toto.verbena", "toto.comments"])
+                       INGRESS_ALLOWED_APPS=["toto.verbena", "toto.people"])
     def test_a_command_that_raises_fails_a_strict_run_and_names_the_mode(self):
         target = "toto.verbena.management.commands.ingress_verbena.Command.process"
         with mock.patch(target, side_effect=RuntimeError("seed broke")):
