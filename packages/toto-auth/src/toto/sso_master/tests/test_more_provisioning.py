@@ -24,24 +24,29 @@ from .. import services
 FAST_HASHING = override_settings(
     PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
 
+# Long and unlike any hash: a two-character secret ("s1" until 2026-10-06) is
+# found in a random salt about once in two hundred runs, and failed the
+# assertion that the stored hash does not hold the secret.
+RAW_SECRET = "secret-one-not-in-any-hash"
+
 
 @FAST_HASHING
 class ProvisioningTests(TestCase):
     def _create(self, **kwargs):
         defaults = {"name": "Grafana", "client_id": "grafana",
                     "redirect_uris": ["https://p.test/grafana/cb", "https://p.test/alt"],
-                    "raw_secret": "s1"}
+                    "raw_secret": RAW_SECRET}
         defaults.update(kwargs)
         return create_relying_party(**defaults)
 
     def test_a_confidential_party_gets_its_secret_once_and_every_uri(self):
         provisioned = self._create()
         party = provisioned.relying_party
-        self.assertEqual(provisioned.client_secret, "s1")
+        self.assertEqual(provisioned.client_secret, RAW_SECRET)
         self.assertEqual(party.redirect_uri_list(),
                          ["https://p.test/grafana/cb", "https://p.test/alt"])
-        self.assertTrue(party.verify_client_secret("s1"))
-        self.assertNotIn("s1", party.client_secret_hash)
+        self.assertTrue(party.verify_client_secret(RAW_SECRET))
+        self.assertNotIn(RAW_SECRET, party.client_secret_hash)
 
     def test_a_public_party_has_no_secret(self):
         provisioned = self._create(client_id="spa", public=True, raw_secret=None)
