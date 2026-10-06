@@ -29,6 +29,14 @@
  *  - The community filter is a list of checkboxes: none ticked is every
  *    community. It is worked out here and sends nothing; the ticked ones go
  *    into the address (?community=a&community=b).
+ *  - The advanced filter (the owner, 2026-10-07: "advanced butotn that
+ *    opens a modal and you can select items to display, items go with name
+ *    and type and checkbox, the list is scroollable") is a dialog listing
+ *    every row the page holds, each with a checkbox. What is unticked there
+ *    is the filter's `hidden`: the ids of the rows to hide, read by
+ *    `passes` with the text, the kinds and the communities, so the index,
+ *    the map and nearby follow together. It sends nothing and is NOT in the
+ *    address (the list can be long): a reload shows everything again.
  *  - A pin's and a zone's words are typed in a dialog and nowhere else.
  *    Beside the map there is only the geometry: the pin to drag, Continue
  *    and Cancel. Cancel in the dialog leaves the pin on the map; a refusal
@@ -121,13 +129,18 @@
   }
 
   /* Does the index's filter let a row through?
-   * filter: {text, kinds: {kind: bool}, communities: [slug, …]}
+   * filter: {text, kinds: {kind: bool}, communities: [slug, …], hidden: {id: true}}
    * No community chosen lets every row through. One or more chosen keep the
    * rows of those communities (headquarters, areas, pins, zones) and hide
    * every other row, a person's point included: it belongs to no community.
-   * (`community: slug`, the single choice the page had, reads as one.)      */
+   * (`community: slug`, the single choice the page had, reads as one.)
+   * `hidden` is the advanced filter's: the ids of the rows the member
+   * unticked one by one. Such a row is let through by nothing; a row that is
+   * not named there is left to the other three. A row shows only when every
+   * one of the four lets it through.                                        */
   function passes(row, filter) {
     filter = filter || {};
+    if (filter.hidden && has(filter.hidden, row.id)) { return false; }
     if (filter.kinds && filter.kinds[row.kind] === false) { return false; }
     var wanted = filter.communities || (filter.community ? [filter.community] : []);
     if (wanted.length) {
@@ -190,6 +203,31 @@
   }
 
   function has(object, key) { return Object.prototype.hasOwnProperty.call(object || {}, key); }
+
+  /* The rows as the advanced filter lists them: by type (in the order of
+   * the "Show" boxes; a kind the page does not know comes last), then by
+   * name, then by id. A copy: the page's own order is the index's. */
+  var KIND_ORDER = ["person", "headquarters", "area", "pin", "zone"];
+  function byKindThenName(rows) {
+    function rank(row) {
+      var at = KIND_ORDER.indexOf(row.kind);
+      return at === -1 ? KIND_ORDER.length : at;
+    }
+    return (rows || []).slice().sort(function (a, b) {
+      return (rank(a) - rank(b)) ||
+        String(a.name || "").toLowerCase().localeCompare(String(b.name || "").toLowerCase()) ||
+        String(a.id).localeCompare(String(b.id));
+    });
+  }
+
+  /* What the advanced filter's button says: its name, and how many rows are
+   * hidden when any are. */
+  function advancedLabel(hidden, texts) {
+    texts = texts || {};
+    var n = Object.keys(hidden || {}).length;
+    if (!n) { return texts.advanced || ""; }
+    return String(texts.advanced_hidden || "%(n)s").replace("%(n)s", n);
+  }
 
   /* The communities the address ticked, as the page takes them: those it
    * knows, each once. `asked`: a list, or the one slug the page used to be
@@ -289,6 +327,7 @@
              nearby: nearby, passes: passes, centreOf: centreOf, wrapLng: wrapLng,
              createPresser: createPresser,
              communityLabel: communityLabel, knownCommunities: knownCommunities,
+             byKindThenName: byKindThenName, advancedLabel: advancedLabel,
              address: address, stepTab: stepTab, createTabs: createTabs};
   root.GeographyLocations = api;
   if (typeof module !== "undefined" && module.exports) { module.exports = api; }
@@ -335,8 +374,14 @@
                   temporary: L.layerGroup().addTo(map), route: L.layerGroup().addTo(map),
                   nearby: L.layerGroup().addTo(map), draft: L.layerGroup().addTo(map)};
 
+    /* The filter with nothing filtered. `hidden` has no prototype: a row's
+     * id is a key of it and of nothing else. */
+    function noFilter() {
+      return {text: "", kinds: {}, communities: [], hidden: Object.create(null)};
+    }
+
     var state = {
-      filter: {text: "", kinds: {}, communities: []},
+      filter: noFilter(),
       near: null,          // {centre: {lat, lng, name}, km}
       centre: null,        // the centre the next nearby search would use
       clicked: null,       // where the map was clicked last
@@ -536,9 +581,111 @@
     q("community-all").addEventListener("click", function () { tickCommunities(true); });
     q("community-none").addEventListener("click", function () { tickCommunities(false); });
 
+    /* --- the advanced filter: the rows to show, chosen one by one ---------
+     * A dialog (the page's modal) lists EVERY row the page holds, whatever
+     * the other filters say, by type and then by name: a checkbox, the name,
+     * and under it the type, the community and the moderator's mark, as a
+     * line of the index has them. All as text. Unticking changes nothing by
+     * itself: `picking` is the dialog's own copy of the hidden ids, and
+     * "Show chosen" makes it the filter's. Cancel, Escape, the X and the
+     * backdrop drop the copy. The field narrows what is LISTED, by name;
+     * All and None tick and untick the lines that are listed. Nothing is
+     * sent, and nothing goes to the address or to any storage: the ids
+     * live in `state.filter.hidden` until the page is left. */
+    var picking = null;
+    var advancedDialog = root.GeographyMap.dialog(q("advanced-dialog"),
+                                                  function () { picking = null; });
+    var advancedList = q("advanced-list"), advancedText = q("advanced-filter");
+    var advancedNone = el("li", "hidden text-sm italic opacity-60", texts.nothing || "");
+    var advancedLines = byKindThenName(rows).map(function (row) {
+      var line = el("li");
+      var label = el("label", "flex items-start gap-2 rounded px-1 py-1");
+      var tick = el("input", "mt-1 shrink-0");
+      tick.type = "checkbox";
+      tick.value = row.id;
+      tick.checked = true;
+      var name = row.name || kinds[row.kind] || "";
+      var words = el("span", "min-w-0 break-words");
+      words.appendChild(el("span", "block font-semibold", name));
+      var under = [kinds[row.kind] || row.kind];
+      if (row.community) { under.push(row.community.name); }
+      if (row.hidden) { under.push(texts.hidden || ""); }
+      words.appendChild(el("span", "block text-xs opacity-65", under.join(" · ")));
+      label.appendChild(tick);
+      label.appendChild(words);
+      line.appendChild(label);
+      advancedList.appendChild(line);
+      var made = {row: row, line: line, tick: tick, name: name.toLowerCase()};
+      tick.addEventListener("change", function () { pick(made, tick.checked); countPicked(); });
+      return made;
+    });
+    advancedList.appendChild(advancedNone);
+
+    function pick(made, on) {
+      if (!picking) { return; }
+      made.tick.checked = on;
+      if (on) { delete picking[made.row.id]; } else { picking[made.row.id] = true; }
+    }
+
+    function countPicked() {
+      say("advanced-count", fill(texts.advanced_count, {
+        n: rows.length - Object.keys(picking || {}).length, m: rows.length}));
+    }
+
+    function listed() {
+      return advancedLines.filter(function (made) { return !made.line.classList.contains("hidden"); });
+    }
+
+    /* The dialog's field: which lines are listed. What is ticked stays. */
+    function narrowAdvanced() {
+      var text = advancedText.value.trim().toLowerCase();
+      advancedLines.forEach(function (made) {
+        made.line.classList.toggle("hidden", !!text && made.name.indexOf(text) === -1);
+      });
+      advancedNone.classList.toggle("hidden", listed().length > 0);
+    }
+
+    function sayAdvanced() {
+      q("advanced-label").textContent = advancedLabel(state.filter.hidden, texts);
+    }
+
+    q("advanced-open").addEventListener("click", function () {
+      picking = Object.create(null);
+      Object.keys(state.filter.hidden).forEach(function (id) { picking[id] = true; });
+      advancedLines.forEach(function (made) { made.tick.checked = !picking[made.row.id]; });
+      advancedText.value = "";
+      narrowAdvanced();
+      countPicked();
+      advancedDialog.open();
+    });
+    advancedText.addEventListener("input", narrowAdvanced);
+    q("advanced-all").addEventListener("click", function () {
+      listed().forEach(function (made) { pick(made, true); });
+      countPicked();
+    });
+    q("advanced-none").addEventListener("click", function () {
+      listed().forEach(function (made) { pick(made, false); });
+      countPicked();
+    });
+    q("advanced-cancel").addEventListener("click", function () {
+      picking = null;
+      advancedDialog.close();
+    });
+    q("advanced-apply").addEventListener("click", function () {
+      if (!picking) { return; }
+      state.filter.hidden = picking;
+      picking = null;
+      advancedDialog.close();
+      sayAdvanced();
+      /* The opened row, now hidden: its details are closed with it. */
+      if (state.open && has(state.filter.hidden, state.open)) { closeRow(); }
+      drawRows();
+    });
+
     q("fit").addEventListener("click", fitAll);
     q("reset").addEventListener("click", function () {
-      state.filter = {text: "", kinds: {}, communities: []};
+      state.filter = noFilter();
+      sayAdvanced();
       state.near = null;
       filterBox.value = "";
       Array.prototype.forEach.call(box.querySelectorAll("[data-geo-kind]"),
@@ -637,6 +784,12 @@
         link.href = row.link;
         details.appendChild(link);
       }
+    }
+
+    function closeRow() {
+      state.open = null;
+      details.textContent = "";
+      details.classList.add("hidden");
     }
 
     function loadDetails(row) {

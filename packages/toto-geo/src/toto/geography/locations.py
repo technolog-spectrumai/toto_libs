@@ -265,6 +265,9 @@ def _texts() -> dict:
         "all_communities": _("All communities"),
         "n_communities": _("%(n)s communities"),
         "no_communities": _("There is no community to filter by yet."),
+        "advanced": _("Advanced"),
+        "advanced_hidden": _("Advanced · %(n)s hidden"),
+        "advanced_count": _("%(n)s of %(m)s chosen"),
     }
 
 
