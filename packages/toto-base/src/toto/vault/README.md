@@ -59,7 +59,7 @@ Tests: `tests_grant_admin`.
    **pairing code** shown ONCE (`{"v":1, grant_uid, magic_token, api_key,
    bucket, rights}`, plus `expires_at` and `host`). Rotate key there too, the
    new code shown once.
-2. Mounting host: Management's **Connect a bucket from another Zenobia** — or
+2. Mounting host: Management's **New bucket**, kind **Another Zenobia** — or
    add a **Bucket peer** in the admin → pick the federated host (from SSO
    pairing rows) or type a URL, paste the code. The save probes the manifest
    once and stamps the result.
@@ -693,7 +693,7 @@ pattern).
 | Files | `vault:public_list` | the tree you work in — **no zip action** |
 | Metrics | `vault:metrics` | aggregate and per-bucket figures |
 | Clearances | `vault:clearances_tab` | every bucket, the clearances keeping it, their holders; Superuser plan only |
-| Management | `vault:manage` | every bucket; New bucket, Edit, Test, Delete, Share, Connect a bucket from another Zenobia; Superuser plan only |
+| Management | `vault:manage` | every bucket; New bucket (a bucket here, on S3, or one another Zenobia shares), Edit, Test, Delete, Share; Superuser plan only |
 | Archive | `vault:archive` | the same tree again, carrying the zip actions |
 | Trash | `vault:trash` | one's trashed files (a superuser on the plan: everyone's); Restore, Delete for good, Empty my trash |
 
@@ -722,7 +722,7 @@ render probes, opens a sealed key or calls out.
 
 | door | url name | what |
 |---|---|---|
-| New bucket | `vault:manage_create` (POST) | kind from `StorageAdapter.creatable_adapters()` minus `GUIDED_KINDS` (another Zenobia has its own flow); name, owner (people search), quota, then `adapter.fields()` (and the AI shield, drawn and taken only where the assistant is installed: `toto.core.assistant.installed`); `adapter.create` (an S3 kind must pass its probe; its keys are sealed) |
+| New bucket | `vault:manage_create` (POST) | kind from `StorageAdapter.creatable_adapters()` minus `GUIDED_KINDS` (another Zenobia is a card of the same dialog with steps and doors of its own, below); name, owner (people search), quota, then `adapter.fields()` (and the AI shield, drawn and taken only where the assistant is installed: `toto.core.assistant.installed`); `adapter.create` (an S3 kind must pass its probe; its keys are sealed) |
 | owner search | `vault:manage_people` (GET, JSON) | any ACTIVE account by name, username or e-mail; answers pk, name, username — never the e-mail |
 | Edit | `vault:manage_edit` (POST) | name, owner, quota only (and the AI shield where the assistant is installed; elsewhere it is "any other field"); any other posted field refuses the whole post (`bucket_lifecycle.update_bucket`, `VAULT.BUCKET.UPDATED` before/after) |
 | Test | `vault:manage_test` (POST, JSON) | `adapter.probe`, stamped (a mount's on its pairing) |
@@ -734,11 +734,24 @@ secret field, never the access key id (`NEVER_CARRIED`), and error sentences
 are scrubbed of what was typed into them.
 
 The two-sided flow with another Zenobia plugs in through three partials:
-`vault/manage/_connect_button.html` (header), `vault/manage/_row_share.html`
-(per bucket) and `vault/manage/_extra_modals.html` (its modals), which all
-read one switch, the page's `share_connect_config` (2026-10-01: a button shows
-exactly when its modal is on the page; the old `remote_buckets_enabled` tag is
-gone) — see the next section.
+`vault/manage/_connect_steps.html` (the connect steps, drawn inside the New
+bucket dialog), `vault/manage/_row_share.html` (per bucket) and
+`vault/manage/_extra_modals.html` (the share modal and both flows' scripts),
+which all read one switch, the page's `share_connect_config` (2026-10-01: a
+button or a card shows exactly when what it opens is on the page; the old
+`remote_buckets_enabled` tag is gone) — see the next section.
+
+The New bucket dialog is ONE dialog (2026-10-06). Its "Kind of storage" row
+holds a card per kind of the registry and, where the connect doors answer
+(`sc.connect_enabled`), one more: **Another Zenobia**. A registry kind shows
+the form that posts to `vault:manage_create`; Another Zenobia shows the
+connect steps in its place, posting to the `manage_connect*` doors. Until
+that day the steps were a second dialog behind a header button, "Connect a
+bucket from another Zenobia"; the button and that dialog are gone, the doors,
+their rules and their audit records are unchanged. The cards are radios
+outside both forms (one group for the arrow keys); the form posts its kind
+through a hidden input. Choosing another card, or closing the dialog, stops
+the camera and forgets the code (`bucketConnect.follow`).
 
 Tests: `tests_management` (doors × visitors, the list in table and cards,
 Create / Edit / Delete / Test), `tests_remote_page` (the tab bar, remote rows),
@@ -784,8 +797,8 @@ nor one being deleted):
    (`vault:manage_share_revoke`, confirmed): `is_active = False` at once; the
    row stays for the record and is never revived.
 
-**Connecting side** — **Connect a bucket from another Zenobia**, a stepper
-whose doors are all JSON and take the code in the POST body from the
+**Connecting side** — **New bucket**, kind **Another Zenobia**: a stepper
+inside the New bucket dialog whose doors are all JSON and take the code in the POST body from the
 browser's memory (the code field has no `name`; no door ever answers with the
 code or any part of it; error sentences are scrubbed; `sensitive_post_parameters`
 keeps it out of error reports; nothing goes to the session draft):
