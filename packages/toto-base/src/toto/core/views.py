@@ -6,7 +6,7 @@ from django.shortcuts import redirect, render
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_safe
 import logging
-from toto.core import auth_views
+from toto.core import assistant, auth_views
 from toto.core.monitoring import superuser_on_plan
 import os
 from django.conf import settings
@@ -436,7 +436,7 @@ def _manual_feature_map(request, apps):
         "ireneo": _mounted("ireneo:overview"),
         "dracena": _mounted("dracena:lobby"),
         "manta": _mounted("manta:command_builder"),
-        "steven": apps.is_installed("toto.steven"),
+        "steven": assistant.installed(),
         # Cosmetic gate like the dashboard "Monitoring" card — Grafana enforces
         # its own superuser-only access via OIDC role mapping.
         "grafana": bool(getattr(settings, "GRAFANA_ENABLED", False))

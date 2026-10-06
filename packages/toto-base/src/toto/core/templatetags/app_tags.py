@@ -14,6 +14,18 @@ def app_installed(app_label):
     return apps.is_installed(app_label)
 
 
+@register.simple_tag
+def assistant_installed():
+    """Whether this host has the assistant (``toto.core.assistant.installed``).
+
+    ``{% assistant_installed as has_assistant %}`` — for what a page draws
+    only for the assistant: a bucket's AI shield, a sentence that names it.
+    """
+    from toto.core import assistant
+
+    return assistant.installed()
+
+
 @register.filter
 def economy_hidden(user):
     """True when this host shows ``user`` mana instead of the economy.

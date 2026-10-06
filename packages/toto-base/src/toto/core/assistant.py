@@ -23,12 +23,29 @@ Three things must be true, and an editor should not have to remember all three:
 
 from __future__ import annotations
 
+#: The assistant's app. It ships in toto-ai, which most hosts do not pin.
+APP = "toto.steven"
+
+
+def installed() -> bool:
+    """Whether this host has the assistant at all.
+
+    The ONE question for everything outside toto-ai that exists only for the
+    assistant and is not an editor's button: a bucket's AI shield (the
+    checkbox in Storage → Management, its badge, the Django admin's column and
+    field, the key in a bucket's audit record), the clause of "How mana works"
+    that names assistant requests. A host without the app shows none of it
+    and stores nothing new for it. Templates ask through
+    ``{% assistant_installed as has_assistant %}`` (``app_tags``).
+    """
+    from django.apps import apps
+
+    return apps.is_installed(APP)
+
 
 def surface_for(key: str) -> str:
     """The surface key if the assistant can be offered here, else ""."""
-    from django.apps import apps
-
-    if not apps.is_installed("toto.steven"):
+    if not installed():
         return ""
     try:
         from django.urls import reverse
