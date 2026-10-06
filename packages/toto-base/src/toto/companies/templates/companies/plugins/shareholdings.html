@@ -1,0 +1,132 @@
+{% load i18n %}
+{% comment %}The Shareholdings tab of a company's page (stage 65): holder,
+quantity, percentage, and the total recorded. Drawn only for a company and a
+signed-in viewer (plugins/community_plugins.py). The forms are drawn only
+for who may manage, and every door checks again (views.py). Names reach the
+page as text. The table scrolls sideways inside its own box on a narrow
+screen, so the page itself never does.{% endcomment %}
+<section data-testid="company-shareholdings"
+  :class="darkMode
+    ? 'border-accent-1 bg-bubble-bg-dark'
+    : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+  <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <h2 class="flex items-center gap-2 text-lg font-bold">
+        <i class="{{ community_plugin_icon }}" aria-hidden="true"></i>{% translate "Shareholdings" %}</h2>
+      <p class="mt-1 text-sm opacity-70">{% blocktranslate with name=community.name %}Who holds shares in {{ name }}, as recorded here.{% endblocktranslate %}</p>
+    </div>
+
+    <div
+      :class="darkMode
+        ? 'border-accent-1 bg-sunken-dark'
+        : 'border-accent-2 bg-sunken-light'"
+      class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
+      <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+      <span>{% translate "Total recorded shares" %}:</span>
+      <span data-testid="company-total">{{ company_register.total }}</span>
+    </div>
+  </div>
+
+  {% if company_register.rows %}
+  <div class="overflow-x-auto">
+    <table class="w-full text-left text-sm" data-testid="company-register">
+      <caption class="sr-only">{% translate "Recorded shareholdings" %}</caption>
+      <thead :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-xs uppercase opacity-70">
+        <tr>
+          <th scope="col" class="py-2 pr-3">{% translate "Holder" %}</th>
+          <th scope="col" class="py-2 pr-3 text-right">{% translate "Shares" %}</th>
+          <th scope="col" class="py-2 pr-3 text-right">{% translate "% of recorded shares" %}</th>
+          {% if company_may_manage %}<th scope="col" class="py-2"><span class="sr-only">{% translate "Actions" %}</span></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in company_register.rows %}
+        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b last:border-0">
+          <th scope="row" class="py-2 pr-3 align-middle font-semibold">
+            <a href="{% url 'socialhub:profile_details' row.holding.person.slug %}"
+               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+               class="underline-offset-4 hover:underline">{{ row.holding.person.display_name }}</a>
+          </th>
+          <td class="py-2 pr-3 text-right align-middle tabular-nums whitespace-nowrap">{{ row.quantity }}</td>
+          <td class="py-2 pr-3 text-right align-middle tabular-nums whitespace-nowrap">{% if row.percentage is None %}—{% else %}{{ row.percentage }}%{% endif %}</td>
+          {% if company_may_manage %}
+          <td class="py-2 align-middle">
+            <div class="flex flex-wrap items-center justify-end gap-2">
+              <form method="post" action="{{ company_holding_url }}" class="flex items-center gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="person" value="{{ row.holding.person.slug }}">
+                <label class="sr-only" for="company-quantity-{{ row.holding.pk }}">{% translate "Shares" %}</label>
+                <input type="text" inputmode="numeric" pattern="[0-9]{1,18}" required maxlength="18"
+                       id="company-quantity-{{ row.holding.pk }}" name="quantity" value="{{ row.quantity }}"
+                       :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                       class="w-28 rounded border px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-current/20">
+                <button type="submit"
+                        :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                        class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition hover:opacity-85">
+                  <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>{% translate "Change" %}</button>
+              </form>
+              <form method="post" action="{% url 'companies:holding_delete' community.slug row.holding.pk %}">
+                {% csrf_token %}
+                <button type="submit"
+                        :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                        class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition hover:opacity-85">
+                  <i class="fa-solid fa-trash" aria-hidden="true"></i>{% translate "Remove" %}</button>
+              </form>
+            </div>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr class="font-semibold">
+          <th scope="row" class="py-2 pr-3">{% translate "Total recorded shares" %}</th>
+          <td class="py-2 pr-3 text-right tabular-nums whitespace-nowrap">{{ company_register.total }}</td>
+          <td class="py-2 pr-3 text-right tabular-nums whitespace-nowrap">{% if company_register.empty %}—{% else %}100%{% endif %}</td>
+          {% if company_may_manage %}<td></td>{% endif %}
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% else %}
+  <div
+    :class="darkMode
+      ? 'border-accent-1 bg-sunken-dark'
+      : 'border-accent-2 bg-sunken-light'"
+    class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70" data-testid="company-register-empty">{% translate "No holdings are recorded yet." %}</div>
+  {% endif %}
+
+  <p class="mt-4 text-xs opacity-70" data-testid="company-basis">{% translate "Percentages are of the shares recorded here, not of the company's share capital: each holding over the total of the recorded holdings, rounded to two decimal places, so they need not add up to exactly 100. With no shares recorded there is no percentage." %}</p>
+  <p class="mt-1 text-xs opacity-70">{% translate "Holding shares and being a member are separate: a holder need not be a member, and a holding gives no access to the community." %}</p>
+
+  {% if company_may_manage %}
+  <form method="post" action="{{ company_holding_url }}" data-testid="company-holding-form"
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="mt-5 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-end">
+    {% csrf_token %}
+    <label class="block min-w-0 flex-1 space-y-1">
+      <span class="text-xs font-semibold opacity-70">{% translate "Holder" %}</span>
+      <select name="person" required
+              :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+              class="w-full rounded border px-2 py-2">
+        <option value="">{% translate "Choose a person" %}</option>
+        {% for person in company_people %}<option value="{{ person.slug }}">{{ person.display_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="block space-y-1">
+      <span class="text-xs font-semibold opacity-70">{% translate "Shares" %}</span>
+      <input type="text" inputmode="numeric" pattern="[0-9]{1,18}" required maxlength="18" name="quantity"
+             :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="w-full rounded border px-3 py-2 text-right tabular-nums outline-none focus:ring-2 focus:ring-current/20 sm:w-40">
+    </label>
+    <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+      <i class="fa-solid fa-plus" aria-hidden="true"></i>{% translate "Record holding" %}</button>
+  </form>
+  <p class="mt-2 text-xs opacity-70">{% translate "One holding per person: recording a person who already has one changes its quantity. Whole shares only, zero or more." %}</p>
+  {% endif %}
+</section>

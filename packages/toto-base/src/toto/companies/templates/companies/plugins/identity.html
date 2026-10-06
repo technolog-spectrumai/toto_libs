@@ -1,0 +1,49 @@
+{% load i18n %}
+{% comment %}A company's ID number on its page (stage 65). Drawn only for a
+community whose kind is company and a signed-in viewer
+(plugins/community_plugins.py); the form only for who may manage, and the
+door checks again (views.number). The number is text and reaches the page
+escaped.{% endcomment %}
+<section data-testid="company-identity"
+  :class="darkMode
+    ? 'border-accent-1 bg-bubble-bg-dark'
+    : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div class="min-w-0">
+      <h2 class="flex items-center gap-2 text-lg font-bold">
+        <i class="{{ community_plugin_icon }}" aria-hidden="true"></i>{% translate "Company" %}</h2>
+      <p class="mt-1 text-sm opacity-70">{% translate "This community is a company." %}</p>
+    </div>
+
+    <div
+      :class="darkMode
+        ? 'border-accent-1 bg-sunken-dark'
+        : 'border-accent-2 bg-sunken-light'"
+      class="min-w-0 rounded-xl border p-4 sm:min-w-[16rem]">
+      <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+        <i class="fa-solid fa-hashtag" aria-hidden="true"></i>{% translate "Company ID number" %}</p>
+      <p class="mt-2 break-all font-mono text-sm font-semibold" data-testid="company-id-number">{% if company_id_number %}{{ company_id_number }}{% else %}<span class="font-sans font-normal italic opacity-70">{% translate "Not recorded." %}</span>{% endif %}</p>
+    </div>
+  </div>
+
+  {% if company_may_manage %}
+  <form method="post" action="{{ company_number_url }}" data-testid="company-number-form"
+        class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+    {% csrf_token %}
+    <label class="block min-w-0 flex-1 space-y-1">
+      <span class="text-xs font-semibold opacity-70">{% translate "Company ID number" %}</span>
+      <input type="text" name="id_number" value="{{ company_id_number }}" maxlength="{{ company_id_number_max }}"
+             autocomplete="off" spellcheck="false"
+             :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="w-full rounded border px-3 py-2 font-mono outline-none focus:ring-2 focus:ring-current/20">
+    </label>
+    <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+      <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>{% translate "Save" %}</button>
+  </form>
+  <p class="mt-2 text-xs opacity-70">{% translate "Kept as you type it, with its leading zeros, dashes and letters. Leave it empty to clear it." %}</p>
+  {% endif %}
+</section>
