@@ -12,15 +12,16 @@ from urllib.error import HTTPError, URLError
 
 from django.apps import apps
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
-from toto.geography import places, routing
+from toto.geography import places, provider, routing
 from toto.geography.models import GeographyUsageEvent
-from toto.geography.testing import (Economy, client_of, fresh_cache, member, no_funds, op, post,
-                                    refusing_ledger)
+from toto.geography.testing import (Economy, ProviderAnswer, client_of, fresh_cache, member,
+                                    no_funds, op, post, provider_answering, refusing_ledger)
 
-URLOPEN = "toto.geography.routing.urlopen"
+#: Where the router is asked: the capped reader's ``urlopen``.
+URLOPEN = "toto.geography.provider.urlopen"
 A = {"lat": 52.2297, "lng": 21.0122}
 B = {"lat": 54.352, "lng": 18.6466}
 LINE = [[21.0122, 52.2297], [20.1234, 53.4321], [18.6466, 54.352]]
@@ -34,22 +35,25 @@ ROUTING = {"enabled": True, "timeout": 10, "endpoints": {
 FLOAT = re.compile(r"-?\d{1,3}\.\d{4,}")
 
 
-class _Response:
-    def __init__(self, payload):
-        self.body = json.dumps(payload).encode()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def read(self):
-        return self.body
+def answering(payload=OSRM, piece=None):
+    return provider_answering(URLOPEN, payload, piece)
 
 
-def answering(payload=OSRM):
-    return mock.patch(URLOPEN, return_value=_Response(payload))
+def route_of(**changes):
+    """The router's answer with one thing of its first route changed; a
+    value of ``...`` takes the key out."""
+    route = {**OSRM["routes"][0], **changes}
+    return {"code": "Ok", "routes": [{key: value for key, value in route.items()
+                                      if value is not ...}]}
+
+
+def line_of(coordinates):
+    """The router's answer with other corners; ``...`` gives a line with no
+    ``coordinates`` at all."""
+    geometry = {"type": "LineString"}
+    if coordinates is not ...:
+        geometry["coordinates"] = coordinates
+    return route_of(geometry=geometry)
 
 
 def body(**changes):
@@ -207,6 +211,93 @@ class DoorTests(RouteTestCase):
                 self.assertEqual(post(self.client, self.url, body()).status_code, 503)
         self.assertFalse(self.events().exists())
 
+    def test_an_answer_that_is_not_shaped_as_a_route_is_503_and_free(self):
+        """Each of these is HTTP 200 with ``"code": "Ok"``. They used to be a
+        500 (a KeyError, an AttributeError, a TypeError), or a charged
+        answer the page could not read or draw."""
+        odd = (
+            {"code": "Ok", "routes": {"a": 1}}, {"code": "Ok", "routes": ["x"]},
+            {"code": "Ok", "routes": [5]}, {"code": "Ok", "routes": 5},
+            {"code": "Ok", "routes": "abc"}, {"code": "Ok", "routes": [[OSRM["routes"][0]]]},
+            route_of(distance=None), route_of(duration=None), route_of(distance=...),
+            route_of(duration=...), route_of(distance="339512.4"), route_of(duration=True),
+            route_of(distance=-1), route_of(distance=10 ** 400), route_of(duration=[1]),
+            route_of(geometry=None), route_of(geometry=...),
+            route_of(geometry={"type": "Polygon", "coordinates": LINE}),
+            line_of("abc"), line_of([]), line_of(...), line_of(None), line_of(LINE[:1]),
+            line_of({"0": [1, 2], "1": [3, 4]}), line_of([[21.0, "52.2"], [18.6, 54.3]]),
+            line_of([[21.0], [18.6, 54.3]]), line_of([[True, False], [18.6, 54.3]]),
+            line_of([21.0, 52.2, 18.6, 54.3]), line_of([[21.0, None], [18.6, 54.3]]),
+            b'{"code": "Ok", "routes": [{"distance": 1e999, "duration": 5, "geometry": '
+            b'{"type": "LineString", "coordinates": [[21, 52], [18, 54]]}}]}',
+            b'{"code": "Ok", "routes": [{"distance": 5, "duration": NaN, "geometry": '
+            b'{"type": "LineString", "coordinates": [[21, 52], [18, 54]]}}]}',
+            b'{"code": "Ok", "routes": [{"distance": 5, "duration": 5, "geometry": '
+            b'{"type": "LineString", "coordinates": [[21, 52], [Infinity, 54]]}}]}',
+            b'{"code": "Ok", "routes": ' + b"[" * 100000,
+        )
+        for index, payload in enumerate(odd):
+            with self.subTest(case=index, payload=repr(payload)[:70]), answering(payload), \
+                    mock.patch.object(routing, "USER_LIMIT", 1000), \
+                    self.assertLogs("toto.geography.routing", "WARNING") as logs:
+                response = post(self.client, self.url, body())
+                self.assertEqual(response.status_code, 503)
+                self.assertEqual(response["Cache-Control"], "no-store")
+                self.assertIn("not charged", response.json()["error"])
+            self.assertIsNone(FLOAT.search("\n".join(logs.output)))
+        self.assertFalse(self.events().exists())
+
+    def test_what_is_answered_is_what_the_page_can_draw(self):
+        """A third number in a point (a height) is left out; whole numbers
+        are numbers too."""
+        with answering(line_of([[21, 52, 110.5], [18.6466, 54.352, 3]])):
+            data = post(self.client, self.url, body()).json()
+        self.assertEqual(data["line"], {"type": "LineString",
+                                        "coordinates": [[21, 52], [18.6466, 54.352]]})
+        self.assertTrue(data["charged"])
+        with answering(route_of(distance=0, duration=0)):
+            data = post(self.client, self.url, body()).json()
+        self.assertEqual((data["distance_km"], data["duration_min"]), (0.0, 0.0))
+
+    def test_an_answer_past_the_cap_is_503_and_free(self):
+        self.assertEqual(routing.ANSWER_MAX, 8 * 1024 * 1024)
+        size = len(json.dumps(OSRM).encode())
+        with mock.patch.object(routing, "ANSWER_MAX", size - 1), answering(), \
+                self.assertLogs("toto.geography.routing", "WARNING"):
+            response = post(self.client, self.url, body())
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(self.events().exists())
+        with mock.patch.object(routing, "ANSWER_MAX", size), answering():
+            self.assertEqual(post(self.client, self.url, body()).status_code, 200)
+
+    def test_an_answer_that_trickles_past_the_deadline_is_503_and_free(self):
+        """The router sends a byte at a time and three seconds pass at
+        every look at the clock: ten seconds after the request went out the
+        reading stops, however much is still to come."""
+        clock = iter(range(0, 100_000, 3))
+        answer = []
+
+        def opened(*args, **kwargs):
+            answer.append(ProviderAnswer(json.dumps(OSRM).encode(), piece=1))
+            return answer[-1]
+
+        with mock.patch("toto.geography.provider.time.monotonic", side_effect=lambda: next(clock)), \
+                mock.patch(URLOPEN, side_effect=opened), \
+                self.assertLogs("toto.geography.routing", "WARNING") as logs:
+            response = post(self.client, self.url, body())
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("TimeoutError", "\n".join(logs.output))
+        self.assertLessEqual(answer[0].reads, 4, "it stopped reading at the deadline")
+        self.assertFalse(self.events().exists())
+
+    def test_a_refusal_s_body_is_read_with_a_cap_too(self):
+        huge = HTTPError("https://router.test", 400, "Bad Request", {},
+                         io.BytesIO(b'{"code": "NoRoute", "message": "' + b"x" * 70_000 + b'"}'))
+        with mock.patch(URLOPEN, side_effect=huge), \
+                self.assertLogs("toto.geography.routing", "WARNING"):
+            self.assertEqual(post(self.client, self.url, body()).status_code, 503)
+        self.assertEqual(routing.REFUSAL_MAX, 64 * 1024)
+
     def test_no_route_is_answered_and_free(self):
         refused = HTTPError("https://router.test", 400, "Bad Request", {},
                             io.BytesIO(b'{"code": "NoRoute", "message": "Impossible route"}'))
@@ -256,6 +347,57 @@ class DoorTests(RouteTestCase):
         self.assertEqual(routing.DEFAULT_ROUTING_SETTINGS["timeout"], 10)
         for url in endpoints.values():
             self.assertTrue(url.startswith("https://routing.openstreetmap.de/"))
+
+
+class ReaderTests(SimpleTestCase):
+    """``provider.read_capped``: so much, and by then."""
+
+    def test_it_reads_the_whole_answer_one_socket_read_at_a_time(self):
+        answer = ProviderAnswer(b"abcdefghij", piece=3)
+        self.assertEqual(provider.read_capped(answer, 10, float("inf")), b"abcdefghij")
+        self.assertEqual(answer.reads, 5, "four pieces and the end")
+
+    def test_one_byte_past_the_cap_is_a_value_error(self):
+        with self.assertRaisesRegex(ValueError, "larger than this server reads"):
+            provider.read_capped(ProviderAnswer(b"abcdefghijk"), 10, float("inf"))
+        answer = ProviderAnswer(b"x" * 1000, piece=10)
+        with self.assertRaises(ValueError):
+            provider.read_capped(answer, 25, float("inf"))
+        self.assertEqual(answer.reads, 3, "it stops at the read that passes the cap")
+
+    def test_past_the_deadline_is_a_timeout_and_nothing_more_is_read(self):
+        answer = ProviderAnswer(b"x" * 1000, piece=1)
+        clock = iter([1.0, 2.0, 3.0, 4.0, 5.0])
+        with mock.patch("toto.geography.provider.time.monotonic", side_effect=lambda: next(clock)), \
+                self.assertRaises(TimeoutError):
+            provider.read_capped(answer, 10_000, 3.5)
+        self.assertEqual(answer.reads, 3)
+        self.assertTrue(issubclass(TimeoutError, OSError), "a provider error, so a 503")
+
+    def test_a_response_with_no_read1_is_read_all_the_same(self):
+        class Plain:
+            def __init__(self):
+                self.left = [b"ab", b"cd", b""]
+
+            def read(self, size):
+                return self.left.pop(0)
+
+        self.assertEqual(provider.read_capped(Plain(), 10, float("inf")), b"abcd")
+
+    def test_a_body_that_is_no_json_or_nested_too_deep_is_a_value_error(self):
+        for body in (b"<html>", b"\xff\xfe", b"[" * 100000, b'{"a":' * 50000):
+            with self.subTest(body=body[:6]), self.assertRaises(ValueError):
+                provider.parse(body)
+        self.assertEqual(provider.parse(b'{"a": [1, 2]}'), {"a": [1, 2]})
+
+    def test_the_deadline_runs_from_before_the_request_is_sent(self):
+        clock = iter([100.0, 100.0, 100.0])
+        with mock.patch("toto.geography.provider.time.monotonic", side_effect=lambda: next(clock)), \
+                mock.patch("toto.geography.provider.read_capped", return_value=b"{}") as read, \
+                mock.patch(URLOPEN, side_effect=lambda *a, **k: ProviderAnswer(b"{}")) as opened:
+            self.assertEqual(provider.fetch_json("request", timeout=7, limit=99), {})
+        self.assertEqual(opened.call_args.kwargs, {"timeout": 7})
+        self.assertEqual(read.call_args.args[1:], (99, 107.0))
 
 
 class ForgottenTests(RouteTestCase):

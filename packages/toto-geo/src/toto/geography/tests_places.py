@@ -25,11 +25,14 @@ from toto.geography import charging, geocode, places
 from toto.geography.charging import Refusal
 from toto.geography.models import GeographyQuotaPolicy, GeographyUsageEvent
 from toto.geography.testing import (Economy, client_of, fresh_cache, member, no_funds, op, post,
-                                    refusing_ledger)
+                                    provider_answering, refusing_ledger)
 
 ON = {"enabled": True}
 OFF = {"enabled": False}
-URLOPEN = "toto.geography.geocode.urlopen"
+#: Where the search asks its provider: the capped reader's ``urlopen``.
+URLOPEN = "toto.geography.provider.urlopen"
+#: The copied adapter's own, which only its own tests reach.
+ADAPTER_URLOPEN = "toto.geography.geocode.urlopen"
 
 GDANSK = [{
     "display_name": "Gdańsk, województwo pomorskie, Polska",
@@ -53,27 +56,12 @@ BAD_BODIES = (("not json", b"<html>busy</html>"), ("not utf-8", b"\xff\xfe\xfa")
               ("not a list", b'{"error": "busy"}'))
 
 
-class _Response:
-    def __init__(self, body):
-        self.body = body
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def read(self):
-        return self.body
+def answering(payload, target=URLOPEN):
+    return provider_answering(target, payload)
 
 
-def answering(payload):
-    body = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
-    return mock.patch(URLOPEN, return_value=_Response(body))
-
-
-def failing(exc):
-    return mock.patch(URLOPEN, side_effect=exc)
+def failing(exc, target=URLOPEN):
+    return mock.patch(target, side_effect=exc)
 
 
 def unthrottled(test):
@@ -108,20 +96,38 @@ class CopiedAdapterTests(SimpleTestCase):
 
     @override_settings(LOCATIONS_GEOCODING=ON)
     def test_results_carry_float_coordinates(self):
-        with answering(GDANSK):
+        with answering(GDANSK, ADAPTER_URLOPEN):
             results = geocode.search_places("Gdansk")
         self.assertEqual((results[0]["lat"], results[0]["lng"]), (54.352, 18.6466))
 
     @override_settings(LOCATIONS_GEOCODING=ON)
     def test_the_raising_search_tells_failure_from_nothing_found(self):
-        with answering([]):
+        with answering([], ADAPTER_URLOPEN):
             self.assertEqual(geocode.search_places("zzzz"), [])
         for name, exc in PROVIDER_FAILURES:
-            with self.subTest(name), failing(exc), \
+            with self.subTest(name), failing(exc, ADAPTER_URLOPEN), \
                     self.assertLogs("toto.geography.geocode", "WARNING") as logs:
                 with self.assertRaises(geocode.GeocodingUnavailable):
                     geocode.search_places("Gdańsk")
             self.assertNotIn("Gdańsk", "\n".join(logs.output))
+
+    @override_settings(LOCATIONS_GEOCODING=ON)
+    def test_the_search_asks_through_the_capped_reader_not_the_adapter_s_own_fetch(self):
+        """The adapter's own fetch reads whatever comes and the file stays
+        the parked map's: the service builds the same request from the
+        adapter's parts and reads the answer itself."""
+        config = geocode.geocoding_settings()
+        with answering(GDANSK) as opened, mock.patch(ADAPTER_URLOPEN) as adapter:
+            results = places.ask_provider("Gdańsk Główny", config)
+        adapter.assert_not_called()
+        self.assertEqual(results, geocode.normalize_forward_geocode_payload(GDANSK))
+        request = opened.call_args.args[0]
+        self.assertEqual(request.full_url, geocode.build_forward_geocode_url("Gdańsk Główny",
+                                                                             config))
+        self.assertEqual(dict(request.header_items()),
+                         {key.capitalize(): value
+                          for key, value in geocode.geocoding_headers(config).items()})
+        self.assertEqual(opened.call_args.kwargs["timeout"], config["timeout"])
 
 
 @override_settings(LOCATIONS_GEOCODING=ON, GEOGRAPHY_GEOCODE_CACHE_SECONDS=3600)
@@ -289,6 +295,63 @@ class ChargingTests(ServiceTestCase):
                     self.assertLogs("toto.geography.geocode", "WARNING"):
                 self.assertRefused(503, lambda: places.search(self.user, "Gdansk", op()))
         self.assertFalse(self.events().exists())
+
+
+class ProviderAnswerTests(ServiceTestCase):
+    """What is taken of the provider's answer: so much and no more."""
+
+    def test_an_answer_past_the_cap_is_503_and_free(self):
+        self.assertEqual(places.ANSWER_MAX, 1024 * 1024)
+        body = json.dumps(GDANSK * 40).encode()
+        with mock.patch.object(places, "ANSWER_MAX", len(body) - 1), answering(body), \
+                self.assertLogs("toto.geography.geocode", "WARNING") as logs:
+            refusal = self.assertRefused(503, lambda: places.search(self.user, "Gdansk", op()))
+        self.assertIn("not charged", str(refusal))
+        self.assertIn("larger than this server reads", "\n".join(logs.output))
+        self.assertFalse(self.events().exists())
+        with mock.patch.object(places, "ANSWER_MAX", len(body)), answering(body):
+            self.assertTrue(places.search(self.user, "Gdansk", op())[1], "the cap itself fits")
+
+    def test_an_answer_nested_past_the_parser_s_depth_is_503_and_free(self):
+        with answering(b"[" * 100000), self.assertLogs("toto.geography.geocode", "WARNING"):
+            self.assertRefused(503, lambda: places.search(self.user, "Gdansk", op()))
+        self.assertFalse(self.events().exists())
+
+    def test_an_answer_that_trickles_past_the_deadline_is_503_and_free(self):
+        clock = iter(range(0, 10_000, 3))      # three seconds pass at every look
+        with mock.patch("toto.geography.provider.time.monotonic", side_effect=lambda: next(clock)), \
+                provider_answering(URLOPEN, GDANSK, piece=1) as opened, \
+                self.assertLogs("toto.geography.geocode", "WARNING") as logs:
+            self.assertRefused(503, lambda: places.search(self.user, "Gdansk", op()))
+        self.assertEqual(opened.call_count, 1)
+        self.assertIn("TimeoutError", "\n".join(logs.output))
+        self.assertFalse(self.events().exists())
+
+    def test_a_hit_off_the_globe_is_left_out_and_a_label_that_is_no_text_dropped(self):
+        odd = [
+            {"display_name": {"html": "<b>x</b>"}, "name": 7, "lat": "52.1", "lon": "21.1"},
+            {"display_name": "Nowhere", "lat": "999", "lon": "21.0"},
+            {"display_name": "Nowhere either", "lat": "52.0", "lon": "-181"},
+            {"display_name": "Warszawa", "lat": "52.2297", "lon": "21.0122"},
+        ]
+        with answering(odd):
+            results, charged = places.search(self.user, "Warsaw", op())
+        self.assertEqual(results, [{"label": "", "lat": 52.1, "lng": 21.1},
+                                   {"label": "Warszawa", "lat": 52.2297, "lng": 21.0122}])
+        self.assertTrue(charged)
+
+    def test_an_answer_with_no_hit_on_the_globe_is_empty_and_free(self):
+        with answering([{"display_name": "Nowhere", "lat": "91", "lon": "0"}]):
+            self.assertEqual(places.search(self.user, "Nowhere", op()), ([], False))
+        self.assertFalse(self.events().exists())
+
+    def test_what_the_cache_gives_back_is_trimmed_too(self):
+        self.assertEqual(places._trim("not a list"), [])
+        self.assertEqual(places._trim([7, None, {"label": "x"}, {"label": "y", "lat": True,
+                                                                  "lng": 1}]), [])
+        self.assertEqual(places._trim([{"label": 5, "name": "Gdańsk", "lat": 54.3, "lng": 18.6,
+                                        "type": "city"}]),
+                         [{"label": "Gdańsk", "lat": 54.3, "lng": 18.6}])
 
 
 class RefusalTests(ServiceTestCase):

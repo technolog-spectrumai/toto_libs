@@ -74,6 +74,41 @@ def fresh_cache(test):
     test.addCleanup(cache.clear)
 
 
+class ProviderAnswer:
+    """An outside service's answer as ``urlopen`` hands it over, read in
+    pieces as ``provider.read_capped`` reads it, or whole. ``reads`` counts
+    the reads; ``piece`` is the most one read gives (a slow service gives
+    little at a time)."""
+
+    def __init__(self, body: bytes, piece: int | None = None):
+        self.body, self.at, self.reads, self.piece = body, 0, 0, piece
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read1(self, size=-1):
+        self.reads += 1
+        left = len(self.body) - self.at
+        take = left if size is None or size < 0 else min(left, size)
+        if self.piece is not None:
+            take = min(take, self.piece)
+        chunk = self.body[self.at:self.at + take]
+        self.at += take
+        return chunk
+
+    read = read1
+
+
+def provider_answering(target, payload, piece=None):
+    """Patch ``urlopen`` at ``target`` to answer ``payload`` (bytes, or
+    anything JSON holds), a fresh answer for every call."""
+    body = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+    return mock.patch(target, side_effect=lambda *args, **kwargs: ProviderAnswer(body, piece))
+
+
 SQUARE = [[52.0, 21.0], [52.0, 21.1], [52.1, 21.1], [52.1, 21.0]]
 BOWTIE = [[52.0, 21.0], [52.1, 21.1], [52.0, 21.1], [52.1, 21.0]]
 

@@ -32,6 +32,13 @@ THE PROVIDER THROTTLE is one ``toto.core.ratelimit`` key shared by all
 members, one call a second: Nominatim's usage policy. It lives in the cache
 and does not hold while the cache is down.
 
+THE PROVIDER'S ANSWER is read with a cap and under a deadline (``provider``)
+and trimmed before it is cached, charged or shown: a hit is a label that is
+text and a point that is on the globe, and anything else of it is left out.
+``geocode.py`` is the parked map's adapter, copied byte for byte, and its
+own fetch reads whatever comes; so the request is made here, from that
+file's own parts (the address, the headers, the reading of the payload).
+
 PRIVACY. The charge's description and the usage event say "Place search",
 never the text; the audit record says the same.
 """
@@ -39,7 +46,9 @@ never the text; the audit record says the same.
 from __future__ import annotations
 
 import logging
+import math
 import time
+from urllib.request import Request
 
 from django.conf import settings
 from django.core.cache import cache
@@ -50,13 +59,17 @@ from toto.core import ratelimit
 from toto.quota.api import InArrears, QuotaExceeded
 from toto.quota.charge import InsufficientFunds
 
-from . import audit, charging, metrics
+from . import audit, charging, metrics, provider
 from .charging import Refusal
 from .geocode import (
+    PROVIDER_ERRORS,
     GeocodingUnavailable,
+    build_forward_geocode_url,
     geocoding_enabled,
+    geocoding_headers,
     geocoding_settings,
-    search_places,
+    log_provider_failure,
+    normalize_forward_geocode_payload,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,6 +84,9 @@ PROVIDER_LIMIT = 1
 PROVIDER_WINDOW = 1
 #: How long a call may wait for the provider's next free second (seconds).
 PROVIDER_WAIT = 2.0
+#: The most the provider's answer may weigh. Five hits with their address
+#: parts are a few kilobytes.
+ANSWER_MAX = 1024 * 1024
 
 #: What the ledger and the usage event say: the kind of action, nothing more.
 SEARCH_LABEL = "Place search"
@@ -167,10 +183,46 @@ def wait_for_provider(key, *, limit=None, wait=None):
         time.sleep(pause)
 
 
+def ask_provider(text, config) -> list[dict]:
+    """The provider's hits for ``text``, read with a cap and under a
+    deadline. ``GeocodingUnavailable`` (logged, without the text) where it
+    cannot be reached or answers something that is no list of places; an
+    empty list where it answers and finds nothing."""
+    request = Request(build_forward_geocode_url(text, config),
+                      headers=geocoding_headers(config))
+    try:
+        payload = provider.fetch_json(request, timeout=config.get("timeout", 8),
+                                      limit=ANSWER_MAX)
+        return normalize_forward_geocode_payload(payload)
+    except PROVIDER_ERRORS as exc:
+        log_provider_failure("search", exc)
+        raise GeocodingUnavailable("search") from exc
+
+
+def _on_the_globe(lat, lng) -> bool:
+    for number in (lat, lng):
+        if isinstance(number, bool) or not isinstance(number, (int, float)) \
+                or not math.isfinite(number):
+            return False
+    return -90 <= lat <= 90 and -180 <= lng <= 180
+
+
 def _trim(results) -> list[dict]:
-    """What the page gets: a label and a point for each hit."""
-    return [{"label": hit.get("label") or hit.get("name") or "",
-             "lat": hit["lat"], "lng": hit["lng"]} for hit in results]
+    """What the page gets: a label and a point for each hit.
+
+    The provider is outside, and what it says is drawn on the map and may
+    become a route's end or a saved point: a label is kept only where it is
+    text, and a hit whose point is not on the globe is left out (every door
+    would refuse it later). A list emptied here is an empty answer, and an
+    empty answer is not charged."""
+    hits = []
+    for hit in results if isinstance(results, list) else ():
+        if not isinstance(hit, dict) or not _on_the_globe(hit.get("lat"), hit.get("lng")):
+            continue
+        label = next((text for text in (hit.get("label"), hit.get("name"))
+                      if isinstance(text, str) and text), "")
+        hits.append({"label": label, "lat": hit["lat"], "lng": hit["lng"]})
+    return hits
 
 
 def search(user, query, op) -> tuple[list[dict], bool]:
@@ -192,7 +244,7 @@ def search(user, query, op) -> tuple[list[dict], bool]:
     if value is _MISS:
         wait_for_provider(PROVIDER_KEY)
         try:
-            value = search_places(text, config)
+            value = ask_provider(text, config)
         except GeocodingUnavailable:
             raise Refusal(_("Place search is not answering. Try again later; "
                             "this search was not charged."), 503) from None
