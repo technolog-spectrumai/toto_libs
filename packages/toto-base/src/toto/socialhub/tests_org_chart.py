@@ -281,3 +281,37 @@ class ReadingTests(ChartTestCase):
     def test_an_empty_chart(self):
         self.assertEqual(org_chart.chart_of(self.firm), [])
         self.assertEqual(org_chart.nodes_of(self.firm), [])
+
+
+class PersonalDataTests(ChartTestCase):
+    """"Download my data" holds the positions a member is assigned to, and
+    nobody else's."""
+
+    def tables(self, person):
+        from toto.core.personal_data import tables_for
+
+        return {table.name: table.rows for table in tables_for(person.user)}
+
+    def test_a_members_copy_holds_their_positions(self):
+        chief = self.make("Chief", person=self.bob)
+        self.make("Lead", chief, person=self.ada)
+        self.make("Director", person=self.ada, community=self.firm)
+        self.make("Clerk", chief, person=self.cy)
+        rows = self.tables(self.ada)["community_positions"]
+        self.assertEqual([(row["community_slug"], row["position"], row["reports_to"])
+                          for row in rows],
+                         [("firm", "Director", ""), ("guild", "Lead", "Chief")])
+        self.assertEqual(set(rows[0]), {"community", "community_slug", "position",
+                                        "reports_to", "since", "changed"})
+
+    def test_it_names_nobody_else(self):
+        chief = self.make("Chief", person=self.bob)
+        self.make("Lead", chief, person=self.ada)
+        text = repr(self.tables(self.ada)["community_positions"])
+        self.assertNotIn("Bob", text)
+        self.assertNotIn("bob", text)
+
+    def test_a_member_with_no_position_gets_an_empty_table(self):
+        self.make("Chief", person=self.bob)
+        self.assertEqual(self.tables(self.cy)["community_positions"], [])
+

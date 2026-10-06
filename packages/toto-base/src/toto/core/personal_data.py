@@ -178,6 +178,21 @@ def _socialhub(user, person) -> list[Table]:
         tables.append(Table(
             "privacy_acceptances", _("The versions of the privacy notice you accepted, and when."),
             rows_of(PrivacyAcceptance.objects.filter(person=person).order_by("version"))))
+        # The positions the member is assigned to in a community's
+        # organisation chart (2026-10-06): the community, the position and
+        # what it reports to. Never who else is in the chart.
+        from toto.socialhub.models import CommunityPosition
+
+        tables.append(Table(
+            "community_positions",
+            _("The positions you hold in a community's organisation chart."),
+            [{"community": plain(position.community.name),
+              "community_slug": position.community.slug,
+              "position": plain(position.title),
+              "reports_to": plain(position.reports_to.title) if position.reports_to_id else "",
+              "since": plain(position.created_at), "changed": plain(position.updated_at)}
+             for position in CommunityPosition.objects.filter(person=person)
+             .select_related("community", "reports_to").order_by("community__name", "pk")]))
     return tables
 
 
