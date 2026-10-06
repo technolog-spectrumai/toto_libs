@@ -24,6 +24,19 @@
  *    temporary point is clicked away) the end is cleared and stays cleared
  *    until the member chooses again: no other point steps into its place, so
  *    a charged route never runs between two points nobody chose.
+ *  - A longitude leaves the page between -180 and 180. Leaflet draws the
+ *    world again to the left and to the right of itself, and a click on a
+ *    copy reads 381 where the place is at 21: every door would refuse it. A
+ *    point is brought home by itself; a zone's outline is moved as a whole,
+ *    by the turn of its first corner, so a ring is never torn in two.
+ *
+ * THE RULES THE PAGE KEEPS
+ *  - One click, one meaning. While the zone form is open a click is a
+ *    corner; while the point form is open it moves the pin; otherwise it is
+ *    a temporary point. The two forms are never open together, and each has
+ *    a Cancel that puts back what is saved and gives the click back.
+ *  - A search hit that is picked moves the pin only while the point form is
+ *    open. With the form closed it moves the map and nothing else.
  */
 (function (root) {
   "use strict";
@@ -45,7 +58,27 @@
 
   function round6(value) { return Math.round(Number(value) * 1e6) / 1e6; }
 
-  function pair(end) { return {lat: round6(end.lat), lng: round6(end.lng)}; }
+  /* A longitude as the doors take it. One that is already between -180 and
+   * 180 is left as it is, to the last digit. */
+  function wrapLng(lng) {
+    var value = Number(lng);
+    if (!isFinite(value) || (value >= -180 && value <= 180)) { return value; }
+    return ((value + 180) % 360 + 360) % 360 - 180;
+  }
+
+  function pair(end) { return {lat: round6(end.lat), lng: round6(wrapLng(end.lng))}; }
+
+  /* A zone's corners, moved together by as many whole turns as bring the
+   * first one home. A ring that still leaves -180..180 after that lies
+   * across the date line, and the server says so. */
+  function homeRing(outline) {
+    var corners = outline || [];
+    if (!corners.length) { return []; }
+    var turn = Number(corners[0][1]) - wrapLng(corners[0][1]);
+    return corners.map(function (corner) {
+      return [round6(corner[0]), round6(Number(corner[1]) - turn)];
+    });
+  }
 
   /* createController({fetch, urls, csrf, saved, mint})
    *   urls: {search, route, savePoint, clearPoint, saveZone, clearZone}
@@ -126,8 +159,8 @@
       /* A point the member clicked. Kept here, sent nowhere. */
       placeTemporary: function (lat, lng, label) {
         counter += 1;
-        var point = {id: "t" + counter, kind: "temporary", lat: round6(lat), lng: round6(lng),
-                     label: label || ""};
+        var point = {id: "t" + counter, kind: "temporary", lat: round6(lat),
+                     lng: round6(wrapLng(lng)), label: label || ""};
         state.temporary.push(point);
         return point;
       },
@@ -212,7 +245,7 @@
 
       savePoint: function (point) {
         return press("point", urls.savePoint, {
-          lat: round6(point.lat), lng: round6(point.lng),
+          lat: round6(point.lat), lng: round6(wrapLng(point.lng)),
           name: point.name || "", note: point.note || ""
         });
       },
@@ -222,9 +255,7 @@
       saveZone: function (zone) {
         return press("zone", urls.saveZone, {
           name: zone.name || "", description: zone.description || "",
-          outline: (zone.outline || []).map(function (corner) {
-            return [round6(corner[0]), round6(corner[1])];
-          })
+          outline: homeRing(zone.outline)
         });
       },
 
@@ -270,17 +301,34 @@
       return (answer.data && answer.data.error) || fallback || texts.failed || "";
     }
 
+    /* A tooltip's content as text, never as markup: Leaflet draws a string
+     * as HTML, and a label is a name a member typed or a place name from
+     * outside. */
+    function asText(text) {
+      var tip = document.createElement("span");
+      tip.textContent = text;
+      return tip;
+    }
+
     function marker(point, options) {
       var made = L.marker([point.lat, point.lng], Object.assign({icon: root.classicPin()},
                                                                 options || {}));
-      if (point.label) {
-        /* As text, never as markup: Leaflet draws a string as HTML, and a
-         * label is a name a member typed or a place name from outside. */
-        var tip = document.createElement("span");
-        tip.textContent = point.label;
-        made.bindTooltip(tip);
-      }
+      if (point.label) { made.bindTooltip(asText(point.label)); }
       return made;
+    }
+
+    /* Is the point form open? Then a click and a picked hit move the pin. */
+    function editingPoint() {
+      var panel = q("edit-point");
+      return !!(config.can_edit_point && panel && !panel.classList.contains("hidden"));
+    }
+
+    /* A click on a copy of the world: the view goes back to the world the
+     * points are drawn on, so what the click placed is in sight. */
+    function comeHome(lng) {
+      if (wrapLng(lng) === Number(lng)) { return; }
+      var centre = map.getCenter();
+      map.setView([centre.lat, wrapLng(centre.lng)], map.getZoom(), {animate: false});
     }
 
     function drawSaved() {
@@ -302,7 +350,7 @@
       layers.temporary.clearLayers();
       controller.state.temporary.forEach(function (point) {
         var made = L.circleMarker([point.lat, point.lng], {radius: 7, weight: 2});
-        made.bindTooltip(texts.temporary || "");
+        made.bindTooltip(asText(texts.temporary || ""));
         made.on("click", function (event) {
           L.DomEvent.stopPropagation(event);
           controller.removeTemporary(point.id);
@@ -334,11 +382,13 @@
       if (list) { list.classList.toggle("hidden", !controller.state.hits.length); }
     }
 
-    /* A search hit, chosen: the map goes there; where a point is being
-     * edited the pin goes there too, and becomes the address only at Save. */
+    /* A search hit, chosen: the map goes there. While the point form is
+     * open the pin goes there too, and becomes the address only at Save;
+     * with the form closed no pin moves, so a later Save cannot move an
+     * address its owner never meant to move. */
     function choose(hit) {
       map.setView([hit.lat, hit.lng], 14);
-      if (config.can_edit_point) { placePick(hit.lat, hit.lng); }
+      if (editingPoint()) { placePick(hit.lat, hit.lng); }
     }
 
     /* The two selects of the route panel, drawn from what the controller
@@ -388,6 +438,7 @@
     });
 
     function placePick(lat, lng) {
+      lng = wrapLng(lng);
       if (pick) { pick.setLatLng([lat, lng]); }
       else {
         pick = L.marker([lat, lng], {icon: root.classicPin(), draggable: true}).addTo(map);
@@ -395,6 +446,33 @@
       }
       var save = q("save-point");
       if (save) { save.disabled = false; }
+    }
+
+    /* The saved point of the kind this page edits, if there is one. */
+    var savedPoint = (config.points || []).filter(function (p) {
+      return p.kind === config.edit_kind;
+    })[0];
+
+    /* Close the point form: the pin that was not saved goes, the saved one
+     * is drawn again. */
+    function closePoint() {
+      var panel = q("edit-point");
+      if (panel) { panel.classList.add("hidden"); }
+      if (pick) { map.removeLayer(pick); pick = null; }
+      drawSaved();
+      var save = q("save-point");
+      if (save) { save.disabled = !savedPoint; }
+      say("point-note", "");
+    }
+
+    /* Close the zone form: the editor stops and goes back to the saved
+     * outline, which is drawn again. */
+    function closeZone() {
+      var panel = q("edit-zone");
+      if (panel) { panel.classList.add("hidden"); }
+      if (zoneEditor) { zoneEditor.stop(); zoneEditor.restore(); }
+      drawZone(config.zone ? config.zone.outline : null);
+      say("zone-note", "");
     }
 
     /* --- search ------------------------------------------------------- */
@@ -428,14 +506,14 @@
 
     /* --- the map's own click: a temporary point, or the pin being edited -- */
     map.on("click", function (event) {
-      if (zoneEditor && zoneEditor.active()) { return; }
-      if (config.can_edit_point && q("edit-point") && !q("edit-point").classList.contains("hidden")) {
-        placePick(event.latlng.lat, event.latlng.lng);
-        return;
+      if (zoneEditor && zoneEditor.active()) { return; }      // a corner: the editor's own
+      if (editingPoint()) { placePick(event.latlng.lat, event.latlng.lng); }
+      else {
+        controller.placeTemporary(event.latlng.lat, event.latlng.lng);
+        drawTemporary();
+        fillEnds();
       }
-      controller.placeTemporary(event.latlng.lat, event.latlng.lng);
-      drawTemporary();
-      fillEnds();
+      comeHome(event.latlng.lng);
     });
 
     /* --- route -------------------------------------------------------- */
@@ -450,7 +528,11 @@
           fillEnds();      // the button again, by the ends as they stand now
           layers.route.clearLayers();
           if (!answer.ok) { say("route-note", refusal(answer), true); return; }
-          if (!answer.data.line) { say("route-note", texts.no_route); return; }
+          /* "No route" is the door's own word, a line that is null. An
+           * answer that could not be read is not that, and may have been
+           * charged: it never says "nothing was charged". */
+          if (answer.data.line === null) { say("route-note", texts.no_route); return; }
+          if (!answer.data.line) { say("route-note", texts.failed, true); return; }
           var line = L.geoJSON({type: "Feature", properties: {}, geometry: answer.data.line},
                                {style: {weight: 5, opacity: 0.8}}).addTo(layers.route);
           map.fitBounds(line.getBounds(), {padding: [24, 24]});
@@ -464,15 +546,17 @@
     /* --- saving a point ------------------------------------------------ */
     var savePoint = q("save-point");
     if (config.can_edit_point && savePoint) {
-      var saved = (config.points || []).filter(function (p) { return p.kind === config.edit_kind; })[0];
       var open = q("open-point");
       if (open) {
         open.addEventListener("click", function () {
+          closeZone();
           q("edit-point").classList.remove("hidden");
-          if (saved && !pick) { placePick(saved.lat, saved.lng); }
+          if (savedPoint && !pick) { placePick(savedPoint.lat, savedPoint.lng); }
         });
       }
-      savePoint.disabled = !saved;
+      var closePointButton = q("close-point");
+      if (closePointButton) { closePointButton.addEventListener("click", closePoint); }
+      savePoint.disabled = !savedPoint;
       savePoint.addEventListener("click", function () {
         if (!pick) { say("point-note", texts.place_first, true); return; }
         var at = pick.getLatLng();
@@ -508,11 +592,14 @@
       var draw = q("draw-zone");
       if (draw) {
         draw.addEventListener("click", function () {
+          closePoint();
           q("edit-zone").classList.remove("hidden");
           layers.zone.clearLayers();
           zoneEditor.start();
         });
       }
+      var closeZoneButton = q("close-zone");
+      if (closeZoneButton) { closeZoneButton.addEventListener("click", closeZone); }
       var undo = q("zone-undo");
       if (undo) { undo.addEventListener("click", function () { zoneEditor.undo(); }); }
       var restart = q("zone-restart");
@@ -549,7 +636,7 @@
     return {map: map, controller: controller};
   }
 
-  var api = {createController: createController, mount: mount, uuid: uuid};
+  var api = {createController: createController, mount: mount, uuid: uuid, wrapLng: wrapLng};
   root.GeographyMap = api;
   if (typeof module !== "undefined" && module.exports) { module.exports = api; }
   if (root.document && root.document.addEventListener) {

@@ -11,7 +11,9 @@ addresses of the doors are in it, and the CSRF token is a data attribute.
 
 A search and a route are charged, each on its own button with its price
 beside it, never while typing. A click on the map places a temporary point,
-kept in the page's memory only. The search hits and the route are gone at
+kept in the page's memory only; while one of the two forms is open the click
+is that form's (the pin, or a corner), and the forms are never open together:
+each has a Cancel that puts back what is saved. The search hits and the route are gone at
 reload: a route is calculated, shown and forgotten.{% endcomment %}
 <link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}">
 <script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
@@ -92,6 +94,8 @@ reload: a route is calculated, shown and forgotten.{% endcomment %}
         <button type="button" data-geo="clear-point" data-testid="geography-clear-point"
                 class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Remove" %}</button>
         {% endif %}
+        <button type="button" data-geo="close-point" data-testid="geography-close-point"
+                class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
       </div>
       <p data-geo="point-note" role="status" class="hidden text-sm"></p>
     </div>
@@ -128,6 +132,8 @@ reload: a route is calculated, shown and forgotten.{% endcomment %}
         <button type="button" data-geo="clear-zone" data-testid="geography-clear-zone"
                 class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Remove" %}</button>
         {% endif %}
+        <button type="button" data-geo="close-zone" data-testid="geography-close-zone"
+                class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
       </div>
       <p data-geo="zone-note" role="status" class="hidden text-sm"></p>
     </div>

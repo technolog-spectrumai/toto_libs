@@ -6,6 +6,13 @@
  * done to them); `attach` binds one to a Leaflet map. The server checks the
  * outline again (toto.geography.shapes): at least three different corners,
  * at most 500, and no edge may cross another.
+ *
+ * ONE RING ON ONE COPY OF THE WORLD. Leaflet draws the world again to the
+ * left and the right of itself, and a click on a copy reads 381 where the
+ * place is at 21. A corner is therefore kept on the copy the first corner is
+ * on (the whole turns between them are taken off), so a ring is never half
+ * here and half a world away. Which copy that is does not matter here: the
+ * map script brings the ring home as a whole when it is sent.
  */
 (function (root) {
   "use strict";
@@ -16,10 +23,18 @@
 
   function createOutline(initial) {
     var corners = (initial || []).map(function (c) { return [round6(c[0]), round6(c[1])]; });
+
+    /* `lng` on the copy of the world the ring is on. */
+    function beside(lng, index) {
+      var first = corners.length && index !== 0 ? corners[0][1] : null;
+      if (first === null) { return Number(lng); }
+      return Number(lng) - 360 * Math.round((Number(lng) - first) / 360);
+    }
+
     return {
       add: function (lat, lng) {
         if (corners.length >= MAX_CORNERS) { return false; }
-        var corner = [round6(lat), round6(lng)];
+        var corner = [round6(lat), round6(beside(lng))];
         var twice = corners.some(function (c) { return c[0] === corner[0] && c[1] === corner[1]; });
         if (twice) { return false; }
         corners.push(corner);
@@ -27,7 +42,7 @@
       },
       move: function (index, lat, lng) {
         if (index < 0 || index >= corners.length) { return false; }
-        corners[index] = [round6(lat), round6(lng)];
+        corners[index] = [round6(lat), round6(beside(lng, index))];
         return true;
       },
       remove: function (index) {
@@ -85,6 +100,8 @@
     return {
       start: function () { active = true; layer.addTo(map); draw(); changed(); },
       stop: function () { active = false; map.removeLayer(layer); },
+      /* Back to the corners it was given: what was drawn and not saved goes. */
+      restore: function () { outline = createOutline(options.corners); draw(); changed(); },
       active: function () { return active; },
       undo: function () { outline.undo(); draw(); changed(); },
       reset: function () { outline.reset(); draw(); changed(); },
