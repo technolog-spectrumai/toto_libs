@@ -145,7 +145,16 @@ class OwnerTests(TabsCase):
         self.assertContains(response, "Guild of Ada")
         # Nothing of any other tab: no form, no map.
         self.assertNotContains(response, 'action="/account/')
-        self.assertNotContains(response, "vendor/leaflet/leaflet.js")
+        # No map either, except where geography is installed (2026-10-06):
+        # its section on the owner's Overview is the one place that draws
+        # Leaflet, so the owner can set their point.
+        from django.apps import apps
+
+        if apps.is_installed("toto.geography"):
+            self.assertContains(response, "vendor/leaflet/leaflet.js", count=1)
+            self.assertContains(response, 'id="geography-address-section"', count=1)
+        else:
+            self.assertNotContains(response, "vendor/leaflet/leaflet.js")
         self.assertNotContains(response, 'name="show_address"')
         self.assertNotContains(response, 'id="references"')
 
