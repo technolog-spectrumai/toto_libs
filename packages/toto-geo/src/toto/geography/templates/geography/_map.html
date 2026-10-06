@@ -61,7 +61,7 @@ reload: a route is calculated, shown and forgotten.{% endcomment %}
         </select></label>
       <button type="button" data-geo="route-go" data-testid="geography-route-go" disabled
               class="inline-flex items-center gap-1.5 rounded-lg border border-current/30 px-3 py-2 text-sm font-semibold disabled:opacity-40">
-        <i class="fa-solid fa-diamond-turn-right" aria-hidden="true"></i>{% trans "Find route" %}</button>
+        <i class="fa-solid fa-diamond-turn-right" aria-hidden="true"></i><span data-geo="route-go-label">{% trans "Find route" %}</span></button>
       {% price_hint "geography.route" %}
     </div>
     <p data-geo="route-note" role="status" class="mt-2 hidden text-sm"></p>

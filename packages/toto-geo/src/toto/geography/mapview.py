@@ -23,6 +23,9 @@ def _texts() -> dict:
         "no_route": _("No route was found between these two points. Nothing was charged."),
         "route_summary": _("%(km)s km, about %(min)s min"),
         "temporary": _("Temporary point"),
+        "choose_end": _("Choose a point"),
+        "end_gone": _("That point is no longer on the map"),
+        "choose_again": _("Choose the points again"),
         "place_first": _("Click the map to place the point first."),
         "corners": _("%(n)s corners"),
     }

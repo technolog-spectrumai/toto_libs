@@ -17,6 +17,13 @@
  *    a throttle) repeats its `op`, so a retry is never charged twice.
  *  - A route request holds two coordinate pairs and nothing else about its
  *    ends: no row id, no name. The browser sends the points it already holds.
+ *  - Each end of the next route is remembered by the id of the point it
+ *    means (an id of this page: `s0` a saved point, `h7` a search hit, `t8` a
+ *    temporary point; a number is used once), never by a place in a list.
+ *    When that point leaves the map (a new search replaces the hits, a
+ *    temporary point is clicked away) the end is cleared and stays cleared
+ *    until the member chooses again: no other point steps into its place, so
+ *    a charged route never runs between two points nobody chose.
  */
 (function (root) {
   "use strict";
@@ -49,12 +56,28 @@
     var mint = options.mint || uuid;
     var counter = 0;
     var state = {
-      saved: (options.saved || []).slice(),
+      /* Only what is drawn is taken from the page, under an id of this
+       * page's own: the saved points do not change while the page lives. */
+      saved: (options.saved || []).map(function (point, index) {
+        return {id: "s" + index, kind: point.kind, lat: point.lat, lng: point.lng,
+                label: point.label || ""};
+      }),
       temporary: [],
       hits: [],
       route: null,
-      pending: {}
+      pending: {},
+      /* The two ends of the next route: the id of the point each one means,
+       * and whether the point it meant has left the map. */
+      chosen: {from: {id: null, gone: false}, to: {id: null, gone: false}}
     };
+
+    function everyEnd() { return state.saved.concat(state.hits, state.temporary); }
+
+    function find(id) {
+      var all = everyEnd();
+      for (var i = 0; i < all.length; i++) { if (all[i].id === id) { return all[i]; } }
+      return null;
+    }
 
     function post(url, body) {
       return send(url, {
@@ -117,16 +140,50 @@
 
       /* Everything a route may start or end at: the saved points the page
        * drew, the search hits and the temporary points. */
-      ends: function () {
-        return state.saved.concat(state.hits, state.temporary);
+      ends: everyEnd,
+
+      /* The member chose `id` (one of `ends()`) as the route's "from" or
+       * "to". An id that names no point on the map chooses nothing. */
+      chooseEnd: function (which, id) {
+        var end = find(id);
+        state.chosen[which] = {id: end ? end.id : null, gone: false};
+      },
+
+      /* The two ends as they stand: `{from, to, gone: {from, to}}`, each
+       * end a point or null.
+       *
+       * An end whose point has left the map is cleared and marked gone; it
+       * stays so until the member chooses again. An end that never held a
+       * choice takes the first point the other end does not hold, and keeps
+       * it: what the page showed as chosen stays chosen, whatever is added
+       * to the map afterwards. */
+      selection: function () {
+        var all = everyEnd();
+        ["from", "to"].forEach(function (which) {
+          var end = state.chosen[which];
+          if (end.id !== null && !find(end.id)) { end.id = null; end.gone = true; }
+        });
+        ["from", "to"].forEach(function (which) {
+          var end = state.chosen[which];
+          var other = state.chosen[which === "from" ? "to" : "from"];
+          if (end.id !== null || end.gone) { return; }
+          for (var i = 0; i < all.length; i++) {
+            if (all[i].id !== other.id) { end.id = all[i].id; return; }
+          }
+        });
+        return {from: find(state.chosen.from.id), to: find(state.chosen.to.id),
+                gone: {from: state.chosen.from.gone, to: state.chosen.to.gone}};
       },
 
       search: function (query) {
         var text = String(query || "").replace(/\s+/g, " ").trim();
         return press("search", urls.search, {q: text}).then(function (answer) {
           if (answer.ok) {
-            state.hits = (answer.data.results || []).map(function (hit, index) {
-              return {id: "h" + index, kind: "hit", lat: hit.lat, lng: hit.lng,
+            /* New hits, new ids: an end that meant a hit of the search
+             * before this one finds its point gone. */
+            state.hits = (answer.data.results || []).map(function (hit) {
+              counter += 1;
+              return {id: "h" + counter, kind: "hit", lat: hit.lat, lng: hit.lng,
                       label: hit.label || ""};
             });
           }
@@ -141,6 +198,14 @@
           state.route = (answer.ok && answer.data.line) ? answer.data : null;
           return answer;
         });
+      },
+
+      /* The route between the two chosen ends. Null, and no request, while
+       * one of them is not chosen. */
+      routeChosen: function (mode) {
+        var now = this.selection();
+        if (!now.from || !now.to) { return null; }
+        return this.route(now.from, now.to, mode);
       },
 
       forgetRoute: function () { state.route = null; },
@@ -276,26 +341,51 @@
       if (config.can_edit_point) { placePick(hit.lat, hit.lng); }
     }
 
+    /* The two selects of the route panel, drawn from what the controller
+     * holds: each option's value is its point's id. An end with no point is
+     * an empty first line that says why, and Find route waits: while a
+     * chosen point is gone the button itself says to choose again. */
+    var goLabel = q("route-go-label");
+    var goText = goLabel ? goLabel.textContent : "";
+
     function fillEnds() {
-      ["from", "to"].forEach(function (name, which) {
+      var now = controller.selection();
+      ["from", "to"].forEach(function (name) {
         var select = q(name);
         if (!select) { return; }
-        var kept = select.value;
         select.textContent = "";
-        controller.ends().forEach(function (end, index) {
+        if (!now[name]) {
+          var none = document.createElement("option");
+          none.value = "";
+          none.disabled = true;
+          none.textContent = (now.gone[name] ? texts.end_gone : texts.choose_end) || "";
+          select.appendChild(none);
+        }
+        controller.ends().forEach(function (end) {
           var option = document.createElement("option");
-          option.value = String(index);
+          option.value = end.id;
           option.textContent = end.label ||
             ((end.kind === "temporary" ? (texts.temporary || "") + " " : "") +
              end.lat.toFixed(4) + ", " + end.lng.toFixed(4));
           select.appendChild(option);
         });
-        if (kept && select.querySelector('option[value="' + kept + '"]')) { select.value = kept; }
-        else if (select.options.length > which) { select.selectedIndex = which; }
+        select.value = now[name] ? now[name].id : "";
       });
       var go = q("route-go");
-      if (go) { go.disabled = controller.ends().length < 2; }
+      if (go) { go.disabled = !(now.from && now.to); }
+      if (goLabel) {
+        goLabel.textContent = ((now.gone.from || now.gone.to) && texts.choose_again) || goText;
+      }
     }
+
+    ["from", "to"].forEach(function (name) {
+      var select = q(name);
+      if (!select) { return; }
+      select.addEventListener("change", function () {
+        controller.chooseEnd(name, select.value);
+        fillEnds();
+      });
+    });
 
     function placePick(lat, lng) {
       if (pick) { pick.setLatLng([lat, lng]); }
@@ -352,13 +442,12 @@
     var routeGo = q("route-go");
     if (routeGo) {
       routeGo.addEventListener("click", function () {
-        var ends = controller.ends();
-        var from = ends[Number(q("from").value)], to = ends[Number(q("to").value)];
-        if (!from || !to) { return; }
+        var asked = controller.routeChosen(q("mode").value);
+        if (!asked) { fillEnds(); return; }
         routeGo.disabled = true;
         say("route-note", "");
-        controller.route(from, to, q("mode").value).then(function (answer) {
-          routeGo.disabled = false;
+        asked.then(function (answer) {
+          fillEnds();      // the button again, by the ends as they stand now
           layers.route.clearLayers();
           if (!answer.ok) { say("route-note", refusal(answer), true); return; }
           if (!answer.data.line) { say("route-note", texts.no_route); return; }
