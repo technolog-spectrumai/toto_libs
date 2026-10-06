@@ -281,6 +281,15 @@ class FileDetailApiView(CorsApiView):
             refusal = upload_refusal(title)
             if refusal:
                 return JsonResponse({"error": refusal}, status=400)
+            # And retypes as the page's does: the new ending decides
+            # (VaultFile.type_after_rename, 2026-10-06).
+            file_type = vf.type_after_rename(title)
+            if file_type != vf.file_type:
+                refusal = upload_refusal(title, file_type=file_type)
+                if refusal:
+                    return JsonResponse({"error": refusal}, status=400)
+                vf.file_type = file_type
+                update_fields.append("file_type")
             vf.title = title
             update_fields.append("title")
         # "directory_id" present with null → move to bucket root; with an int →

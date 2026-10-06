@@ -1959,6 +1959,15 @@ class RenameFileView(LoginRequiredMixin, View):
             request.user, VaultFile.objects.filter(owner=request.user)), pk=file_pk)
         if access.is_mirror_row(vault_file):
             return access.mirror_lock_response(vault_file)
+        if not file_type or file_type == vault_file.file_type:
+            # No other type was chosen (the dialog posts the one the file
+            # has): the new name's ending decides, as it does at an upload.
+            # A type the host refuses is refused by name here too.
+            file_type = vault_file.type_after_rename(new_title)
+            if file_type != vault_file.file_type:
+                refusal = upload_refusal(new_title, file_type=file_type)
+                if refusal:
+                    return JsonResponse({"ok": False, "error": refusal}, status=400)
         vault_file.title = new_title
         update_fields = ["title"]
         if file_type and file_type != vault_file.file_type:

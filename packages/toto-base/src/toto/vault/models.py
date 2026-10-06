@@ -830,6 +830,30 @@ class VaultFile(models.Model):
             return "zip"
         return "text"
 
+    #: Types that are what their bytes are. A rename neither makes nor
+    #: unmakes one (``type_after_rename``): a picture called ``.txt`` is still
+    #: a picture, and a locked PDF or picture is unlocked by its type.
+    _BYTES_TYPES = frozenset({"pdf", "image", "audio", "video", "zip"})
+
+    def type_after_rename(self, new_title: str) -> str:
+        """The type this file has once it is called ``new_title``.
+
+        The name says what a text file is (2026-10-06): when a rename changes
+        the name's ending to one the vault knows (``_EXT_MAP``), the file
+        gets the type an upload of that name would get — ``trip.json`` renamed
+        ``trip.geojson`` is a map drawing, ``notes.txt`` renamed ``notes.md``
+        is Markdown. Everything else keeps its type: the same ending, an
+        ending the table does not have (a title need not carry one), and any
+        rename of, or to the name of, a type that is its bytes. The rename
+        doors ask this only where no other type was chosen with the name."""
+        old_ending = os.path.splitext(self.title or "")[1].lower()
+        new_ending = os.path.splitext(new_title or "")[1].lower()
+        named = self._EXT_MAP.get(new_ending)
+        if (not named or new_ending == old_ending
+                or named in self._BYTES_TYPES or self.file_type in self._BYTES_TYPES):
+            return self.file_type
+        return named
+
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
     title = models.CharField(max_length=255)
     key = models.SlugField(max_length=255, blank=True)
