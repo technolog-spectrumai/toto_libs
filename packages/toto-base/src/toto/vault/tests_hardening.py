@@ -422,9 +422,15 @@ class StorageOnlyOpensTests(_ListedFile):
                            VAULT_STORAGE_ONLY_OPENS=("play", "edit", "new")):
             self.assertTrue(storage_only_opens("play"))
             self.assertTrue(storage_only_opens("edit"))
-            # It opens the two buttons and nothing else.
-            self.assertFalse(storage_only_opens("new"))
+            # "new" is the third word (stage 62b): the one-field New and
+            # its door (tests_new_file). The host is storage only all the same.
+            self.assertTrue(storage_only_opens("new"))
+            self.assertFalse(storage_only_opens("viewer"))
             self.assertTrue(storage_only())
+        with self.settings(VAULT_STORAGE_ONLY=True,
+                           VAULT_STORAGE_ONLY_OPENS=("play", "edit")):
+            # Play and Edit named, New not: no New.
+            self.assertFalse(storage_only_opens("new"))
 
     @override_settings(VAULT_STORAGE_ONLY=True, VAULT_STORAGE_ONLY_OPENS=())
     def test_named_nowhere_nothing_is_shown_even_with_a_plugin(self):
@@ -490,6 +496,12 @@ class StorageOnlyOpensTests(_ListedFile):
                 json.dumps({"bucket_slug": self.bucket.slug, "title": "b.txt",
                             "file_type": "text"}),
                 content_type="application/json")
+            self.assertEqual(made.status_code, 404)
+            # Nor is the one-field New there: the host did not name "new".
+            self.assertEqual(response.context["vault_new_extensions"], [])
+            self.assertNotIn('data-vault-control="new-file"', body)
+            made = self.client.post(reverse("vault:new_file"), {
+                "name": "c.txt", "directory_id": self.directory.pk})
             self.assertEqual(made.status_code, 404)
             self.assertEqual(VaultFile.objects.count(), 1)
 
