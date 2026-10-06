@@ -1,0 +1,25 @@
+{% load i18n %}
+{% comment %}A community's headquarters and zone on its page (2026-10-06),
+drawn by plugins/community_plugins.py for every signed-in member, as the
+seat's text is. Its head and an administrator also get the two forms. The
+postal line stays Community.seat: this section has no postal field and
+writes none. Not rendered at all where neither is set and the viewer may
+set neither.{% endcomment %}
+<section id="geography-headquarters-section"
+  :class="darkMode
+    ? 'border-accent-1 bg-bubble-bg-dark'
+    : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-map-location-dot" aria-hidden="true"></i>{% trans "Headquarters and zone" %}</h2>
+  {% if geography_may_set %}
+    <p class="mt-1 text-sm opacity-75">
+      {% blocktrans trimmed %}
+        The community's headquarters as a point, and the area it covers as a
+        zone. Every signed-in member sees both. The postal line stays the
+        seat's text; nothing here changes it.
+      {% endblocktrans %}
+    </p>
+  {% endif %}
+  {% include "geography/_map.html" %}
+</section>
