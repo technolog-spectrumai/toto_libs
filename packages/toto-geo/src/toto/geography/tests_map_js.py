@@ -109,6 +109,7 @@ class El {
   fire(name, event) {
     (this.handlers[name] || []).forEach((fn) => fn(event || {preventDefault() {}, stopPropagation() {}}));
   }
+  dispatchEvent(event) { this.fire(event.type, event); return true; }
   querySelector(selector) {
     const named = /^\[data-geo="([\w-]+)"\]$/.exec(selector);
     if (!named) { throw new Error("an unexpected selector: " + selector); }
@@ -181,6 +182,10 @@ const drawn = (index) => groups()[index].items.map((item) => item.kind);
 const SAVED = 0, HITS = 1, TEMPORARY = 2, ROUTE_LINE = 3, ZONE = 4;
 const pin = () => page.map.items.filter((item) => item.kind === "marker" && item.options.draggable)[0] || null;
 const hidden = (name) => part(name).classList.contains("hidden");
+// A dialog as the script left it: open or not (Alpine draws it in a browser).
+const shown = (name) => part(name).dataset.open === "1";
+// Leaving a dialog by Escape, the backdrop or the X: the template's event.
+const dismiss = (name) => part(name).fire("geography-dismiss", {type: "geography-dismiss"});
 const settle = async () => { for (let i = 0; i < 8; i++) { await new Promise((r) => setImmediate(r)); } };
 const HITS5 = {results: [1, 2, 3, 4, 5].map((n) => ({label: "Hit " + n, lat: 50 + n, lng: 20 + n}))};
 const HITS3 = {results: [6, 7, 8].map((n) => ({label: "Hit " + n, lat: 50 + n, lng: 20 + n}))};
@@ -219,10 +224,14 @@ URLS = {"search": "/geography/api/search/", "route": "/geography/api/route/",
         "clearZone": "/geography/communities/g/zone/clear/"}
 
 #: The elements only whoever may set the point, or the zone, is given.
-POINT_FORM = {"open-point", "edit-point", "point-name", "point-note-text", "save-point",
-              "clear-point", "point-note"}
-ZONE_FORM = {"draw-zone", "edit-zone", "zone-undo", "zone-restart", "zone-count", "zone-name",
-             "zone-description", "save-zone", "clear-zone", "zone-note"}
+POINT_FORM = {"open-point", "edit-point", "point-continue", "clear-point", "point-status",
+              "point-dialog", "point-name", "point-note-text", "save-point", "point-note",
+              "point-dialog-cancel"}
+ZONE_FORM = {"draw-zone", "edit-zone", "zone-undo", "zone-restart", "zone-count",
+             "zone-continue", "clear-zone", "zone-status", "zone-dialog", "zone-name",
+             "zone-description", "save-zone", "zone-note", "zone-dialog-cancel"}
+#: Where the words are typed: in the two dialogs, and nowhere else.
+WORDS = {"point-name", "point-note-text", "zone-name", "zone-description"}
 ROUTE_PANEL = {"route", "from", "to", "mode", "route-go", "route-go-label", "route-note"}
 #: The sentences only a page with route search is given.
 ROUTE_TEXTS = {"no_route", "route_summary", "choose_end", "end_gone", "choose_again"}
@@ -636,7 +645,7 @@ class MapBehaviourTests(PageCase):
           out.opened = [pin().at, drawn(SAVED)];
           groups()[HITS].items[2].fire("click", {});
           out.picked = pin().at;
-          press("save-point"); await settle();
+          press("point-continue"); press("save-point"); await settle();
           out.sent = calls[calls.length - 1];
         """, points=[HEADQUARTERS], center=[54.352, 18.6466])
         self.assertEqual(out["closed"], [True, ["marker"], [54, 24]])
@@ -658,7 +667,8 @@ class MapBehaviourTests(PageCase):
           clickMap(54.6, 18.8);
           out.pin = pin().at;
           press("close-point");
-          out.closed = [hidden("edit-point"), pin() === null, drawn(SAVED), part("save-point").disabled];
+          out.closed = [hidden("edit-point"), pin() === null, drawn(SAVED),
+                        part("point-continue").disabled];
           clickMap(54.7, 18.9);
           out.temporary = controller.state.temporary.map((p) => [p.lat, p.lng]);
           press("draw-zone");
@@ -668,14 +678,15 @@ class MapBehaviourTests(PageCase):
           out.cancelled = [hidden("edit-zone"), drawn(ZONE)];
           clickMap(54.8, 19);
           out.after = controller.state.temporary.length;
-          press("draw-zone"); press("save-zone"); await settle();
+          press("draw-zone"); press("zone-continue"); press("save-zone"); await settle();
           out.sent = calls[calls.length - 1].body.outline;
         """, points=[HEADQUARTERS], center=[54.352, 18.6466], zone={"outline": SQUARE})
         self.assertEqual(out["drawing"], [False, True, "5 corners", 0, True, []])
         self.assertEqual(out["point"], [True, False, ["polygon"]],
                          "the zone form closes and the saved zone is drawn again")
         self.assertEqual(out["pin"], [54.6, 18.8], "the click moved the pin, and made no corner")
-        self.assertEqual(out["closed"], [True, True, ["marker"], False])
+        self.assertEqual(out["closed"], [True, True, ["marker"], True],
+                         "no pin on the map: Continue waits for one")
         self.assertEqual(out["temporary"], [[54.7, 18.9]])
         self.assertEqual(out["again"], [False, True, "4 corners"],
                          "what was drawn and not saved is gone: the saved outline again")
@@ -699,7 +710,7 @@ class MapBehaviourTests(PageCase):
           out.pin = pin().at.map((n) => Math.round(n * 1e6) / 1e6);
           out.viewAfterPin = page.map.view.center.map((n) => Math.round(n * 1e6) / 1e6);
           pin().setLatLng([52.7, 381.7]);
-          press("save-point"); await settle();
+          press("point-continue"); press("save-point"); await settle();
           out.sent = calls[calls.length - 1].body;
         """)
         self.assertEqual(out["temporary"], [[52.5, 21.5]])
@@ -786,10 +797,11 @@ class PageTests(PageCase):
           await search("first", HITS3);
           clickMap(2, 2); clickMap(3, 3);
           queue.push({status: 200, data: ROUTE}); press("route-go"); await settle();
-          press("open-point"); clickMap(1, 1); press("save-point"); await settle();
+          press("open-point"); clickMap(1, 1); press("point-continue");
+          press("save-point"); await settle();
           press("close-point");
           press("draw-zone"); clickMap(1, 1); clickMap(1, 2); clickMap(2, 2);
-          press("save-zone"); await settle();
+          press("zone-continue"); press("save-zone"); await settle();
           press("close-zone");
           out.sent = calls.map((call) => call.url);
         """)
@@ -844,6 +856,190 @@ class PageTests(PageCase):
             urls={key: URLS[key] for key in ("search", "route")})
         self.assertEqual((out["temporary"], out["zone"], out["pin"]), (1, ["polygon"], True))
         self.assertEqual(out["calls"], [])
+
+
+@skipUnless(_NODE, "node is not installed")
+class DialogTests(PageCase):
+    """The words of a point and of a zone are typed in a dialog and nowhere
+    else (the owner, 2026-10-06: "the information like name etc should be
+    inputed via modal and modal only"). Beside the map: the geometry."""
+
+    def test_the_point_is_placed_on_the_map_and_named_in_the_dialog(self):
+        out = self.run_page("""
+          out.start = [hidden("edit-point"), shown("point-dialog"), part("point-continue").disabled];
+          press("open-point");
+          out.tool = [hidden("edit-point"), shown("point-dialog"), part("point-continue").disabled];
+          press("point-continue");
+          out.unplaced = [shown("point-dialog"), part("point-status").textContent];
+          clickMap(54.6, 18.8);
+          out.placed = [pin().at, part("point-continue").disabled, shown("point-dialog")];
+          press("point-continue");
+          out.opened = [shown("point-dialog"), hidden("edit-point"), part("point-status").textContent];
+          part("point-name").value = "Harbour house";
+          part("point-note-text").value = "ring twice";
+          press("save-point"); await settle();
+          out.sent = calls[0];
+          out.reloads = touched.filter((name) => name === "location.reload").length;
+        """)
+        self.assertEqual(out["start"], [True, False, True])
+        self.assertEqual(out["tool"], [False, False, True], "no pin yet: Continue waits")
+        self.assertEqual(out["unplaced"], [False, "PLACE FIRST"])
+        self.assertEqual(out["placed"], [[54.6, 18.8], False, False],
+                         "placing the pin opens nothing by itself")
+        self.assertEqual(out["opened"], [True, False, ""])
+        self.assertEqual(out["sent"]["url"], URLS["savePoint"])
+        body = out["sent"]["body"]
+        # What the form beside the map sent, to the last key.
+        self.assertEqual(set(body), {"lat", "lng", "name", "note", "op"})
+        self.assertEqual((body["lat"], body["lng"], body["name"], body["note"]),
+                         (54.6, 18.8, "Harbour house", "ring twice"))
+        self.assertRegex(body["op"], UUID)
+        self.assertEqual(out["reloads"], 1)
+
+    def test_a_refused_point_keeps_the_dialog_open_with_what_was_typed(self):
+        out = self.run_page("""
+          press("open-point"); clickMap(54.6, 18.8); press("point-continue");
+          part("point-name").value = "Harbour house";
+          part("point-note-text").value = "ring twice";
+          queue.push({status: 402, data: {error: "Not enough storage mana."}},
+                     {status: 503, data: {}}, {status: 200, data: {}});
+          press("save-point"); await settle();
+          out.refused = [shown("point-dialog"), part("point-note").textContent,
+                         hidden("point-note"), part("point-name").value,
+                         part("point-note-text").value, pin().at, hidden("edit-point"),
+                         part("save-point").disabled, part("point-status").textContent];
+          press("save-point"); await settle();
+          out.unanswered = [shown("point-dialog"), part("point-note").textContent];
+          press("save-point"); await settle();
+          out.ops = calls.map((call) => call.body.op);
+          out.bodies = calls.map((call) => [call.url, call.body.name, call.body.note]);
+          out.reloads = touched.filter((name) => name === "location.reload").length;
+        """)
+        self.assertEqual(out["refused"], [True, "Not enough storage mana.", False, "Harbour house",
+                                          "ring twice", [54.6, 18.8], False, False, ""])
+        self.assertEqual(out["unanswered"], [True, "FAILED"])
+        first, second, third = out["ops"]
+        self.assertNotEqual(first, second, "an answered refusal ends its op")
+        self.assertEqual(second, third, "a press the server never answered repeats its op")
+        self.assertEqual(out["bodies"], [[URLS["savePoint"], "Harbour house", "ring twice"]] * 3)
+        self.assertEqual(out["reloads"], 1)
+
+    def test_cancel_in_the_point_dialog_keeps_the_pin(self):
+        out = self.run_page("""
+          press("open-point");
+          out.saved = pin().at;
+          clickMap(54.6, 18.8); press("point-continue");
+          part("point-name").value = "Typed";
+          press("point-dialog-cancel");
+          out.cancelled = [shown("point-dialog"), pin().at, hidden("edit-point"),
+                           part("point-continue").disabled, part("point-name").value];
+          pin().setLatLng([54.7, 18.9]);
+          press("point-continue");
+          dismiss("point-dialog");
+          out.dismissed = [shown("point-dialog"), pin().at, hidden("edit-point")];
+          dismiss("point-dialog");
+          press("point-continue"); press("close-point");
+          out.closed = [shown("point-dialog"), pin() === null, hidden("edit-point"), drawn(SAVED)];
+        """, points=[HEADQUARTERS], center=[54.352, 18.6466])
+        self.assertEqual(out["saved"], [54.352, 18.6466], "a saved point is edited from where it is")
+        self.assertEqual(out["cancelled"], [False, [54.6, 18.8], False, False, "Typed"])
+        self.assertEqual(out["dismissed"], [False, [54.7, 18.9], False],
+                         "Escape, the backdrop and the X leave the pin too")
+        self.assertEqual(out["closed"], [False, True, True, ["marker"]],
+                         "Cancel beside the map closes the tool, its dialog with it")
+        self.assertEqual(out["calls"], [])
+
+    def test_the_zone_is_drawn_on_the_map_and_named_in_the_dialog(self):
+        out = self.run_page("""
+          press("draw-zone");
+          clickMap(1, 1); clickMap(1, 2);
+          out.two = [part("zone-continue").disabled, shown("zone-dialog")];
+          press("zone-continue");
+          out.early = shown("zone-dialog");
+          clickMap(2, 2);
+          out.three = [part("zone-continue").disabled, shown("zone-dialog")];
+          press("zone-continue");
+          out.opened = [shown("zone-dialog"), hidden("edit-zone")];
+          part("zone-name").value = "Meadow";
+          part("zone-description").value = "by the river";
+          press("zone-dialog-cancel");
+          out.cancelled = [shown("zone-dialog"), hidden("edit-zone"), part("zone-count").textContent,
+                           part("zone-name").value];
+          press("zone-continue");
+          queue.push({status: 400, data: {error: "The outline crosses itself."}},
+                     {status: 200, data: {}});
+          press("save-zone"); await settle();
+          out.refused = [shown("zone-dialog"), part("zone-note").textContent,
+                         part("zone-name").value, part("zone-description").value,
+                         part("zone-count").textContent];
+          press("save-zone"); await settle();
+          out.sent = calls.map((call) => [call.url, call.body.name, call.body.description,
+                                          call.body.outline]);
+          out.keys = Object.keys(calls[1].body).sort();
+          out.ops = calls.map((call) => call.body.op);
+          out.reloads = touched.filter((name) => name === "location.reload").length;
+        """)
+        self.assertEqual(out["two"], [True, False])
+        self.assertFalse(out["early"], "two corners are no zone: Continue opens nothing")
+        self.assertEqual(out["three"], [False, False])
+        self.assertEqual(out["opened"], [True, False])
+        self.assertEqual(out["cancelled"], [False, False, "3 corners", "Meadow"],
+                         "back to the map, the corners where they were")
+        self.assertEqual(out["refused"], [True, "The outline crosses itself.", "Meadow",
+                                          "by the river", "3 corners"])
+        ring = [[1, 1], [1, 2], [2, 2]]
+        self.assertEqual(out["sent"], [[URLS["saveZone"], "Meadow", "by the river", ring]] * 2)
+        self.assertEqual(out["keys"], ["description", "name", "op", "outline"])
+        self.assertNotEqual(out["ops"][0], out["ops"][1])
+        self.assertEqual(out["reloads"], 1)
+
+    def test_remove_stays_beside_the_map_and_says_its_refusal_there(self):
+        out = self.run_page("""
+          press("open-point");
+          queue.push({status: 403, data: {error: "Not yours."}});
+          press("clear-point"); await settle();
+          out.point = [part("point-status").textContent, shown("point-dialog")];
+          press("draw-zone");
+          queue.push({status: 403, data: {error: "Not yours either."}});
+          press("clear-zone"); await settle();
+          out.zone = [part("zone-status").textContent, shown("zone-dialog")];
+          out.sent = calls.map((call) => [call.url, Object.keys(call.body)]);
+        """, points=[HEADQUARTERS], center=[54.352, 18.6466], zone={"outline": SQUARE})
+        self.assertEqual(out["point"], ["Not yours.", False])
+        self.assertEqual(out["zone"], ["Not yours either.", False])
+        self.assertEqual(out["sent"], [[URLS["clearPoint"], []], [URLS["clearZone"], []]])
+
+    def test_the_template_keeps_every_word_s_field_inside_a_dialog(self):
+        """As text, from the template itself: the name, the note and the
+        description are fields of the two dialogs and of nothing else, and
+        each dialog is the library's modal."""
+        from toto.geography.testing import tree_of, walk
+
+        source = Path(get_template("geography/_map.html").origin.name).read_text(encoding="utf-8")
+        tree = tree_of(re.sub(r"{%.*?%}|{#.*?#}", "", source, flags=re.S))
+        typed, dialogs = {}, []
+        for node, above in walk(tree):
+            if node["attrs"].get("role") == "dialog":
+                dialogs.append(node["attrs"])
+            if node["tag"] in ("input", "textarea", "select"):
+                inside = [up["attrs"].get("data-geo") for up in above
+                          if up["attrs"].get("role") == "dialog"]
+                typed[node["attrs"].get("data-geo")] = inside
+        self.assertEqual({name for name, inside in typed.items() if inside}, WORDS)
+        self.assertEqual({name: inside[0] for name, inside in typed.items() if inside},
+                         {"point-name": "point-dialog", "point-note-text": "point-dialog",
+                          "zone-name": "zone-dialog", "zone-description": "zone-dialog"})
+        # What is left beside the map takes no words: the search box and
+        # the route's three choices.
+        self.assertEqual({name for name, inside in typed.items() if not inside},
+                         {"q", "from", "to", "mode"})
+        self.assertEqual([attrs.get("data-geo") for attrs in dialogs],
+                         ["point-dialog", "zone-dialog"])
+        for attrs in dialogs:
+            self.assertEqual((attrs["aria-modal"], attrs["x-show"], attrs["x-trap"]),
+                             ("true", "open", "open"))
+            self.assertIn("aria-labelledby", attrs)
+            self.assertIn("@keydown.escape.window", attrs)
 
 
 class MapScriptSourceTests(SimpleTestCase):

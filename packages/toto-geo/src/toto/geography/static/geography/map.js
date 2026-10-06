@@ -40,6 +40,12 @@
  *    a Cancel that puts back what is saved and gives the click back.
  *  - A search hit that is picked moves the pin only while the point form is
  *    open. With the form closed it moves the map and nothing else.
+ *  - A point's and a zone's words are typed in a dialog and nowhere else.
+ *    The tool beside the map holds the geometry: Continue opens the dialog,
+ *    Save there sends what the form always sent, to the same door under the
+ *    same op rule. A refusal is said in the dialog and leaves it open with
+ *    what was typed; Cancel there closes it and leaves the pin, or the
+ *    corners, on the map.
  */
 (function (root) {
   "use strict";
@@ -276,6 +282,29 @@
    * The page
    * ------------------------------------------------------------------- */
 
+  /* dialog(el, onDismiss) -> {open(), close(), isOpen()}
+   * One modal of the page. The element is the library's dialog (the
+   * template: role="dialog", x-show and x-trap on its own `open`, Escape):
+   * this tells it to open or close with the event "geography-dialog", and
+   * hears "geography-dismiss" when the member leaves it by Escape, the
+   * backdrop or the X. Leaving closes the dialog and nothing else: what is
+   * on the map stays. `data-open` says the same to whoever reads the page. */
+  function dialog(el, onDismiss) {
+    var open = false;
+    function set(on) {
+      open = !!on;
+      el.dataset.open = open ? "1" : "";
+      el.dispatchEvent(new root.CustomEvent("geography-dialog", {detail: {open: open}}));
+    }
+    el.addEventListener("geography-dismiss", function () {
+      if (!open) { return; }
+      set(false);
+      if (onDismiss) { onDismiss(); }
+    });
+    return {open: function () { set(true); }, close: function () { if (open) { set(false); } },
+            isOpen: function () { return open; }};
+  }
+
   function mount(box) {
     if (box.dataset.geographyMounted) { return null; }
     box.dataset.geographyMounted = "1";
@@ -297,6 +326,10 @@
                   zone: L.layerGroup().addTo(map)};
     var pick = null;        // the draggable pin of the point being edited
     var zoneEditor = null;
+    /* The two dialogs, where the page has them: the words of the point and
+     * of the zone are typed there and nowhere else. */
+    var pointDialog = q("point-dialog") ? dialog(q("point-dialog")) : null;
+    var zoneDialog = q("zone-dialog") ? dialog(q("zone-dialog")) : null;
 
     function say(name, text, bad) {
       var note = q(name);
@@ -455,8 +488,8 @@
         pick = L.marker([lat, lng], {icon: root.classicPin(), draggable: true}).addTo(map);
         drawSaved();
       }
-      var save = q("save-point");
-      if (save) { save.disabled = false; }
+      var next = q("point-continue");
+      if (next) { next.disabled = false; }
     }
 
     /* The saved point of the kind this page edits, if there is one. */
@@ -464,25 +497,29 @@
       return p.kind === config.edit_kind;
     })[0];
 
-    /* Close the point form: the pin that was not saved goes, the saved one
-     * is drawn again. */
+    /* Close the point tool: its dialog too, the pin that was not saved
+     * goes, the saved one is drawn again. */
     function closePoint() {
       var panel = q("edit-point");
       if (panel) { panel.classList.add("hidden"); }
+      if (pointDialog) { pointDialog.close(); }
       if (pick) { map.removeLayer(pick); pick = null; }
       drawSaved();
-      var save = q("save-point");
-      if (save) { save.disabled = !savedPoint; }
+      var next = q("point-continue");
+      if (next) { next.disabled = true; }
+      say("point-status", "");
       say("point-note", "");
     }
 
-    /* Close the zone form: the editor stops and goes back to the saved
-     * outline, which is drawn again. */
+    /* Close the zone tool: its dialog too, the editor stops and goes back
+     * to the saved outline, which is drawn again. */
     function closeZone() {
       var panel = q("edit-zone");
       if (panel) { panel.classList.add("hidden"); }
+      if (zoneDialog) { zoneDialog.close(); }
       if (zoneEditor) { zoneEditor.stop(); zoneEditor.restore(); }
       drawZone(config.zone ? config.zone.outline : null);
+      say("zone-status", "");
       say("zone-note", "");
     }
 
@@ -554,9 +591,9 @@
       });
     }
 
-    /* --- saving a point ------------------------------------------------ */
-    var savePoint = q("save-point");
-    if (config.can_edit_point && savePoint) {
+    /* --- saving a point: placed on the map, named in the dialog ---------- */
+    var savePoint = q("save-point"), pointContinue = q("point-continue");
+    if (config.can_edit_point && savePoint && pointContinue && pointDialog) {
       var open = q("open-point");
       if (open) {
         open.addEventListener("click", function () {
@@ -567,7 +604,16 @@
       }
       var closePointButton = q("close-point");
       if (closePointButton) { closePointButton.addEventListener("click", closePoint); }
-      savePoint.disabled = !savedPoint;
+      pointContinue.disabled = true;      // until a pin is on the map
+      pointContinue.addEventListener("click", function () {
+        if (!pick) { say("point-status", texts.place_first, true); return; }
+        say("point-status", "");
+        say("point-note", "");
+        pointDialog.open();
+      });
+      /* Cancel in the dialog: back to the map, the pin where it was. */
+      var cancelPoint = q("point-dialog-cancel");
+      if (cancelPoint) { cancelPoint.addEventListener("click", function () { pointDialog.close(); }); }
       savePoint.addEventListener("click", function () {
         if (!pick) { say("point-note", texts.place_first, true); return; }
         var at = pick.getLatLng();
@@ -575,6 +621,7 @@
         controller.savePoint({lat: at.lat, lng: at.lng, name: q("point-name").value,
                               note: q("point-note-text").value}).then(function (answer) {
           savePoint.disabled = false;
+          /* Refused: said in the dialog, which stays open with what was typed. */
           if (!answer.ok) { say("point-note", refusal(answer), true); return; }
           root.location.reload();
         });
@@ -583,20 +630,20 @@
       if (clearPoint) {
         clearPoint.addEventListener("click", function () {
           controller.clearPoint().then(function (answer) {
-            if (!answer.ok) { say("point-note", refusal(answer), true); return; }
+            if (!answer.ok) { say("point-status", refusal(answer), true); return; }
             root.location.reload();
           });
         });
       }
     }
 
-    /* --- saving a zone -------------------------------------------------- */
-    var saveZone = q("save-zone");
-    if (config.can_edit_zone && saveZone && root.GeographyZone) {
+    /* --- saving a zone: drawn on the map, named in the dialog ------------- */
+    var saveZone = q("save-zone"), zoneContinue = q("zone-continue");
+    if (config.can_edit_zone && saveZone && zoneContinue && zoneDialog && root.GeographyZone) {
       zoneEditor = root.GeographyZone.attach(map, L, {
         corners: config.zone ? config.zone.outline : [],
         onChange: function (count) {
-          saveZone.disabled = count < 3;
+          zoneContinue.disabled = count < 3;
           say("zone-count", (texts.corners || "%(n)s").replace("%(n)s", count));
         }
       });
@@ -615,6 +662,15 @@
       if (undo) { undo.addEventListener("click", function () { zoneEditor.undo(); }); }
       var restart = q("zone-restart");
       if (restart) { restart.addEventListener("click", function () { zoneEditor.reset(); }); }
+      zoneContinue.addEventListener("click", function () {
+        if (zoneEditor.corners().length < 3) { return; }
+        say("zone-status", "");
+        say("zone-note", "");
+        zoneDialog.open();
+      });
+      /* Cancel in the dialog: back to the map, the corners where they were. */
+      var cancelZone = q("zone-dialog-cancel");
+      if (cancelZone) { cancelZone.addEventListener("click", function () { zoneDialog.close(); }); }
       saveZone.addEventListener("click", function () {
         saveZone.disabled = true;
         controller.saveZone({name: q("zone-name").value,
@@ -629,7 +685,7 @@
       if (clearZone) {
         clearZone.addEventListener("click", function () {
           controller.clearZone().then(function (answer) {
-            if (!answer.ok) { say("zone-note", refusal(answer), true); return; }
+            if (!answer.ok) { say("zone-status", refusal(answer), true); return; }
             root.location.reload();
           });
         });
@@ -655,7 +711,8 @@
     return {map: map, controller: controller};
   }
 
-  var api = {createController: createController, mount: mount, uuid: uuid, wrapLng: wrapLng};
+  var api = {createController: createController, mount: mount, uuid: uuid, wrapLng: wrapLng,
+             dialog: dialog};
   root.GeographyMap = api;
   if (typeof module !== "undefined" && module.exports) { module.exports = api; }
   if (root.document && root.document.addEventListener) {

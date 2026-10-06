@@ -17,10 +17,21 @@ addresses of the doors are in it, and the CSRF token is a data attribute.
 
 A search and a route are charged, each on its own button with its price
 beside it, never while typing. A click on the map places a temporary point,
-kept in the page's memory only; while one of the two forms is open the click
-is that form's (the pin, or a corner), and the forms are never open together:
+kept in the page's memory only; while one of the two tools is open the click
+is that tool's (the pin, or a corner), and the tools are never open together:
 each has a Cancel that puts back what is saved. The search hits and the route are gone at
-reload: a route is calculated, shown and forgotten.{% endcomment %}
+reload: a route is calculated, shown and forgotten.
+
+THE WORDS ARE TYPED IN A DIALOG AND NOWHERE ELSE (the owner, 2026-10-06:
+"the information like name etc should be inputed via modal and modal only").
+Beside the map a tool holds the geometry only: its button, the help, the
+corners' Undo and Start over, Continue, Remove, Cancel. Continue opens the
+dialog (the library's modal: role="dialog", x-show, x-trap, Escape) with the
+name and the note, or the name and the description, the price beside Save,
+Save and Cancel. Cancel there goes back to the map with the pin or the
+corners as they were; a refusal is shown in the dialog with what was typed
+kept. map.js opens and closes a dialog with the event "geography-dialog" and
+hears "geography-dismiss" (Escape, the backdrop, the X).{% endcomment %}
 {% include "geography/_leaflet.html" %}
 {{ geo.config|json_script:geo.config_id }}
 <div id="{{ geo.key }}" data-geography-map data-config="{{ geo.config_id }}"
@@ -81,20 +92,14 @@ reload: a route is calculated, shown and forgotten.{% endcomment %}
             class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
       <i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i>
       {% if geo.point %}{% trans "Change the point" %}{% else %}{% trans "Set the point" %}{% endif %}</button>
+    {# Beside the map: the geometry only. The words are asked in the dialog. #}
     <div data-geo="edit-point" class="mt-3 hidden space-y-3">
       <p class="text-xs opacity-60">
-        {% trans "Click the map, drag the pin, or pick a search result. Nothing is saved until you press Save." %}</p>
-      <label class="block text-sm">{% trans "Name" %}
-        <input data-geo="point-name" type="text" maxlength="200" value="{{ geo.point.name|default:'' }}"
-               class="mt-1 block w-full rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none"></label>
-      <label class="block text-sm">{% trans "Note" %}
-        <textarea data-geo="point-note-text" rows="2" maxlength="2000"
-                  class="mt-1 block w-full rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none">{{ geo.point.note|default:'' }}</textarea></label>
+        {% trans "Click the map, drag the pin, or pick a search result. Then press Continue: the name and the note are asked in a dialog. Nothing is saved until you press Save there." %}</p>
       <div class="flex flex-wrap items-center gap-3">
-        <button type="button" data-geo="save-point" data-testid="geography-save-point"
+        <button type="button" data-geo="point-continue" data-testid="geography-point-continue" disabled
                 class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-bold disabled:opacity-40">
-          {% trans "Save" %}</button>
-        {% if geo.point %}{% price_hint "geography.note" %}{% else %}{% price_hint "geography.pin" %}{% endif %}
+          {% trans "Continue" %}</button>
         {% if geo.point %}
         <button type="button" data-geo="clear-point" data-testid="geography-clear-point"
                 class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Remove" %}</button>
@@ -102,7 +107,38 @@ reload: a route is calculated, shown and forgotten.{% endcomment %}
         <button type="button" data-geo="close-point" data-testid="geography-close-point"
                 class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
       </div>
-      <p data-geo="point-note" role="status" class="hidden text-sm"></p>
+      <p data-geo="point-status" role="status" class="hidden text-sm"></p>
+    </div>
+    <div data-geo="point-dialog" data-testid="geography-point-dialog" x-data="{open: false}" x-show="open" x-trap="open" x-cloak
+         @geography-dialog="open = $event.detail.open"
+         @keydown.escape.window="if (open) { $dispatch('geography-dismiss') }"
+         class="fixed inset-0 z-[1200] flex items-center justify-center p-4"
+         role="dialog" aria-modal="true" aria-labelledby="{{ geo.key }}-point-title">
+      <div class="absolute inset-0 bg-black/60" @click="$dispatch('geography-dismiss')"></div>
+      <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+           class="relative max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto rounded-xl border p-5 text-sm shadow-xl">
+        <div class="flex items-center justify-between gap-2">
+          <h2 id="{{ geo.key }}-point-title" class="min-w-0 text-lg font-bold">
+            <i class="fa-solid fa-location-crosshairs mr-1" aria-hidden="true"></i>{% if geo.point %}{% trans "Change the point" %}{% else %}{% trans "Set the point" %}{% endif %}</h2>
+          <button type="button" @click="$dispatch('geography-dismiss')" class="opacity-70 hover:opacity-100" aria-label="{% trans 'Close' %}">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+        </div>
+        <label class="block text-sm">{% trans "Name" %}
+          <input data-geo="point-name" type="text" maxlength="200" value="{{ geo.point.name|default:'' }}" autofocus
+                 class="mt-1 block w-full rounded-lg border border-current/30 bg-inherit px-3 py-2 text-sm text-inherit outline-none"></label>
+        <label class="block text-sm">{% trans "Note" %}
+          <textarea data-geo="point-note-text" rows="2" maxlength="2000"
+                    class="mt-1 block w-full rounded-lg border border-current/30 bg-inherit px-3 py-2 text-sm text-inherit outline-none">{{ geo.point.note|default:'' }}</textarea></label>
+        <p data-geo="point-note" role="alert" class="hidden text-sm"></p>
+        <div class="flex flex-wrap items-center gap-3">
+          <button type="button" data-geo="save-point" data-testid="geography-save-point"
+                  class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-bold disabled:opacity-40">
+            {% trans "Save" %}</button>
+          {% if geo.point %}{% price_hint "geography.note" %}{% else %}{% price_hint "geography.pin" %}{% endif %}
+          <button type="button" data-geo="point-dialog-cancel"
+                  class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
+        </div>
+      </div>
     </div>
   </div>
   {% endif %}
@@ -116,23 +152,16 @@ reload: a route is calculated, shown and forgotten.{% endcomment %}
       {% if geo.zone %}{% trans "Change the zone" %}{% else %}{% trans "Draw the zone" %}{% endif %}</button>
     <div data-geo="edit-zone" class="mt-3 hidden space-y-3">
       <p class="text-xs opacity-60">
-        {% trans "Click the map to add a corner, drag a corner to move it, click a corner to take it out. The outline closes by itself and may not cross itself. Nothing is saved until you press Save." %}</p>
+        {% trans "Click the map to add a corner, drag a corner to move it, click a corner to take it out. The outline closes by itself and may not cross itself. Then press Continue: the name and the description are asked in a dialog. Nothing is saved until you press Save there." %}</p>
       <div class="flex flex-wrap items-center gap-3">
         <button type="button" data-geo="zone-undo" class="rounded-lg border px-3 py-1.5 text-sm font-semibold">{% trans "Undo last corner" %}</button>
         <button type="button" data-geo="zone-restart" class="rounded-lg border px-3 py-1.5 text-sm font-semibold">{% trans "Start over" %}</button>
         <span data-geo="zone-count" class="hidden text-xs opacity-60"></span>
       </div>
-      <label class="block text-sm">{% trans "Name" %}
-        <input data-geo="zone-name" type="text" maxlength="200" value="{{ geo.zone.name|default:'' }}"
-               class="mt-1 block w-full rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none"></label>
-      <label class="block text-sm">{% trans "Description" %}
-        <textarea data-geo="zone-description" rows="2" maxlength="2000"
-                  class="mt-1 block w-full rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none">{{ geo.zone.description|default:'' }}</textarea></label>
       <div class="flex flex-wrap items-center gap-3">
-        <button type="button" data-geo="save-zone" data-testid="geography-save-zone" disabled
+        <button type="button" data-geo="zone-continue" data-testid="geography-zone-continue" disabled
                 class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-bold disabled:opacity-40">
-          {% trans "Save" %}</button>
-        {% if geo.zone %}{% price_hint "geography.note" %}{% else %}{% price_hint "geography.zone" %}{% endif %}
+          {% trans "Continue" %}</button>
         {% if geo.zone %}
         <button type="button" data-geo="clear-zone" data-testid="geography-clear-zone"
                 class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Remove" %}</button>
@@ -140,7 +169,38 @@ reload: a route is calculated, shown and forgotten.{% endcomment %}
         <button type="button" data-geo="close-zone" data-testid="geography-close-zone"
                 class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
       </div>
-      <p data-geo="zone-note" role="status" class="hidden text-sm"></p>
+      <p data-geo="zone-status" role="status" class="hidden text-sm"></p>
+    </div>
+    <div data-geo="zone-dialog" data-testid="geography-zone-dialog" x-data="{open: false}" x-show="open" x-trap="open" x-cloak
+         @geography-dialog="open = $event.detail.open"
+         @keydown.escape.window="if (open) { $dispatch('geography-dismiss') }"
+         class="fixed inset-0 z-[1200] flex items-center justify-center p-4"
+         role="dialog" aria-modal="true" aria-labelledby="{{ geo.key }}-zone-title">
+      <div class="absolute inset-0 bg-black/60" @click="$dispatch('geography-dismiss')"></div>
+      <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+           class="relative max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto rounded-xl border p-5 text-sm shadow-xl">
+        <div class="flex items-center justify-between gap-2">
+          <h2 id="{{ geo.key }}-zone-title" class="min-w-0 text-lg font-bold">
+            <i class="fa-solid fa-draw-polygon mr-1" aria-hidden="true"></i>{% if geo.zone %}{% trans "Change the zone" %}{% else %}{% trans "Draw the zone" %}{% endif %}</h2>
+          <button type="button" @click="$dispatch('geography-dismiss')" class="opacity-70 hover:opacity-100" aria-label="{% trans 'Close' %}">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+        </div>
+        <label class="block text-sm">{% trans "Name" %}
+          <input data-geo="zone-name" type="text" maxlength="200" value="{{ geo.zone.name|default:'' }}" autofocus
+                 class="mt-1 block w-full rounded-lg border border-current/30 bg-inherit px-3 py-2 text-sm text-inherit outline-none"></label>
+        <label class="block text-sm">{% trans "Description" %}
+          <textarea data-geo="zone-description" rows="2" maxlength="2000"
+                    class="mt-1 block w-full rounded-lg border border-current/30 bg-inherit px-3 py-2 text-sm text-inherit outline-none">{{ geo.zone.description|default:'' }}</textarea></label>
+        <p data-geo="zone-note" role="alert" class="hidden text-sm"></p>
+        <div class="flex flex-wrap items-center gap-3">
+          <button type="button" data-geo="save-zone" data-testid="geography-save-zone"
+                  class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-bold disabled:opacity-40">
+            {% trans "Save" %}</button>
+          {% if geo.zone %}{% price_hint "geography.note" %}{% else %}{% price_hint "geography.zone" %}{% endif %}
+          <button type="button" data-geo="zone-dialog-cancel"
+                  class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
+        </div>
+      </div>
     </div>
   </div>
   {% endif %}

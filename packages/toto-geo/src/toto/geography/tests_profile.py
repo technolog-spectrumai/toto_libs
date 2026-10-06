@@ -19,7 +19,7 @@ from toto.core.models import Platform
 from toto.geography import access
 from toto.geography.models import Address, GeographyUsageEvent, PersonAddress
 from toto.geography.testing import (Economy, client_of, fresh_cache, member, no_funds, op, post,
-                                    refusing_ledger)
+                                    refusing_ledger, words_fields)
 
 HOME = {"lat": 52.2297, "lng": 21.0122, "name": "Home", "note": "third floor"}
 MAP_MARKS = ("vendor/leaflet/leaflet.js", "vendor/leaflet/leaflet.css", "data-geography-map",
@@ -77,6 +77,42 @@ class VisibilityTests(ProfileCase):
         self.assertIn('data-geo="save-point"', html)
         self.assertNotIn('data-geo="clear-point"', html)
         self.assertNotIn('data-geo="save-zone"', html)
+
+    def test_the_name_and_the_note_are_typed_in_the_dialog_and_nowhere_else(self):
+        """The owner, 2026-10-06: "the information like name etc should be
+        inputed via modal and modal only". Before a point is saved and
+        after: no field for the name or the note beside or under the map;
+        the one dialog holds both, with Save, its price's place and Cancel.
+        A visitor's page has neither the fields nor the dialog."""
+        for saved in (False, True):
+            if saved:
+                self.save()
+            with self.subTest(saved=saved):
+                html = self.page(self.ada_user)
+                outside, inside = words_fields(html, "data-geography-map")
+                self.assertEqual(outside, [])
+                self.assertEqual(inside, ["point-name", "point-note-text"])
+                self.assertEqual(html.count('role="dialog"'), 1)
+                dialog = html[html.index('data-geo="point-dialog"'):]
+                dialog = dialog[:dialog.index('data-geo="point-dialog-cancel"')]
+                for mark in ('aria-modal="true"', 'x-trap="open"', 'x-show="open"',
+                             "@keydown.escape.window", 'data-geo="point-name"',
+                             'data-geo="point-note-text"', 'data-geo="point-note"',
+                             'data-geo="save-point"'):
+                    self.assertIn(mark, dialog)
+                # Beside the map: the tool's button, Continue, Cancel (and
+                # Remove once there is a point). No field.
+                tool = html[html.index('data-geo="edit-point"'):html.index('data-geo="point-dialog"')]
+                for mark in ('data-geo="point-continue"', 'data-geo="close-point"'):
+                    self.assertIn(mark, tool)
+                self.assertEqual('data-geo="clear-point"' in tool, saved)
+                self.assertNotIn("<input", tool)
+                self.assertNotIn("<textarea", tool)
+        type(self.ada).objects.filter(pk=self.ada.pk).update(show_address=True)
+        visitor = self.page(self.bob_user)
+        self.assertIn("data-geography-map", visitor)
+        self.assertEqual(words_fields(visitor, "data-geography-map"), ([], []))
+        self.assertNotIn("point-dialog", visitor)
 
     def test_the_owner_sees_their_point_with_the_switch_off(self):
         self.save()

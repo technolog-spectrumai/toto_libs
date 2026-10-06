@@ -19,7 +19,7 @@ from toto.core.models import Platform
 from toto.geography import views
 from toto.geography.models import Address, CommunityHeadquarters, GeographyUsageEvent, Zone
 from toto.geography.testing import (BOWTIE, SQUARE, Economy, client_of, community, fresh_cache,
-                                    member, no_funds, op, post, refusing_ledger)
+                                    member, no_funds, op, post, refusing_ledger, words_fields)
 
 HQ = {"lat": 54.352, "lng": 18.6466, "name": "Harbour house", "note": "ring twice"}
 AREA = {"name": "The harbour", "description": "from the pier to the gate", "outline": SQUARE}
@@ -339,6 +339,43 @@ class PageTests(HeadquartersCase):
                     self.assertNotIn(text, CONFIG.search(html).group(1))
                     self.assertEqual(html.count(text),
                                      1 if user in (self.head_user, self.root) else 0, text)
+
+    def test_the_words_are_typed_in_the_two_dialogs_and_nowhere_else(self):
+        """The owner, 2026-10-06: "the information like name etc should be
+        inputed via modal and modal only". For the head, before anything is
+        set and after: no field for a name, a note or a description beside
+        or under the map; the point's dialog and the zone's hold them. A
+        member's page has neither field nor dialog."""
+        for saved in (False, True):
+            if saved:
+                self.save_hq()
+                self.save_zone()
+            with self.subTest(saved=saved):
+                html = self.page(self.head_user)
+                outside, inside = words_fields(html, "data-geography-map")
+                self.assertEqual(outside, [])
+                self.assertEqual(inside, ["point-name", "point-note-text", "zone-name",
+                                          "zone-description"])
+                section = html[html.index('id="geography-headquarters-section"'):]
+                section = section[:section.index("</section>")]
+                self.assertEqual(section.count('role="dialog"'), 2)
+                self.assertEqual(section.count('x-trap="open"'), 2)
+                for tool, dialog, marks in (
+                        ("edit-point", "point-dialog", ("point-continue", "close-point")),
+                        ("edit-zone", "zone-dialog", ("zone-undo", "zone-restart",
+                                                      "zone-continue", "close-zone"))):
+                    beside = section[section.index(f'data-geo="{tool}"'):
+                                     section.index(f'data-geo="{dialog}"')]
+                    for mark in marks:
+                        self.assertIn(f'data-geo="{mark}"', beside)
+                    self.assertNotIn("<input", beside)
+                    self.assertNotIn("<textarea", beside)
+                    self.assertEqual(f'data-geo="clear-{tool[5:]}"' in beside, saved)
+        member_page = self.page(self.member_user)
+        self.assertIn("data-geography-map", member_page)
+        self.assertEqual(words_fields(member_page, "data-geography-map"), ([], []))
+        self.assertNotIn('role="dialog"', member_page[
+            member_page.index('id="geography-headquarters-section"'):])
 
     def test_the_form_has_no_postal_field(self):
         html = self.page(self.head_user)

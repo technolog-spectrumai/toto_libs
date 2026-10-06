@@ -109,6 +109,105 @@ def provider_answering(target, payload, piece=None):
     return mock.patch(target, side_effect=lambda *args, **kwargs: ProviderAnswer(body, piece))
 
 
+# ---------------------------------------------------------------------------
+# A page's HTML as a tree, for the tests that ask where a control is
+# ---------------------------------------------------------------------------
+
+_VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
+         "source", "track", "wbr"}
+
+
+def tree_of(html: str) -> list:
+    """The elements of ``html`` as nested dicts: ``{"tag", "attrs",
+    "children"}``, a text as ``{"text"}``. An attribute with no value reads
+    ``""``. Far enough for a page this app draws; no browser's repairs."""
+    from html.parser import HTMLParser
+
+    root = {"tag": "", "attrs": {}, "children": []}
+    stack = [root]
+
+    class Build(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            node = {"tag": tag, "attrs": {name: "" if value is None else value
+                                          for name, value in attrs}, "children": []}
+            stack[-1]["children"].append(node)
+            if tag not in _VOID:
+                stack.append(node)
+
+        def handle_startendtag(self, tag, attrs):
+            stack[-1]["children"].append(
+                {"tag": tag, "attrs": {name: "" if value is None else value
+                                       for name, value in attrs}, "children": []})
+
+        def handle_endtag(self, tag):
+            for index in range(len(stack) - 1, 0, -1):
+                if stack[index]["tag"] == tag:
+                    del stack[index:]
+                    break
+
+        def handle_data(self, data):
+            if data.strip():
+                stack[-1]["children"].append({"text": data})
+
+    parser = Build(convert_charrefs=True)
+    parser.feed(html)
+    parser.close()
+    return root["children"]
+
+
+def walk(tree, above=()):
+    """Every element of ``tree`` with the elements it is inside, outermost
+    first: ``(node, ancestors)``."""
+    for node in tree:
+        if "tag" not in node:
+            continue
+        yield node, above
+        yield from walk(node["children"], above + (node,))
+
+
+def element(tree, attr, value=None):
+    """The first element that has ``attr`` (with ``value``, when one is
+    given), or None."""
+    for node, _above in walk(tree):
+        if attr in node["attrs"] and (value is None or node["attrs"][attr] == value):
+            return node
+    return None
+
+
+def holds(node, attr, value=None) -> bool:
+    """Is an element with ``attr`` (and ``value``) inside ``node``?"""
+    return element(node["children"], attr, value) is not None
+
+
+def _words_field(node) -> bool:
+    """A control a point's or a zone's words are typed or chosen in: a text
+    input, a textarea, or the choice of the one community it belongs to.
+    Not a search box, a checkbox, or a select of the page's own tools."""
+    tag, attrs = node["tag"], node["attrs"]
+    if tag == "textarea":
+        return True
+    if tag == "input":
+        return attrs.get("type", "text") == "text"
+    if tag == "select":
+        return "community" in (attrs.get("data-geo") or attrs.get("name") or "")
+    return False
+
+
+def words_fields(html: str, root_attr: str) -> tuple[list, list]:
+    """``(outside, inside)``: the names of the words' controls of the map
+    whose box carries ``root_attr``, those that are NOT in a
+    ``role="dialog"`` and those that are. The owner, 2026-10-06: "the
+    information like name etc should be inputed via modal and modal only"."""
+    outside, inside = [], []
+    for node, above in walk(tree_of(html)):
+        if not any(root_attr in up["attrs"] for up in above) or not _words_field(node):
+            continue
+        name = node["attrs"].get("data-geo") or node["attrs"].get("name") or node["tag"]
+        in_dialog = any(up["attrs"].get("role") == "dialog" for up in above)
+        (inside if in_dialog else outside).append(name)
+    return outside, inside
+
+
 SQUARE = [[52.0, 21.0], [52.0, 21.1], [52.1, 21.1], [52.1, 21.0]]
 BOWTIE = [[52.0, 21.0], [52.1, 21.1], [52.0, 21.1], [52.1, 21.0]]
 

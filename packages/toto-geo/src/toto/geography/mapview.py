@@ -10,8 +10,8 @@ THE PAGE'S DATA HOLDS WHAT THE PAGE DRAWS, and no more: a point is its pin
 and the name on the pin; a zone is its outline. A point's note and a zone's
 name and description are drawn for nobody on the map, so they are not in
 ``config``, which every viewer of the map can read in the page's source.
-Whoever may set them reads them in the form, which the template fills from
-``point`` and ``zone`` and only draws for that viewer.
+Whoever may set them reads them in the dialog they are typed in, which the
+template fills from ``point`` and ``zone`` and only draws for that viewer.
 
 ROUTE SEARCH IS ASKED FOR, NEVER GIVEN BY DEFAULT (the owner, 2026-10-06:
 "Route search exists exclusively in the Locations app. Remove route-search
