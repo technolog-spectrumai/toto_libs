@@ -12,9 +12,10 @@ the same rule holds for it: a test that needs the New-file door sets the flag
 off itself, wherever the test lives (``StorageOnlyFlagTests`` below).
 
 ``VAULT_STORAGE_ONLY_OPENS`` (2026-10-06) gives such a host its Play and Edit
-buttons back, and those alone (``StorageOnlyOpensTests``). Those tests put
-their own plugins in the registries for as long as they run: a host may have
-registered some of its own.
+buttons back, and those alone; with it came a plugin's say on which member
+is offered its button (``StorageOnlyOpensTests``, ``ClosedToAMemberTests``).
+Those tests put their own plugins in the registries for as long as they run:
+a host may have registered some of its own.
 """
 import contextlib
 import tempfile
@@ -315,9 +316,15 @@ class StorageOnlyFlagTests(TestCase):
 
 
 class _Play(VaultPlayPlugin):
-    """A Play plugin for plain text."""
+    """A Play plugin for plain text, open to ``only`` (everybody when "")."""
 
     file_type = "text"
+
+    def __init__(self, only=""):
+        self.only = only
+
+    def is_open_to(self, user):
+        return not self.only or user.get_username() == self.only
 
     def get_play_url(self, vault_file):
         return f"/nowhere/play/{vault_file.pk}/"
@@ -330,8 +337,19 @@ class _Edit(VaultEditorPlugin):
     file_type = "text"
     new_file_extension = ".txt"
 
+    def __init__(self, only=""):
+        self.only = only
+
+    def is_open_to(self, user):
+        return not self.only or user.get_username() == self.only
+
     def get_editor_url(self, vault_file):
         return f"/nowhere/edit/{vault_file.pk}/"
+
+
+class _Broken(_Play):
+    def is_open_to(self, user):
+        raise RuntimeError("the plan could not be read")
 
 
 @contextlib.contextmanager
@@ -345,7 +363,7 @@ def _registered(play, edit):
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="vault-hardening-"))
 class _ListedFile(TestCase):
-    """One public text file in a folder, and its owner."""
+    """One public text file in a folder, its owner, and a second member."""
 
     @classmethod
     def setUpTestData(cls):
@@ -356,6 +374,7 @@ class _ListedFile(TestCase):
         Platform.objects.get_or_create(active=True, defaults={
             "site_name": "T", "author": "t", "publication_year": 2026})
         cls.owner = User.objects.create_user("opener", "o@x.com", "pw")
+        cls.guest = User.objects.create_user("guest", "g@x.com", "pw")
         cls.bucket = Bucket.objects.create(
             name="Open", owner=cls.owner, slug="hardening-open")
         cls.directory = VaultDirectory.objects.create(
@@ -482,6 +501,70 @@ class StorageOnlyOpensTests(_ListedFile):
             row = self.row(self.page())
             self.assertEqual(row["play_url"], "")
             self.assertEqual(row["editor_url"], "")
+
+
+@override_settings(VAULT_STORAGE_ONLY=False)
+class ClosedToAMemberTests(_ListedFile):
+    """A Play or Edit plugin may say which member is offered its button
+    (``is_open_to``): the listing, the listing door and the row door give a
+    member it is closed to no address, and their page no button."""
+
+    def test_the_default_is_open_to_everybody(self):
+        class Plain(VaultPlayPlugin):
+            file_type = "text"
+
+        self.assertTrue(Plain().is_open_to(self.guest))
+        self.assertTrue(VaultEditorPlugin().is_open_to(self.guest))
+
+    def test_a_closed_plugin_gives_the_member_no_address(self):
+        with _registered(_Play(only="opener"), _Edit(only="opener")):
+            response = self.page(self.guest)
+            row = self.row(response)
+            self.assertEqual(row["play_url"], "")
+            self.assertEqual(row["editor_url"], "")
+            self.assertTrue(row["url"], "the file still downloads")
+            self.assertFalse(response.context["vault_has_play"])
+            self.assertFalse(response.context["vault_has_editors"])
+            body = response.content.decode()
+            self.assertNotIn("/nowhere/", body)
+            self.assertNotIn('x-show="item.play_url"', body)
+            self.assertNotIn("chooseAction('edit')", body)
+            # The two doors the page asks again answer the same row.
+            items = self.client.get(reverse("vault:public_list_items")).json()["items"]
+            self.assertEqual([item for item in items if item["t"] == "file"], [row])
+            again = self.client.get(reverse("vault:file_row", args=[self.note.pk]))
+            self.assertEqual(again.json()["item"]["play_url"], "")
+            self.assertEqual(again.json()["item"]["editor_url"], "")
+
+    def test_the_member_it_is_open_to_gets_both(self):
+        with _registered(_Play(only="opener"), _Edit(only="opener")):
+            response = self.page(self.owner)
+            row = self.row(response)
+            self.assertEqual(row["play_url"], f"/nowhere/play/{self.note.pk}/")
+            self.assertEqual(row["editor_url"], f"/nowhere/edit/{self.note.pk}/")
+            self.assertTrue(response.context["vault_has_play"])
+            self.assertTrue(response.context["vault_has_editors"])
+            again = self.client.get(reverse("vault:file_row", args=[self.note.pk])).json()
+            self.assertEqual(again["item"]["play_url"], row["play_url"])
+            self.assertEqual(again["item"]["editor_url"], row["editor_url"])
+
+    def test_a_row_built_for_nobody_asks_no_plugin(self):
+        """``file_item`` without a member is the row as it always was."""
+        from toto.vault.views import file_item
+
+        with _registered(_Play(only="opener"), _Edit(only="opener")):
+            row = file_item(self.note, pid=None, depth=0)
+            self.assertEqual(row["play_url"], f"/nowhere/play/{self.note.pk}/")
+            self.assertEqual(row["editor_url"], f"/nowhere/edit/{self.note.pk}/")
+
+    def test_a_plugin_that_cannot_answer_is_closed(self):
+        with _registered(_Broken(), _Edit()):
+            response = self.page(self.guest)
+            row = self.row(response)
+            self.assertEqual(row["play_url"], "")
+            self.assertEqual(row["editor_url"], f"/nowhere/edit/{self.note.pk}/")
+            self.assertFalse(response.context["vault_has_play"])
+            self.assertTrue(response.context["vault_has_editors"])
 
 
 _SCRATCH_MEDIA = tempfile.mkdtemp(prefix="vault-hardening-")

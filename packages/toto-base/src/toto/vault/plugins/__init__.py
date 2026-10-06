@@ -23,8 +23,33 @@ class VaultPlayPlugin(BasePlugin):
     def for_file_type(cls, file_type: str) -> "VaultPlayPlugin | None":
         return cls.registry.get(file_type)
 
+    def is_open_to(self, user) -> bool:
+        """Whether this member is offered the button at all (2026-10-06).
+
+        The default, True, is every plugin as it was. A plugin whose page a
+        plan sells answers False for a member whose plan lacks it, and the
+        listing then draws no Play for them: a button that only ever opens
+        the plans page is worse than none. Asked by the listing for the
+        member it is built for, once for every row, so the answer has to be
+        cheap. The page behind the button still decides for itself."""
+        return True
+
     def get_play_url(self, vault_file) -> str:
         raise NotImplementedError
+
+
+def open_to(plugin, user) -> bool:
+    """A Play or Edit plugin's :meth:`is_open_to`, asked safely.
+
+    ``user`` is ``None`` where a row is built for nobody in particular, and
+    then nothing is asked. A plugin that raises closes: a broken answer
+    must not put a paid button on a page, nor take the listing down."""
+    if user is None:
+        return True
+    try:
+        return bool(plugin.is_open_to(user))
+    except Exception:  # noqa: BLE001 - a broken plugin shows no button
+        return False
 
 
 class _UnsavedProbe:
@@ -103,6 +128,12 @@ class VaultEditorPlugin(BasePlugin):
             # missing — most plugins interpolate the file's pk and would raise
             # on the probe object. Available.
             return True
+        return True
+
+    def is_open_to(self, user) -> bool:
+        """Whether this member is offered the editor at all (2026-10-06):
+        :meth:`VaultPlayPlugin.is_open_to`'s rule, for Edit. The default,
+        True, is every plugin as it was."""
         return True
 
     def get_editor_url(self, vault_file) -> str:

@@ -144,12 +144,17 @@ def thumbnail_url(vault_file) -> str:
     return f"{url}?v={version}"
 
 
-def file_item(f, *, pid, depth, clean_pks=None, fs_plugins=None) -> dict:
+def file_item(f, *, pid, depth, clean_pks=None, fs_plugins=None, user=None) -> dict:
     """One file as the list's script takes it — the row the page draws. The
     listing builds every row with this and the row door answers one, so a
-    row that arrives while the page is open is the row a reload would draw."""
+    row that arrives while the page is open is the row a reload would draw.
+
+    ``user`` is the member the row is built for (2026-10-06): a Play or Edit
+    plugin that is closed to them (``is_open_to``) gives the row no address.
+    ``None`` asks no plugin, which is the row as it always was."""
     from toto.vault.models import storage_only_opens
-    from toto.vault.plugins import FileServicePlugin, VaultEditorPlugin, VaultPlayPlugin
+    from toto.vault.plugins import (FileServicePlugin, VaultEditorPlugin,
+                                    VaultPlayPlugin, open_to)
 
     # A host that only stores files offers neither, whatever is registered —
     # unless it names the button in VAULT_STORAGE_ONLY_OPENS.
@@ -159,7 +164,7 @@ def file_item(f, *, pid, depth, clean_pks=None, fs_plugins=None) -> dict:
         # A plugin whose target URL isn't mounted (its feature flag is off) must
         # not take down the whole listing — degrade to "no play link" instead.
         try:
-            play_url = plugin.get_play_url(f) if plugin else ""
+            play_url = plugin.get_play_url(f) if plugin and open_to(plugin, user) else ""
         except NoReverseMatch:
             play_url = ""
 
@@ -173,7 +178,7 @@ def file_item(f, *, pid, depth, clean_pks=None, fs_plugins=None) -> dict:
             f.is_encrypted or not access.is_local_content(f)):
         plugin = VaultEditorPlugin.for_file_type(f.file_type)
         try:
-            editor_url = plugin.get_editor_url(f) if plugin else ""
+            editor_url = plugin.get_editor_url(f) if plugin and open_to(plugin, user) else ""
         except NoReverseMatch:
             editor_url = ""
 
@@ -218,7 +223,7 @@ class PublicFileListView(TemplateView):
     template_name = "vault/public_file_list.html"
 
     def _build_flat_items(self, dirs, files, dir_gateway_map, user_bucket_pks=None,
-                          clean_pks=None):
+                          clean_pks=None, user=None):
         from toto.vault.plugins import FileServicePlugin
 
         _fs_plugins = FileServicePlugin.all()
@@ -270,13 +275,14 @@ class PublicFileListView(TemplateView):
                 visit(d.pk, depth + 1)
                 for f in sorted(files_by_dir.get(d.pk, []), key=lambda x: x.title):
                     flat.append(file_item(f, pid=d.pk, depth=depth + 1,
-                                          clean_pks=clean_pks, fs_plugins=_fs_plugins))
+                                          clean_pks=clean_pks, fs_plugins=_fs_plugins,
+                                          user=user))
 
         visit(None, 0)
 
         for f in sorted(files_by_dir.get(None, []), key=lambda x: x.title):
             flat.append(file_item(f, pid=None, depth=0, clean_pks=clean_pks,
-                                  fs_plugins=_fs_plugins))
+                                  fs_plugins=_fs_plugins, user=user))
 
         return flat
 
@@ -335,7 +341,7 @@ class PublicFileListView(TemplateView):
         _files = list(file_qs)
         clean_pks = scanning.clean_file_ids(_files)
         flat_items = self._build_flat_items(accessible_dirs, _files, dir_gateway_map,
-                                            user_bucket_pks, clean_pks)
+                                            user_bucket_pks, clean_pks, user=user)
         return flat_items
 
     def get_context_data(self, **kwargs):
@@ -416,18 +422,20 @@ class PublicFileListView(TemplateView):
         context["create_file_types"] = available_create_types()
         # Whether any Play or Edit control is drawn at all. A host that only
         # stores files registers neither kind of plugin, and then the page
-        # carries no such button — not a hidden one.
+        # carries no such button — not a hidden one. Nor does the page of a
+        # member every registered plugin is closed to (is_open_to).
         from toto.vault.models import storage_only, storage_only_opens
-        from toto.vault.plugins import VaultEditorPlugin, VaultPlayPlugin
+        from toto.vault.plugins import VaultEditorPlugin, VaultPlayPlugin, open_to
         # VAULT_STORAGE_ONLY: nothing is playable and nothing is made here —
         # no Play, no Edit, no image viewer, no New — whatever is registered.
         # VAULT_STORAGE_ONLY_OPENS gives Play and Edit back, and those alone:
         # the viewer and New (create_file_types, above) keep the first flag.
         context["vault_storage_only"] = storage_only()
-        context["vault_has_play"] = (storage_only_opens("play")
-                                     and bool(VaultPlayPlugin.registry))
+        context["vault_has_play"] = (storage_only_opens("play") and any(
+            open_to(plugin, user) for plugin in VaultPlayPlugin.all()))
         context["vault_has_editors"] = (storage_only_opens("edit") and any(
-            plugin.is_available() for plugin in VaultEditorPlugin.all()))
+            plugin.is_available() and open_to(plugin, user)
+            for plugin in VaultEditorPlugin.all()))
 
         # Archiving moved to the Archive tab, which is the same tree carrying
         # the zip actions this one deliberately no longer offers. The Alpine
@@ -625,7 +633,8 @@ def file_row(request, pk):
     if vault_file is None or not access.may_read(request.user, vault_file):
         raise Http404("No such file.")
     item = file_item(vault_file, pid=vault_file.directory_id, depth=0,
-                     clean_pks=scanning.clean_file_ids([vault_file]))
+                     clean_pks=scanning.clean_file_ids([vault_file]),
+                     user=request.user)
     response = JsonResponse({"item": item})
     response["Cache-Control"] = "no-store"
     return response
