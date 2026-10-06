@@ -39,6 +39,11 @@ COLOUR_OF: dict[str, str] = {
     # who-pays-for-anonymous-downloads is decided (economy.md).
     "storage.egress_mb": "storage",
     "storage.gb_day": "storage",                # a levy, clamped
+    # What geography keeps (2026-10-06): a saved point (a person's own, a
+    # community's headquarters), a saved zone, and a later change to either.
+    "geography.pin": "storage",
+    "geography.zone": "storage",
+    "geography.note": "storage",
     # -- compute ------------------------------------------------------------
     "workflows.run": "compute",
     "repo.run": "compute",
@@ -64,6 +69,10 @@ COLOUR_OF: dict[str, str] = {
     # A place name or map point resolved by the host's geocoding provider
     # (2026-09-28). Clicking the map is free; asking the server is not.
     "locations.geocode": "compute",
+    # What geography asks an outside service (2026-10-06): a place name, and
+    # a route, which is answered and never kept.
+    "geography.lookup": "compute",
+    "geography.route": "compute",
     # -- security -----------------------------------------------------------
     "antivirus.scan": "security",
     # Talking in the clear (2026-09-25): an ordinary forum message draws on
@@ -109,6 +118,14 @@ PRICES: dict[str, Decimal] = {
     "forum.room_key": Decimal("5"),
     # A search or an address from a pin: a day's refill buys about 200.
     "locations.geocode": Decimal("0.5"),
+    # Geography (2026-10-06). A search costs what the parked map's lookup
+    # did; a route is the dearer question. A saved point costs a storage
+    # request, a zone twice that, a later change less than either.
+    "geography.lookup": Decimal("0.5"),
+    "geography.route": Decimal("1"),
+    "geography.pin": Decimal("0.5"),
+    "geography.zone": Decimal("1"),
+    "geography.note": Decimal("0.2"),
     "security.plain_gb_day": Decimal("20"),
 }
 

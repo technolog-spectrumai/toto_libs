@@ -35,6 +35,36 @@ class MapTests(SimpleTestCase):
         self.assertEqual(COLOUR_OF["storage.egress_mb"], "storage")
         self.assertNotIn("storage.egress_mb", PRICES)
 
+    def test_geography_s_five_prices(self):
+        """Two questions to an outside service draw on compute, three things
+        kept draw on storage (2026-10-06). Seeds; staff own the numbers."""
+        from decimal import Decimal
+
+        expected = {
+            "geography.lookup": ("compute", "0.5"),
+            "geography.route": ("compute", "1"),
+            "geography.pin": ("storage", "0.5"),
+            "geography.zone": ("storage", "1"),
+            "geography.note": ("storage", "0.2"),
+        }
+        for code, (role, price) in expected.items():
+            with self.subTest(code=code):
+                self.assertEqual(COLOUR_OF[code], role)
+                self.assertEqual(PRICES[code], Decimal(price))
+
+    def test_geography_s_metrics_are_registered_where_it_is_installed(self):
+        from django.apps import apps
+
+        from toto.quota.metrics import registry
+
+        if not apps.is_installed("toto.geography"):
+            self.skipTest("this host installs no geography")
+        codes = {code for code in registry.codes() if code.startswith("geography.")}
+        self.assertEqual(codes, {"geography.lookup", "geography.route", "geography.pin",
+                                 "geography.zone", "geography.note"})
+        for code in codes:
+            self.assertEqual(registry.get(code).app_label, "geography")
+
     def test_every_role_has_a_ticker_and_dials(self):
         self.assertEqual(set(TICKER), set(ROLES))
         self.assertEqual(set(REGEN_DEFAULTS), set(ROLES))
