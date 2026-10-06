@@ -1418,11 +1418,21 @@ The policy since then is the owner's: migration history is not kept for its
 own sake, fresh databases are assumed, and an app is reset to a fresh
 `0001` rather than left to accumulate steps. A few hand-written steps are
 kept because they do something a generated initial cannot: `api`'s
-`0002_data_mesh_group`, `core`'s `0002_bootstrap_marker`, `ledger`'s
-`0002_immutability_triggers`, `kanban`'s `0002_seed_consensus_policies`
-and `forum`'s `0002_cleanup_run_workflow`. `people` and `socialhub` have
-gained a few ordinary steps since the reset, and `locations` has
-`0004_homes_places_seats` in both of its graphs.
+`0002_data_mesh_group` (a seed row; `init_data` makes the same row),
+`ledger`'s `0002_immutability_triggers`, `kanban`'s
+`0002_seed_consensus_policies` and `forum`'s `0002_cleanup_run_workflow`.
+`locations` has `0004_homes_places_seats` in both of its graphs.
+
+On 2026-10-06 the ordinary steps that had gathered since the reset were
+folded the same way (the owner: "drop the migrations, I dont need them"):
+`core`'s `0002_bootstrap_marker`, `people`'s `0003_person_show_contact` and
+`0004_remove_person_is_federal_agent`, `socialhub`'s
+`0003_dataexport_replaced`, `0004_privacynotice_seeded` and
+`0005_remove_community_is_federal_tribe`, and `geography`'s
+`0002_contributions`. All seven were schema steps; none held a seed or a
+trigger. `core` and `geography` have one `0001_initial` again, `people` and
+`socialhub` their pair `0001_initial` and `0002_initial`, the names other
+apps depend on. A database made before that day is built again.
 
 `toto.locations` has two graphs with the same file names:
 `migrations/` with geometry and `migrations_nogis/` without. They must be
@@ -1502,6 +1512,13 @@ scoped change, so a larger piece of work is a run of small commits.
 About 310 commits landed between 2026-10-01 and 2026-10-06. The list below
 names the ones that changed what a host sees, by day, with their short
 hashes.
+
+**2026-10-06 — migrations folded again**
+
+- `492f83e5`, `21574d94`, `6741f621` The steps gathered since the reset of
+  2026-10-01 in `core`, `geography`, `people` and `socialhub` are folded
+  into fresh initials. `f2d8935f` is the last commit that holds the folded
+  files. The tables are the same; a database made before is built again.
 
 **2026-10-06 — Play and Edit on a storage-only host**
 
