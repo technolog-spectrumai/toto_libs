@@ -28,6 +28,7 @@ from django.core.management import call_command
 from django.template.loader import render_to_string
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
+from django.utils import translation
 
 from toto.audit.models import AuditRecord
 from toto.people.models import Person
@@ -375,6 +376,13 @@ class ChainTests(_Fixture):
 class PanelTemplateTests(SimpleTestCase):
     """oya/_file_versions.html honours ``can_write`` (accepted and ignored until
     2026-09-30, so a reader's page claimed the lock of a file it only showed)."""
+
+    def setUp(self):
+        # The sentences asserted below are the English ones, whatever language
+        # an earlier test's request left active on this thread.
+        language = translation.override("en")
+        language.__enter__()
+        self.addCleanup(language.__exit__, None, None, None)
 
     def render(self, **context):
         return render_to_string("oya/_file_versions.html", {"file_pk": 7, **context})
