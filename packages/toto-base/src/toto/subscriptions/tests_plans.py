@@ -313,6 +313,11 @@ class TheFreeTierIsWhatItClaimsTests(SimpleTestCase):
         # installs toto-geo's app.
         if apps.is_installed("toto.geography"):
             expected.add("geography")
+        # Deliberate too (2026-10-06, stage 65): a company is a community,
+        # and its ID number and share register are free on every plan
+        # (toto/companies/entitlements.py), where the app is installed.
+        if apps.is_installed("toto.companies"):
+            expected.add("companies")
         self.assertEqual(
             free, expected,
             "the free tier changed — if that is deliberate, say so here")
