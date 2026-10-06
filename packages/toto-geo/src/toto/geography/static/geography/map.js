@@ -208,7 +208,13 @@
     function marker(point, options) {
       var made = L.marker([point.lat, point.lng], Object.assign({icon: root.classicPin()},
                                                                 options || {}));
-      if (point.label) { made.bindTooltip(point.label); }
+      if (point.label) {
+        /* As text, never as markup: Leaflet draws a string as HTML, and a
+         * label is a name a member typed or a place name from outside. */
+        var tip = document.createElement("span");
+        tip.textContent = point.label;
+        made.bindTooltip(tip);
+      }
       return made;
     }
 

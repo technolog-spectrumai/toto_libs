@@ -237,6 +237,22 @@ class MapScriptSourceTests(SimpleTestCase):
         if original.exists():
             self.assertEqual(pin.read_bytes(), original.read_bytes())
 
+    def test_a_name_reaches_the_map_as_text_never_as_markup(self):
+        """Leaflet draws a string tooltip as HTML. A point's name is typed by
+        a member and a hit's label comes from outside, so both go in as a
+        text node; nothing else is handed to a tooltip but the page's own
+        sentence, and nothing is written with innerHTML."""
+        import re
+
+        source = self.sources()["map.js"]
+        self.assertIn("tip.textContent = point.label;", source)
+        self.assertIn("made.bindTooltip(tip);", source)
+        bound = re.findall(r"bindTooltip\(([^)]*)\)", source)
+        self.assertEqual(sorted(bound), ['texts.temporary || ""', "tip"])
+        for name, text in self.sources().items():
+            self.assertNotIn("innerHTML", text, name)
+            self.assertNotIn("bindPopup", text, name)
+
     def test_a_search_never_runs_while_typing(self):
         source = self.sources()["map.js"]
         self.assertIn('event.key === "Enter"', source)
