@@ -6,9 +6,28 @@ on the left the index (a text filter, the kinds, a community filter), on the
 right one map with everything this member may see (toto.geography.access,
 visible_to). On a phone the index is a drawer.
 
+The tools beside the map are TABS (the owner, 2026-10-06: "Search nearby and
+Route in locations should be different tabs"): the index with its filters,
+Search nearby, Route. One is open at a time; the map is outside them and
+shared, so what is on it stays when the tab changes. The open tab is in the
+address (?tool=nearby, ?tool=route) and drawn by the server, so a reload and
+a link keep it. Place search stays above the map: both a centre for nearby
+and an end of a route are taken from its results. On a phone the three tabs
+are in the drawer, and three buttons above the map open it at each.
+
+The community filter is a dropdown of checkboxes (the owner, 2026-10-06:
+"istead of community choice in locations app there should be dropdown with
+checkboxes filter by community"): none ticked is every community; ticked
+ones are in the address (?community=a&community=b). It is worked out in the
+page and sends nothing.
+
 What the page is handed is DATA: one json_script, read by
 static/geography/locations.js, which writes every name, note and label as
 text, never as markup. Nothing in this template is written into a script.
+
+A pin's and a zone's words (the community, the name, the address, the note,
+the description) are asked in a dialog and nowhere else: what is beside the
+map is the geometry's alone (the pin to drag, the corners, Continue, Cancel).
 
 A search, a route, a saved pin, a saved zone, a change and a comment are
 charged, each on its own button with its price beside it. Looking, filtering,
@@ -47,28 +66,64 @@ and on no other map of the platform; a route is shown and forgotten.{% endcommen
       {% endblocktrans %}</p>
     {% endif %}
 
-    <div class="flex flex-wrap items-center gap-2 lg:hidden">
-      <button type="button" data-geo="drawer-open"
+    {# ---- on a phone: the drawer, opened at one of its tabs ---- #}
+    <div class="flex flex-wrap items-center gap-2 lg:hidden" data-geo="drawer-openers">
+      <button type="button" data-geo-open="index"
               class="inline-flex items-center gap-2 rounded-lg border border-current/30 px-3 py-2 text-sm font-semibold">
         <i class="fa-solid fa-list" aria-hidden="true"></i>{% trans "Location index" %}</button>
+      <button type="button" data-geo-open="nearby"
+              class="inline-flex items-center gap-2 rounded-lg border border-current/30 px-3 py-2 text-sm font-semibold">
+        <i class="fa-solid fa-bullseye" aria-hidden="true"></i>{% trans "Search nearby" %}</button>
+      {% if route_modes %}
+      <button type="button" data-geo-open="route"
+              class="inline-flex items-center gap-2 rounded-lg border border-current/30 px-3 py-2 text-sm font-semibold">
+        <i class="fa-solid fa-route" aria-hidden="true"></i>{% trans "Route" %}</button>
+      {% endif %}
     </div>
 
     <div class="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
 
-      {# ---- the index: a drawer on a phone ---- #}
+      {# ---- the tools, one tab open at a time: a drawer on a phone ---- #}
       <aside data-geo="drawer"
              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
              class="fixed inset-y-0 left-0 z-[1100] hidden w-[min(90vw,360px)] flex-col overflow-y-auto border-r p-4 shadow-xl lg:static lg:z-auto lg:flex lg:max-h-[82vh] lg:w-auto lg:rounded-2xl lg:border lg:shadow-sm">
-        <div class="mb-3 flex items-start justify-between gap-3">
-          <div>
-            <h2 class="text-lg font-bold">{% trans "Location index" %}</h2>
-            <p class="text-xs opacity-65" data-geo="shown" role="status"></p>
+        <div class="mb-3 flex items-start justify-between gap-2">
+          <div role="tablist" aria-label="{% trans 'Map tools' %}" data-geo="tabs" data-testid="geography-tabs"
+               class="flex min-w-0 flex-1 flex-wrap border-b border-current/15">
+          <button type="button" role="tab" id="geography-tab-index" data-geo-tab="index" data-testid="geography-tab-index"
+                  aria-controls="geography-panel-index"
+                  aria-selected="{% if tool == 'index' %}true{% else %}false{% endif %}"
+                  tabindex="{% if tool == 'index' %}0{% else %}-1{% endif %}"
+                  class="-mb-px inline-flex items-center gap-1.5 border-b-2 border-transparent px-2.5 py-2 text-sm font-semibold opacity-60 aria-selected:border-current aria-selected:opacity-100">
+            <i class="fa-solid fa-list" aria-hidden="true"></i>{% trans "Index" %}</button>
+          <button type="button" role="tab" id="geography-tab-nearby" data-geo-tab="nearby" data-testid="geography-tab-nearby"
+                  aria-controls="geography-panel-nearby"
+                  aria-selected="{% if tool == 'nearby' %}true{% else %}false{% endif %}"
+                  tabindex="{% if tool == 'nearby' %}0{% else %}-1{% endif %}"
+                  class="-mb-px inline-flex items-center gap-1.5 border-b-2 border-transparent px-2.5 py-2 text-sm font-semibold opacity-60 aria-selected:border-current aria-selected:opacity-100">
+            <i class="fa-solid fa-bullseye" aria-hidden="true"></i>{% trans "Search nearby" %}</button>
+          {% if route_modes %}
+          <button type="button" role="tab" id="geography-tab-route" data-geo-tab="route" data-testid="geography-tab-route"
+                  aria-controls="geography-panel-route"
+                  aria-selected="{% if tool == 'route' %}true{% else %}false{% endif %}"
+                  tabindex="{% if tool == 'route' %}0{% else %}-1{% endif %}"
+                  class="-mb-px inline-flex items-center gap-1.5 border-b-2 border-transparent px-2.5 py-2 text-sm font-semibold opacity-60 aria-selected:border-current aria-selected:opacity-100">
+            <i class="fa-solid fa-route" aria-hidden="true"></i>{% trans "Route" %}</button>
+          {% endif %}
           </div>
-          <button type="button" data-geo="drawer-close" aria-label="{% trans 'Close the index' %}"
-                  class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 lg:hidden">
+          <button type="button" data-geo="drawer-close" aria-label="{% trans 'Close' %}"
+                  class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-current/15 lg:hidden">
             <i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
         </div>
 
+        {# ---- tab 1: the index and its filters ---- #}
+        <div role="tabpanel" id="geography-panel-index" data-geo-panel="index" data-testid="geography-panel-index"
+             aria-labelledby="geography-tab-index" tabindex="0"
+             class="{% if tool != 'index' %}hidden {% endif %}outline-none">
+        <div class="mb-3">
+          <h2 class="text-lg font-bold">{% trans "Location index" %}</h2>
+          <p class="text-xs opacity-65" data-geo="shown" role="status"></p>
+        </div>
         <label class="block text-sm">
           <span class="sr-only">{% trans "Filter by name or note" %}</span>
           <input data-geo="filter" type="search" autocomplete="off" maxlength="200"
@@ -85,12 +140,29 @@ and on no other map of the platform; a route is shown and forgotten.{% endcommen
           <label class="flex items-center gap-2"><input type="checkbox" data-geo-kind="zone" checked> {% trans "Community zones" %}</label>
         </fieldset>
 
-        <label class="mt-3 block text-sm">{% trans "Community" %}
-          <select data-geo="community"
-                  class="mt-1 block w-full rounded-lg border border-current/30 bg-inherit px-3 py-2 text-sm text-inherit outline-none">
-            <option value="">{% trans "Every community" %}</option>
-          </select>
-        </label>
+        {# The community filter: a dropdown of checkboxes. The boxes are made
+           by locations.js, each name as text; none ticked is every community. #}
+        <div class="relative mt-3 text-sm" data-geo="community-filter" data-testid="geography-community-filter">
+          <span id="geography-community-label" class="block">{% trans "Community" %}</span>
+          <button type="button" data-geo="community-toggle" data-testid="geography-community-toggle"
+                  aria-expanded="false" aria-controls="geography-community-list"
+                  aria-labelledby="geography-community-label geography-community-chosen"
+                  class="mt-1 flex w-full items-center justify-between gap-2 rounded-lg border border-current/30 px-3 py-2 text-left text-sm">
+            <span id="geography-community-chosen" data-geo="community-chosen" class="min-w-0 truncate">{% trans "All communities" %}</span>
+            <i class="fa-solid fa-chevron-down text-xs opacity-70" aria-hidden="true"></i></button>
+          <div id="geography-community-list" data-geo="community-list" role="group"
+               aria-labelledby="geography-community-label"
+               :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="absolute inset-x-0 z-20 mt-1 hidden max-h-64 overflow-auto rounded-lg border p-2 shadow-lg">
+            <div class="mb-2 flex items-center gap-2 border-b border-current/15 pb-2">
+              <button type="button" data-geo="community-all"
+                      class="rounded-lg border border-current/30 px-2 py-1 text-xs font-semibold">{% trans "All" %}</button>
+              <button type="button" data-geo="community-none"
+                      class="rounded-lg border border-current/30 px-2 py-1 text-xs font-semibold">{% trans "Clear" %}</button>
+            </div>
+            <div data-geo="community-boxes" class="space-y-1"></div>
+          </div>
+        </div>
 
         <div class="mt-3 grid grid-cols-2 gap-2">
           <button type="button" data-geo="fit"
@@ -105,6 +177,62 @@ and on no other map of the platform; a route is shown and forgotten.{% endcommen
 
         <p class="mt-4 text-xs opacity-70">
           <a href="{% url 'geography:my_contributions' %}" class="font-semibold underline">{% trans "Your pins, zones and comments" %}</a></p>
+        </div>
+
+        {# ---- tab 2: search nearby, worked out in this page ---- #}
+        <div role="tabpanel" id="geography-panel-nearby" data-geo-panel="nearby" data-testid="geography-panel-nearby"
+             aria-labelledby="geography-tab-nearby" tabindex="0"
+             class="{% if tool != 'nearby' %}hidden {% endif %}outline-none">
+        <div data-geo="nearby">
+          <p class="flex items-center gap-2 text-sm font-semibold">
+            <i class="fa-solid fa-bullseye" aria-hidden="true"></i>{% trans "Search nearby" %}</p>
+          <p class="mt-1 text-xs opacity-60">
+            {% trans "Around a centre: a point you clicked, a temporary point, a row you opened or a search result. It is worked out in this page from what the map already shows: the centre is sent nowhere and nothing is charged." %}</p>
+          <p class="mt-2 text-sm" data-geo="nearby-centre"></p>
+          <div class="mt-2 flex flex-wrap items-end gap-3">
+            <label class="text-sm">{% trans "Within" %}
+              <select data-geo="nearby-radius" class="mt-1 block w-32 rounded-lg border border-current/30 bg-inherit px-3 py-2 text-sm text-inherit outline-none">
+                {% for km in radii %}<option value="{{ km }}"{% if km == 10 %} selected{% endif %}>{{ km }} km</option>{% endfor %}
+              </select></label>
+            <button type="button" data-geo="nearby-go" data-testid="geography-nearby-go"
+                    class="rounded-lg border border-current/30 px-3 py-2 text-sm font-semibold">{% trans "Search nearby" %}</button>
+            <button type="button" data-geo="nearby-clear" class="rounded-lg border border-current/30 px-3 py-2 text-sm font-semibold">{% trans "Show everything again" %}</button>
+          </div>
+          <p data-geo="nearby-note" role="status" class="mt-2 hidden text-sm"></p>
+          <ul data-geo="nearby-results" data-testid="geography-nearby-results" class="mt-3 space-y-1 text-sm"></ul>
+        </div>
+        </div>
+
+        {# ---- tab 3: route search, here and nowhere else ---- #}
+        {% if route_modes %}
+        <div role="tabpanel" id="geography-panel-route" data-geo-panel="route" data-testid="geography-panel-route"
+             aria-labelledby="geography-tab-route" tabindex="0"
+             class="{% if tool != 'route' %}hidden {% endif %}outline-none">
+        <div data-geo="route" data-testid="geography-route-panel">
+          <p class="flex items-center gap-2 text-sm font-semibold">
+            <i class="fa-solid fa-route" aria-hidden="true"></i>{% trans "Route" %}</p>
+          <p class="mt-1 text-xs opacity-60">
+            {% trans "Between two of the points on this map: a saved point, a search result or a temporary point. The route is shown here and is not kept." %}</p>
+          <p class="mt-1 text-xs opacity-60">
+            {% trans "A new search replaces the results of the one before. To keep a result as an end of a route, press Keep on the map beside it: it stays as a temporary point." %}</p>
+          <div class="mt-3 flex flex-wrap items-end gap-3">
+            <label class="text-sm">{% trans "From" %}
+              <select data-geo="from" class="mt-1 block w-48 rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none"></select></label>
+            <label class="text-sm">{% trans "To" %}
+              <select data-geo="to" class="mt-1 block w-48 rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none"></select></label>
+            <label class="text-sm">{% trans "Travel by" %}
+              <select data-geo="mode" class="mt-1 block w-36 rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none">
+                {% for value, label in route_modes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+              </select></label>
+            <button type="button" data-geo="route-go" data-testid="geography-route-go" disabled
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-current/30 px-3 py-2 text-sm font-semibold disabled:opacity-40">
+              <i class="fa-solid fa-diamond-turn-right" aria-hidden="true"></i><span data-geo="route-go-label">{% trans "Find route" %}</span></button>
+            {% price_hint "geography.route" %}
+          </div>
+          <p data-geo="route-note" role="status" class="mt-2 hidden text-sm"></p>
+        </div>
+        </div>
+        {% endif %}
       </aside>
 
       {# ---- the map and what is done on it ---- #}
@@ -150,15 +278,71 @@ and on no other map of the platform; a route is shown and forgotten.{% endcommen
           <p class="mt-2 text-xs opacity-60">{% trans "A temporary point is free and is sent nowhere, except as an end of a route you ask for." %}</p>
         </div>
 
-        {# ---- save a community pin ---- #}
-        <div data-geo="pin-form" class="hidden space-y-3 rounded-xl border border-current/15 p-4">
+        {# ---- a community pin being placed: the geometry only ---- #}
+        <div data-geo="pin-tool" data-testid="geography-pin-tool" class="hidden space-y-3 rounded-xl border border-current/15 p-4">
           <p class="flex items-center gap-2 text-sm font-semibold">
             <i class="fa-solid fa-map-pin" aria-hidden="true"></i>{% trans "Save community pin" %}</p>
-          <p class="text-xs opacity-60">{% trans "Drag the pin to adjust it. The community's members see the pin, its name, address and note. Nothing is saved until you press Save." %}</p>
-          <label class="block text-sm">{% trans "Community" %}
+          <p class="text-xs opacity-60">{% trans "Drag the pin to adjust it, or click the map to move it. Then press Continue: its community, name, address and note are asked in a dialog. Nothing is saved until you press Save there." %}</p>
+          <div class="flex flex-wrap items-center gap-3">
+            <button type="button" data-geo="pin-continue" data-testid="geography-pin-continue"
+                    class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-bold disabled:opacity-40">{% trans "Continue" %}</button>
+            <button type="button" data-geo="pin-cancel" class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
+          </div>
+          <p data-geo="pin-tool-status" role="status" class="hidden text-sm"></p>
+        </div>
+
+        {# ---- a community zone being drawn: the geometry only ---- #}
+        <div class="rounded-xl border border-current/15 p-4">
+          <button type="button" data-geo="zone-open" data-testid="geography-draw-zone"
+                  class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold">
+            <i class="fa-solid fa-draw-polygon" aria-hidden="true"></i>{% trans "Draw a community zone" %}</button>
+          <div data-geo="zone-tool" data-testid="geography-zone-tool" class="mt-3 hidden space-y-3">
+            <p class="text-xs opacity-60">
+              {% trans "Click the map to add a corner, drag a corner to move it, click a corner to take it out. The outline closes by itself and may not cross itself. Then press Continue: its community, name and description are asked in a dialog. Nothing is saved until you press Save there." %}</p>
+            <div class="flex flex-wrap items-center gap-3">
+              <button type="button" data-geo="zone-undo" class="rounded-lg border px-3 py-1.5 text-sm font-semibold">{% trans "Undo last corner" %}</button>
+              <button type="button" data-geo="zone-restart" class="rounded-lg border px-3 py-1.5 text-sm font-semibold">{% trans "Start over" %}</button>
+              <span data-geo="zone-count" class="text-xs opacity-60"></span>
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+              <button type="button" data-geo="zone-continue" data-testid="geography-zone-continue" disabled
+                      class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-bold disabled:opacity-40">{% trans "Continue" %}</button>
+              <button type="button" data-geo="zone-cancel" class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
+            </div>
+            <p data-geo="zone-tool-status" role="status" class="hidden text-sm"></p>
+          </div>
+        </div>
+
+        {# ---- the opened row ---- #}
+        <div data-geo="details" data-testid="geography-details" class="hidden rounded-xl border border-current/15 p-4"></div>
+      </div>
+
+      {# ---- the words of a pin and of a zone: asked in a dialog, and nowhere
+         else (the owner, 2026-10-06: "the information like name etc should be
+         inputed via modal and modal only"). One dialog for a new pin and for
+         its author's change, one for a zone. The library's modal: x-show,
+         x-trap, Escape; locations.js opens and closes each with an event and
+         hears "geography-dismiss". Cancel leaves what is on the map. ---- #}
+      <div data-geo="pin-dialog" data-testid="geography-pin-dialog" x-data="{open: false}" x-show="open" x-trap="open" x-cloak
+           @geography-dialog="open = $event.detail.open"
+           @keydown.escape.window="if (open) { $dispatch('geography-dismiss') }"
+           class="fixed inset-0 z-[1200] flex items-center justify-center p-4"
+           role="dialog" aria-modal="true" aria-labelledby="geography-pin-dialog-title">
+        <div class="absolute inset-0 bg-black/60" @click="$dispatch('geography-dismiss')"></div>
+        <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+             class="relative max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto rounded-xl border p-5 text-sm shadow-xl">
+          <div class="flex items-center justify-between gap-2">
+            <h2 id="geography-pin-dialog-title" class="min-w-0 text-lg font-bold">
+              <i class="fa-solid fa-map-pin mr-1" aria-hidden="true"></i><span data-geo-mode="new">{% trans "Save community pin" %}</span><span data-geo-mode="change" class="hidden">{% trans "Change the pin" %}</span></h2>
+            <button type="button" @click="$dispatch('geography-dismiss')" class="opacity-70 hover:opacity-100" aria-label="{% trans 'Close' %}">
+              <i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+          </div>
+          <p class="text-xs opacity-60">{% trans "The community's members see the pin, its name, address and note." %}</p>
+          <label class="block text-sm" data-geo-mode="new">{% trans "Community" %}
             <select data-geo="pin-community" class="mt-1 block w-full rounded-lg border border-current/30 bg-inherit px-3 py-2 text-sm text-inherit outline-none"></select></label>
+          <p class="hidden text-sm" data-geo-mode="change">{% trans "Community" %}: <span class="font-semibold" data-geo="pin-community-fixed"></span></p>
           <label class="block text-sm">{% trans "Name" %}
-            <input data-geo="pin-name" type="text" maxlength="200"
+            <input data-geo="pin-name" type="text" maxlength="200" autofocus
                    class="mt-1 block w-full rounded-lg border border-current/30 bg-inherit px-3 py-2 text-sm text-inherit outline-none"></label>
           <label class="block text-sm">{% trans "Address" %}
             <textarea data-geo="pin-postal" rows="2" maxlength="2000"
@@ -166,94 +350,48 @@ and on no other map of the platform; a route is shown and forgotten.{% endcommen
           <label class="block text-sm">{% trans "Note" %}
             <textarea data-geo="pin-note" rows="2" maxlength="2000"
                       class="mt-1 block w-full rounded-lg border border-current/30 bg-inherit px-3 py-2 text-sm text-inherit outline-none"></textarea></label>
+          <p data-geo="pin-status" role="alert" class="hidden text-sm"></p>
           <div class="flex flex-wrap items-center gap-3">
             <button type="button" data-geo="pin-save" data-testid="geography-save-pin"
                     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-bold disabled:opacity-40">{% trans "Save" %}</button>
-            {% price_hint "geography.pin" %}
-            <button type="button" data-geo="pin-cancel" class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
-          </div>
-          <p data-geo="pin-status" role="status" class="hidden text-sm"></p>
-        </div>
-
-        {# ---- draw a community zone ---- #}
-        <div class="rounded-xl border border-current/15 p-4">
-          <button type="button" data-geo="zone-open" data-testid="geography-draw-zone"
-                  class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold">
-            <i class="fa-solid fa-draw-polygon" aria-hidden="true"></i>{% trans "Draw a community zone" %}</button>
-          <div data-geo="zone-form" class="mt-3 hidden space-y-3">
-            <p class="text-xs opacity-60">
-              {% trans "Click the map to add a corner, drag a corner to move it, click a corner to take it out. The outline closes by itself and may not cross itself. Nothing is saved until you press Save." %}</p>
-            <div class="flex flex-wrap items-center gap-3">
-              <button type="button" data-geo="zone-undo" class="rounded-lg border px-3 py-1.5 text-sm font-semibold">{% trans "Undo last corner" %}</button>
-              <button type="button" data-geo="zone-restart" class="rounded-lg border px-3 py-1.5 text-sm font-semibold">{% trans "Start over" %}</button>
-              <span data-geo="zone-count" class="text-xs opacity-60"></span>
-            </div>
-            <label class="block text-sm">{% trans "Community" %}
-              <select data-geo="zone-community" class="mt-1 block w-full rounded-lg border border-current/30 bg-inherit px-3 py-2 text-sm text-inherit outline-none"></select></label>
-            <label class="block text-sm">{% trans "Name" %}
-              <input data-geo="zone-name" type="text" maxlength="200"
-                     class="mt-1 block w-full rounded-lg border border-current/30 bg-inherit px-3 py-2 text-sm text-inherit outline-none"></label>
-            <label class="block text-sm">{% trans "Description" %}
-              <textarea data-geo="zone-description" rows="2" maxlength="2000"
-                        class="mt-1 block w-full rounded-lg border border-current/30 bg-inherit px-3 py-2 text-sm text-inherit outline-none"></textarea></label>
-            <div class="flex flex-wrap items-center gap-3">
-              <button type="button" data-geo="zone-save" data-testid="geography-save-zone" disabled
-                      class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-bold disabled:opacity-40">{% trans "Save" %}</button>
-              {% price_hint "geography.zone" %}
-              <button type="button" data-geo="zone-cancel" class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
-            </div>
-            <p data-geo="zone-status" role="status" class="hidden text-sm"></p>
+            <span data-geo-mode="new">{% price_hint "geography.pin" %}</span><span data-geo-mode="change" class="hidden">{% price_hint "geography.note" %}</span>
+            <button type="button" data-geo="pin-dialog-cancel" class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
           </div>
         </div>
+      </div>
 
-        {# ---- search nearby: worked out in this page ---- #}
-        <div data-geo="nearby" class="rounded-xl border border-current/15 p-4">
-          <p class="flex items-center gap-2 text-sm font-semibold">
-            <i class="fa-solid fa-bullseye" aria-hidden="true"></i>{% trans "Search nearby" %}</p>
-          <p class="mt-1 text-xs opacity-60">
-            {% trans "Around a centre: a point you clicked, a temporary point, a row you opened or a search result. It is worked out in this page from what the map already shows: the centre is sent nowhere and nothing is charged." %}</p>
-          <p class="mt-2 text-sm" data-geo="nearby-centre"></p>
-          <div class="mt-2 flex flex-wrap items-end gap-3">
-            <label class="text-sm">{% trans "Within" %}
-              <select data-geo="nearby-radius" class="mt-1 block w-32 rounded-lg border border-current/30 bg-inherit px-3 py-2 text-sm text-inherit outline-none">
-                {% for km in radii %}<option value="{{ km }}"{% if km == 10 %} selected{% endif %}>{{ km }} km</option>{% endfor %}
-              </select></label>
-            <button type="button" data-geo="nearby-go" data-testid="geography-nearby-go"
-                    class="rounded-lg border border-current/30 px-3 py-2 text-sm font-semibold">{% trans "Search nearby" %}</button>
-            <button type="button" data-geo="nearby-clear" class="rounded-lg border border-current/30 px-3 py-2 text-sm font-semibold">{% trans "Show everything again" %}</button>
+      <div data-geo="zone-dialog" data-testid="geography-zone-dialog" x-data="{open: false}" x-show="open" x-trap="open" x-cloak
+           @geography-dialog="open = $event.detail.open"
+           @keydown.escape.window="if (open) { $dispatch('geography-dismiss') }"
+           class="fixed inset-0 z-[1200] flex items-center justify-center p-4"
+           role="dialog" aria-modal="true" aria-labelledby="geography-zone-dialog-title">
+        <div class="absolute inset-0 bg-black/60" @click="$dispatch('geography-dismiss')"></div>
+        <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+             class="relative max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto rounded-xl border p-5 text-sm shadow-xl">
+          <div class="flex items-center justify-between gap-2">
+            <h2 id="geography-zone-dialog-title" class="min-w-0 text-lg font-bold">
+              <i class="fa-solid fa-draw-polygon mr-1" aria-hidden="true"></i><span data-geo-mode="new">{% trans "Save community zone" %}</span><span data-geo-mode="change" class="hidden">{% trans "Change the zone" %}</span></h2>
+            <button type="button" @click="$dispatch('geography-dismiss')" class="opacity-70 hover:opacity-100" aria-label="{% trans 'Close' %}">
+              <i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
           </div>
-          <p data-geo="nearby-note" role="status" class="mt-2 hidden text-sm"></p>
-        </div>
-
-        {# ---- route search: here and nowhere else ---- #}
-        {% if route_modes %}
-        <div data-geo="route" data-testid="geography-route-panel" class="rounded-xl border border-current/15 p-4">
-          <p class="flex items-center gap-2 text-sm font-semibold">
-            <i class="fa-solid fa-route" aria-hidden="true"></i>{% trans "Route" %}</p>
-          <p class="mt-1 text-xs opacity-60">
-            {% trans "Between two of the points on this map: a saved point, a search result or a temporary point. The route is shown here and is not kept." %}</p>
-          <p class="mt-1 text-xs opacity-60">
-            {% trans "A new search replaces the results of the one before. To keep a result as an end of a route, press Keep on the map beside it: it stays as a temporary point." %}</p>
-          <div class="mt-3 flex flex-wrap items-end gap-3">
-            <label class="text-sm">{% trans "From" %}
-              <select data-geo="from" class="mt-1 block w-48 rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none"></select></label>
-            <label class="text-sm">{% trans "To" %}
-              <select data-geo="to" class="mt-1 block w-48 rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none"></select></label>
-            <label class="text-sm">{% trans "Travel by" %}
-              <select data-geo="mode" class="mt-1 block w-36 rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none">
-                {% for value, label in route_modes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
-              </select></label>
-            <button type="button" data-geo="route-go" data-testid="geography-route-go" disabled
-                    class="inline-flex items-center gap-1.5 rounded-lg border border-current/30 px-3 py-2 text-sm font-semibold disabled:opacity-40">
-              <i class="fa-solid fa-diamond-turn-right" aria-hidden="true"></i><span data-geo="route-go-label">{% trans "Find route" %}</span></button>
-            {% price_hint "geography.route" %}
+          <p class="text-xs opacity-60">{% trans "The community's members see the zone, its name and description." %}</p>
+          <label class="block text-sm" data-geo-mode="new">{% trans "Community" %}
+            <select data-geo="zone-community" class="mt-1 block w-full rounded-lg border border-current/30 bg-inherit px-3 py-2 text-sm text-inherit outline-none"></select></label>
+          <p class="hidden text-sm" data-geo-mode="change">{% trans "Community" %}: <span class="font-semibold" data-geo="zone-community-fixed"></span></p>
+          <label class="block text-sm">{% trans "Name" %}
+            <input data-geo="zone-name" type="text" maxlength="200" autofocus
+                   class="mt-1 block w-full rounded-lg border border-current/30 bg-inherit px-3 py-2 text-sm text-inherit outline-none"></label>
+          <label class="block text-sm">{% trans "Description" %}
+            <textarea data-geo="zone-description" rows="2" maxlength="2000"
+                      class="mt-1 block w-full rounded-lg border border-current/30 bg-inherit px-3 py-2 text-sm text-inherit outline-none"></textarea></label>
+          <p data-geo="zone-status" role="alert" class="hidden text-sm"></p>
+          <div class="flex flex-wrap items-center gap-3">
+            <button type="button" data-geo="zone-save" data-testid="geography-save-zone"
+                    class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-bold disabled:opacity-40">{% trans "Save" %}</button>
+            <span data-geo-mode="new">{% price_hint "geography.zone" %}</span><span data-geo-mode="change" class="hidden">{% price_hint "geography.note" %}</span>
+            <button type="button" data-geo="zone-dialog-cancel" class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
           </div>
-          <p data-geo="route-note" role="status" class="mt-2 hidden text-sm"></p>
         </div>
-        {% endif %}
-
-        {# ---- the opened row ---- #}
-        <div data-geo="details" data-testid="geography-details" class="hidden rounded-xl border border-current/15 p-4"></div>
       </div>
     </div>
   </div>

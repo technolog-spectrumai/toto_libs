@@ -257,7 +257,37 @@ def _texts() -> dict:
                         "is on."),
         "corners": _("%(n)s corners"),
         "keep_hit": _("Keep on the map"),
+        "all_communities": _("All communities"),
+        "n_communities": _("%(n)s communities"),
+        "no_communities": _("There is no community to filter by yet."),
     }
+
+
+#: The tabs beside the map, in their order. ``route`` is there only where
+#: the page has route search.
+TOOLS = ("index", "nearby", "route")
+
+
+def _tool(request, routed: bool) -> str:
+    """The tab the address asks for (``?tool=nearby``, ``?tool=route``), so
+    that a reload and a link keep it; the index for anything else, and for
+    ``route`` on a page with no route search."""
+    asked = request.GET.get("tool", "")
+    if asked not in TOOLS or (asked == "route" and not routed):
+        return TOOLS[0]
+    return asked
+
+
+def _community_filter(request) -> list[str]:
+    """The communities the address ticks: ``?community=a&community=b``; the
+    community page's link carries one. Each once, in the order given. The
+    page ticks those it knows and drops the rest; the filter itself is
+    worked out in the page, from the rows it was handed."""
+    asked = []
+    for slug in request.GET.getlist("community")[:200]:
+        if slug and len(slug) <= 200 and slug not in asked:
+            asked.append(slug)
+    return asked
 
 
 @_marked("signed-in")
@@ -285,14 +315,14 @@ def page(request):
         "urls": geo["config"]["urls"],
         "texts": {**geo["config"]["texts"], **_texts()},
         "radii": [1, 5, 10, 25, 50, 100],
-        "filter": request.GET.get("community", ""),
+        "filter": _community_filter(request),
         "open": request.GET.get("open", ""),
     }
     context = {
         "geo": geo, "config": config, "counts": counts, "total": len(rows),
         "capped": capped, "cap": access.ROW_CAP, "communities": communities,
         "search_enabled": geo["search_enabled"], "route_modes": geo["route_modes"],
-        "radii": config["radii"],
+        "radii": config["radii"], "tool": _tool(request, bool(geo["route_modes"])),
     }
     return render(request, "geography/locations.html",
                   PageProcessor().decorate(context, request))
@@ -328,8 +358,9 @@ def zone_create(request, data, slug):
 
 def _details(request, kind, slug, uid):
     """The details of one pin or zone, as a piece of HTML for the page's
-    panel: its texts (escaped by the template), the author's form, the
-    moderator's buttons and the thread."""
+    panel: its texts (escaped by the template), the author's Change button
+    (it holds the words the page's dialog starts from, and the door they are
+    sent to), the moderator's buttons and the thread."""
     try:
         visible, row = _contribution(request, kind, uid, slug)
     except Refusal as exc:

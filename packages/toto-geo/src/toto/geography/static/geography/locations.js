@@ -22,6 +22,17 @@
  *    and repeated only for a request the server never answered.
  *  - Route search is map.js's controller, unchanged: two coordinate pairs
  *    and a mode, nothing else; the line is drawn and forgotten.
+ *  - The tools beside the map are tabs (the index, Search nearby, Route):
+ *    one open at a time, the map outside them and shared, so nothing on it
+ *    changes when the tab does. A change of tab sends nothing: it rewrites
+ *    the address (?tool=…), which the server reads at the next loading.
+ *  - The community filter is a list of checkboxes: none ticked is every
+ *    community. It is worked out here and sends nothing; the ticked ones go
+ *    into the address (?community=a&community=b).
+ *  - A pin's and a zone's words are typed in a dialog and nowhere else.
+ *    Beside the map there is only the geometry: the pin to drag, the
+ *    corners, Continue and Cancel. Cancel in the dialog leaves the geometry
+ *    on the map; a refusal is shown in the dialog with what was typed kept.
  */
 (function (root) {
   "use strict";
@@ -110,12 +121,17 @@
   }
 
   /* Does the index's filter let a row through?
-   * filter: {text, kinds: {kind: bool}, community: slug or ""}             */
+   * filter: {text, kinds: {kind: bool}, communities: [slug, …]}
+   * No community chosen lets every row through. One or more chosen keep the
+   * rows of those communities (headquarters, areas, pins, zones) and hide
+   * every other row, a person's point included: it belongs to no community.
+   * (`community: slug`, the single choice the page had, reads as one.)      */
   function passes(row, filter) {
     filter = filter || {};
     if (filter.kinds && filter.kinds[row.kind] === false) { return false; }
-    if (filter.community) {
-      if (!row.community || row.community.slug !== filter.community) { return false; }
+    var wanted = filter.communities || (filter.community ? [filter.community] : []);
+    if (wanted.length) {
+      if (!row.community || wanted.indexOf(row.community.slug) === -1) { return false; }
     }
     var text = String(filter.text || "").trim().toLowerCase();
     if (!text) { return true; }
@@ -164,9 +180,116 @@
     };
   }
 
+  /* What the community filter's button says: every community, the one
+   * chosen by its name, or how many. `names`: {slug: name}. */
+  function communityLabel(chosen, names, texts) {
+    texts = texts || {};
+    if (!chosen || !chosen.length) { return texts.all_communities || ""; }
+    if (chosen.length === 1) { return has(names, chosen[0]) ? names[chosen[0]] : chosen[0]; }
+    return String(texts.n_communities || "%(n)s").replace("%(n)s", chosen.length);
+  }
+
+  function has(object, key) { return Object.prototype.hasOwnProperty.call(object || {}, key); }
+
+  /* The communities the address ticked, as the page takes them: those it
+   * knows, each once. `asked`: a list, or the one slug the page used to be
+   * handed. A slug is a word from the address: it is looked up as a key of
+   * `names` and of nothing else. */
+  function knownCommunities(asked, names) {
+    var list = Array.isArray(asked) ? asked : (asked ? [asked] : []);
+    var out = [];
+    list.forEach(function (slug) {
+      if (typeof slug === "string" && has(names, slug) && out.indexOf(slug) === -1) {
+        out.push(slug);
+      }
+    });
+    return out;
+  }
+
+  /* The page's address with what a reload and a link must keep: the open
+   * tab (the index is the address without one), the ticked communities, the
+   * opened row. A key left out of `want` is left as the address has it. */
+  function address(href, want) {
+    var url = new root.URL(href);
+    if (want.tool !== undefined) {
+      url.searchParams.delete("tool");
+      if (want.tool && want.tool !== "index") { url.searchParams.set("tool", want.tool); }
+    }
+    if (want.communities !== undefined) {
+      url.searchParams.delete("community");
+      want.communities.forEach(function (slug) { url.searchParams.append("community", slug); });
+    }
+    if (want.open !== undefined) {
+      url.searchParams.delete("open");
+      if (want.open) { url.searchParams.set("open", want.open); }
+    }
+    return url.toString();
+  }
+
+  /* The tab an arrow key moves to from `current`, round the ends; Home and
+   * End go to the first and the last. Null for any other key. */
+  function stepTab(names, current, key) {
+    if (!names.length) { return null; }
+    var at = Math.max(0, names.indexOf(current));
+    if (key === "ArrowRight") { return names[(at + 1) % names.length]; }
+    if (key === "ArrowLeft") { return names[(at - 1 + names.length) % names.length]; }
+    if (key === "Home") { return names[0]; }
+    if (key === "End") { return names[names.length - 1]; }
+    return null;
+  }
+
+  /* createTabs({tabs, panel, onChange}) -> {select(name, focus), current()}
+   * A tab strip: `tabs` are the role="tab" buttons (data-geo-tab), `panel`
+   * answers a tab's role="tabpanel". One tab is selected (aria-selected,
+   * the one in the Tab order) and its panel is the one not hidden. A click
+   * selects; the arrow keys, Home and End select and move the focus. It
+   * starts at the tab the server drew as selected. Nothing is fetched. */
+  function createTabs(options) {
+    var tabs = Array.prototype.slice.call(options.tabs || []);
+    var names = tabs.map(function (tab) { return tab.dataset.geoTab; });
+    var current = null;
+
+    function draw(focus) {
+      tabs.forEach(function (tab) {
+        var on = tab.dataset.geoTab === current;
+        tab.setAttribute("aria-selected", on ? "true" : "false");
+        tab.setAttribute("tabindex", on ? "0" : "-1");
+        var panel = options.panel(tab.dataset.geoTab);
+        if (panel) { panel.classList.toggle("hidden", !on); }
+        if (on && focus) { tab.focus(); }
+      });
+    }
+
+    function select(name, focus) {
+      if (names.indexOf(name) === -1) { return false; }
+      var changed = name !== current;
+      current = name;
+      draw(focus);
+      if (changed && options.onChange) { options.onChange(name); }
+      return true;
+    }
+
+    tabs.forEach(function (tab) {
+      tab.addEventListener("click", function () { select(tab.dataset.geoTab); });
+      tab.addEventListener("keydown", function (event) {
+        var to = stepTab(names, current, event.key);
+        if (to === null) { return; }
+        event.preventDefault();
+        select(to, true);
+      });
+    });
+    var first = tabs.filter(function (tab) {
+      return tab.getAttribute("aria-selected") === "true";
+    })[0] || tabs[0];
+    if (first) { current = first.dataset.geoTab; draw(false); }
+    return {select: select, current: function () { return current; }, names: names};
+  }
+
   var api = {haversineKm: haversineKm, insideRing: insideRing, zoneKm: zoneKm, rowKm: rowKm,
              nearby: nearby, passes: passes, centreOf: centreOf, wrapLng: wrapLng,
-             homeRing: homeRing, createPresser: createPresser};
+             homeRing: homeRing, createPresser: createPresser,
+             communityLabel: communityLabel, knownCommunities: knownCommunities,
+             address: address, stepTab: stepTab, createTabs: createTabs};
   root.GeographyLocations = api;
   if (typeof module !== "undefined" && module.exports) { module.exports = api; }
 
@@ -213,7 +336,7 @@
                   nearby: L.layerGroup().addTo(map), draft: L.layerGroup().addTo(map)};
 
     var state = {
-      filter: {text: "", kinds: {}, community: config.filter || ""},
+      filter: {text: "", kinds: {}, communities: []},
       near: null,          // {centre: {lat, lng, name}, km}
       centre: null,        // the centre the next nearby search would use
       clicked: null,       // where the map was clicked last
@@ -255,10 +378,30 @@
       return nearby(passing, state.near.centre, state.near.km);
     }
 
+    /* One line of a list of rows: the name, and under it the kind, the
+     * community and, after a nearby search, how far. All as text. */
+    function entry(item) {
+      var row = item.row;
+      var line = el("li");
+      var button = el("button", "block w-full rounded-lg border border-current/10 px-3 py-2 text-left hover:opacity-75");
+      button.type = "button";
+      button.dataset.row = row.id;
+      button.appendChild(el("span", "block font-semibold", row.name || kinds[row.kind] || ""));
+      var under = [kinds[row.kind] || row.kind];
+      if (row.community) { under.push(row.community.name); }
+      if (row.hidden) { under.push(texts.hidden || ""); }
+      if (item.km !== null) { under.push(fill(texts.km_away, {km: item.km.toFixed(1)})); }
+      button.appendChild(el("span", "block text-xs opacity-65", under.join(" · ")));
+      button.addEventListener("click", function () { openRow(row); closeDrawer(); });
+      line.appendChild(button);
+      return line;
+    }
+
     function drawRows() {
       layers.rows.clearLayers();
-      var list = q("index");
+      var list = q("index"), nearList = q("nearby-results");
       list.textContent = "";
+      if (nearList) { nearList.textContent = ""; }
       var now = shown();
       now.forEach(function (item) {
         var row = item.row, layer;
@@ -281,24 +424,22 @@
         });
         layer.addTo(layers.rows);
 
-        var entry = el("li");
-        var button = el("button", "block w-full rounded-lg border border-current/10 px-3 py-2 text-left hover:opacity-75");
-        button.type = "button";
-        button.dataset.row = row.id;
-        button.appendChild(el("span", "block font-semibold", row.name || kinds[row.kind] || ""));
-        var under = [kinds[row.kind] || row.kind];
-        if (row.community) { under.push(row.community.name); }
-        if (row.hidden) { under.push(texts.hidden || ""); }
-        if (item.km !== null) { under.push(fill(texts.km_away, {km: item.km.toFixed(1)})); }
-        button.appendChild(el("span", "block text-xs opacity-65", under.join(" · ")));
-        button.addEventListener("click", function () { openRow(row); closeDrawer(); });
-        entry.appendChild(button);
-        list.appendChild(entry);
+        list.appendChild(entry(item));
+        /* The same rows, nearest first, in the Search nearby tab: what a
+         * search found is read where it was asked. */
+        if (state.near && nearList) { nearList.appendChild(entry(item)); }
       });
-      if (!now.length) { list.appendChild(el("li", "text-sm italic opacity-60", texts.nothing || "")); }
+      if (!now.length) {
+        list.appendChild(el("li", "text-sm italic opacity-60", texts.nothing || ""));
+        if (state.near && nearList) {
+          nearList.appendChild(el("li", "text-sm italic opacity-60", texts.nothing || ""));
+        }
+      }
       say("shown", state.near
         ? fill(texts.near, {n: now.length, km: state.near.km})
         : fill(texts.shown, {n: now.length}));
+      /* The nearby tab's own line, kept true when a filter narrows it. */
+      if (state.near) { say("nearby-note", fill(texts.near, {n: now.length, km: state.near.km})); }
     }
 
     function fitAll() {
@@ -320,47 +461,133 @@
         drawRows();
       });
     });
-    var communityBox = q("community");
-    var named = {};
+    /* The community filter: a button that opens a list of checkboxes, one
+     * for every community the page knows (those of its rows, and the
+     * member's own). Each name is written as text. Ticking sends nothing. */
+    var named = Object.create(null);      // slug -> name; a slug is never a method's name
     rows.forEach(function (row) { if (row.community) { named[row.community.slug] = row.community.name; } });
     (config.communities || []).forEach(function (c) { named[c.slug] = c.name; });
-    Object.keys(named).sort(function (a, b) { return named[a].localeCompare(named[b]); })
-      .forEach(function (slug) {
-        var option = el("option", "", named[slug]);
-        option.value = slug;
-        communityBox.appendChild(option);
-      });
-    communityBox.value = named[state.filter.community] ? state.filter.community : "";
-    state.filter.community = communityBox.value;
-    communityBox.addEventListener("change", function () {
-      state.filter.community = communityBox.value;
+    var slugs = Object.keys(named).sort(function (a, b) { return named[a].localeCompare(named[b]); });
+    var communityFilter = q("community-filter"), communityToggle = q("community-toggle");
+    var communityList = q("community-list"), communityBoxes = q("community-boxes");
+    var ticks = Object.create(null);
+    state.filter.communities = knownCommunities(config.filter, named);
+
+    function chosenCommunities() {
+      return slugs.filter(function (slug) { return ticks[slug].checked; });
+    }
+
+    function applyCommunities(remembered) {
+      state.filter.communities = chosenCommunities();
+      q("community-chosen").textContent = communityLabel(state.filter.communities, named, texts);
       drawRows();
+      if (remembered) { remember(); }
+    }
+
+    function tickCommunities(on) {
+      slugs.forEach(function (slug) { ticks[slug].checked = on; });
+      applyCommunities(true);
+    }
+
+    slugs.forEach(function (slug) {
+      var label = el("label", "flex items-center gap-2 rounded px-1 py-1");
+      var tick = el("input");
+      tick.type = "checkbox";
+      tick.value = slug;
+      tick.checked = state.filter.communities.indexOf(slug) !== -1;
+      tick.addEventListener("change", function () { applyCommunities(true); });
+      label.appendChild(tick);
+      label.appendChild(el("span", "min-w-0 break-words", named[slug]));
+      communityBoxes.appendChild(label);
+      ticks[slug] = tick;
     });
+    if (!slugs.length) {
+      communityBoxes.appendChild(el("p", "text-xs italic opacity-60", texts.no_communities || ""));
+    }
+    q("community-chosen").textContent = communityLabel(state.filter.communities, named, texts);
+
+    function communityListOpen() { return !communityList.classList.contains("hidden"); }
+    function showCommunityList(on) {
+      communityList.classList.toggle("hidden", !on);
+      communityToggle.setAttribute("aria-expanded", on ? "true" : "false");
+    }
+    communityToggle.addEventListener("click", function () { showCommunityList(!communityListOpen()); });
+    communityToggle.addEventListener("keydown", function (event) {
+      if (event.key !== "ArrowDown") { return; }
+      event.preventDefault();
+      showCommunityList(true);
+      var first = slugs.length ? ticks[slugs[0]] : q("community-all");
+      if (first && first.focus) { first.focus(); }
+    });
+    /* Escape closes it and gives the focus back to its button; so does a
+     * click anywhere else, and the focus leaving it. */
+    communityFilter.addEventListener("keydown", function (event) {
+      if (event.key !== "Escape" || !communityListOpen()) { return; }
+      event.stopPropagation();
+      showCommunityList(false);
+      communityToggle.focus();
+    });
+    communityFilter.addEventListener("focusout", function (event) {
+      if (event.relatedTarget && !communityFilter.contains(event.relatedTarget)) {
+        showCommunityList(false);
+      }
+    });
+    document.addEventListener("click", function (event) {
+      if (communityListOpen() && !communityFilter.contains(event.target)) { showCommunityList(false); }
+    });
+    q("community-all").addEventListener("click", function () { tickCommunities(true); });
+    q("community-none").addEventListener("click", function () { tickCommunities(false); });
+
     q("fit").addEventListener("click", fitAll);
     q("reset").addEventListener("click", function () {
-      state.filter = {text: "", kinds: {}, community: ""};
+      state.filter = {text: "", kinds: {}, communities: []};
       state.near = null;
       filterBox.value = "";
-      communityBox.value = "";
       Array.prototype.forEach.call(box.querySelectorAll("[data-geo-kind]"),
                                    function (check) { check.checked = true; });
       layers.nearby.clearLayers();
       say("nearby-note", "");
-      drawRows();
+      tickCommunities(false);      // draws the rows, and the address forgets them
       fitAll();
     });
 
-    /* --- the drawer, on a phone ----------------------------------------- */
+    /* --- the drawer, on a phone: the three tabs are in it ----------------- */
     var drawer = q("drawer");
     function closeDrawer() {
       drawer.classList.add("hidden");
       drawer.classList.remove("flex");
     }
-    q("drawer-open").addEventListener("click", function () {
+    function openDrawer() {
       drawer.classList.remove("hidden");
       drawer.classList.add("flex");
-    });
+    }
     q("drawer-close").addEventListener("click", closeDrawer);
+
+    /* --- the tabs: the index, Search nearby, Route ------------------------ */
+    var tabs = createTabs({
+      tabs: box.querySelectorAll("[data-geo-tab]"),
+      panel: function (name) { return box.querySelector('[data-geo-panel="' + name + '"]'); },
+      /* A change of tab asks the server nothing: the address is rewritten
+       * where it stands, and what is on the map is not touched. */
+      onChange: function () { remember(); }
+    });
+    /* On a phone three buttons above the map open the drawer at a tab. */
+    Array.prototype.forEach.call(box.querySelectorAll("[data-geo-open]"), function (button) {
+      button.addEventListener("click", function () {
+        tabs.select(button.dataset.geoOpen);
+        openDrawer();
+      });
+    });
+
+    /* The address as a reload and a link must find it: the open tab and the
+     * ticked communities. Rewritten in place: no request, no new entry in
+     * the browser's history. */
+    function remember() {
+      try {
+        root.history.replaceState(root.history.state, "", address(root.location.href, {
+          tool: tabs.current(), communities: state.filter.communities}));
+      } catch (error) { /* an address that cannot be rewritten stays as it is */ }
+    }
 
     /* --- a centre for nearby --------------------------------------------- */
     function setCentre(lat, lng, name) {
@@ -432,30 +659,25 @@
     }
 
     function reloadTo(row) {
-      var url = new URL(root.location.href);
-      url.searchParams.delete("open");
-      if (row) { url.searchParams.set("open", row); }
-      if (state.filter.community) { url.searchParams.set("community", state.filter.community); }
-      root.location.assign(url.toString());
+      root.location.assign(address(root.location.href, {
+        open: row || "", tool: tabs.current(), communities: state.filter.communities}));
     }
 
     function wireDetails(row) {
       var status = details.querySelector("[data-geo-detail-status]");
-      var edit = details.querySelector("[data-geo-edit]");
-      if (edit) {
-        edit.addEventListener("submit", function (event) {
-          event.preventDefault();
-          var body = {};
-          Array.prototype.forEach.call(edit.querySelectorAll("[name]"), function (field) {
-            body[field.name] = field.value;
-          });
-          var button = edit.querySelector("button[type=submit]");
-          if (button) { button.disabled = true; }
-          press("edit:" + row.id, edit.getAttribute("action"), body).then(function (answer) {
-            if (button) { button.disabled = false; }
-            if (!answer.ok) { say(status, refusal(answer), true); return; }
-            reloadTo(row.id);
-          });
+      /* The author's change: asked in the dialog. The button holds the
+       * words as the server has them now, and the door. */
+      var change = details.querySelector("[data-geo-change]");
+      if (change) {
+        change.addEventListener("click", function () {
+          var words = change.dataset;
+          if (words.geoChange === "pin") {
+            openPinDialog({row: row, url: words.url, name: words.name || "",
+                           postal: words.postal || "", note: words.note || ""});
+          } else {
+            openZoneDialog({row: row, url: words.url, name: words.name || "",
+                            description: words.description || ""});
+          }
         });
       }
       Array.prototype.forEach.call(details.querySelectorAll("[data-geo-act]"), function (button) {
@@ -675,11 +897,18 @@
       if (!state.clicked) { return; }
       setCentre(state.clicked.lat, state.clicked.lng, texts.clicked);
       closeMenu();
+      /* The centre is read, and the search pressed, in its own tab. */
+      tabs.select("nearby");
+      openDrawer();
     });
 
     /* --- the communities the member may save into ------------------------- */
     var mine = config.communities || [];
+    /* One community for a new pin or zone: a contribution belongs to one.
+     * What was chosen before stays chosen; else the one community the
+     * filter shows, where it is one of the member's; else the first. */
     function fillCommunities(select) {
+      var before = select.value;
       select.textContent = "";
       if (!mine.length) {
         var none = el("option", "", texts.no_community || "");
@@ -692,87 +921,189 @@
         option.value = community.slug;
         select.appendChild(option);
       });
-      if (state.filter.community) { select.value = state.filter.community; }
-      if (!select.value) { select.value = mine[0].slug; }
+      var wanted = [before].concat(state.filter.communities);
+      for (var i = 0; i < wanted.length; i++) {
+        if (wanted[i] && communityOf({value: wanted[i]})) { select.value = wanted[i]; return; }
+      }
+      select.value = mine[0].slug;
     }
     function communityOf(select) {
       for (var i = 0; i < mine.length; i++) { if (mine[i].slug === select.value) { return mine[i]; } }
       return null;
     }
 
-    /* --- save a community pin --------------------------------------------- */
-    var pinForm = q("pin-form");
+    /* --- the two dialogs: the only place a pin's or a zone's words are typed -
+     * Each is the page's modal (the template: x-show, x-trap, Escape), opened
+     * and closed by GeographyMap.dialog. "new" asks the community too and
+     * names the price of a pin or a zone; "change" is the author's change of
+     * a saved row, with the price of a change. */
+    function setMode(dialogBox, mode) {
+      Array.prototype.forEach.call(dialogBox.querySelectorAll("[data-geo-mode]"), function (node) {
+        node.classList.toggle("hidden", node.dataset.geoMode !== mode);
+      });
+    }
+
+    /* --- a community pin: placed on the map, named in the dialog ----------- */
+    var pinTool = q("pin-tool"), pinSave = q("pin-save");
+    var pinDialog = root.GeographyMap.dialog(q("pin-dialog"));
+    var pinChange = null;       // {row, url}: the saved pin whose words are open
+    var pinWords = "";          // whose words the dialog's fields hold
+
+    function pinFields(name, postal, note) {
+      q("pin-name").value = name;
+      q("pin-postal").value = postal;
+      q("pin-note").value = note;
+    }
+
+    /* Drop the pin that was not saved, and what was typed for it. */
     function closePin() {
-      pinForm.classList.add("hidden");
+      if (!pinChange) { pinDialog.close(); }
+      pinTool.classList.add("hidden");
       layers.draft.clearLayers();
       state.draft = null;
+      if (pinWords === "new") { pinFields("", "", ""); pinWords = ""; }
     }
+
+    /* `change`: {row, url, name, postal, note} for a saved pin; nothing for
+     * the pin being placed. What was typed for a new pin is still there
+     * after a Cancel; a change always starts from the saved words. */
+    function openPinDialog(change) {
+      var whose = change ? change.row.id : "new";
+      if (change) { pinFields(change.name, change.postal, change.note); }
+      else if (pinWords !== "new") { pinFields("", "", ""); }
+      pinWords = whose;
+      pinChange = change ? {row: change.row, url: change.url} : null;
+      setMode(q("pin-dialog"), change ? "change" : "new");
+      if (change) {
+        q("pin-community-fixed").textContent = change.row.community ? change.row.community.name : "";
+      } else { fillCommunities(q("pin-community")); }
+      say("pin-status", "");
+      pinSave.disabled = false;
+      pinDialog.open();
+    }
+
     q("click-pin").addEventListener("click", function () {
       if (!state.clicked) { return; }
       closeMenu();
-      fillCommunities(q("pin-community"));
       layers.draft.clearLayers();
       state.draft = L.marker([state.clicked.lat, state.clicked.lng],
                              {icon: root.classicPin(), draggable: true}).addTo(layers.draft);
-      pinForm.classList.remove("hidden");
-      say("pin-status", mine.length ? "" : texts.no_community, !mine.length);
-      q("pin-save").disabled = !mine.length;
+      pinTool.classList.remove("hidden");
+      say("pin-tool-status", mine.length ? "" : texts.no_community, !mine.length);
+      q("pin-continue").disabled = !mine.length;
+    });
+    q("pin-continue").addEventListener("click", function () {
+      if (state.draft) { openPinDialog(null); }
     });
     q("pin-cancel").addEventListener("click", closePin);
-    q("pin-save").addEventListener("click", function () {
+    /* Cancel in the dialog: back to the map, the pin where it was. */
+    q("pin-dialog-cancel").addEventListener("click", function () { pinDialog.close(); });
+    pinSave.addEventListener("click", function () {
+      var words = {name: q("pin-name").value, postal_address: q("pin-postal").value,
+                   note: q("pin-note").value};
+      if (pinChange) {
+        var changed = pinChange;
+        pinSave.disabled = true;
+        press("edit:" + changed.row.id, changed.url, words).then(function (answer) {
+          pinSave.disabled = false;
+          /* Refused: said here, the dialog open, what was typed kept. */
+          if (!answer.ok) { say("pin-status", refusal(answer), true); return; }
+          reloadTo(changed.row.id);
+        });
+        return;
+      }
       var community = communityOf(q("pin-community"));
       if (!community || !state.draft) { say("pin-status", texts.choose_community, true); return; }
       var at = state.draft.getLatLng();
-      var save = q("pin-save");
-      save.disabled = true;
+      pinSave.disabled = true;
       press("pin", community.pins, {
-        lat: round6(at.lat), lng: round6(wrapLng(at.lng)), name: q("pin-name").value,
-        postal_address: q("pin-postal").value, note: q("pin-note").value
+        lat: round6(at.lat), lng: round6(wrapLng(at.lng)), name: words.name,
+        postal_address: words.postal_address, note: words.note
       }).then(function (answer) {
-        save.disabled = false;
+        pinSave.disabled = false;
         if (!answer.ok) { say("pin-status", refusal(answer), true); return; }
         reloadTo("pin:" + answer.data.pin.uid);
       });
     });
 
-    /* --- draw a community zone -------------------------------------------- */
-    var zoneForm = q("zone-form"), zoneSave = q("zone-save");
+    /* --- a community zone: drawn on the map, named in the dialog ----------- */
+    var zoneTool = q("zone-tool"), zoneSave = q("zone-save"), zoneContinue = q("zone-continue");
+    var zoneDialog = root.GeographyMap.dialog(q("zone-dialog"));
+    var zoneChange = null, zoneWords = "";
+
+    function zoneFields(name, description) {
+      q("zone-name").value = name;
+      q("zone-description").value = description;
+    }
+
+    function openZoneDialog(change) {
+      var whose = change ? change.row.id : "new";
+      if (change) { zoneFields(change.name, change.description); }
+      else if (zoneWords !== "new") { zoneFields("", ""); }
+      zoneWords = whose;
+      zoneChange = change ? {row: change.row, url: change.url} : null;
+      setMode(q("zone-dialog"), change ? "change" : "new");
+      if (change) {
+        q("zone-community-fixed").textContent = change.row.community ? change.row.community.name : "";
+      } else { fillCommunities(q("zone-community")); }
+      say("zone-status", "");
+      zoneSave.disabled = false;
+      zoneDialog.open();
+    }
+
     if (root.GeographyZone) {
       state.zoneEditor = root.GeographyZone.attach(map, L, {
         corners: [],
         onChange: function (count) {
-          zoneSave.disabled = count < 3 || !mine.length;
+          zoneContinue.disabled = count < 3 || !mine.length;
           say("zone-count", fill(texts.corners, {n: count}));
         }
       });
       q("zone-open").addEventListener("click", function () {
         closeMenu(); closePin();
-        fillCommunities(q("zone-community"));
-        zoneForm.classList.remove("hidden");
-        say("zone-status", mine.length ? "" : texts.no_community, !mine.length);
+        zoneTool.classList.remove("hidden");
+        say("zone-tool-status", mine.length ? "" : texts.no_community, !mine.length);
         state.zoneEditor.start();
       });
       q("zone-cancel").addEventListener("click", function () {
+        if (!zoneChange) { zoneDialog.close(); }
         state.zoneEditor.reset();
         state.zoneEditor.stop();
-        zoneForm.classList.add("hidden");
+        zoneTool.classList.add("hidden");
+        if (zoneWords === "new") { zoneFields("", ""); zoneWords = ""; }
       });
       q("zone-undo").addEventListener("click", function () { state.zoneEditor.undo(); });
       q("zone-restart").addEventListener("click", function () { state.zoneEditor.reset(); });
-      zoneSave.addEventListener("click", function () {
-        var community = communityOf(q("zone-community"));
-        if (!community) { say("zone-status", texts.choose_community, true); return; }
-        zoneSave.disabled = true;
-        press("zone", community.zones, {
-          name: q("zone-name").value, description: q("zone-description").value,
-          outline: homeRing(state.zoneEditor.corners())
-        }).then(function (answer) {
-          zoneSave.disabled = false;
-          if (!answer.ok) { say("zone-status", refusal(answer), true); return; }
-          reloadTo("zone:" + answer.data.zone.uid);
-        });
+      zoneContinue.addEventListener("click", function () {
+        if (state.zoneEditor.corners().length >= 3) { openZoneDialog(null); }
       });
     }
+    /* Cancel in the dialog: back to the map, the corners where they were. */
+    q("zone-dialog-cancel").addEventListener("click", function () { zoneDialog.close(); });
+    zoneSave.addEventListener("click", function () {
+      var words = {name: q("zone-name").value, description: q("zone-description").value};
+      if (zoneChange) {
+        var changed = zoneChange;
+        zoneSave.disabled = true;
+        press("edit:" + changed.row.id, changed.url, words).then(function (answer) {
+          zoneSave.disabled = false;
+          if (!answer.ok) { say("zone-status", refusal(answer), true); return; }
+          reloadTo(changed.row.id);
+        });
+        return;
+      }
+      var community = communityOf(q("zone-community"));
+      if (!community || !state.zoneEditor) { say("zone-status", texts.choose_community, true); return; }
+      zoneSave.disabled = true;
+      press("zone", community.zones, {
+        name: words.name, description: words.description,
+        outline: homeRing(state.zoneEditor.corners())
+      }).then(function (answer) {
+        zoneSave.disabled = false;
+        if (!answer.ok) { say("zone-status", refusal(answer), true); return; }
+        reloadTo("zone:" + answer.data.zone.uid);
+      });
+    });
 
     /* --- first drawing ------------------------------------------------------ */
     drawRows();
@@ -785,7 +1116,7 @@
     }
     /* Leaflet cannot size itself inside a box that was laid out late. */
     root.setTimeout(function () { map.invalidateSize(); }, 80);
-    return {map: map, controller: controller, state: state};
+    return {map: map, controller: controller, state: state, tabs: tabs};
   }
 
   api.mount = mount;
