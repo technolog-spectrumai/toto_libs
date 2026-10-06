@@ -125,7 +125,7 @@ Out of the six pinned packages zenobia installs these library apps today
 
 | Package | Apps zenobia installs | Apps in the package zenobia does not install |
 |---|---|---|
-| `toto-base` | `toto.core`, `toto.api`, `toto.audit`, `toto.gervazy`, `toto.vault`, `toto.people`, `toto.socialhub`, `toto.events`, `toto.verbena`, `toto.quota`, `toto.notify`, `toto.subscriptions` | `toto.antivirus`, `toto.comments`, `toto.editor`, `toto.jess`, `toto.mail` |
+| `toto-base` | `toto.core`, `toto.api`, `toto.audit`, `toto.gervazy`, `toto.vault`, `toto.people`, `toto.socialhub`, `toto.events`, `toto.verbena`, `toto.quota`, `toto.notify`, `toto.subscriptions`, `toto.comments`, `toto.companies` | `toto.antivirus`, `toto.editor`, `toto.jess`, `toto.mail` |
 | `toto-auth` | `toto.sso_core`, `toto.sso_master`, `toto.social_login` (the provider block of `toto.auth_config.auth_apps`) | `toto.sso_client` |
 | `toto-flow` | `toto.workflows` | `toto.mandragora` |
 | `toto-geo` | `toto.geography` | `toto.locations`, `toto.weather` |
@@ -298,7 +298,7 @@ non-test code.
 
 The foundation, and the one package every host installs. It depends on no
 other toto package. It carries the host API modules described in section 6
-and seventeen apps. Extras: `toto-base[s3]` adds `boto3` for S3 buckets and
+and eighteen apps. Extras: `toto-base[s3]` adds `boto3` for S3 buckets and
 `toto-base[remote-vault]` adds `requests`.
 
 Since 2026-10-04 `toto-base` contains no geography: it needs no GIS library
@@ -320,7 +320,8 @@ are text.
 | `toto.notify` | yes | yes |
 | `toto.subscriptions` | yes | yes |
 | `toto.antivirus` | yes | no |
-| `toto.comments` | yes | no |
+| `toto.comments` | yes | yes, since 2026-10-06 (for geography's pins and zones) |
+| `toto.companies` | yes | yes, since 2026-10-06 |
 | `toto.editor` | none | no |
 | `toto.jess` | yes | no |
 | `toto.mail` | yes | no |
@@ -406,6 +407,35 @@ sessions). It defines the clearance rule and three plugin registries
 uses `toto.audit`, `toto.assets`, `toto.forum`, `toto.gervazy` and
 `toto.subscriptions` when present; the forum is named on a community page
 only where `toto.forum` is installed. zenobia installs it.
+
+Since 2026-10-06 a community page has tabs for plugin sections: a
+`CommunityPlugin` that names a `tab` is drawn on a tab of its own
+(`?tab=<name>`), and the strip appears only where such a plugin shows for
+the community and the viewer. The same day every community got an
+organisation chart: `CommunityPosition` (a title, the person assigned or
+nobody, the position it reports to or none), kept by `org_chart.py`, which
+refuses a ring of positions and a superior from another community under a
+lock on the community's row, and changed through three POST doors
+(`communities/<slug>/positions/…`) by the community's head and
+administrators, each change on the audit chain. The page's Org Chart button
+draws the positions where a community has any, and its members by patron
+where it has none.
+
+**`toto.companies`** (2026-10-06) is what a company has beyond a community.
+A company is a `socialhub.Community` whose `org_type` is `company`; this app
+adds two tables keyed onto it: `CompanyRecord` (the company's ID number, as
+text) and `ShareHolding` (the whole shares one `people.Person` holds in one
+company: one row per pair, never negative, both by database constraints).
+Namespace `companies` has three POST doors (the number, a holding, a
+holding's removal) for the community's head and administrators, each
+audited. It draws through plugins only: a "Company" section and a
+Shareholdings tab on the community page, "Company shareholdings" on a
+profile, and a table in *Download my data*. Percentages are of the recorded
+holdings of one company, never of anything else, and absent where nothing is
+recorded. A holding is independent of membership both ways. Free on every
+plan (`entitlements.py`); a host adds `registry.COMPANIES_APPS` and mounts
+`toto.companies.urls`. It is not `toto.company` of `toto-business` and needs
+none of it. zenobia installs it.
 
 **`toto.events`** is scheduling. `ScheduledEvent` (built on the abstract
 `EventBase`, with an `EventCategory`) has an owner, organisers, a time
