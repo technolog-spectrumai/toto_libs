@@ -4,7 +4,9 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# Everything with geography in it. locations (the map: addresses, territories,
+# Everything with geography in it. geography (2026-10-06: a person's point, a
+# community's headquarters and zone, place-name and route search; two models
+# with a geometry and no stored route; always GeoDjango), locations (the map: addresses, territories,
 # zones, routes, layers, map domains, and the links from people, events and
 # communities to them — in toto-base until 2026-10-04, when that package lost
 # its geography) and weather (observations and forecasts keyed off
@@ -13,7 +15,7 @@ build-backend = "setuptools.build_meta"
 # needs none.
 name = "toto-geo"
 version = "2.0"
-description = "toto geo apps: locations (the map) and weather"
+description = "toto geo apps: geography, locations (the map) and weather"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"

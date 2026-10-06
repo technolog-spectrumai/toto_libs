@@ -49,15 +49,15 @@ At version 2.0 the tree holds:
 | What | How many | Where |
 |---|---|---|
 | Packages (pip distributions) | 16 | `packages/*/pyproject.toml` |
-| Django apps (directories with an `apps.py`) | 60 | `packages/*/src/toto/<app>/` |
-| Namespace members in total | 72 | the 60 apps, the two non-app packages `toto.ui` and `toto.ingress`, and ten single modules |
+| Django apps (directories with an `apps.py`) | 61 | `packages/*/src/toto/<app>/` |
+| Namespace members in total | 73 | the 61 apps, the two non-app packages `toto.ui` and `toto.ingress`, and ten single modules |
 | Parked apps, in no package | 3 | `limbo/datalink`, `limbo/hesperis`, `limbo/polls` |
 
 The ten single modules are the host API. Eight are in `toto-base`
 (`toto.features`, `toto.registry`, `toto.schedules`, `toto.routing`,
 `toto.conf`, `toto.celery_utils`, `toto.versioning`, `toto.tests_schedules`)
 and two are in `toto-auth` (`toto.auth_config`, `toto.auth_local_urls`).
-`scripts/check_package_graph.py` counts these 72 members and 16 packages on
+`scripts/check_package_graph.py` counts these 73 members and 16 packages on
 every run.
 
 ### Lockstep versions
@@ -100,23 +100,27 @@ copy. The copy includes everything here, `limbo/` and the packages zenobia
 does not install included, because this library's own tests assert
 whole-suite counts.
 
-zenobia pins **five of the sixteen packages**, all at 2.0, in
+zenobia pins **six of the sixteen packages**, all at 2.0, in
 `zenobia/requirements.toto.txt`:
 
 ```
 toto-base==2.0
 toto-auth==2.0
 toto-flow==2.0
+toto-geo==2.0
 toto-ops==2.0
 toto-economy==2.0
 ```
 
-The other eleven are named in that file as deliberately absent: `toto-graph`,
+`toto-geo` is pinned since 2026-10-06 for `toto.geography` alone; its other
+two apps, `toto.locations` and `toto.weather`, are not installed there.
+
+The other ten are named in that file as deliberately absent: `toto-graph`,
 `toto-ai`, `toto-anastasia`, `toto-media-ops`, `toto-media`, `toto-business`,
-`toto-works`, `toto-ambrosia`, `toto-repo`, `toto-chat` and `toto-geo`. Their
+`toto-works`, `toto-ambrosia`, `toto-repo` and `toto-chat`. Their
 wheels are not built for zenobia and do not enter its image.
 
-Out of the five pinned packages zenobia installs these library apps today
+Out of the six pinned packages zenobia installs these library apps today
 (`zenobia/zenobia/zenobia/settings.py`, `INSTALLED_APPS`):
 
 | Package | Apps zenobia installs | Apps in the package zenobia does not install |
@@ -124,10 +128,11 @@ Out of the five pinned packages zenobia installs these library apps today
 | `toto-base` | `toto.core`, `toto.api`, `toto.audit`, `toto.gervazy`, `toto.vault`, `toto.people`, `toto.socialhub`, `toto.events`, `toto.verbena`, `toto.quota`, `toto.notify`, `toto.subscriptions` | `toto.antivirus`, `toto.comments`, `toto.editor`, `toto.jess`, `toto.mail` |
 | `toto-auth` | `toto.sso_core`, `toto.sso_master`, `toto.social_login` (the provider block of `toto.auth_config.auth_apps`) | `toto.sso_client` |
 | `toto-flow` | `toto.workflows` | `toto.mandragora` |
+| `toto-geo` | `toto.geography` | `toto.locations`, `toto.weather` |
 | `toto-ops` | `toto.monit`, when `BUILD_MONIT=1`; every profile shipped in the monorepo sets it | — |
 | `toto-economy` | `toto.assets`, `toto.tariffs`, `toto.mint`, `toto.tax`, `toto.mana` | `toto.clearing` |
 
-That is 22 library apps with monitoring on. zenobia also carries apps of its
+That is 23 library apps with monitoring on. zenobia also carries apps of its
 own as a PEP 420 portion of the same namespace (`zenobia/zenobia/toto/`; its
 settings install `toto.yamabiko`, `toto.operator`, `toto.morion` and, under
 `BUILD_BOURSE`, `toto.bourse`). Those are not part of this library and are
@@ -238,7 +243,7 @@ as declared in its `pyproject.toml`. Every one is an exact pin at 2.0.
 | `toto-ambrosia` | base | 1 | no |
 | `toto-anastasia` | base | 1 | no |
 | `toto-media` | base | 2 | no |
-| `toto-geo` | base, flow | 2 | no |
+| `toto-geo` | base, flow | 3 | geography only |
 | `toto-repo` | base, flow | 2 | no |
 | `toto-media-ops` | base, flow | 3 | no |
 | `toto-works` | base, geo | 4 | no |
@@ -640,12 +645,29 @@ package.
 
 ### 5.7 toto-geo
 
-The map and the weather on it. It depends on `toto-base` and `toto-flow`.
+Geography, the map and the weather on it. It depends on `toto-base` and
+`toto-flow`.
 
 | App | Tables | zenobia |
 |---|---|---|
+| `toto.geography` | yes | yes |
 | `toto.locations` | yes | no |
 | `toto.weather` | yes | no |
+
+**`toto.geography`** (2026-10-06) stores two geographic types and nothing
+else: `Address` (a point, with a name, one postal text and a note) and
+`Zone` (one closed ring). `PersonAddress` links a person to a point and
+`CommunityHeadquarters` a community to a headquarters point and a zone;
+deleting a link deletes its geometry row. Place-name search and route
+search ask outside services from the server and are charged compute mana;
+a route is never stored. Saving a point or a zone is charged storage mana.
+Every charged door follows one rule, in `geography/charging.py`: an `op`
+per press, bound to its request by a keyed digest, replayed free for ten
+minutes. Namespace `geography`. A host that wants it pins `toto-geo`, adds
+`toto.registry.GEOGRAPHY_APPS` after `CORE_APPS`, installs
+`django.contrib.gis` and runs a spatial database. It needs nothing of
+`toto.locations`. `geography/geocode.py` is a copy of
+`locations/geocode.py`; the package README says why.
 
 **`toto.locations`** moved here from `toto-base` on 2026-10-04 with every
 geometry-bearing piece. Models: `Address`, `Territory`, `Zone`, `Route`,
@@ -658,7 +680,7 @@ and with it off the app loads without GeoDjango and uses the second
 migration graph `migrations_nogis/`. A host that wants the map pins
 `toto-geo` and adds `toto.registry.LOCATIONS_APPS` after `CORE_APPS`. It
 keeps map domains to clearances and registers a clearance target plugin.
-zenobia installs neither app and has no GIS.
+zenobia does not install it.
 
 **`toto.weather`** stores observations and forecasts for map addresses
 (`WeatherSettings`, `WeatherObservation`, `ForecastSession`,
@@ -846,6 +868,7 @@ and refuses when the two disagree.
 | `AUTH_APPS` | The provider block: `sso_core`, `sso_master`, `social_login`. A host that chooses its mode uses `toto.auth_config.auth_apps(cfg)` instead. |
 | `BASE_APPS` | `CORE_APPS` followed by `AUTH_APPS`. |
 | `LOCATIONS_APPS` | `["toto.locations"]`. Never part of the lists above; a host with the map adds it after `CORE_APPS` and sets `HAS_GIS`. |
+| `GEOGRAPHY_APPS` | `["toto.geography"]`. Never part of the lists above; a host with geography adds it after `CORE_APPS`, with `django.contrib.gis` and a spatial database. |
 | `NOTIFY_APPS` | `["toto.notify"]`. Never part of the lists above; a host adds it and mounts `toto.notify.urls`. |
 | `FEATURE_APPS` | A map from a `Features` key to the apps that feature installs. |
 | `TASK_MODULES` | The app labels whose `tasks` module Celery autodiscovers. |

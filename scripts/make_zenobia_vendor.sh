@@ -21,8 +21,8 @@
 # `zenobia` branch this script named until 2026-10-06 no longer exists; its
 # last states are legacy/zenobia and legacy/zenobia_vendor.
 #
-# zenobia PINS five of the sixteen packages (toto-base, toto-auth, toto-flow,
-# toto-ops, toto-economy; see its requirements.toto.txt). Its vendored tree
+# zenobia PINS six of the sixteen packages (toto-base, toto-auth, toto-flow,
+# toto-geo, toto-ops, toto-economy; see its requirements.toto.txt). Its vendored tree
 # nevertheless carries all sixteen, because this library's own tests assert
 # whole-suite counts — so, unlike the faros/aurelian filters, this one
 # excludes no package, and scripts/clean_env_check.sh and tests/ still apply
