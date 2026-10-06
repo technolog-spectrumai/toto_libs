@@ -1,6 +1,9 @@
-{% load i18n %}
+{% load i18n static %}
 {% comment %}The Shareholdings tab of a company's page (stage 65): holder,
-quantity, percentage, and the total recorded. Drawn only for a company and a
+quantity, percentage, and the total recorded; beside the table a ring of the
+ownership (2026-10-06), drawn by static/companies/ownership_chart.js from
+the json_script below, with the vault's Chart.js. The ring repeats the
+table: it is a picture of it, and holds nothing the table does not. Drawn only for a company and a
 signed-in viewer (plugins/community_plugins.py). The forms are drawn only
 for who may manage, and every door checks again (views.py). Names reach the
 page as text. The table scrolls sideways inside its own box on a narrow
@@ -30,7 +33,18 @@ screen, so the page itself never does.{% endcomment %}
   </div>
 
   {% if company_register.rows %}
-  <div class="overflow-x-auto">
+  {% if company_chart %}<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
+  <figure data-testid="company-ownership"
+          :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+          class="rounded-xl border p-4 lg:order-2">
+    <figcaption class="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-70">
+      <i class="fa-solid fa-chart-pie" aria-hidden="true"></i>{% translate "Ownership structure" %}</figcaption>
+    <div class="relative mx-auto h-64 w-full max-w-xs">
+      <canvas data-company-chart="company-ownership-data" role="img"
+              aria-label="{% translate 'Ownership structure: each holder as a share of the recorded shares. The table holds the same figures.' %}"></canvas>
+    </div>
+  </figure>{% else %}<div>{% endif %}
+  <div class="min-w-0 overflow-x-auto lg:order-1">
     <table class="w-full text-left text-sm" data-testid="company-register">
       <caption class="sr-only">{% translate "Recorded shareholdings" %}</caption>
       <thead :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-xs uppercase opacity-70">
@@ -90,6 +104,12 @@ screen, so the page itself never does.{% endcomment %}
       </tfoot>
     </table>
   </div>
+  </div>
+  {% if company_chart %}
+  {{ company_chart|json_script:"company-ownership-data" }}
+  <script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+  <script src="{% static 'companies/ownership_chart.js' %}"></script>
+  {% endif %}
   {% else %}
   <div
     :class="darkMode

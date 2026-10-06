@@ -10,7 +10,9 @@ community's page holds neither and a visitor sees neither:
 ``company_shareholdings``
     on a tab of its own, Shareholdings: holder, quantity, percentage, the
     total recorded, the basis of the percentages in words, and for who may
-    manage the forms that record, change and remove a holding.
+    manage the forms that record, change and remove a holding. Beside the
+    table, a ring of the ownership (``register.chart_of``), drawn by
+    Chart.js as the vault's "files by type" is.
 """
 
 from django.urls import reverse
@@ -71,12 +73,14 @@ class ShareholdingsPlugin(_CompanyPlugin):
     tab = "shareholdings"
 
     def get_context(self, **kwargs):
-        from toto.companies.register import register_of
+        from toto.companies.register import chart_of, register_of
 
         context = super().get_context(**kwargs)
         community = self.get_community_from_kwargs(**kwargs)
         slug = {"slug": community.slug}
-        context["company_register"] = register_of(community)
+        register = register_of(community)
+        context["company_register"] = register
+        context["company_chart"] = chart_of(register, _("Other holders"))
         context["company_holding_url"] = reverse("companies:holding_save", kwargs=slug)
         if context["company_may_manage"]:
             from toto.people.models import Person

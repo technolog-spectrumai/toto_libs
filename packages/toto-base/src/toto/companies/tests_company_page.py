@@ -98,8 +98,11 @@ class CompanyPageTests(CompaniesTestCase):
         self.hold_shares(self.acme, self.hold, 12)
         text = client_of(self.mia_user).get(page_url(self.acme, "shareholdings")) \
             .content.decode()
-        box = text.index('<div class="overflow-x-auto">')
-        self.assertLess(box, text.index('data-testid="company-register"'))
+        # The table's own box scrolls (and may shrink beside the ring).
+        box = text.index('<div class="min-w-0 overflow-x-auto lg:order-1">')
+        table = text.index('data-testid="company-register"')
+        self.assertLess(box, table)
+        self.assertNotIn("<div", text[box + 5:table], "nothing between the box and its table")
 
     # -- the forms ---------------------------------------------------------
 

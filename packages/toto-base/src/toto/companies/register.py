@@ -8,6 +8,15 @@ row, or only zeros) there is no percentage at all, ``None``, which the pages
 draw as a dash: nothing is ever divided by zero.
 
 Rounded parts need not add to exactly 100.
+
+THE OWNERSHIP RING (2026-10-06, the owner: "add pie chart to show the
+structure of ownsership - use similat trick that file vault how mauch each
+file types takes space"). ``chart_of`` is what the Shareholdings tab hands
+its doughnut: one slice per holding with shares, the largest first, and
+where there are more than ``CHART_SLICES`` of them the smallest together as
+one last slice. It is DATA (``json_script``): a holder's name is a label
+drawn on a canvas, never markup. Nothing to draw where there is nothing to
+take a share of.
 """
 
 from __future__ import annotations
@@ -29,6 +38,18 @@ def percentage(quantity, total) -> Decimal | None:
     if not total or total <= 0:
         return None
     return (Decimal(quantity) * 100 / Decimal(total)).quantize(HUNDREDTH, ROUND_HALF_UP)
+
+
+#: At most this many slices in the ownership ring; with more holders the
+#: last slice is every smaller holding together.
+CHART_SLICES = 10
+
+#: The slices' colours, in order: the hues of the vault's "files by type"
+#: ring first. The grey is the vault's "anything else", here the last slice
+#: of a long register.
+CHART_COLOURS = ("#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6",
+                 "#ec4899", "#0ea5e9", "#84cc16", "#f97316", "#14b8a6")
+CHART_REST_COLOUR = "#94a3b8"
 
 
 def parse_quantity(text) -> int | None:
@@ -98,3 +119,29 @@ def holdings_of(person, viewer) -> list[Row]:
     return [Row(holding, holding.quantity,
                 percentage(holding.quantity, totals.get(holding.community_id) or 0))
             for holding in holdings]
+
+
+def chart_of(register: Register, rest_label: str) -> dict | None:
+    """The ownership ring of ``register``, or None where it is empty.
+
+    ``labels`` the holders' names, ``values`` their quantities (what the
+    ring is drawn from), ``shares`` the same quantities as text (what a
+    slice's tip states: a number of 18 digits is not exact in a browser),
+    ``colours`` one per slice. A holding of zero has no slice. With more
+    than ``CHART_SLICES`` holders the last slice, ``rest_label``, is the
+    smaller holdings together, so the slices always add to the total."""
+    held = [row for row in register.rows if row.quantity > 0]
+    if register.empty or not held:
+        return None
+    shown, rest = held, []
+    if len(held) > CHART_SLICES:
+        shown, rest = held[:CHART_SLICES - 1], held[CHART_SLICES - 1:]
+    labels = [row.holding.person.display_name for row in shown]
+    values = [row.quantity for row in shown]
+    colours = [CHART_COLOURS[at % len(CHART_COLOURS)] for at in range(len(shown))]
+    if rest:
+        labels.append(str(rest_label))
+        values.append(sum(row.quantity for row in rest))
+        colours.append(CHART_REST_COLOUR)
+    return {"labels": labels, "values": values,
+            "shares": [str(value) for value in values], "colours": colours}
