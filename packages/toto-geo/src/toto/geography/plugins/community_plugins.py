@@ -6,6 +6,13 @@ text is today. No route search: that is the Locations page's alone (the
 owner, 2026-10-06), so this map does not ask ``map_context`` for it. The head and an administrator
 (``socialhub.permissions.may_moderate_community``) also get the two forms.
 Where neither is set and the viewer may set neither, nothing is drawn.
+
+Since stage 64 the same map also shows this community's contributions, its
+members' pins and zones, read only, to who may see them
+(``access.visible_to``: the community's members and an administrator; a row a
+moderator hid is not drawn here). They are made, changed, moderated and
+discussed in the Locations app, and the section links there, filtered to this
+community.
 """
 
 from django.urls import reverse
@@ -38,22 +45,43 @@ class HeadquartersCommunityPlugin(CommunityPlugin):
             return False
         community = self.get_community_from_kwargs(**kwargs)
         address, zone = headquarters_of(community)
-        return address is not None or zone is not None \
-            or may_set_headquarters(viewer, community)
+        if address is not None or zone is not None \
+                or may_set_headquarters(viewer, community):
+            return True
+        pins, zones = self._contributions(viewer, community)
+        return bool(pins or zones)
+
+    @staticmethod
+    def _contributions(viewer, community):
+        """This community's pins and zones the viewer may see, hidden ones
+        left out: ``([CommunityPin], [CommunityZone])``."""
+        from toto.geography.access import ROW_CAP, visible_to
+
+        visible = visible_to(viewer)
+        shown = {"community": community, "hidden_at__isnull": True}
+        return (list(visible.pins().filter(**shown)[:ROW_CAP]),
+                list(visible.zones().filter(**shown)[:ROW_CAP]))
 
     def get_context(self, **kwargs):
         from toto.geography.access import headquarters_of, may_set_headquarters
-        from toto.geography.mapview import map_context, point_of
+        from toto.geography.mapview import map_context, outline_of, point_of
 
         context = super().get_context(**kwargs)
         community = self.get_community_from_kwargs(**kwargs)
         may_set = may_set_headquarters(self._viewer(kwargs), community)
         address, zone = headquarters_of(community)
+        pins, zones = self._contributions(self._viewer(kwargs), community)
         slug = {"slug": community.slug}
         context["geography_may_set"] = may_set
+        context["geography_pins"] = len(pins)
+        context["geography_zones"] = len(zones)
+        context["geography_locations_url"] = (
+            reverse("geography:locations") + "?community=" + community.slug)
         context["geo"] = map_context(
             "geography-headquarters",
-            points=[point_of(address, "headquarters", str(community.name))],
+            points=[point_of(address, "headquarters", str(community.name)),
+                    *[point_of(pin.address, "pin") for pin in pins]],
+            outlines=[outline_of(row.zone) for row in zones],
             zone=zone,
             edit_kind="headquarters",
             point_urls=((reverse("geography:headquarters", kwargs=slug),

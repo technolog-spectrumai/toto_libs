@@ -52,8 +52,13 @@ CONTRIBUTIONS = (PIN_CREATED, PIN_EDITED, PIN_DELETED, PIN_HIDDEN, PIN_RESTORED,
                  ZONE_CREATED, ZONE_EDITED, ZONE_DELETED, ZONE_HIDDEN, ZONE_RESTORED,
                  COMMENT_CREATED, COMMENT_EDITED, COMMENT_WITHDRAWN)
 
+#: Stage 63's eight: the searches, and the saves of a person's point and of
+#: a community's headquarters and zone.
 ACTIONS = (ADDRESS_SAVED, ADDRESS_CLEARED, HEADQUARTERS_SAVED, HEADQUARTERS_CLEARED,
-           ZONE_SAVED, ZONE_CLEARED, SEARCH, ROUTE) + CONTRIBUTIONS
+           ZONE_SAVED, ZONE_CLEARED, SEARCH, ROUTE)
+
+#: Every action this app writes.
+ALL = ACTIONS + CONTRIBUTIONS
 
 #: What a record says the action was, in place of anything about where.
 _DESCRIPTION = {

@@ -31,4 +31,10 @@ field and writes none.{% endcomment %}
     {% endif %}
   {% endif %}
   {% include "geography/_map.html" %}
+  {% if geography_own %}
+  <p class="mt-3 text-sm" data-testid="geography-own-links">
+    <a class="font-semibold underline" href="{% url 'geography:locations' %}">{% trans "Open Locations" %}</a>
+    · <a class="font-semibold underline" href="{% url 'geography:my_contributions' %}">{% trans "Your pins, zones and comments" %}</a>
+  </p>
+  {% endif %}
 </section>

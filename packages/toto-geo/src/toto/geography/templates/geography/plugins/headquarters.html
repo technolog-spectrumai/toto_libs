@@ -4,7 +4,9 @@ drawn by plugins/community_plugins.py for every signed-in member, as the
 seat's text is. Its head and an administrator also get the two forms. The
 postal line stays Community.seat: this section has no postal field and
 writes none. Not rendered at all where neither is set and the viewer may
-set neither.{% endcomment %}
+set neither. Since stage 64 the map also shows this community's members'
+pins and zones, read only, to who may see them, and links into the Locations
+app, where they are made, discussed and moderated and where routes are.{% endcomment %}
 <section id="geography-headquarters-section"
   :class="darkMode
     ? 'border-accent-1 bg-bubble-bg-dark'
@@ -22,4 +24,12 @@ set neither.{% endcomment %}
     </p>
   {% endif %}
   {% include "geography/_map.html" %}
+  <p class="mt-3 text-sm" data-testid="geography-community-contributions">
+    {% if geography_pins or geography_zones %}
+      {% blocktrans trimmed with pins=geography_pins zones=geography_zones %}
+        Also on this map: {{ pins }} pins and {{ zones }} zones saved by this community's members.
+      {% endblocktrans %}
+    {% endif %}
+    <a class="font-semibold underline" href="{{ geography_locations_url }}">{% trans "Open in Locations" %}</a>
+  </p>
 </section>

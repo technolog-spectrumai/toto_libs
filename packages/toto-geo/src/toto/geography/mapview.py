@@ -59,8 +59,17 @@ def point_of(address, kind, label="") -> dict | None:
             "label": state["name"] or label}
 
 
+def outline_of(zone, label="") -> dict | None:
+    """A zone the widget draws and never edits: its outline and the name on
+    it. Not its description."""
+    state = zone_state(zone)
+    if state is None:
+        return None
+    return {"label": state["name"] or label, "outline": state["outline"]}
+
+
 def map_context(key, *, points=(), zone=None, edit_kind="", point_urls=None,
-                zone_urls=None, edited=None, routes: bool = False) -> dict:
+                zone_urls=None, edited=None, routes: bool = False, outlines=()) -> dict:
     """The ``geo`` a template includes ``geography/_map.html`` with.
 
     ``points``: what ``point_of`` made, Nones dropped. ``zone``: a ``Zone``
@@ -68,8 +77,12 @@ def map_context(key, *, points=(), zone=None, edit_kind="", point_urls=None,
     viewer who may set them, else None. ``edited``: the ``Address`` row the
     point form starts from. ``routes``: this page offers route search (where
     the host has routing on); without it the page holds no route panel, no
-    route sentence and no address of the route door."""
+    route sentence and no address of the route door. ``outlines``: what
+    ``outline_of`` made, more zones drawn read only (a community's members'
+    zones on its page, stage 64); the page's data names them only when there
+    are any."""
     points = [point for point in points if point is not None]
+    outlines = [outline for outline in outlines if outline is not None]
     zone_data = zone_state(zone)
     outline = {"outline": zone_data["outline"]} if zone_data else None
     urls = {}
@@ -84,6 +97,7 @@ def map_context(key, *, points=(), zone=None, edit_kind="", point_urls=None,
     if zone_urls:
         urls["saveZone"], urls["clearZone"] = zone_urls
     center = [points[0]["lat"], points[0]["lng"]] if points else None
+    more = {"zones": outlines} if outlines else {}
     return {
         "key": key,
         "config_id": f"{key}-config",
@@ -91,7 +105,7 @@ def map_context(key, *, points=(), zone=None, edit_kind="", point_urls=None,
             "center": center, "zoom": 13, "points": points, "zone": outline,
             "urls": urls, "edit_kind": edit_kind,
             "can_edit_point": bool(point_urls), "can_edit_zone": bool(zone_urls),
-            "texts": _texts(bool(route_modes)),
+            "texts": _texts(bool(route_modes)), **more,
         },
         "search_enabled": search_on,
         "route_modes": route_modes,

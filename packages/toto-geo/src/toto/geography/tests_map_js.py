@@ -884,7 +884,8 @@ class MapScriptSourceTests(SimpleTestCase):
         source = self.sources()["map.js"]
         self.assertIn("tip.textContent = text;", source)
         bound = re.findall(r"bindTooltip\((.*)\);", source)
-        self.assertEqual(sorted(bound), ["asText(point.label)", 'asText(texts.temporary || "")'])
+        self.assertEqual(sorted(bound), ["asText(point.label)", 'asText(texts.temporary || "")',
+                                         "asText(zone.label)"])
         for name, text in self.sources().items():
             self.assertNotIn("innerHTML", text, name)
             self.assertNotIn("bindPopup", text, name)

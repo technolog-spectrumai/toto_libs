@@ -638,6 +638,14 @@
 
     drawSaved();
     drawZone(config.zone ? config.zone.outline : null);
+    /* More zones the page was handed, drawn and never edited (a community's
+     * members' zones on its page): each with its name as text. */
+    (config.zones || []).forEach(function (zone) {
+      if (!zone.outline || zone.outline.length < 3) { return; }
+      var shape = L.polygon(zone.outline, {weight: 2, fillOpacity: 0.08, dashArray: "6 4"});
+      if (zone.label) { shape.bindTooltip(asText(zone.label)); }
+      shape.addTo(map);
+    });
     fillEnds();
     if (config.zone && config.zone.outline && config.zone.outline.length && !config.center) {
       map.fitBounds(L.polygon(config.zone.outline).getBounds(), {padding: [24, 24]});
