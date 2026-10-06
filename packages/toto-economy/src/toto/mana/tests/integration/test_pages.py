@@ -1,8 +1,10 @@
 """The member's four levels: chip, pools, one pool, how it works."""
 
+import re
 from decimal import Decimal
 from io import StringIO
 from itertools import count
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -112,6 +114,19 @@ class AboutTests(PageTestCase):
         body = self.get("mana:about").content.decode()
         self.assertIn("How mana works", body)
         self.assertNotIn('data-testid="operators"', body)
+
+    def compute_card(self, present):
+        """The Compute card's sentence on a host with or without the assistant."""
+        with mock.patch("toto.core.assistant.installed", new=lambda: present):
+            body = self.get("mana:about").content.decode()
+        return re.search(r'data-testid="mana-compute-uses">(.*?)</p>', body, re.S).group(1), body
+
+    def test_the_compute_card_names_the_assistant_only_where_it_is_installed(self):
+        sentence, body = self.compute_card(False)
+        self.assertEqual(sentence, "Compute: runs, renders and sends draw on it.")
+        self.assertNotIn("assistant", body.lower())
+        sentence, _body = self.compute_card(True)
+        self.assertEqual(sentence, "Compute: runs, renders, sends and assistant requests draw on it.")
 
     def test_staff_get_the_way_into_the_economy(self):
         self.ada.is_staff = True

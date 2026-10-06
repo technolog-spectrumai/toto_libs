@@ -1,7 +1,11 @@
 {% extends "oya/base.html" %}
-{% load i18n quota_tags %}
+{% load i18n quota_tags app_tags %}
 {% block title %}{% trans "How mana works" %} - {{ platform.site_name }}{% endblock %}
 {% block content %}
+{% comment %}The Compute card names assistant requests only where the assistant
+   is installed (toto.core.assistant.installed): two whole sentences, so each
+   translates as one.{% endcomment %}
+{% assistant_installed as has_assistant %}
 <div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'" class="min-h-screen px-4 py-8">
   <div class="mx-auto max-w-3xl space-y-6">
     <a href="{% url 'mana:index' %}" class="text-sm font-semibold hover:underline">
@@ -14,7 +18,7 @@
         <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="space-y-2 rounded-2xl border p-5 text-sm">
           {% include "mana/partials/_bar.html" %}
           {% if b.role == "security" %}<p class="opacity-80">{% trans "Security: virus scans draw on it, and so does keeping files unencrypted — a little every day. Encrypting a file stops that and earns mana back." %}</p>
-          {% elif b.role == "compute" %}<p class="opacity-80">{% trans "Compute: runs, renders, sends and assistant requests draw on it." %}</p>
+          {% elif b.role == "compute" %}<p class="opacity-80" data-testid="mana-compute-uses">{% if has_assistant %}{% trans "Compute: runs, renders, sends and assistant requests draw on it." %}{% else %}{% trans "Compute: runs, renders and sends draw on it." %}{% endif %}</p>
           {% else %}<p class="opacity-80">{% trans "Storage: uploads, bytes moved and the space your files hold draw on it." %}</p>{% endif %}
           <p class="text-xs opacity-60">{% blocktrans with regen=b.regen_per_hour|floatformat:"-1" max=b.max|floatformat:"-1" %}Refills {{ regen }} an hour, up to {{ max }}.{% endblocktrans %}</p>
           {% if b.regen_clearance %}<p class="text-xs opacity-60" data-testid="regen-clearance">{% url 'mana:regeneration' as regen_url %}{% blocktrans with clearance=b.regen_clearance %}Your clearance {{ clearance }} sets this speed.{% endblocktrans %}{% if regen_url %} <a href="{{ regen_url }}" class="underline">{% trans "Regeneration" %}</a>{% endif %}</p>{% endif %}
