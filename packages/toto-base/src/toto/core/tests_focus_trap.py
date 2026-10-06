@@ -257,7 +257,10 @@ TRAPPED = {
     "vault/manage/_edit_modal.html": ["modal === 'edit' && edit.row"],
     "vault/manage/_delete_modal.html": ["modal === 'delete' && del.row"],
     "vault/manage/_share_modal.html": ["open"],
-    "vault/manage/_connect_modal.html": ["open"],
+    # The connect steps were a dialog of their own until 2026-10-06. They are
+    # drawn inside the New bucket dialog now (its "Another Zenobia"), under
+    # that dialog's trap and Escape, and must not become a second one.
+    "vault/manage/_connect_steps.html": [],
     "vault/trash.html": ["modal === 'purge'", "modal === 'empty'"],
     "vault/partials/_bulk_modals.html": ["bulkModal === 'trash'", "bulkModal === 'move'"],
     # The erasure dialog, on the profile's Your data tab since stage 50.
@@ -275,6 +278,7 @@ ESCAPE_IN = {
     "vault/manage/_create_modal.html": "vault/manage/manage.html",
     "vault/manage/_edit_modal.html": "vault/manage/manage.html",
     "vault/manage/_delete_modal.html": "vault/manage/manage.html",
+    "vault/manage/_connect_steps.html": "vault/manage/manage.html",
 }
 
 #: An opening tag, attribute values quoted (an Alpine expression may hold ">").

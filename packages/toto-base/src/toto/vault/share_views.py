@@ -32,7 +32,9 @@ bucket; never one connected from a third Zenobia, ``BucketGrant.clean``):
   row stays, revoked, for the record (``is_active = False``, the admin's
   rule); a revoked share is never revived — make a new one.
 
-**Connecting side** — "Connect a bucket from another Zenobia", a stepper whose
+**Connecting side** — "Another Zenobia" in Management's New bucket dialog (a
+card beside its kinds of storage since 2026-10-06; a button and a dialog of
+its own, "Connect a bucket from another Zenobia", before): a stepper whose
 every door is JSON and takes the code in the POST body, from the browser's
 memory; the server never sends it back:
 
@@ -276,6 +278,10 @@ def page_config(request) -> dict:
         "share_enabled": remote_ok,
         "connect_enabled": adapter is not None,
         "connect_blocked": connect_refusal() if adapter is not None else "",
+        # The card the New bucket dialog draws for it, beside its kinds.
+        "connect_kind": {"key": adapter.get_key(), "title": str(adapter.title),
+                         "icon": adapter.icon, "summary": str(adapter.summary or "")}
+        if adapter is not None else None,
         "hosts": hosts,
         "address": own_address(request),
         "me": person_row(user) if getattr(user, "is_authenticated", False) else None,

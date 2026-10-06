@@ -283,7 +283,8 @@ class OneSwitchTests(ShareFixture):
                         wraps=share_views.page_config) as config:
             body = self.page()
         self.assertEqual(config.call_count, 1)
-        self.assertIn('data-testid="bucket-connect-open"', body)
+        self.assertIn('data-testid="bucket-kind-zenobia_remote"', body)   # New bucket's card
+        self.assertIn('data-testid="bucket-connect-root"', body)          # and its steps
         self.assertIn(f'data-testid="bucket-share-{self.local.pk}"', body)
         self.assertIn('data-testid="bucket-share-root"', body)
 
@@ -336,7 +337,8 @@ class ShareTests(ShareFixture):
         self.assertIn("will not be shown again", body)
         steps = re.search(r'data-testid="share-steps">(.*?)</ol>', body, re.S).group(1)
         self.assertGreaterEqual(steps.count("<li>"), 3)
-        self.assertIn("Connect a bucket from another Zenobia", steps)
+        self.assertIn("choose New bucket and then Another Zenobia", steps)
+        self.assertNotIn("Connect a bucket from another Zenobia", body)
         self.assertIn("a photo of its QR code", body)
         # Never again: the page after, the list, the session, the logs, the chain.
         secrets = secrets_of(code)
@@ -386,9 +388,13 @@ class ShareTests(ShareFixture):
     def test_a_host_without_external_buckets_neither_shares_nor_connects(self):
         body = self.page()
         self.assertNotIn('data-testid="bucket-share-', body)
-        self.assertNotIn('data-testid="bucket-connect-open"', body)
+        self.assertNotIn('data-testid="bucket-kind-zenobia_remote"', body)
         self.assertNotIn('data-testid="bucket-share-root"', body)
         self.assertNotIn('data-testid="bucket-connect-root"', body)
+        self.assertNotIn("bucketConnect", body)
+        # New bucket is still there, with this server as its one kind.
+        self.assertIn('data-testid="bucket-new-open"', body)
+        self.assertIn('data-testid="bucket-kind-local"', body)
         response = self.mint()
         self.assertEqual(response.status_code, 409)
         self.assertIn("disabled", response.json()["error"])
@@ -523,9 +529,79 @@ class ConnectFixture(ShareFixture):
 
 
 class ConnectPageTests(ConnectFixture):
-    def test_the_connect_modal_offers_paste_scan_and_image(self):
+    def new_bucket_dialog(self, body):
+        """The New bucket dialog's own markup: from the end of its opening
+        tag to the Edit dialog's tag, which the page draws next."""
+        start = body.index('data-testid="bucket-new-dialog"')
+        return body[start:body.index("<div x-show=\"modal === 'edit' && edit.row\"")]
+
+    def test_another_zenobia_is_a_choice_of_the_one_new_bucket_dialog(self):
+        """The owner, 2026-10-06: "Connect a bucket from another Zenobia
+        shoudl be a tab in New bucket modal". It was a header button with a
+        dialog of its own; it is the fourth card of "Kind of storage", and its
+        steps are drawn in the dialog in place of the form."""
         body = self.page()
-        self.assertIn('data-testid="bucket-connect-open"', body)
+        # One button, one dialog.
+        self.assertEqual(body.count('data-testid="bucket-new-open"'), 1)
+        self.assertEqual(body.count('data-testid="bucket-new-dialog"'), 1)
+        self.assertEqual(body.count('aria-labelledby="bucket-new-title"'), 1)
+        for gone in ('data-testid="bucket-connect-open"', "vault-connect-open",
+                     'id="bucket-connect-title"', 'aria-labelledby="bucket-connect-title"',
+                     'data-testid="bucket-connect"', "Connect a bucket from another Zenobia"):
+            self.assertNotIn(gone, body)
+        # The page's dialogs: New bucket, Edit, Delete, Share — no fifth.
+        self.assertEqual(body.count('role="dialog"'), 4)
+        dialog = self.new_bucket_dialog(body)
+        self.assertEqual(dialog.count('role="dialog"'), 0)       # nothing nested in it
+        # The choice sits in the row of kinds, after the registry's own.
+        kinds = re.search(r'data-testid="bucket-new-kinds">(.*?)</fieldset>', dialog, re.S).group(1)
+        cards = re.findall(r'data-testid="bucket-kind-([a-z0-9_]+)"', kinds)
+        self.assertEqual(cards, ["local", "aws_s3", "ovh_s3", "zenobia_remote"])
+        self.assertEqual(kinds.count('type="radio" name="kind"'), 4)
+        self.assertIn("Another Zenobia", kinds)
+        self.assertIn("sm:grid-cols-2", re.search(r'<div class="([^"]*)" data-testid="bucket-new-kinds"',
+                                                 dialog).group(1))
+        # Its steps are in the same dialog, shown for that choice only, and
+        # the form for every other one.
+        self.assertEqual(body.count('data-testid="bucket-connect-root"'), 1)
+        root = re.search(r'<div x-data="bucketConnect\(\)"[^>]*>', dialog).group(0)
+        self.assertIn("x-show=\"create.kind === 'zenobia_remote'\"", root)
+        self.assertIn("x-effect=\"follow(modal === 'create' && create.kind === 'zenobia_remote')\"",
+                      root)
+        self.assertNotIn("x-trap", root)
+        form = re.search(r'<form [^>]*data-testid="bucket-new"[^>]*>', dialog, re.S).group(0)
+        self.assertIn("x-show=\"create.kind !== 'zenobia_remote'\"", form)
+        self.assertIn(f'action="{reverse("vault:manage_create")}"', form)
+        # The form is closed before the steps begin: a form cannot hold the
+        # steps' own (step 4).
+        self.assertLess(dialog.index("</form>"), dialog.index('data-testid="bucket-connect-root"'))
+        # The form posts the chosen kind itself; the cards are outside it.
+        self.assertLess(dialog.index('data-testid="bucket-new-kinds"'), dialog.index("<form"))
+        hidden = re.search(r'<input type="hidden" name="kind"[^>]*>', dialog).group(0)
+        self.assertIn(':value="create.kind"', hidden)
+        # The same doors as before, from the page's one config.
+        config = json.loads(re.search(
+            r'<script id="bucket-share-config" type="application/json">(.*?)</script>', body, re.S).group(1))
+        self.assertEqual(config["urls"], {
+            "preview": reverse("vault:manage_connect_preview"),
+            "test": reverse("vault:manage_connect_test"),
+            "connect": reverse("vault:manage_connect"),
+            "renew": reverse("vault:manage_connect_renew")})
+        self.assertEqual(config["connect_kind"]["key"], "zenobia_remote")
+        self.assertEqual(config["connect_kind"]["title"], "Another Zenobia")
+
+    def test_the_generic_door_still_refuses_the_guided_kind(self):
+        response = self.as_root().post(reverse("vault:manage_create"), {
+            "kind": "zenobia_remote", "name": "Sideways", "owner": self.member.pk})
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Bucket.objects.filter(name="Sideways").exists())
+        draft = self.client.session[manage_views.DRAFT_KEY]
+        self.assertEqual((draft["open"], draft["kind"]), ("create", ""))
+        self.assertIn("kind", draft["errors"])
+
+    def test_the_connect_steps_offer_paste_scan_and_image(self):
+        body = self.page()
+        self.assertIn('data-testid="bucket-kind-zenobia_remote"', body)
         self.assertIn('data-testid="bucket-connect-root"', body)
         # Paste: a textarea no form ever submits (it has no name).
         textarea = re.search(r'<textarea id="bucket-connect-code"[^>]*>', body).group(0)
@@ -540,7 +616,13 @@ class ConnectPageTests(ConnectFixture):
         self.assertLess(script.index("async startScan()"), script.index("getUserMedia"))
         self.assertIn("BarcodeDetector", body)
         self.assertIn("vendor/jsqr/jsQR.js", body)
-        self.assertIn("stopScan", script[script.index("close() {"):script.index("close() {") + 80])
+        # Hidden — another kind chosen, the dialog closed — the camera stops
+        # and the code is forgotten.
+        follow = script[script.index("follow(shown) {"):]
+        follow = follow[:follow.index("},")]
+        self.assertIn("this.stopScan();", follow)
+        self.assertIn("Object.assign(this, fresh());", follow)
+        self.assertNotIn("show() {", script)
         # Image: read in the browser — a file input with no name, in no form.
         image = re.search(r'<input type="file"[^>]*data-testid="bucket-connect-image"[^>]*>', body).group(0)
         self.assertIn('accept="image/*"', image)
@@ -1124,12 +1206,35 @@ __SCRIPTS__
     out['renew_' + renewable] = c.renew;
   }
 
+  // "Another Zenobia" chosen in the New bucket dialog: the steps start afresh.
+  // Another kind chosen, or the dialog closed: the camera stops, the code goes.
+  streams.length = 0;
+  c = mount('bucketConnect'); c.$refs.video = video();
+  c.follow(true);
+  const shownOpen = c.open;
+  c.code = 'CODE-A'; c.name = 'Typed';
+  c.follow(true);                      // the effect running again changes nothing
+  const kept = {code: c.code, name: c.name};
+  await c.startScan();
+  const scanning = c.scanning, cameras = live();
+  c.follow(false);
+  out.follow = {shownOpen, kept, scanning, cameras, open: c.open, code: c.code, name: c.name,
+                step: c.step, live: live(), scanningAfter: c.scanning};
+
   // The page's forms post once.
   const m = mount('bucketManage', '/people/');
   const ev = () => ({prevented: false, preventDefault() { this.prevented = true; }});
   const e1 = ev(), e2 = ev();
   m.guard(e1); m.guard(e2);
   out.guard = {first: e1.prevented, second: e2.prevented, submitting: m.submitting};
+
+  // Closed on "Another Zenobia", the dialog opens next time on a kind of its own;
+  // closed on one of its own kinds, on that one.
+  const own = JSON.parse(ISLANDS['bucket-manage-kinds']).map((k) => k.key);
+  m.modal = 'create'; m.create.kind = cfg.connect_kind.key; m.close();
+  out.closedOnPeer = {kind: m.create.kind, first: own[0], modal: m.modal};
+  m.modal = 'create'; m.create.kind = own[1]; m.close();
+  out.closedOnOwn = {kind: m.create.kind, second: own[1]};
 
   // The share modal moves focus into itself, onto Rotate's first field, and onto Copy.
   const focused = [];
@@ -1204,6 +1309,19 @@ class ModalBehaviourTests(ConnectFixture):
 
     def test_a_form_of_the_page_posts_once(self):
         self.assertEqual(self.out["guard"], {"first": False, "second": True, "submitting": True})
+
+    def test_the_steps_follow_the_new_bucket_dialog(self):
+        self.assertEqual(self.out["follow"], {
+            "shownOpen": True, "kept": {"code": "CODE-A", "name": "Typed"},
+            "scanning": True, "cameras": 1,
+            "open": False, "code": "", "name": "", "step": 1, "live": 0, "scanningAfter": False})
+
+    def test_the_dialog_reopens_on_a_kind_of_its_own(self):
+        closed = self.out["closedOnPeer"]
+        self.assertEqual((closed["kind"], closed["modal"]), (closed["first"], ""))
+        self.assertEqual(closed["first"], "local")
+        kept = self.out["closedOnOwn"]
+        self.assertEqual(kept["kind"], kept["second"])
 
     def test_the_share_modal_moves_focus_into_itself(self):
         self.assertEqual(self.out["focus"], ["title", "rotate", "copy"])

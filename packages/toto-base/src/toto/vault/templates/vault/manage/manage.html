@@ -18,14 +18,16 @@
    badge, and the doors do not take the field (manage_views._shield).
 
    Places for the share / connect flow with another Zenobia, each a partial
-   of its own so it extends this page without editing it:
-     vault/manage/_connect_button.html  the header's "Connect a bucket from
-                                        another Zenobia" (beside New bucket)
+   of its own:
+     vault/manage/_connect_steps.html   the New bucket dialog's "Another
+                                        Zenobia": the connect steps, drawn by
+                                        _create_modal.html under its kinds
      vault/manage/_row_share.html       a bucket's "Share" action (row and card)
-     vault/manage/_extra_modals.html    its modals (inside the page's x-data)
-   All three read `sc` (share_views.page_config, through the
-   share_connect_config tag), worked out once at the top of the content: a
-   button shows exactly when its modal is on the page.
+     vault/manage/_extra_modals.html    the share modal and both flows'
+                                        scripts (inside the page's x-data)
+   All read `sc` (share_views.page_config, through the share_connect_config
+   tag), worked out once at the top of the content: a card or a button shows
+   exactly when what it opens is on the page.
 {% endcomment %}
 
 {% block vault_title %}{% trans "Management" %}{% endblock %}

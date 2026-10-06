@@ -4,14 +4,15 @@
 
    Another Zenobia, both sides (share_views.py): the share modal (a bucket's
    "Shared with" list, a new share, Rotate key, Revoke — the pairing code and
-   its QR code shown once) and the connect stepper. Each is an Alpine
-   component of its own (vault/manage/_share_scripts.html), opened by a
-   window event from its button (vault-share-open, vault-connect-open) and
-   closed by Escape. `sc` is the page's (manage.html works it out once with
-   share_connect_config: share_views.page_config) — nothing secret.{% endcomment %}
+   its QR code shown once), opened by a window event from its button
+   (vault-share-open) and closed by Escape; and the scripts of both flows
+   (vault/manage/_share_scripts.html). The connect stepper is not a modal:
+   it is the New bucket dialog's "Another Zenobia"
+   (vault/manage/_create_modal.html includes _connect_steps.html). `sc` is
+   the page's (manage.html works it out once with share_connect_config:
+   share_views.page_config) — nothing secret.{% endcomment %}
 {{ sc|json_script:"bucket-share-config" }}
 {% if sc.share_enabled or sc.connect_enabled %}
 {% include "vault/manage/_share_scripts.html" %}
 {% endif %}
 {% if sc.share_enabled %}{% include "vault/manage/_share_modal.html" %}{% endif %}
-{% if sc.connect_enabled %}{% include "vault/manage/_connect_modal.html" %}{% endif %}

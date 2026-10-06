@@ -19,7 +19,8 @@ bucket on a narrow one, and four doors:
   nor taken from a post). The creator is whoever made it. An S3 kind
   must pass its connection test before anything is saved (``adapter.create``
   runs it). The kinds with a guided flow of their own (``GUIDED_KINDS``:
-  another Zenobia's pairing code) are not in this modal.
+  another Zenobia's pairing code) are a card in the same dialog whose steps
+  post to their own doors (``share_views``); this door refuses them.
 * **Edit** (modal): the name, the owner, the quota — and the AI shield where
   the assistant is installed — nothing else, and a post naming any other
   field is refused whole (``bucket_lifecycle.update_bucket``, which records
@@ -37,9 +38,11 @@ WITHOUT a secret: no secret key, no access key id, no pairing code is ever put
 in a draft, a page, a message, JSON or a log (``_carried``, ``_scrub``).
 
 Another Zenobia (the two-sided share / connect flow, ``share_views``) plugs
-into this page: ``vault/manage/_connect_button.html`` (the header's "Connect a
-bucket from another Zenobia"), ``vault/manage/_row_share.html`` (a bucket's
-"Share" action) and ``vault/manage/_extra_modals.html`` are its places.
+into this page: ``vault/manage/_connect_steps.html`` (the New bucket dialog's
+"Another Zenobia": the connect steps, inside ``_create_modal.html``),
+``vault/manage/_row_share.html`` (a bucket's "Share" action) and
+``vault/manage/_extra_modals.html`` (the share modal and both flows' scripts)
+are its places.
 """
 
 from __future__ import annotations
@@ -79,7 +82,9 @@ PEOPLE_LIMIT = 20
 DRAFT_KEY = "vault.manage_draft"
 #: Kinds whose Create is a guided flow of its own — another Zenobia's pairing
 #: code is decoded, shown, tested and only then connected — never the generic
-#: modal's (the generic door refuses them too).
+#: form's (the generic door refuses them too). The New bucket dialog offers
+#: such a kind as a card beside the others and draws its steps in place of
+#: the form (``vault/manage/_connect_steps.html``).
 GUIDED_KINDS = frozenset({"zenobia_remote"})
 #: Inputs a draft never carries back besides each kind's secret fields: the
 #: access key id is half of a credential (the list shows its last four only).

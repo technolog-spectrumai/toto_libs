@@ -76,6 +76,10 @@ document.addEventListener('alpine:init', () => {
       close() {
         this.modal = '';
         this.create.error = '';
+        // "Another Zenobia" is a card of the New bucket dialog with steps of
+        // its own (_connect_steps.html), not a kind this form makes: the
+        // dialog opens next time on a kind of its own, as it always did.
+        if (!kinds.some(k => k.key === this.create.kind)) this.create.kind = kinds.length ? kinds[0].key : '';
       },
       // The owner picker: any active account, by a piece of its name.
       search(h) {

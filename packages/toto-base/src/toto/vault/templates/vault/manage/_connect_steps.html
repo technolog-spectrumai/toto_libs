@@ -1,0 +1,206 @@
+{% load i18n %}{% comment %}The New bucket dialog's "Another Zenobia" (share_views.py): the steps
+   that connect a bucket another Zenobia shares. Drawn inside
+   vault/manage/_create_modal.html, under its "Kind of storage" cards, while
+   that kind is the chosen one — no dialog, backdrop or title of its own
+   (until 2026-10-06 it was a second dialog behind a header button, "Connect
+   a bucket from another Zenobia").
+
+     1  the code  what the other administrator does first; the code by
+                  PASTE, by SCANNING its QR code with the camera (only after
+                  "Scan QR") or by choosing an IMAGE of it — read in this
+                  browser, never uploaded
+     2  what it grants  manage_connect_preview: the other Zenobia, its
+                  bucket, the rights, the end date — nothing saved yet; the
+                  address this server calls (federated hosts suggested, or
+                  typed; SSRF-guarded by the server)
+     3  connection test  manage_connect_test, its answer shown
+     4  name and owner  → Connect (manage_connect: the test again, then the
+                  pairing and the bucket in one transaction)
+
+   The code lives in the component's memory only (no `name`: no form ever
+   submits it) and is forgotten when another kind is chosen or the dialog
+   closes — `follow` (x-effect below) starts the steps afresh when they are
+   shown and stops the camera when they are not. A refused code says what to
+   do; one already connected here whose key was rotated there offers to
+   replace the stored key (manage_connect_renew).
+
+   Alpine component bucketConnect (vault/manage/_share_scripts.html), inside
+   the page's bucketManage: `modal`, `create` and close() are the page's
+   (Cancel closes the dialog), and so is the owner picker
+   (vault/manage/_owner_picker.html). Expects `sc` and `ai_shield`
+   (manage.html).{% endcomment %}
+{% trans "not stated" as l_not_stated %}{% trans "No end date" as l_no_end %}
+<div x-data="bucketConnect()" data-csrf="{{ csrf_token }}" data-testid="bucket-connect-root"
+     x-show="create.kind === '{{ sc.connect_kind.key }}'" x-cloak
+     x-effect="follow(modal === 'create' && create.kind === '{{ sc.connect_kind.key }}')"
+     class="space-y-4">
+  <ol class="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4" data-testid="bucket-connect-steps">
+    {% trans "The code" as l1 %}{% trans "What it grants" as l2 %}{% trans "Connection test" as l3 %}{% trans "Name and owner" as l4 %}
+    <li :class="step === 1 ? 'border-current font-semibold' : 'border-current/20 opacity-60'" :aria-current="step === 1 ? 'step' : null"
+        class="rounded border px-2 py-1"><span class="font-mono">1</span> {{ l1 }}</li>
+    <li :class="step === 2 ? 'border-current font-semibold' : 'border-current/20 opacity-60'" :aria-current="step === 2 ? 'step' : null"
+        class="rounded border px-2 py-1"><span class="font-mono">2</span> {{ l2 }}</li>
+    <li :class="step === 3 ? 'border-current font-semibold' : 'border-current/20 opacity-60'" :aria-current="step === 3 ? 'step' : null"
+        class="rounded border px-2 py-1"><span class="font-mono">3</span> {{ l3 }}</li>
+    <li :class="step === 4 ? 'border-current font-semibold' : 'border-current/20 opacity-60'" :aria-current="step === 4 ? 'step' : null"
+        class="rounded border px-2 py-1"><span class="font-mono">4</span> {{ l4 }}</li>
+  </ol>
+
+  {% if sc.connect_blocked %}
+  <p class="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-red-600 dark:text-red-400" role="alert"
+     data-testid="bucket-connect-blocked">{{ sc.connect_blocked }}</p>
+  {% endif %}
+  <p x-show="error" x-cloak x-text="error" role="alert" data-testid="bucket-connect-error"
+     class="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-red-600 dark:text-red-400"></p>
+
+  {# ── 1. the code ── #}
+  <section x-show="step === 1" class="space-y-4" data-testid="bucket-connect-step-code">
+    <div class="space-y-1 rounded-lg border border-current/15 p-3">
+      <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "First, on the other Zenobia" %}</h3>
+      <ol class="list-decimal space-y-1 pl-5">
+        <li>{% trans "Its administrator opens Storage → Management there and chooses Share on the bucket to share." %}</li>
+        <li>{% trans "They tick what this Zenobia may do with it — list, download, upload, delete — and choose until when." %}</li>
+        <li>{% trans "They hand you the pairing code it shows once: as text, or as a QR code on their screen or in an image." %}</li>
+      </ol>
+    </div>
+
+    <div class="space-y-1">
+      <label for="bucket-connect-code" class="text-xs font-semibold opacity-70">{% trans "Paste the pairing code" %}</label>
+      <textarea id="bucket-connect-code" x-ref="connectCode" x-model="code" rows="4" spellcheck="false"
+                autocomplete="off" autocapitalize="off" data-testid="bucket-connect-code"
+                :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                class="w-full break-all rounded border px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-current/20"></textarea>
+      <template x-for="e in (errors.pairing_code || [])"><p class="text-xs text-red-600 dark:text-red-400" role="alert" x-text="e"></p></template>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-xs opacity-60">{% trans "Or read its QR code:" %}</span>
+      <button type="button" @click="scanning ? stopScan() : startScan()" data-testid="bucket-connect-scan"
+              :disabled="starting && !scanning" :aria-busy="starting ? 'true' : 'false'"
+              class="inline-flex items-center gap-1.5 rounded border border-current/30 px-3 py-1.5 text-xs font-semibold transition hover:opacity-80 disabled:opacity-40">
+        <i class="fa-solid fa-camera" aria-hidden="true"></i>
+        <span x-show="!scanning">{% trans "Scan QR" %}</span><span x-show="scanning" x-cloak>{% trans "Stop the camera" %}</span></button>
+      <label class="inline-flex cursor-pointer items-center gap-1.5 rounded border border-current/30 px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-image" aria-hidden="true"></i>{% trans "Choose an image of the QR code" %}
+        <input type="file" accept="image/*" class="sr-only" @change="fromImage($event)" data-testid="bucket-connect-image">
+      </label>
+    </div>
+    <div x-show="scanning" x-cloak class="space-y-2" data-testid="bucket-connect-camera">
+      <video x-ref="video" playsinline muted class="max-h-72 w-full rounded-lg bg-black object-contain"></video>
+    </div>
+    <p x-show="scanMsg" x-cloak x-text="scanMsg" role="status" data-testid="bucket-connect-scan-message" class="text-xs"></p>
+    <p class="text-xs opacity-60">{% trans "An image is read in this browser and never uploaded. The camera starts only when you choose Scan QR, and stops as soon as a code is read or this window closes." %}</p>
+
+    <div x-show="renew && renew.renewable" x-cloak class="space-y-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3" data-testid="bucket-connect-renew">
+      <template x-if="renew && renew.renewable">
+        <button type="button" @click="renewKey()" :disabled="busy"
+                class="inline-flex items-center gap-1.5 rounded border border-current/40 px-3 py-1.5 text-xs font-semibold disabled:opacity-40">
+          <i class="fa-solid fa-key" aria-hidden="true"></i>{% trans "Replace the stored key of" %} <span x-text="renew.label"></span></button>
+      </template>
+    </div>
+
+    <div class="flex justify-end gap-2 pt-1">
+      <button type="button" @click="close()" class="rounded border border-current/25 px-3 py-2">{% trans "Cancel" %}</button>
+      <button type="button" @click="toPreview()" :disabled="busy || !code.trim()" data-testid="bucket-connect-preview"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-1.5 rounded px-4 py-2 font-semibold disabled:opacity-40">
+        {% trans "Next: what it grants" %}<i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
+    </div>
+  </section>
+
+  {# ── 2. what it grants ── #}
+  <section x-show="step === 2" x-cloak class="space-y-4" data-testid="bucket-connect-step-preview">
+    <p class="opacity-80">{% trans "What the code grants. Nothing is saved yet; the rights are enforced by the other Zenobia and shown as it stated them." %}</p>
+    <dl class="grid grid-cols-[auto,1fr] gap-x-3 gap-y-2 rounded-lg border border-current/15 p-3">
+      <dt class="text-xs uppercase tracking-wide opacity-60">{% trans "From" %}</dt>
+      <dd class="min-w-0 break-all font-mono text-xs" x-text="preview && preview.host ? preview.host : '{{ l_not_stated|escapejs }}'"></dd>
+      <dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Its bucket there" %}</dt>
+      <dd class="min-w-0 break-all font-mono text-xs" x-text="preview && preview.bucket ? preview.bucket : '{{ l_not_stated|escapejs }}'"></dd>
+      <dt class="text-xs uppercase tracking-wide opacity-60">{% trans "This Zenobia may" %}</dt>
+      <dd class="flex flex-wrap gap-1">
+        <template x-for="r in (preview ? preview.rights_labels : [])"><span class="rounded border border-current/25 px-1.5 py-0.5 text-xs" x-text="r"></span></template>
+      </dd>
+      <dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Until" %}</dt>
+      <dd x-text="preview && preview.expires ? preview.expires : '{{ l_no_end|escapejs }}'"></dd>
+    </dl>
+    <p x-show="preview && preview.may_delete" x-cloak role="note"
+       class="rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+      {% trans "With this share, a file deleted here is deleted on the other Zenobia too, for good." %}</p>
+
+    <div class="space-y-1">
+      <label for="bucket-connect-address" class="text-xs font-semibold opacity-70">{% trans "Address of the other Zenobia" %}</label>
+      <input id="bucket-connect-address" type="text" x-model="baseUrl" list="bucket-connect-hosts" spellcheck="false"
+             autocomplete="off" placeholder="https://zenobia.example.org" maxlength="200" data-testid="bucket-connect-address"
+             :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="w-full rounded border px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-current/20">
+      <datalist id="bucket-connect-hosts">{% for h in sc.hosts %}<option value="{{ h.value }}">{{ h.label }}</option>{% endfor %}</datalist>
+      <p class="text-xs opacity-60">{% trans "The address this server calls. The code names one; Zenobias this one is federated with are suggested. A private or plain-http address is refused unless this server's operator allowed it." %}</p>
+      <template x-for="e in (errors.base_url || [])"><p class="text-xs text-red-600 dark:text-red-400" role="alert" x-text="e"></p></template>
+    </div>
+
+    <div class="flex justify-end gap-2 pt-1">
+      <button type="button" @click="go(1)" class="rounded border border-current/25 px-3 py-2">{% trans "Back" %}</button>
+      <button type="button" @click="toTest()" :disabled="busy || !baseUrl.trim()" data-testid="bucket-connect-to-test"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-1.5 rounded px-4 py-2 font-semibold disabled:opacity-40">
+        {% trans "Next: test the connection" %}<i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
+    </div>
+  </section>
+
+  {# ── 3. connection test ── #}
+  <section x-show="step === 3" x-cloak class="space-y-4" data-testid="bucket-connect-step-test">
+    <p class="opacity-80">{% trans "This server calls the other Zenobia with the code's key and asks it to describe the bucket. Nothing is saved." %}</p>
+    <p class="break-all font-mono text-xs opacity-70" x-text="baseUrl"></p>
+    <button type="button" @click="runTest()" :disabled="busy" data-testid="bucket-connect-test"
+            class="inline-flex items-center gap-1.5 rounded border border-current/30 px-3 py-1.5 text-xs font-semibold transition hover:opacity-80 disabled:opacity-40">
+      <i class="fa-solid fa-plug-circle-check" aria-hidden="true"></i>
+      <span x-show="!busy">{% trans "Test the connection" %}</span><span x-show="busy" x-cloak>{% trans "Testing…" %}</span></button>
+    <div x-show="test" x-cloak role="status" data-testid="bucket-connect-test-result"
+         :class="test && test.ok ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200' : 'border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-300'"
+         class="flex items-start gap-2 rounded border px-3 py-2">
+      <i :class="test && test.ok ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'" class="mt-0.5" aria-hidden="true"></i>
+      <span class="min-w-0 break-words" x-text="test ? test.detail : ''"></span>
+    </div>
+    <div class="flex justify-end gap-2 pt-1">
+      <button type="button" @click="go(2)" class="rounded border border-current/25 px-3 py-2">{% trans "Back" %}</button>
+      <button type="button" @click="toName()" :disabled="busy || !(test && test.ok)" data-testid="bucket-connect-to-name"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-1.5 rounded px-4 py-2 font-semibold disabled:opacity-40">
+        {% trans "Next: name and owner" %}<i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
+    </div>
+  </section>
+
+  {# ── 4. name and owner ── #}
+  <form x-show="step === 4" x-cloak @submit.prevent="connect($el)" class="space-y-4" autocomplete="off"
+        data-testid="bucket-connect-step-name">
+    <label class="block space-y-1">
+      <span class="text-xs font-semibold opacity-70">{% trans "Name here" %}</span>
+      <input type="text" name="name" x-ref="connectName" x-model="name" required maxlength="{{ sc.name_max }}"
+             data-testid="bucket-connect-name"
+             :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="w-full rounded border px-3 py-2 outline-none focus:ring-2 focus:ring-current/20">
+      <template x-for="e in (errors.name || [])"><span class="block text-xs text-red-600 dark:text-red-400" role="alert" x-text="e"></span></template>
+    </label>
+
+    {% include "vault/manage/_owner_picker.html" with h="picker" input_id="bucket-connect-owner" errors=None %}
+    <template x-for="e in (errors.owner || [])"><p class="text-xs text-red-600 dark:text-red-400" role="alert" x-text="e"></p></template>
+
+    {% if ai_shield %}
+    <label class="flex items-start gap-2" data-testid="bucket-connect-shield">
+      <input type="checkbox" name="ai_protected" value="1" x-model="ai" class="mt-0.5">
+      <span><span class="font-semibold">{% trans "AI shield" %}</span>
+        <span class="block text-xs opacity-70">{% trans "The assistant never reads files in this bucket." %}</span></span>
+    </label>
+    {% endif %}
+
+    <p class="text-xs opacity-60">{% trans "You are recorded as the bucket's creator. The connection test runs once more before anything is saved; the key is stored encrypted and never shown." %}</p>
+
+    <div class="flex justify-end gap-2 pt-1">
+      <button type="button" @click="go(3)" class="rounded border border-current/25 px-3 py-2">{% trans "Back" %}</button>
+      <button type="submit" :disabled="busy || !name.trim() || !picker.owner{% if sc.connect_blocked %} || true{% endif %}" data-testid="bucket-connect-submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-1.5 rounded px-4 py-2 font-semibold disabled:opacity-40">
+        <i class="fa-solid fa-link" aria-hidden="true"></i>{% trans "Connect" %}</button>
+    </div>
+  </form>
+</div>

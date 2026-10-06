@@ -368,11 +368,19 @@ class ListTests(ManageFixture):
         self.assertIn(f"1 / {pages}", first)
         self.assertIn(f"{pages} / {pages}", last)
 
-    def test_the_create_modal_offers_the_registry_kinds_but_not_the_guided_one(self):
-        body = self.page()
+    def test_the_create_form_has_the_registry_kinds_fields_but_not_the_guided_ones(self):
+        """The guided kind (another Zenobia) is a card of the dialog since
+        2026-10-06, with steps of its own; the form still has no fieldset for
+        it, and the page's kinds — what the form may post — do not name it."""
+        response = self.as_root().get(reverse("vault:manage"))
+        body = response.content.decode()
         for key in ("local", "aws_s3", "ovh_s3"):
             self.assertIn(f'data-testid="bucket-kind-{key}"', body)
-        self.assertNotIn('data-testid="bucket-kind-zenobia_remote"', body)
+            self.assertIn(f'data-testid="bucket-fields-{key}"', body)
+        self.assertIn('data-testid="bucket-kind-zenobia_remote"', body)
+        self.assertNotIn('data-testid="bucket-fields-zenobia_remote"', body)
+        self.assertNotIn('name="pairing_code"', body)
+        self.assertEqual([k["key"] for k in response.context["kinds"]], ["local", "aws_s3", "ovh_s3"])
         self.assertNotIn('data-testid="bucket-kind-s3"', body)
         # The S3 kinds' own fields: never a value for the secret.
         self.assertIn('name="secret_access_key"', body)
@@ -383,6 +391,8 @@ class ListTests(ManageFixture):
         body = self.page()
         self.assertIn('data-testid="bucket-kind-local"', body)
         self.assertNotIn('data-testid="bucket-kind-aws_s3"', body)
+        self.assertNotIn('data-testid="bucket-kind-zenobia_remote"', body)
+        self.assertNotIn('data-testid="bucket-connect-root"', body)
 
     def test_the_delete_modal_says_what_goes_and_a_mount_only_disconnects(self):
         response = self.as_root().get(reverse("vault:manage"))

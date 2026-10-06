@@ -9,11 +9,13 @@
    welcome page's _local_qr.html uses) — never a QR service. Closing the
    modal removes the fragment from the page.
 
-   bucketConnect — the connect stepper. The code lives in this component's
-   memory only and is posted to each JSON door; no door ever answers with it.
-   It is pasted, scanned with the camera (only after "Scan QR"; stopped as
-   soon as a code is read, on Stop, when the modal closes or the page is
-   left) or read from a chosen image — decoded here, never uploaded:
+   bucketConnect — the connect stepper, inside the New bucket dialog
+   (_connect_steps.html) while "Another Zenobia" is the chosen kind. The code
+   lives in this component's memory only and is posted to each JSON door; no
+   door ever answers with it. It is pasted, scanned with the camera (only
+   after "Scan QR"; stopped as soon as a code is read, on Stop, when another
+   kind is chosen, the dialog closes or the page is left) or read from a
+   chosen image — decoded here, never uploaded:
    BarcodeDetector where the browser has one, else the vendored jsQR, loaded
    on first need.{% endcomment %}
 {% if sc.share_enabled %}<script src="{% static 'vendor/qrcodejs/qrcode.min.js' %}"></script>{% endif %}
@@ -244,8 +246,8 @@ document.addEventListener('alpine:init', () => {
   Alpine.data('bucketConnect', () => {
     // Not reactive on purpose: a MediaStream behind Alpine's proxy refuses its own methods.
     let stream = null, timer = null, detector = null, started = 0;
-    // Every startScan takes a number; stopScan (Stop, close, a step, leaving
-    // the page) moves it on, so a start still waiting for the camera — or for
+    // Every startScan takes a number; stopScan (Stop, hiding the steps, a
+    // step, leaving the page) moves it on, so a start still waiting for the camera — or for
     // the browser's permission prompt — knows it was superseded.
     let scanSeq = 0;
     const fresh = () => ({step: 1, code: '', baseUrl: '', preview: null, error: '', errors: {}, busy: false,
@@ -258,16 +260,17 @@ document.addEventListener('alpine:init', () => {
         window.addEventListener('pagehide', () => this.stopScan());
         document.addEventListener('visibilitychange', () => { if (document.hidden) this.stopScan(); });
       },
-      show() {
+      // The steps are drawn while the New bucket dialog is open on "Another
+      // Zenobia" (x-effect in _connect_steps.html). Shown, they start afresh;
+      // hidden — another kind chosen, the dialog closed — the camera stops and
+      // the code is forgotten. Focus is left where it is: the cards are a
+      // radio group, and its arrow keys must be able to go on to the next.
+      follow(shown) {
+        shown = !!shown;
+        if (shown === this.open) return;
         this.stopScan();
-        Object.assign(this, fresh());
-        this.open = true;
-        this.$nextTick(() => this.$refs.connectCode && this.$refs.connectCode.focus());
-      },
-      close() {
-        this.stopScan();
-        Object.assign(this, fresh());   // the code is forgotten with the modal
-        this.open = false;
+        Object.assign(this, fresh());   // the code is forgotten with the steps
+        this.open = shown;
       },
       go(step) { this.stopScan(); this.error = ''; this.step = step; },
       async post(url, fields, form) {

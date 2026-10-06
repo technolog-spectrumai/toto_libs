@@ -169,7 +169,7 @@
     <form x-show="step === 'rotate'" x-cloak @submit.prevent="rotate($el)" class="space-y-4" autocomplete="off"
           data-testid="bucket-share-rotate">
       <h3 class="font-semibold"><i class="fa-solid fa-arrows-rotate mr-1" aria-hidden="true"></i>{% trans "Rotate key" %} — <span x-text="rotating ? rotating.label : ''"></span></h3>
-      <p class="rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-200">{% trans "A new key and a new pairing code replace the old ones. The old key stops working at once: the other Zenobia's connection to this bucket fails until its administrator enters the new code there (Connect a bucket from another Zenobia offers to replace the stored key)." %}</p>
+      <p class="rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-200">{% trans "A new key and a new pairing code replace the old ones. The old key stops working at once: the other Zenobia's connection to this bucket fails until its administrator enters the new code there (New bucket, Another Zenobia offers to replace the stored key)." %}</p>
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label class="block space-y-1">
           <span class="text-xs font-semibold opacity-70">{% trans "How long" %}</span>
