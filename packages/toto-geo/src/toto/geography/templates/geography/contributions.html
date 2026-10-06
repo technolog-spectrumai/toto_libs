@@ -1,0 +1,68 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% comment %}One's own pins, zones and comments in every community (stage 64),
+whether or not one still belongs to it: after leaving a community a member
+keeps one right, to delete their own pins and zones and withdraw their own
+comments. No map, and nobody else's rows.{% endcomment %}
+{% block title %}{% trans "Your pins, zones and comments" %} | {{ platform.site_name }}{% endblock %}
+{% block content %}
+<section :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+         class="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-3xl space-y-6" data-testid="geography-contributions">
+    <header>
+      <h1 class="flex items-center gap-3 text-3xl font-extrabold">
+        <i class="fa-solid fa-map-pin" aria-hidden="true"></i>{% trans "Your pins, zones and comments" %}</h1>
+      <p class="mt-1 max-w-prose text-sm opacity-70">
+        {% trans "What you saved on communities' maps, in every community, also one you have left. Deleting and withdrawing are free; nothing is refunded." %}</p>
+      <p class="mt-2 text-sm"><a class="font-semibold underline" href="{% url 'geography:locations' %}">{% trans "Back to Locations" %}</a></p>
+    </header>
+
+    {% if messages %}
+    <ul class="space-y-1 text-sm font-semibold">{% for message in messages %}<li>{{ message }}</li>{% endfor %}</ul>
+    {% endif %}
+
+    <div>
+      <h2 class="text-lg font-bold">{% trans "Pins" %}</h2>
+      <ul class="mt-2 space-y-2">
+        {% for pin in pins %}
+        <li class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-current/15 p-3 text-sm">
+          <span><span class="font-semibold">{{ pin.address.name }}</span> · {{ pin.community.name }} · {{ pin.created_at|date:"Y-m-d" }}{% if pin.is_hidden %} · {% trans "hidden by a moderator" %}{% endif %}</span>
+          <form method="post" action="{% url 'geography:my_pin_delete' uid=pin.uid %}">{% csrf_token %}
+            <button type="submit" class="rounded-lg border px-3 py-1.5 font-semibold">{% trans "Delete" %}</button></form>
+        </li>
+        {% empty %}<li class="text-sm italic opacity-60">{% trans "You have saved no pin." %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div>
+      <h2 class="text-lg font-bold">{% trans "Zones" %}</h2>
+      <ul class="mt-2 space-y-2">
+        {% for zone in zones %}
+        <li class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-current/15 p-3 text-sm">
+          <span><span class="font-semibold">{{ zone.zone.name }}</span> · {{ zone.community.name }} · {{ zone.created_at|date:"Y-m-d" }}{% if zone.is_hidden %} · {% trans "hidden by a moderator" %}{% endif %}</span>
+          <form method="post" action="{% url 'geography:my_zone_delete' uid=zone.uid %}">{% csrf_token %}
+            <button type="submit" class="rounded-lg border px-3 py-1.5 font-semibold">{% trans "Delete" %}</button></form>
+        </li>
+        {% empty %}<li class="text-sm italic opacity-60">{% trans "You have saved no zone." %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div>
+      <h2 class="text-lg font-bold">{% trans "Comments" %}</h2>
+      <ul class="mt-2 space-y-2">
+        {% for item in comments %}
+        <li class="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-current/15 p-3 text-sm">
+          <span class="min-w-0"><span class="block whitespace-pre-line break-words">{{ item.comment.body }}</span>
+            <span class="text-xs opacity-70">{{ item.on }} · {{ item.community.name }} · {{ item.comment.created_at|date:"Y-m-d" }}</span></span>
+          <form method="post" action="{% url 'geography:my_comment_withdraw' pk=item.comment.pk %}">{% csrf_token %}
+            <button type="submit" class="rounded-lg border px-3 py-1.5 font-semibold">{% trans "Withdraw" %}</button></form>
+        </li>
+        {% empty %}<li class="text-sm italic opacity-60">{% trans "You have written no comment under a pin or a zone." %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</section>
+{% endblock %}

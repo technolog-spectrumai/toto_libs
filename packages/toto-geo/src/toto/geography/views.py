@@ -10,7 +10,10 @@ Each view carries ``geography_door``, the mark of who it lets in:
 URLconf fails on a route without one (stage 64's access test).
 
 The pages that draw the map are the profile and the community page
-(``plugins``); this module serves no HTML.
+(``plugins``) and, since stage 64, the Locations app (``locations``: the page
+at ``/geography/``, the doors of members' pins, zones and comments, with the
+marks ``"community"``, ``"contribution"`` and ``"author"``). This module
+serves no HTML.
 """
 
 from __future__ import annotations
