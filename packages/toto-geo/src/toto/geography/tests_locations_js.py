@@ -10,8 +10,9 @@ really answers a member with: its HTML is read into a tree here and rebuilt
 in node as elements faked just far enough (attributes, classes, values,
 listeners, simple selectors), with a Leaflet that keeps what it is handed
 and a fetch, an address and a history that record. That is where the tabs,
-the community checkboxes and the two dialogs are pressed. No browser draws
-anything: how it looks is the owner's by-hand note.
+the community checkboxes, the dialogs, "Keep on the map" beside a search
+result and the advanced filter are pressed. No browser draws anything: how
+it looks is the owner's by-hand note.
 
     manage.py test toto.geography.tests_locations_js
 """
@@ -28,7 +29,7 @@ from django.test import SimpleTestCase, override_settings
 
 from toto.geography import saves
 from toto.geography.locations_testing import LocationsCase
-from toto.geography.testing import client_of, element, op, tree_of
+from toto.geography.testing import client_of, element, op, post, tree_of
 
 _NODE = shutil.which("node")
 
@@ -190,6 +191,55 @@ class LocationsScriptTests(SimpleTestCase):
         self.assertEqual(out["withKinds"], ["pin:b"])
         self.assertEqual(out["near"], [["pin:a", "pin:b", "zone:c", "person:x"], ["pin:b"],
                                        ["pin:a", "zone:c"], ["pin:a", "pin:b", "zone:c"]])
+        self.assertEqual((out["touched"], out["calls"]), ([], []))
+
+    def test_the_advanced_filter_hides_rows_by_id_with_the_other_three(self):
+        """The owner, 2026-10-07: "you can select items to display". The
+        rows unticked one by one are the filter's ``hidden``: a row shows
+        only when the text, the kinds, the communities and it all let it
+        through; nearby is narrowed by it, and nothing is sent."""
+        out = self.run_js("""
+          const ids = (f) => ROWS.filter((r) => G.passes(r, f)).map((r) => r.id);
+          const none = Object.create(null);
+          const two = Object.create(null); two["pin:a"] = true; two["zone:c"] = true;
+          out.none = ids({hidden: none});
+          out.two = ids({hidden: two});
+          out.plain = ids({hidden: {"person:x": true}});
+          out.unknown = ids({hidden: {"pin:zzz": true, "toString": true}});
+          out.inherited = ids({hidden: {}});
+          out.withKinds = ids({hidden: two, kinds: {person: false}});
+          out.withCommunity = ids({hidden: two, communities: ["guild"]});
+          out.withText = [ids({hidden: two, text: "mill"}), ids({hidden: two, text: "well"})];
+          out.all = ids({hidden: two, kinds: {pin: false}, communities: ["other"], text: "m"});
+          out.near = G.nearby(ROWS.filter((r) => G.passes(r, {hidden: two})), WARSAW, 300)
+            .map((x) => x.row.id);
+          out.order = G.byKindThenName(ROWS.concat([
+            {id: "pin:z", kind: "pin", name: "apple"}, {id: "odd:1", kind: "odd", name: "Aaa"},
+            {id: "pin:y", kind: "pin", name: ""}, {id: "area:g", kind: "area", name: "Guild"},
+            {id: "headquarters:g", kind: "headquarters", name: "House"}])).map((r) => r.id);
+          out.kept = ROWS.map((r) => r.id);
+          const T = {advanced: "Advanced", advanced_hidden: "Advanced · %(n)s hidden"};
+          out.labels = [G.advancedLabel(none, T), G.advancedLabel(two, T),
+                        G.advancedLabel({"pin:a": true}, T), G.advancedLabel(undefined, T)];
+        """)
+        everything = ["pin:a", "pin:b", "person:x", "zone:c"]
+        self.assertEqual(out["none"], everything)
+        self.assertEqual(out["two"], ["pin:b", "person:x"])
+        self.assertEqual(out["plain"], ["pin:a", "pin:b", "zone:c"])
+        self.assertEqual(out["unknown"], everything)
+        self.assertEqual(out["inherited"], everything, "a method's name hides no row")
+        self.assertEqual(out["withKinds"], ["pin:b"])
+        self.assertEqual(out["withCommunity"], [])
+        self.assertEqual(out["withText"], [["pin:b"], []])
+        self.assertEqual(out["all"], [])
+        self.assertEqual(out["near"], ["pin:b", "person:x"])
+        # By type in the order of the "Show" boxes, then by name; an unknown
+        # kind last. The page's own order is left as it was.
+        self.assertEqual(out["order"], ["person:x", "headquarters:g", "area:g", "pin:y", "pin:z",
+                                        "pin:b", "pin:a", "zone:c", "odd:1"])
+        self.assertEqual(out["kept"], everything)
+        self.assertEqual(out["labels"], ["Advanced", "Advanced · 2 hidden", "Advanced · 1 hidden",
+                                         "Advanced"])
         self.assertEqual((out["touched"], out["calls"]), ([], []))
 
     def test_what_the_filter_s_button_says_and_what_the_address_ticks(self):
@@ -1159,6 +1209,271 @@ class KeepScriptTests(PageCase):
         """, hits=[{"label": label, "lat": 50.1, "lng": 20.1}])
         self.assertEqual(out["listed"], [label, 2], "the label is the button's text")
         self.assertEqual(out["words"], [name, label, 0, 0, 0])
+
+
+class AdvancedFilterScriptTests(PageCase):
+    """The owner, 2026-10-07: "also when filtering we need advanced butotn
+    that opens a modal and you can select items to display, items go with
+    name and type and checkbox, the list is scroollable. add advanced
+    locations filter modal." On the page: mia's own point, Well (Guild),
+    Mill (Other) and the zone Meadow (Guild)."""
+
+    #: The dialog's lines, read as a member reads them.
+    TOOLS = """
+      const lines = () => part("advanced-list").elements().filter((li) => li.elements().length);
+      const listed = () => lines().filter((li) => !li.classList.contains("hidden"));
+      const parts = (li) => {
+        const label = li.elements()[0];
+        const [box, words] = label.elements();
+        const [name, under] = words.elements();
+        return {label: label, box: box, name: name.textContent, under: under.textContent};
+      };
+      const read = (list) => list.map((li) => { const p = parts(li);
+        return [p.label.tagName, p.box.type, p.box.checked, p.name, p.under]; });
+      const said = (list) => list.map((li) => parts(li).name);
+      const chosenNow = () => lines().filter((li) => parts(li).box.checked).map((li) => parts(li).name);
+      const set = (name, on) => {
+        const box = parts(lines().find((li) => parts(li).name === name)).box;
+        box.checked = on; box.fire("change");
+      };
+      const type = (text) => { part("advanced-filter").value = text; part("advanced-filter").fire("input"); };
+      const button = () => part("advanced-label").textContent;
+      const count = () => part("advanced-count").textContent;
+      const rowsDrawn = () => drawn("rows").length;
+    """
+    #: As the index lists them (a person, the pins newest first, the zone),
+    #: which for these four is also the dialog's order: by type, then name.
+    ALL = ["Mia", "Mill", "Well", "Meadow"]
+    LISTED = ALL
+
+    def setUp(self):
+        super().setUp()
+        self.meadow = self.zone()
+
+    def run_advanced(self, body, **more):
+        return self.run_page(self.TOOLS + body, **more)
+
+    def test_the_dialog_lists_every_row_with_its_name_its_type_and_a_ticked_box(self):
+        self.pin(name="Zen", note="")       # the newest pin: first of the pins in the index
+        out = self.run_advanced("""
+          out.start = [shown("advanced-dialog"), button(), names("index"),
+                       part("advanced-open").tagName];
+          // Whatever the other filters say, every row is listed.
+          part("filter").value = "well"; part("filter").fire("input");
+          tick(X.other, true);
+          out.filtered = names("index");
+          press("advanced-open");
+          out.opened = [shown("advanced-dialog"), read(lines()), count(), said(listed()),
+                        part("advanced-list").tagName, part("advanced-filter").value];
+          out.quiet = [calls.length, replaced.length];
+        """)
+        self.assertEqual(out["start"], [False, "Advanced",
+                                        ["Mia", "Zen", "Mill", "Well", "Meadow"], "BUTTON"])
+        self.assertEqual(out["filtered"], ["Nothing matches."])
+        # By type, then by name: not the index's order.
+        self.assertEqual(out["opened"], [True, [
+            ["LABEL", "checkbox", True, "Mia", "People"],
+            ["LABEL", "checkbox", True, "Mill", "Community pins · Other"],
+            ["LABEL", "checkbox", True, "Well", "Community pins · Guild"],
+            ["LABEL", "checkbox", True, "Zen", "Community pins · Guild"],
+            ["LABEL", "checkbox", True, "Meadow", "Community zones · Guild"],
+        ], "5 of 5 chosen", ["Mia", "Mill", "Well", "Zen", "Meadow"], "UL", ""])
+        # Opening it sends nothing; the address holds the ticked community
+        # (one rewrite) and nothing of the dialog.
+        self.assertEqual(out["quiet"], [0, 1])
+        self.assertEqual(out["calls"], [])
+
+    def test_two_unticked_and_show_chosen_hides_both_everywhere(self):
+        out = self.run_advanced("""
+          const counts = () => box.querySelectorAll("[data-count]").map((n) => n.textContent);
+          out.before = [names("index"), rowsDrawn(), part("shown").textContent, counts()];
+          clickMap(52.2297, 21.0122); press("click-centre");
+          part("nearby-radius").value = "25"; press("nearby-go");
+          out.near = [names("nearby-results"), part("nearby-note").textContent];
+          press("nearby-clear"); tab("index").fire("click");
+          const rewritten = replaced.length, address = location.href;
+          press("advanced-open");
+          set("Mill", false); set("Meadow", false);
+          out.picking = [count(), chosenNow(), names("index"), rowsDrawn(), button()];
+          press("advanced-apply");
+          out.applied = [shown("advanced-dialog"), names("index"), rowsDrawn(), drawn("rows"),
+                         part("shown").textContent, button(), counts()];
+          out.state = Object.keys(mounted.state.filter.hidden).sort();
+          tab("nearby").fire("click"); press("nearby-go");
+          out.nearAfter = [names("nearby-results"), part("nearby-note").textContent,
+                           names("index")];
+          press("nearby-clear"); tab("index").fire("click");
+          // Reopened: it remembers what is hidden, and one may come back.
+          press("advanced-open");
+          out.reopened = [chosenNow(), count()];
+          set("Mill", true); press("advanced-apply");
+          out.one = [names("index"), button(), rowsDrawn()];
+          out.quiet = [location.href === address, replaced.slice(rewritten)];
+        """)
+        five = ["1", "0", "0", "2", "1"]
+        self.assertEqual(out["before"], [self.ALL, 4, "4 shown", five])
+        self.assertEqual(out["near"], [["Well", "Mill", "Meadow"], "3 within 25 km"])
+        self.assertEqual(out["picking"], ["2 of 4 chosen", ["Mia", "Well"], self.ALL, 4,
+                                          "Advanced"], "unticking changes nothing by itself")
+        self.assertEqual(out["applied"], [False, ["Mia", "Well"], 2, ["circle", "marker"],
+                                          "2 shown", "Advanced · 2 hidden", five],
+                         "the header counts what the page was handed; the index what is shown")
+        self.assertEqual(out["state"], sorted([f"pin:{self.mill.uid}",
+                                               f"zone:{self.meadow.uid}"]))
+        self.assertEqual(out["nearAfter"], [["Well"], "1 within 25 km", ["Well"]])
+        self.assertEqual(out["reopened"], [["Mia", "Well"], "2 of 4 chosen"])
+        self.assertEqual(out["one"], [["Mia", "Mill", "Well"], "Advanced · 1 hidden", 3])
+        # The tabs wrote the address (?tool=); the filter wrote nothing.
+        self.assertTrue(out["quiet"][0])
+        self.assertEqual({url.split("?")[-1] for url in out["quiet"][1] if "?" in url},
+                         {"tool=nearby"})
+        self.assertFalse([url for url in out["replaced"] if "hidden" in url or "advanced" in url])
+        self.assertEqual((out["calls"], out["assigned"], out["touched"]), ([], [], []))
+
+    def test_cancel_escape_and_the_backdrop_discard_what_was_changed(self):
+        out = self.run_advanced("""
+          press("advanced-open"); set("Well", false); set("Mia", false);
+          press("advanced-cancel");
+          out.cancelled = [shown("advanced-dialog"), names("index"), button(), rowsDrawn(),
+                           Object.keys(mounted.state.filter.hidden)];
+          press("advanced-open");
+          out.again = [chosenNow(), count()];
+          set("Mill", false); press("advanced-none");
+          dismiss("advanced-dialog");
+          out.dismissed = [shown("advanced-dialog"), names("index"), button()];
+          // A change of a box after the dialog is left changes nothing.
+          set("Well", false); press("advanced-all"); press("advanced-apply");
+          out.closed = [names("index"), button(), shown("advanced-dialog")];
+          press("advanced-open"); set("Well", false); press("advanced-apply");
+          press("advanced-open"); set("Well", true); set("Mill", false);
+          press("advanced-cancel");
+          out.kept = [names("index"), button()];
+        """)
+        self.assertEqual(out["cancelled"], [False, self.ALL, "Advanced", 4, []])
+        self.assertEqual(out["again"], [self.LISTED, "4 of 4 chosen"])
+        self.assertEqual(out["dismissed"], [False, self.ALL, "Advanced"])
+        self.assertEqual(out["closed"], [self.ALL, "Advanced", False])
+        self.assertEqual(out["kept"], [["Mia", "Mill", "Meadow"], "Advanced · 1 hidden"],
+                         "Cancel goes back to what was applied before")
+        self.assertEqual((out["calls"], out["replaced"], out["touched"]), ([], [], []))
+
+    def test_the_field_narrows_the_lines_and_all_and_none_act_on_the_listed_ones(self):
+        out = self.run_advanced("""
+          press("advanced-open");
+          type("  M ");
+          out.narrowed = [said(listed()), chosenNow(), count()];
+          press("advanced-none");
+          out.none = [chosenNow(), count(), said(listed())];
+          type("mi");
+          out.mi = said(listed());
+          press("advanced-all");
+          out.all = [chosenNow(), count()];
+          type("no such name");
+          out.nothing = [said(listed()), part("advanced-list").elements()
+                           .filter((li) => !li.classList.contains("hidden"))
+                           .map((li) => li.textContent)];
+          press("advanced-none"); press("advanced-all");
+          out.untouched = chosenNow();
+          type("");
+          out.cleared = [said(listed()), chosenNow(), names("index")];
+          press("advanced-apply");
+          out.applied = [names("index"), button()];
+          // The field is the dialog's: it is empty at the next opening, and
+          // it never was the index's text filter.
+          type("we"); press("advanced-cancel"); press("advanced-open");
+          out.reopened = [part("advanced-filter").value, said(listed()), part("filter").value,
+                          mounted.state.filter.text];
+        """)
+        self.assertEqual(out["narrowed"], [["Mia", "Mill", "Meadow"], self.LISTED,
+                                           "4 of 4 chosen"], "it changes what is listed only")
+        self.assertEqual(out["none"], [["Well"], "1 of 4 chosen", ["Mia", "Mill", "Meadow"]])
+        self.assertEqual(out["mi"], ["Mia", "Mill"])
+        self.assertEqual(out["all"], [["Mia", "Mill", "Well"], "3 of 4 chosen"])
+        self.assertEqual(out["nothing"], [[], ["Nothing matches."]])
+        self.assertEqual(out["untouched"], ["Mia", "Mill", "Well"])
+        self.assertEqual(out["cleared"], [self.LISTED, ["Mia", "Mill", "Well"], self.ALL])
+        self.assertEqual(out["applied"], [["Mia", "Mill", "Well"], "Advanced · 1 hidden"])
+        self.assertEqual(out["reopened"], ["", self.LISTED, "", ""])
+        self.assertEqual((out["calls"], out["replaced"], out["touched"]), ([], [], []))
+
+    def test_it_combines_with_a_kind_a_community_and_the_text_and_reset_clears_it(self):
+        out = self.run_advanced("""
+          const kind = (name, on) => {
+            const check = box.querySelector('[data-geo-kind="' + name + '"]');
+            check.checked = on; check.fire("change");
+          };
+          press("advanced-open"); set("Well", false); press("advanced-apply");
+          out.hidden = names("index");
+          kind("person", false);
+          out.kind = [names("index"), part("shown").textContent];
+          tick(X.guild, true);
+          out.community = [names("index"), rowsDrawn()];
+          tick(X.other, true);
+          out.two = names("index");
+          part("filter").value = "mea"; part("filter").fire("input");
+          out.text = names("index");
+          part("filter").value = "well"; part("filter").fire("input");
+          out.hiddenByAll = names("index");
+          // The dialog still lists everything, with what it hides unticked.
+          press("advanced-open");
+          out.dialog = [said(listed()), chosenNow()];
+          press("advanced-cancel");
+          press("reset");
+          out.reset = [names("index"), button(), rowsDrawn(), part("shown").textContent,
+                       Object.keys(mounted.state.filter.hidden), location.href];
+          press("advanced-open");
+          out.after = [chosenNow(), count()];
+        """)
+        self.assertEqual(out["hidden"], ["Mia", "Mill", "Meadow"])
+        self.assertEqual(out["kind"], [["Mill", "Meadow"], "2 shown"])
+        self.assertEqual(out["community"], [["Meadow"], 1])
+        self.assertEqual(out["two"], ["Mill", "Meadow"])
+        self.assertEqual(out["text"], ["Meadow"])
+        self.assertEqual(out["hiddenByAll"], ["Nothing matches."])
+        self.assertEqual(out["dialog"], [self.LISTED, ["Mia", "Mill", "Meadow"]])
+        self.assertEqual(out["reset"], [self.ALL, "Advanced", 4, "4 shown", [],
+                                        SITE + self.page_url])
+        self.assertEqual(out["after"], [self.LISTED, "4 of 4 chosen"])
+        self.assertEqual((out["calls"], out["assigned"], out["touched"]), ([], [], []))
+        # The address held the ticked communities and never the hidden rows.
+        self.assertFalse([url for url in out["replaced"] if "pin" in url or "hidden" in url])
+
+    def test_the_opened_row_s_details_close_when_it_is_hidden(self):
+        out = self.run_advanced("""
+          const mia = DATA.config.rows.find((row) => row.kind === "person");
+          rowButton(mia.id).fire("click");
+          out.opened = [hidden("details"), mounted.state.open === mia.id,
+                        part("details").textContent.includes("Mia")];
+          press("advanced-open"); set("Well", false); press("advanced-apply");
+          out.other = [hidden("details"), mounted.state.open === mia.id];
+          press("advanced-open"); set("Mia", false); press("advanced-apply");
+          out.closed = [hidden("details"), mounted.state.open, part("details").textContent,
+                        names("index")];
+        """)
+        self.assertEqual(out["opened"], [False, True, True])
+        self.assertEqual(out["other"], [False, True], "another row hidden leaves it open")
+        self.assertEqual(out["closed"], [True, None, "", ["Mill", "Meadow"]])
+        self.assertEqual(out["calls"], [], "a person's details are the page's own")
+
+    def test_a_name_with_markup_is_text_and_a_hidden_row_is_marked(self):
+        name = "<img src=x onerror=alert(1)>"
+        marked = self.pin(name=name, note="<b>x</b>")
+        post(client_of(self.head_user), self.url("pin_hide", marked), {})
+        out = self.run_advanced("""
+          press("advanced-open");
+          const line = lines().find((li) => parts(li).name.startsWith("<img"));
+          out.line = [parts(line).name, parts(line).under, line.all().map((n) => n.tagName),
+                      part("advanced-list").querySelectorAll("img").length
+                      + part("advanced-list").querySelectorAll("b").length];
+          out.index = names("index").filter((n) => n.startsWith("<img"));
+          set(parts(line).name, false); press("advanced-apply");
+          out.gone = [names("index").filter((n) => n.startsWith("<img")), button()];
+        """)
+        self.assertEqual(out["line"], [name, "Community pins · Guild · Hidden by a moderator",
+                                       ["LABEL", "INPUT", "SPAN", "SPAN", "SPAN"], 0])
+        self.assertEqual(out["index"], [name])
+        self.assertEqual(out["gone"], [[], "Advanced · 1 hidden"])
+        self.assertEqual(out["calls"], [])
 
 
 class LocationsScriptSourceTests(SimpleTestCase):

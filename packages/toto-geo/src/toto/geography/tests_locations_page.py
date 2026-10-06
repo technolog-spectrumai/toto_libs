@@ -4,8 +4,10 @@ else), a price beside every charged control, and no charge for looking.
 
 Since the same day the tools beside the map are tabs (the index, Search
 nearby, Route), the community filter is a dropdown of checkboxes, and a
-pin's and a zone's words are typed in a dialog and nowhere else. What the
-script does with them is run in ``tests_locations_js``.
+pin's and a zone's words are typed in a dialog and nowhere else. Since
+2026-10-07 the index has an Advanced button and the page a third dialog,
+where the rows to show are chosen one by one. What the script does with
+them is run in ``tests_locations_js``.
 
     manage.py test toto.geography.tests_locations_page
 """
@@ -297,7 +299,8 @@ class TabTests(LocationsCase):
         tree = self.tree()
         index, nearby, route = self.strip(tree)[2]
         inside = {
-            "index": ("filter", "community-filter", "fit", "reset", "index", "shown"),
+            "index": ("filter", "community-filter", "advanced-open", "fit", "reset", "index",
+                      "shown"),
             "nearby": ("nearby", "nearby-centre", "nearby-radius", "nearby-go", "nearby-clear",
                        "nearby-note", "nearby-results"),
             "route": ("route", "from", "to", "mode", "route-go", "route-note"),
@@ -317,7 +320,7 @@ class TabTests(LocationsCase):
         # (a centre and a route's end are both taken from its hits), the
         # click menu, the tool that places a pin, the details, the dialogs.
         for mark in ("map", "q", "search-go", "results", "click-menu", "pin-tool",
-                     "details", "pin-dialog", "zone-dialog"):
+                     "details", "pin-dialog", "zone-dialog", "advanced-dialog"):
             node = element(tree, "data-geo", mark)
             self.assertIsNotNone(node, mark)
             for panel in (index, nearby, route):
@@ -394,28 +397,37 @@ class DialogMarkupTests(LocationsCase):
                 self.assertEqual(inside, ["pin-community", "pin-name", "pin-postal", "pin-note",
                                           "zone-name", "zone-description"])
 
-    def test_the_two_dialogs_are_the_library_s_modal(self):
+    def test_the_dialogs_are_the_library_s_modal(self):
         tree = tree_of(client_of(self.member_user).get(self.page_url).content.decode())
         box = element(tree, "data-geography-locations")
         dialogs = [node for node, _above in walk(box["children"])
                    if node["attrs"].get("role") == "dialog"]
         self.assertEqual([node["attrs"]["data-geo"] for node in dialogs],
-                         ["pin-dialog", "zone-dialog"])
+                         ["pin-dialog", "zone-dialog", "advanced-dialog"])
         # The pin's: a new one and a change (the title, the community and the
         # price of each, one of the two drawn at a time). The zone's: its
-        # author's change only, for no zone is drawn on this page.
+        # author's change only, for no zone is drawn on this page. The
+        # advanced filter's (2026-10-07): the rows to show, and no words.
         both = ["change"] * 3 + ["new"] * 3
         for node, parts, expected in zip(dialogs, (
                 ("pin-community", "pin-name", "pin-postal", "pin-note",
                  "pin-status", "pin-save", "pin-dialog-cancel"),
                 ("zone-community-fixed", "zone-name", "zone-description",
-                 "zone-status", "zone-save", "zone-dialog-cancel")), (both, [])):
+                 "zone-status", "zone-save", "zone-dialog-cancel"),
+                ("advanced-filter", "advanced-all", "advanced-none", "advanced-count",
+                 "advanced-list", "advanced-apply", "advanced-cancel")), (both, [], [])):
             attrs = node["attrs"]
             with self.subTest(dialog=attrs["data-geo"]):
                 self.assertEqual((attrs["aria-modal"], attrs["x-show"], attrs["x-trap"]),
                                  ("true", "open", "open"))
+                self.assertEqual((attrs["x-data"], attrs["@geography-dialog"]),
+                                 ("{open: false}", "open = $event.detail.open"))
                 self.assertIn("x-cloak", attrs)
                 self.assertIn("@keydown.escape.window", attrs)
+                # The backdrop and the X leave it as Escape does.
+                leaving = [n for n, _a in walk(node["children"])
+                           if n["attrs"].get("@click") == "$dispatch('geography-dismiss')"]
+                self.assertEqual([n["tag"] for n in leaving], ["div", "button"])
                 self.assertIsNotNone(element(node["children"], "id", attrs["aria-labelledby"]))
                 for part in parts:
                     self.assertTrue(holds(node, "data-geo", part), part)
@@ -460,6 +472,100 @@ class DialogMarkupTests(LocationsCase):
                     self.assertNotIn("zones", community)
                 if user in (self.member_user, self.head_user):
                     self.assertIn("zone", [row["kind"] for row in config["rows"]])
+
+
+@override_settings(LOCATIONS_GEOCODING={"enabled": True}, GEOGRAPHY_ROUTING=ROUTING)
+class AdvancedFilterMarkupTests(LocationsCase):
+    """The owner, 2026-10-07: "also when filtering we need advanced butotn
+    that opens a modal and you can select items to display, items go with
+    name and type and checkbox, the list is scroollable. add advanced
+    locations filter modal." What the page draws of it; what it does is run
+    in ``tests_locations_js``."""
+
+    def setUp(self):
+        super().setUp()
+        self.pin(name="<img src=x onerror=alert(1)>")
+        self.text = client_of(self.member_user).get(self.page_url).content.decode()
+        self.tree = tree_of(self.text)
+
+    def test_the_button_is_in_the_index_tab_between_the_filters_and_fit_all(self):
+        buttons = [(node, above) for node, above in walk(self.tree)
+                   if node["attrs"].get("data-geo") == "advanced-open"]
+        self.assertEqual(len(buttons), 1)
+        button, above = buttons[0]
+        self.assertEqual((button["tag"], button["attrs"]["type"], button["attrs"]["data-testid"]),
+                         ("button", "button", "geography-advanced-open"))
+        self.assertEqual([up["attrs"]["data-geo-panel"] for up in above
+                          if "data-geo-panel" in up["attrs"]], ["index"])
+        icon = next(node for node, _a in walk(button["children"]) if node["tag"] == "i")
+        self.assertIn("fa-sliders", icon["attrs"]["class"].split())
+        label = element(button["children"], "data-geo", "advanced-label")
+        self.assertEqual([child["text"] for child in label["children"]], ["Advanced"])
+        # After the community filter, before Fit all and Reset.
+        index = element(self.tree, "data-geo-panel", "index")
+        order = [node["attrs"]["data-geo"] for node, _a in walk(index["children"])
+                 if node["attrs"].get("data-geo") in ("community-filter", "advanced-open", "fit",
+                                                      "reset", "index")]
+        self.assertEqual(order, ["community-filter", "advanced-open", "fit", "reset", "index"])
+
+    def test_the_dialog_holds_a_list_that_scrolls_and_no_row_of_its_own(self):
+        dialog = element(self.tree, "data-geo", "advanced-dialog")
+        self.assertEqual(dialog["attrs"]["data-testid"], "geography-advanced-dialog")
+        title = element(dialog["children"], "id", dialog["attrs"]["aria-labelledby"])
+        self.assertEqual([child["text"].strip() for child in title["children"] if "text" in child],
+                         ["Choose what to show"])
+        listing = element(dialog["children"], "data-geo", "advanced-list")
+        classes = listing["attrs"]["class"].split()
+        self.assertEqual(listing["tag"], "ul")
+        self.assertIn("max-h-[60vh]", classes)
+        self.assertIn("overflow-y-auto", classes)
+        # The dialog itself is never taller than the screen.
+        panel = next(node for node, _a in walk(dialog["children"])
+                     if "max-h-[90vh]" in node["attrs"].get("class", "").split())
+        self.assertTrue(holds(panel, "data-geo", "advanced-list"))
+        self.assertIn("overflow-y-auto", panel["attrs"]["class"].split())
+        # The lines are made by the script from the page's data, each name
+        # as text: the server draws none, and no name is markup in the page.
+        self.assertEqual(listing["children"], [])
+        self.assertNotIn("<img src=x", self.text)
+        said = " ".join(node["text"] for node in _texts_of(dialog))
+        self.assertIn("reloading the page shows everything again", said)
+        for word in ("All", "None", "Show chosen", "Cancel"):
+            self.assertIn(word, [node["text"].strip() for node in _texts_of(dialog)], word)
+        for name, tag in (("advanced-all", "button"), ("advanced-none", "button"),
+                          ("advanced-apply", "button"), ("advanced-cancel", "button"),
+                          ("advanced-count", "span")):
+            self.assertEqual(element(dialog["children"], "data-geo", name)["tag"], tag, name)
+        # No price in it: choosing what to show is free.
+        self.assertFalse(holds(dialog, "data-mana-role"))
+
+    def test_its_one_field_narrows_the_list_and_is_no_field_for_a_pin_s_words(self):
+        """``words_fields`` counts a text input, a textarea and the choice
+        of a community: what a pin's or a zone's words are typed in. The
+        dialog's one field is a search box, as the index's filter is, so
+        the rule "the words in a dialog and nowhere else" reads as before."""
+        dialog = element(self.tree, "data-geo", "advanced-dialog")
+        fields = [(node["tag"], node["attrs"].get("type"), node["attrs"].get("data-geo"))
+                  for node, _a in walk(dialog["children"])
+                  if node["tag"] in ("input", "textarea", "select")]
+        self.assertEqual(fields, [("input", "search", "advanced-filter")])
+        outside, inside = words_fields(self.text, "data-geography-locations")
+        self.assertEqual(outside, [])
+        self.assertEqual(inside, ["pin-community", "pin-name", "pin-postal", "pin-note",
+                                  "zone-name", "zone-description"])
+
+    def test_its_sentences_and_no_door(self):
+        config = config_of(self.text)
+        texts = config["texts"]
+        self.assertEqual((texts["advanced"], texts["advanced_hidden"], texts["advanced_count"]),
+                         ("Advanced", "Advanced · %(n)s hidden", "%(n)s of %(m)s chosen"))
+        # It is the page's own: the address carries nothing of it and the
+        # server is handed nothing.
+        asked = config_of(client_of(self.member_user).get(
+            self.page_url + "?hidden=pin:abc&advanced=1").content.decode())
+        self.assertEqual(asked, config)
+        self.assertEqual([key for key in config["urls"] if "advanced" in key or "hidden" in key],
+                         [])
 
 
 @override_settings(LOCATIONS_GEOCODING={"enabled": True}, GEOGRAPHY_ROUTING=ROUTING)
