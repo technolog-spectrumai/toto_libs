@@ -270,6 +270,13 @@ TRAPPED = {
     # The address picker: on the map's profile plugin since 2026-10-04, when
     # the profile's own address became text. A host without the map skips it.
     "locations/profile_plugins/home.html": ["addressModal"],
+    # The words of a point and of a zone (2026-10-06): typed in a dialog and
+    # nowhere else. The map widget (a profile's point, a community's
+    # headquarters and zone) and the Locations page (a community pin, a
+    # community zone) hold two each; the page's script opens and closes them
+    # with an event. A host without toto.geography skips them.
+    "geography/_map.html": ["open", "open"],
+    "geography/locations.html": ["open", "open"],
 }
 
 #: Where a modal's Escape handler is when it is not in the modal's own
