@@ -31,8 +31,29 @@ ZONE_CLEARED = "GEOGRAPHY.ZONE.CLEARED"
 SEARCH = "GEOGRAPHY.SEARCH"
 ROUTE = "GEOGRAPHY.ROUTE"
 
+# Stage 64 (2026-10-06): members' contributions to a community, and the
+# comments under them. ``link`` is then the pin, the zone or the comment's
+# link row; never a coordinate, an outline or a comment's text.
+PIN_CREATED = "GEOGRAPHY.PIN.CREATED"
+PIN_EDITED = "GEOGRAPHY.PIN.EDITED"
+PIN_DELETED = "GEOGRAPHY.PIN.DELETED"
+PIN_HIDDEN = "GEOGRAPHY.PIN.HIDDEN"
+PIN_RESTORED = "GEOGRAPHY.PIN.RESTORED"
+ZONE_CREATED = "GEOGRAPHY.ZONE.CREATED"
+ZONE_EDITED = "GEOGRAPHY.ZONE.EDITED"
+ZONE_DELETED = "GEOGRAPHY.ZONE.DELETED"
+ZONE_HIDDEN = "GEOGRAPHY.ZONE.HIDDEN"
+ZONE_RESTORED = "GEOGRAPHY.ZONE.RESTORED"
+COMMENT_CREATED = "GEOGRAPHY.COMMENT.CREATED"
+COMMENT_EDITED = "GEOGRAPHY.COMMENT.EDITED"
+COMMENT_WITHDRAWN = "GEOGRAPHY.COMMENT.WITHDRAWN"
+
+CONTRIBUTIONS = (PIN_CREATED, PIN_EDITED, PIN_DELETED, PIN_HIDDEN, PIN_RESTORED,
+                 ZONE_CREATED, ZONE_EDITED, ZONE_DELETED, ZONE_HIDDEN, ZONE_RESTORED,
+                 COMMENT_CREATED, COMMENT_EDITED, COMMENT_WITHDRAWN)
+
 ACTIONS = (ADDRESS_SAVED, ADDRESS_CLEARED, HEADQUARTERS_SAVED, HEADQUARTERS_CLEARED,
-           ZONE_SAVED, ZONE_CLEARED, SEARCH, ROUTE)
+           ZONE_SAVED, ZONE_CLEARED, SEARCH, ROUTE) + CONTRIBUTIONS
 
 #: What a record says the action was, in place of anything about where.
 _DESCRIPTION = {
@@ -44,6 +65,19 @@ _DESCRIPTION = {
     ZONE_CLEARED: "A community's zone removed",
     SEARCH: "Place search",
     ROUTE: "Route search",
+    PIN_CREATED: "A community pin saved",
+    PIN_EDITED: "A community pin changed",
+    PIN_DELETED: "A community pin deleted",
+    PIN_HIDDEN: "A community pin hidden by a moderator",
+    PIN_RESTORED: "A community pin shown again",
+    ZONE_CREATED: "A community zone saved",
+    ZONE_EDITED: "A community zone changed",
+    ZONE_DELETED: "A community zone deleted",
+    ZONE_HIDDEN: "A community zone hidden by a moderator",
+    ZONE_RESTORED: "A community zone shown again",
+    COMMENT_CREATED: "A comment under a pin or zone",
+    COMMENT_EDITED: "A comment under a pin or zone changed",
+    COMMENT_WITHDRAWN: "A comment under a pin or zone withdrawn",
 }
 
 
