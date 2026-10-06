@@ -31,9 +31,9 @@ the page's script as JSON with an op; the thread's forms are sent as they are
   {% endif %}
 
   {% if may_edit %}
-  {# The author's change is asked in the page's dialog, and nowhere else: this
+  {% comment %} The author's change is asked in the page's dialog, and nowhere else: this
      button holds the words it starts from (escaped, as every text here) and
-     the door they are sent to. #}
+     the door they are sent to. {% endcomment %}
   <div class="mt-3 text-sm">
     <button type="button" data-geo-change="{{ kind }}" data-testid="geography-change" data-url="{{ edit_url }}"
             data-name="{{ state.name }}"{% if kind == "pin" %} data-postal="{{ state.postal_address }}" data-note="{{ state.note }}"{% else %} data-description="{{ state.description }}"{% endif %}
