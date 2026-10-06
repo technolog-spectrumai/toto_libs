@@ -18,7 +18,7 @@ NO_MIGRATION_APPS = {"editor", "neo_editor"}
 # Every app that ships a migrations package, by app directory name.
 APPS_WITH_MIGRATIONS = {
     "ambrosia", "anastasia", "antivirus", "api", "assets", "audit", "bento",
-    "clearing", "comments", "company", "connectors", "core", "cyprian",
+    "clearing", "comments", "companies", "company", "connectors", "core", "cyprian",
     "events", "fileservices", "formica", "forum", "geography", "gervazy", "gitea",
     "ingestor", "jess", "kanban", "ledger", "locations", "mail", "mana",
     "mandragora", "manta", "memo", "mint", "monit", "notify", "ocr", "people", "quota",
