@@ -154,3 +154,81 @@ class SharesOpenNothingTests(CompaniesTestCase):
         self.assertFalse(may_contribute(self.hold_user, self.acme))
         self.assertFalse(may_moderate(self.hold_user, self.acme))
         self.assertTrue(may_contribute(self.mia_user, self.acme))
+
+
+class TheChartIsNotTheRegisterTests(CompaniesTestCase):
+    """Stage 66: the organisation chart is every community's and reads no
+    holding; a person's position is what a manager set."""
+
+    def setUp(self):
+        from toto.socialhub import org_chart
+
+        self.org_chart = org_chart
+        self.record(self.acme, self.hold, 1000)
+        self.record(self.acme, self.mia, 1)
+
+    def titles(self):
+        return {row.position.title: row.position.person
+                for row in self.org_chart.chart_of(self.acme)}
+
+    def test_holding_shares_puts_nobody_in_the_chart(self):
+        self.assertEqual(self.org_chart.chart_of(self.acme), [])
+        self.assertEqual(self.org_chart.nodes_of(self.acme), [])
+        self.assertFalse(self.hold.community_positions.exists())
+
+    def test_the_largest_holder_may_report_to_the_smallest(self):
+        chief = self.org_chart.create(self.acme, title="Chief", person=self.mia)
+        self.org_chart.create(self.acme, title="Clerk", person=self.hold,
+                              reports_to=chief.pk)
+        rows = [(row.position.title, row.position.person.slug, row.depth)
+                for row in self.org_chart.chart_of(self.acme)]
+        self.assertEqual(rows, [("Chief", "mia", 0), ("Clerk", "hold", 1)])
+
+    def test_changing_a_holding_moves_no_position(self):
+        chief = self.org_chart.create(self.acme, title="Chief", person=self.mia)
+        self.org_chart.create(self.acme, title="Clerk", person=self.hold,
+                              reports_to=chief.pk)
+        before = self.titles()
+        self.record(self.acme, self.mia, 0)
+        self.record(self.acme, self.hold, 5_000_000)
+        holding = ShareHolding.objects.get(community=self.acme, person=self.mia)
+        client_of(self.head_user).post(self.delete_url(self.acme, holding.pk))
+        self.assertEqual(self.titles(), before)
+
+    def test_changing_the_chart_moves_no_share(self):
+        before = dict(ShareHolding.objects.values_list("person__slug", "quantity"))
+        chief = self.org_chart.create(self.acme, title="Chief", person=self.hold)
+        self.org_chart.change(self.acme, chief.pk, title="Chief", person=None)
+        self.org_chart.delete(self.acme, chief.pk)
+        self.assertEqual(dict(ShareHolding.objects.values_list("person__slug", "quantity")),
+                         before)
+
+    def test_a_position_gives_no_say_over_the_register(self):
+        self.org_chart.create(self.acme, title="Chief", person=self.stan)
+        self.assertFalse(access.may_manage(self.stan_user, self.acme))
+        self.assertEqual(self.record(self.acme, self.stan, 5, user=self.stan_user).status_code,
+                         403)
+
+    def test_an_ordinary_community_has_a_chart_and_no_register(self):
+        self.org_chart.create(self.guild, title="Warden", person=self.head)
+        response = client_of(self.mia_user).get(page_url(self.guild))
+        keys = [tab["key"] for tab in response.context["community_tabs"]]
+        self.assertIn("chart", keys)
+        self.assertNotIn("shareholdings", keys)
+
+    def test_the_two_codes_do_not_read_each_other(self):
+        from pathlib import Path
+
+        import toto.companies
+        import toto.socialhub
+
+        chart = (Path(toto.socialhub.__file__).parent / "org_chart.py").read_text("utf-8")
+        for word in ("ShareHolding", "share_holdings", "toto.companies", "quantity"):
+            self.assertNotIn(word, chart)
+        for path in Path(toto.companies.__file__).parent.rglob("*.py"):
+            if path.name.startswith("tests") or path.name == "testing.py":
+                continue
+            text = path.read_text(encoding="utf-8")
+            for word in ("CommunityPosition", "org_chart", "community_positions"):
+                self.assertNotIn(word, text, path.name)
+
