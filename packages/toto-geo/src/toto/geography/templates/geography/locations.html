@@ -8,7 +8,11 @@ visible_to). On a phone the index is a drawer.
 
 The tools beside the map are TABS (the owner, 2026-10-06: "Search nearby and
 Route in locations should be different tabs"): the index with its filters,
-Search nearby, Route. One is open at a time; the map is outside them and
+Radius, Route. The second was first labelled "Search nearby" (the owner,
+2026-10-07: "change "search nearby" into radius"; the long label pushed
+Route onto a second line): the tab, its heading and the phone's button say
+Radius, the button that runs the search still says what it does, and the
+address still says ?tool=nearby. One is open at a time; the map is outside them and
 shared, so what is on it stays when the tab changes. The open tab is in the
 address (?tool=nearby, ?tool=route) and drawn by the server, so a reload and
 a link keep it. Place search stays above the map: both a centre for nearby
@@ -78,7 +82,7 @@ and on no other map of the platform; a route is shown and forgotten.{% endcommen
         <i class="fa-solid fa-list" aria-hidden="true"></i>{% trans "Location index" %}</button>
       <button type="button" data-geo-open="nearby"
               class="inline-flex items-center gap-2 rounded-lg border border-current/30 px-3 py-2 text-sm font-semibold">
-        <i class="fa-solid fa-bullseye" aria-hidden="true"></i>{% trans "Search nearby" %}</button>
+        <i class="fa-solid fa-bullseye" aria-hidden="true"></i>{% trans "Radius" %}</button>
       {% if route_modes %}
       <button type="button" data-geo-open="route"
               class="inline-flex items-center gap-2 rounded-lg border border-current/30 px-3 py-2 text-sm font-semibold">
@@ -106,7 +110,7 @@ and on no other map of the platform; a route is shown and forgotten.{% endcommen
                   aria-selected="{% if tool == 'nearby' %}true{% else %}false{% endif %}"
                   tabindex="{% if tool == 'nearby' %}0{% else %}-1{% endif %}"
                   class="-mb-px inline-flex items-center gap-1.5 border-b-2 border-transparent px-2.5 py-2 text-sm font-semibold opacity-60 aria-selected:border-current aria-selected:opacity-100">
-            <i class="fa-solid fa-bullseye" aria-hidden="true"></i>{% trans "Search nearby" %}</button>
+            <i class="fa-solid fa-bullseye" aria-hidden="true"></i>{% trans "Radius" %}</button>
           {% if route_modes %}
           <button type="button" role="tab" id="geography-tab-route" data-geo-tab="route" data-testid="geography-tab-route"
                   aria-controls="geography-panel-route"
@@ -190,7 +194,7 @@ and on no other map of the platform; a route is shown and forgotten.{% endcommen
              class="{% if tool != 'nearby' %}hidden {% endif %}outline-none">
         <div data-geo="nearby">
           <p class="flex items-center gap-2 text-sm font-semibold">
-            <i class="fa-solid fa-bullseye" aria-hidden="true"></i>{% trans "Search nearby" %}</p>
+            <i class="fa-solid fa-bullseye" aria-hidden="true"></i>{% trans "Radius" %}</p>
           <p class="mt-1 text-xs opacity-60">
             {% trans "Around a centre: a point you clicked, a temporary point, a row you opened or a search result. It is worked out in this page from what the map already shows: the centre is sent nowhere and nothing is charged." %}</p>
           <p class="mt-2 text-sm" data-geo="nearby-centre"></p>
