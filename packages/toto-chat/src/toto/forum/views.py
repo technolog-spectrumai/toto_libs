@@ -1,1070 +1,355 @@
-from django.contrib import messages
-from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.conf import settings
-from django.http import Http404
-from django.shortcuts import get_object_or_404, redirect, render
+"""The forum's doors: two pages and the JSON doors under them.
+
+Every view is made by ``door(mark, …)`` and carries the mark as
+``forum_door``; a test walks the URLconf and fails on a route without one.
+
+    member      signed in, entitled, and may read the community's channel
+                (a member, a senior member, the head; or an administrator)
+    author      member, and the row's author or who moderates the channel
+                (the view asks ``access`` about the row)
+    moderator   member, and the community's head or an administrator
+
+What a door answers before its own work, in this order: 405 for another
+method; signed out, the sign-in page for a page and 403 for a JSON door;
+403 for a write another site sent (Fetch Metadata); 402 for a plan without
+the forum; 404 for a slug that names no community; 403 for a community the
+member does not belong to; 503 when the forum's key cannot be opened. The
+channel is made on the first opening (``channels.ensure_channel``).
+
+Names, messages and poll texts leave as JSON strings or in a ``json_script``
+block and are put on the page as text nodes, never as markup.
+"""
+
+from __future__ import annotations
+
+import json
+from functools import wraps
+
+from django.contrib.auth.views import redirect_to_login
+from django.core.exceptions import ValidationError
+from django.http import HttpResponse, JsonResponse
+from django.shortcuts import render
 from django.urls import reverse
-from django.views.decorators.http import require_POST, require_safe
-from django.views.generic import ListView, DetailView, View
-from django.db import models
+from django.utils.dateparse import parse_datetime
+from django.utils import timezone
 from django.utils.translation import gettext as _
-from toto.ui import PageProcessor
-from toto.forum import permissions
-from toto.forum.models import ForumMember, ForumChannel
-from toto.people.models import Person
 
-
-class ChannelListView(LoginRequiredMixin, ListView):
-    model = ForumChannel
-    template_name = "forum/channel_list.html"
-    context_object_name = "channels"
-    paginate_by = 20
-    ordering = ["name"]
-
-    def get_queryset(self):
-        ids = permissions.listable_channels(self.request.user).values("pk")
-        qs = super().get_queryset().filter(pk__in=ids).annotate(
-            member_count=models.Count(
-                "forum_members",
-                filter=models.Q(forum_members__is_active=True),
-                distinct=True,
-            )
-        )
-        query = self.request.GET.get("q")
-        if query:
-            qs = qs.filter(models.Q(name__icontains=query) | models.Q(slug__icontains=query))
-        return qs
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        joined = set(
-            permissions.readable_channels(self.request.user).values_list("pk", flat=True)
-        )
-        for channel in context["channels"]:
-            channel.is_joined = channel.pk in joined
-        # Staff-only forum controls. Hidden rather than disabled: a link that
-        # always answers 403 is worse than no link — and the page behind it
-        # re-checks, because hiding is cosmetic.
-        context["is_operator"] = permissions.is_operator(self.request.user)
-        from . import creation
-
-        context["expiry_choices"] = [
-            ("", _("Never")), ("1h", _("1 hour")), ("24h", _("24 hours")),
-            ("7d", _("7 days")), ("30d", _("30 days"))]
-        context["min_password"] = creation.MIN_PASSWORD
-        return PageProcessor().decorate(context, self.request)
-
-
-class ChannelDetailView(LoginRequiredMixin, DetailView):
-    model = ForumChannel
-    template_name = "forum/channel_details.html"
-    context_object_name = "channel"
-    slug_field = "slug"
-    slug_url_kwarg = "slug"
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        channel = self.get_object()
-        current_person = permissions.person_for(self.request.user)
-        current_member = permissions.member_for(self.request.user, channel)
-
-        context["all_channels"] = ForumChannel.objects.annotate(
-            member_count=models.Count(
-                "forum_members",
-                filter=models.Q(forum_members__is_active=True),
-                distinct=True,
-            )
-        )
-
-        # The roster is only disclosed to members (permissions.py D6).
-        if current_member:
-            members_qs = channel.forum_members.filter(is_active=True).select_related("person")
-            context["participants"] = [
-                {
-                    "username": m.display_name,
-                    "avatar_url": m.avatar_url,
-                }
-                for m in members_qs
-            ]
-        else:
-            context["participants"] = []
-
-        context["current_chat_user"] = (
-            current_member.display_name
-            if current_member
-            else current_person.full_name
-            if current_person
-            else (self.request.user.get_full_name() or self.request.user.username)
-        )
-        context["current_chat_avatar_url"] = (
-            current_member.avatar_url
-            if current_member
-            else "/static/img/avatars/default.png"
-        )
-
-        # History is delivered over the websocket, never server-rendered. Note this is
-        # deliberately NOT called "messages": that name is taken by the
-        # django.contrib.messages context processor, and shadowing it silently swallowed
-        # every flash message the join/leave/create redirects set.
-        context["initial_messages"] = []
-        context["current_person"] = current_person
-        # The room tab strip: chat is one of four surfaces. Members only —
-        # an observer sees the chat preview, not the room's library or polls.
-        from django.apps import apps as django_apps
-
-        context["active_tab"] = "chat"
-        context["is_participant"] = current_member is not None
-
-        context["can_send_messages"] = current_member is not None and not channel.is_expired
-        verdict = permissions.join_verdict(self.request.user, channel)
-        context["join_verdict"] = verdict
-        context["can_join"] = bool(current_person and not current_member
-                                   and verdict in ("open", "password"))
-        context["needs_password"] = verdict == "password"
-        context["can_leave"] = current_member is not None
-        context["badges"] = channel.badges()
-        context["is_encrypted"] = channel.is_encrypted
-        context["can_manage_members"] = permissions.can_manage_members(self.request.user, channel)
-        context["forum_price_code"] = "forum.encrypt" if channel.is_encrypted else "forum.message"
-        # A URL in a message is a link only to one of these names or the
-        # page's own host (static/forum/linkify.js, 47.4).
-        from . import links
-
-        context["forum_link_hosts"] = links.platform_hosts()
-
-        if not context["can_send_messages"]:
-            if context["can_join"]:
-                context["observer_reason"] = _("Join this channel to read and send messages.")
-            elif not current_person:
-                context["observer_reason"] = _(
-                    "You are observing because your user is not linked to a person profile."
-                )
-            else:
-                context["observer_reason"] = _("You are observing this channel.")
-        else:
-            context["observer_reason"] = ""
-
-        return PageProcessor().decorate(context, self.request)
-
-
-class ChannelJoinView(LoginRequiredMixin, View):
-    def post(self, request, slug):
-        from . import creation
-
-        channel = get_object_or_404(ForumChannel, slug=slug)
-        if not permissions.listable_channels(request.user).filter(pk=channel.pk).exists():
-            raise Http404
-        try:
-            created = creation.join(request.user, channel,
-                                    password=request.POST.get("password", ""))
-        except creation.RoomRefused as exc:
-            messages.error(request, str(exc))
-            return redirect("forum:channel_detail", slug=channel.slug)
-        messages.success(request, _("You joined %(name)s as a member.") % {"name": channel.name}
-                         if created else _("You are a member of %(name)s.") % {"name": channel.name})
-        return redirect("forum:channel_detail", slug=channel.slug)
-
-
-class ChannelLeaveView(LoginRequiredMixin, View):
-    def post(self, request, slug):
-        channel = get_object_or_404(ForumChannel, slug=slug)
-
-        person = Person.objects.filter(user=request.user).first()
-        if person:
-            # Deactivate per instance, not with a queryset .update(): the latter fires
-            # no signals, so signals.py would never tell a live socket it was revoked.
-            for member in ForumMember.objects.filter(
-                channel=channel, person=person, is_active=True
-            ):
-                member.is_active = False
-                member.save(update_fields=["is_active"])
-
-        messages.success(request, _("You left %(name)s.") % {"name": channel.name})
-        return redirect("forum:channel_detail", slug=channel.slug)
-
-
-class ChannelCreateView(LoginRequiredMixin, View):
-    """Create a room from the channel-list page and join it.
-
-    Who may join (open / password), whether it is encrypted at rest,
-    and whether it expires are chosen here and fixed for the room's life —
-    except the password, which its creator may change. creation.create_room
-    holds every rule; the API door calls the same function.
-    """
-
-    def post(self, request):
-        from toto.quota.api import InArrears, QuotaExceeded
-        from toto.quota.charge import InsufficientFunds
-
-        from . import creation
-
-        try:
-            channel = creation.create_room(
-                request.user, name=request.POST.get("name", ""),
-                access=request.POST.get("access", "open"),
-                password=request.POST.get("password", ""),
-                encrypted=request.POST.get("encrypted") == "1",
-                expires_in=request.POST.get("expires_in", ""))
-        except creation.RoomRefused as exc:
-            messages.error(request, str(exc))
-            return redirect("forum:channel_list")
-        except (QuotaExceeded, InArrears, InsufficientFunds) as exc:
-            messages.error(request, str(exc))
-            return redirect("forum:channel_list")
-        messages.success(request, _("Created %(name)s.") % {"name": channel.name})
-        return redirect("forum:channel_detail", slug=channel.slug)
-
-
-def _writers(channel):
-    """Everyone who has written in this room, most data first.
-
-    One grouped query over the room's messages — every row still stored,
-    soft-deleted ones included (they were written, and they still take
-    space until the cleanup removes them). Data is what the room holds for
-    each person: the text (or its ciphertext in an encrypted room) plus the
-    files. Text is counted in characters, which is bytes for plain text and
-    close enough for the rest.
-    """
-    from django.db.models import Count, F, Func, IntegerField, Sum, Value
-    from django.db.models.functions import Coalesce, Length
-
-    from toto.people.models import Person
-
-    from .models import ForumMember, ForumMessage
-
-    rows = list(
-        ForumMessage.objects.filter(channel=channel, sender__isnull=False)
-        .values("sender_id")
-        .annotate(
-            messages=Count("id"),
-            files=Count("id", filter=~models.Q(attachment="") & models.Q(attachment__isnull=False)),
-            text=Coalesce(Sum(Length("body")), Value(0)),
-            sealed=Coalesce(Sum(Func(F("body_sealed"), function="LENGTH",
-                                     output_field=IntegerField())), Value(0)),
-            attached=Coalesce(Sum("attachment_size"), Value(0)),
-            last_name=models.Max("sender_name"),
-        )
-        .order_by())
-    user_ids = [r["sender_id"] for r in rows]
-    people = {p.user_id: p for p in Person.objects.filter(user_id__in=user_ids).select_related("user")}
-    active = {m.person.user_id: m for m in ForumMember.objects.filter(
-        channel=channel, is_active=True, person__user_id__in=user_ids).select_related("person")}
-    from toto.quota.rates import significant
-
-    out = []
-    for r in rows:
-        person = people.get(r["sender_id"])
-        total = int(r["text"] or 0) + int(r["sealed"] or 0) + int(r["attached"] or 0)
-        out.append({
-            "name": (person.display_name if person and person.display_name else r["last_name"]) or "?",
-            "username": person.user.username if person and person.user_id else "",
-            "user_id": r["sender_id"],
-            "member": active.get(r["sender_id"]),
-            "messages": r["messages"],
-            "files": r["files"],
-            "bytes": total,
-            "mb": significant(total / (1024 * 1024)),
-        })
-    out.sort(key=lambda w: (-w["bytes"], w["name"].lower()))
-    return out
-
-
-def room_members(request, slug):
-    """Who has written in the room and how much data each sent; for its
-    creator or staff, remove a writer.
-
-    There are no invitations (2026-09-28): a password will do, and it is set
-    on the Security tab. People who joined and never wrote are counted, not
-    listed.
-    """
-    from django.contrib.auth.views import redirect_to_login
-
-    from . import creation
-
-    if not request.user.is_authenticated:
-        return redirect_to_login(request.get_full_path())
-    channel = get_object_or_404(ForumChannel, slug=slug)
-    if not permissions.can_manage_members(request.user, channel):
-        permissions.require_member(request, channel)
-    if request.method == "POST":
-        try:
-            action = request.POST.get("action")
-            if action == "remove":
-                creation.remove_member(request.user, channel, request.POST.get("member"))
-            else:
-                raise creation.RoomRefused(_("Members join with the room password; "
-                                             "nobody is added by name."))
-        except creation.RoomRefused as exc:
-            messages.error(request, str(exc))
-        return redirect("forum:room_members", slug=channel.slug)
-    writers = _writers(channel)
-    active_ids = set(channel.forum_members.filter(is_active=True)
-                     .values_list("person__user_id", flat=True))
-    wrote = {w["user_id"] for w in writers}
-    context = {"channel": channel, "active_tab": "members", "writers": writers,
-               "silent_members": len(active_ids - wrote),
-               "badges": channel.badges(),
-               "needs_first_password": channel.access == "password" and not channel.password_verifier,
-               "can_manage_members": permissions.can_manage_members(request.user, channel)}
-    return render(request, "forum/room_members.html", PageProcessor().decorate(context, request))
-
-
-def room_security(request, slug):
-    """Everything about how this room is protected, in one place (2026-09-28):
-    who may join and how, the password (its creator or staff set it here),
-    encryption at rest and the room key, the room's lifetime, and what
-    sending here costs in mana. Members read it; POST is the password only.
-    """
-    from django.contrib.auth.views import redirect_to_login
-
-    from . import creation, rooms
-    from .models import ForumRetentionPolicy, ForumRoomKey
-
-    if not request.user.is_authenticated:
-        return redirect_to_login(request.get_full_path())
-    channel = get_object_or_404(ForumChannel, slug=slug)
-    may_manage = permissions.can_manage_members(request.user, channel)
-    if not may_manage:
-        permissions.require_member(request, channel)
-    if request.method == "POST":
-        if not may_manage:
-            raise PermissionDenied(_("Only the room's creator or staff change the password."))
-        try:
-            if request.POST.get("action") != "password":
-                raise creation.RoomRefused(_("Nothing to do."))
-            first = not channel.password_verifier
-            creation.change_password(request.user, channel, request.POST.get("password", ""))
-            messages.success(request, _("Password set.") if first else _("Password changed."))
-        except creation.RoomRefused as exc:
-            messages.error(request, str(exc))
-        return redirect("forum:room_security", slug=channel.slug)
-
-    key = ForumRoomKey.objects.filter(channel=channel).first() if channel.is_encrypted else None
-    limits = creation.limits()
-    kdf = rooms.kdf_params()
-    policy = ForumRetentionPolicy.current(channel)
-    context = {
-        "channel": channel, "active_tab": "security", "badges": channel.badges(),
-        "can_manage_members": may_manage,
-        "has_password": bool(channel.password_verifier),
-        "needs_first_password": channel.access == "password" and not channel.password_verifier,
-        "min_password": creation.MIN_PASSWORD,
-        "password_limits": {"user": limits["password_user"], "room": limits["password_room"]},
-        "kdf": {"memory_mib": kdf["memory_cost"] // 1024, "iterations": kdf["iterations"],
-                "lanes": kdf["lanes"]},
-        "room_key": key,
-        "password_wraps_key": bool(key and key.password_wrapped),
-        "retention": policy,
-        "message_price_code": "forum.encrypt" if channel.is_encrypted else "forum.message",
-    }
-    return render(request, "forum/room_security.html", PageProcessor().decorate(context, request))
-
-
-class MessageSearchView(LoginRequiredMixin, ListView):
-    """Full-text search across the messages the requester is allowed to read."""
-
-    template_name = "forum/search.html"
-    context_object_name = "results"
-    paginate_by = 25
-
-    def get_queryset(self):
-        from .search import search_messages
-
-        query = (self.request.GET.get("q") or "").strip()
-        slug = (self.request.GET.get("channel") or "").strip()
-        if not query:
-            from .models import ForumMessage
-
-            return ForumMessage.objects.none()
-        return search_messages(self.request.user, query, channel_slug=slug or None)
-
-    def get_context_data(self, **kwargs):
-        from .search import search_mode
-
-        context = super().get_context_data(**kwargs)
-        context["query"] = (self.request.GET.get("q") or "").strip()
-        context["channel_slug"] = (self.request.GET.get("channel") or "").strip()
-        context["searchable_channels"] = permissions.readable_channels(
-            self.request.user).filter(is_encrypted=False)
-        from .search import encrypted_rooms_skipped
-
-        context["encrypted_rooms_skipped"] = encrypted_rooms_skipped(self.request.user)
-        context.update(search_mode())
-        return PageProcessor().decorate(context, self.request)
-
-
-# ---------------------------------------------------------------------------
-# Room tabs — Files / Polls / Statistics. Chat stays the websocket page.
-# Every one of these opens with permissions.require_member: the single door.
-# ---------------------------------------------------------------------------
-
-def _room_context(request, channel, active_tab):
-    from django.apps import apps as django_apps
-
-    context = {
-        "channel": channel,
-        "active_tab": active_tab,
-    }
-    return PageProcessor().decorate(context, request)
-
-
-def room_files(request, slug):
-    """The room's files: everything posted in its chat, and nothing else.
-
-    There is no upload control on this page, deliberately. A file enters a room
-    by being posted in it — the chat's upload door already carries the size cap,
-    the MIME allow-list and the membership check, and a second door onto the
-    same room would be a second set of rules to keep in step.
-
-    The room's old vault library is untouched and still holds whatever was
-    uploaded to it; it is simply not what this tab shows any more. Those files
-    remain reachable through Storage, and the whitelist that scopes them to
-    this room's members is still synced on every membership change.
-    """
-    from django.core.paginator import Paginator
-    from django.shortcuts import render
-
-    from . import attachments
-
-    if not request.user.is_authenticated:
-        from django.contrib.auth.views import redirect_to_login
-
-        return redirect_to_login(request.get_full_path())
-    channel = get_object_or_404(ForumChannel, slug=slug)
-    permissions.require_member(request, channel)
-
-    search = (request.GET.get("q") or "").strip()
-    kind = (request.GET.get("kind") or "").strip()
-    if kind not in (attachments.KIND_IMAGE, attachments.KIND_VOICE,
-                    attachments.KIND_FILE):
-        kind = ""
-
-    rows = attachments.room_attachments(channel, search=search, kind=kind)
-    summary = attachments.summarise(rows)
-    page = Paginator(rows, 40).get_page(request.GET.get("page"))
-
-    files = [{
-        "message": message,
-        "kind": attachments.kind_of(message),
-        # The membership-checked door, the only one these bytes have. It
-        # re-applies can_read and 404s a deleted message's file, so a link
-        # that outlives the reader's membership stops working on its own.
-        "url": reverse("forum:api_message_attachment", args=[message.id]),
-        # Not a URL of its own: the chat has no per-message route, its history
-        # arrives over a websocket and pages backwards through a keyset
-        # cursor. The fragment is what the chat page reads to walk back
-        # through history until it finds this message.
-        "message_url": (reverse("forum:channel_detail", args=[channel.slug])
-                        + f"#msg-{message.id}"),
-    } for message in page.object_list]
-
-    context = _room_context(request, channel, "files")
-    context.update({
-        "files": files,
-        "page": page,
-        "search": search,
-        "kind": kind,
-        "file_count": summary["count"],
-        "total_bytes": summary["bytes"],
-    })
-    return render(request, "forum/room_files.html", context)
-
-
-def room_polls(request, slug):
-    """The room's polls: its own data, its own rules, its own page."""
-    from django.shortcuts import render
-
-    from . import voting
-
-    if not request.user.is_authenticated:
-        from django.contrib.auth.views import redirect_to_login
-
-        return redirect_to_login(request.get_full_path())
-    channel = get_object_or_404(ForumChannel, slug=slug)
-    permissions.require_member(request, channel)
-
-    cards = []
-    for poll, counted, ballot in voting.page_of(channel, request.user):
-        visible = poll.results_visible
-        cards.append({
-            "poll": poll,
-            "is_open": poll.is_open,
-            # A withheld count is withheld from the CONTEXT, not merely from
-            # the markup: a template guard is one `{% if %}` away from being
-            # forgotten by the next person to touch this page, and the numbers
-            # would still have been sitting in the response to find.
-            "tally": counted if visible else None,
-            "results_visible": visible,
-            "rows": [{"result": r,
-                      "label": r.label,
-                      "ballots": r.ballots if visible else None,
-                      "share_percent": counted.share(r) if visible else None}
-                     for r in counted.results],
-            "ballot": ballot,
-            "can_manage": voting.may_manage(poll, request.user),
-        })
-
-    context = _room_context(request, channel, "polls")
-    context["cards"] = cards
-    return render(request, "forum/room_polls.html", context)
-
-
-def room_poll_create(request, slug):
-    """POST from the Create Poll modal. Any active member."""
-    from django.core.exceptions import ValidationError
-    from django.utils import timezone as tz
-    from django.utils.dateparse import parse_datetime
-
-    from . import voting
-    from .models import ResultVisibility, Revisability
-
-    if request.method != "POST":
-        return redirect("forum:room_polls", slug=slug)
-    channel = get_object_or_404(ForumChannel, slug=slug)
-    permissions.require_member(request, channel)
-
-    closes_raw = (request.POST.get("closes_at") or "").strip()
-    closes_at = parse_datetime(closes_raw) if closes_raw else None
-    if closes_at is not None and tz.is_naive(closes_at):
-        closes_at = tz.make_aware(closes_at)
-
-    # Both knobs are opt-in and both default to the friendlier answer: you may
-    # change your mind, and everyone watches the count.
-    revisability = (Revisability.FINAL
-                    if request.POST.get("final") else Revisability.OPEN)
-    visibility = (ResultVisibility.ON_CLOSE
-                  if request.POST.get("hide_results") else ResultVisibility.LIVE)
-
+from . import access, channels, images, keys, posting, sealing, voting
+from .posting import Refusal
+
+MEMBER, AUTHOR, MODERATOR = "member", "author", "moderator"
+MARKS = frozenset({MEMBER, AUTHOR, MODERATOR})
+
+#: The most bytes of a JSON body.
+MAX_BODY = 64 * 1024
+
+
+def _json(payload, status=200, retry_after=None):
+    response = JsonResponse(payload, status=status)
+    response["Cache-Control"] = "no-store"
+    if retry_after:
+        response["Retry-After"] = str(int(retry_after))
+    return response
+
+
+def _refuse(request, page, message, status, retry_after=None):
+    if page:
+        response = render(request, "forum/refused.html",
+                          {"sentence": str(message), "status": status}, status=status)
+        response["Cache-Control"] = "no-store"
+        return response
+    return _json({"error": str(message)}, status, retry_after)
+
+
+def _community(slug):
+    from toto.socialhub.models import Community
+
+    return Community.objects.filter(slug=slug).first()
+
+
+def door(mark, *, method="POST", page=False):
+    """Make a door: the checks of the module docstring, then the view with
+    ``(request, channel, …)`` (``(request)`` for the list, which names no
+    community). A page view answers a response; a JSON door a dict, or
+    ``(dict, status)``."""
+    assert mark in MARKS
+
+    def decorate(view):
+        @wraps(view)
+        def wrapped(request, slug=None, **kwargs):
+            if request.method != method:
+                response = _refuse(request, page, _("This address takes %(method)s only.")
+                                   % {"method": method}, 405)
+                response["Allow"] = method
+                return response
+            user = request.user
+            if not access.signed_in(user):
+                if page:
+                    return redirect_to_login(request.get_full_path())
+                return _refuse(request, page, _("Sign in to use the forum."), 403)
+            if method != "GET":
+                from toto.api.fetch_metadata import cross_site_refusal
+
+                refused = cross_site_refusal(request)
+                if refused is not None:
+                    return refused
+            if not access.entitled(user):
+                return _refuse(request, page,
+                               _("The forum is not part of your plan."), 402)
+            try:
+                if slug is None:
+                    return view(request, **kwargs)
+                community = _community(slug)
+                if community is None:
+                    return _refuse(request, page, _("Community not found."), 404)
+                if not access.may_read(user, community):
+                    return _refuse(request, page,
+                                   _("Only members of this community use its channel."), 403)
+                if mark == MODERATOR and not access.may_moderate(user, community):
+                    return _refuse(request, page,
+                                   _("Only the community's head moderates its channel."), 403)
+                try:
+                    channel = channels.ensure_channel(community)
+                except keys.ChannelKeyUnavailable:
+                    return _refuse(request, page, _(
+                        "The forum's key is not available on this server, so nothing can be "
+                        "read or stored. Tell an administrator."), 503)
+                answer = view(request, channel, **kwargs)
+            except Refusal as exc:
+                return _refuse(request, page, exc, exc.status_code, exc.retry_after)
+            except images.ImageRefused as exc:
+                return _refuse(request, page, exc, exc.status_code)
+            if isinstance(answer, HttpResponse):
+                return answer
+            if isinstance(answer, tuple):
+                return _json(*answer)
+            return _json(answer)
+
+        wrapped.forum_door = mark
+        return wrapped
+
+    return decorate
+
+
+def _body(request) -> dict:
+    """The JSON object a door was sent, or 400."""
+    if len(request.body) > MAX_BODY:
+        raise Refusal(_("That request is too large."), 400)
     try:
-        voting.open_poll(channel, request.user,
-                         title=request.POST.get("title", ""),
-                         options=request.POST.get("options", ""),
-                         closes_at=closes_at, revisability=revisability,
-                         visibility=visibility)
-    except ValidationError as exc:
-        messages.error(request, "; ".join(exc.messages))
-    else:
-        messages.success(request, _("The poll is open."))
-    return redirect("forum:room_polls", slug=slug)
+        data = json.loads(request.body.decode("utf-8") or "{}")
+    except (ValueError, UnicodeDecodeError, RecursionError):
+        data = None
+    if not isinstance(data, dict):
+        raise Refusal(_("Send a JSON object."), 400)
+    return data
 
 
-def room_poll_vote(request, slug, poll_slug):
-    """POST one answer. Membership is checked twice on purpose: at the door
-    by require_member, and inside cast() by the same predicate — the door
-    could be reached another way one day, and the engine must not depend on
-    who called it."""
-    from . import voting
-    from .models import PollChoice
-
-    if request.method != "POST":
-        return redirect("forum:room_polls", slug=slug)
-    channel = get_object_or_404(ForumChannel, slug=slug)
-    permissions.require_member(request, channel)
-    poll = get_object_or_404(voting.polls_for(channel), slug=poll_slug)
-    choice = get_object_or_404(PollChoice, pk=request.POST.get("choice") or 0,
-                               poll=poll)
-
-    try:
-        voting.cast(poll, request.user, choice)
-    except voting.VotingError as exc:
-        messages.error(request, str(exc))
-    else:
-        messages.success(request, _("Your answer has been recorded."))
-    return redirect("forum:room_polls", slug=slug)
-
-
-def room_poll_close(request, slug, poll_slug):
-    """Shut a poll by hand — its author, or staff.
-
-    The room had no way to do this before: a poll opened without a deadline
-    stayed open forever, because the only close button lived in the separate
-    polls app that no longer exists.
-    """
-    from . import voting
-
-    if request.method != "POST":
-        return redirect("forum:room_polls", slug=slug)
-    channel = get_object_or_404(ForumChannel, slug=slug)
-    permissions.require_member(request, channel)
-    poll = get_object_or_404(voting.polls_for(channel), slug=poll_slug)
-    if not voting.may_manage(poll, request.user):
-        raise PermissionDenied(_("Only the person who opened this poll, or "
-                                 "staff, may close it."))
-    poll.close()
-    messages.success(request, _("The poll is closed."))
-    return redirect("forum:room_polls", slug=slug)
-
-
-def room_poll_delete(request, slug, poll_slug):
-    """Remove a poll and every answer to it. Its author, or staff."""
-    from . import voting
-
-    if request.method != "POST":
-        return redirect("forum:room_polls", slug=slug)
-    channel = get_object_or_404(ForumChannel, slug=slug)
-    permissions.require_member(request, channel)
-    poll = get_object_or_404(voting.polls_for(channel), slug=poll_slug)
-    if not voting.may_manage(poll, request.user):
-        raise PermissionDenied(_("Only the person who opened this poll, or "
-                                 "staff, may delete it."))
-    # Cascades to its choices and ballots. Irreversible, and the template asks
-    # before it posts here.
-    poll.delete()
-    messages.success(request, _("The poll and its answers are gone."))
-    return redirect("forum:room_polls", slug=slug)
-
-
-def room_stats(request, slug):
-    """The room in numbers. Fetch once, fold in Python — the kanban lesson:
-    a query count must not be a function of the data."""
-    import json
-    from datetime import timedelta
-
-    from django.db.models.functions import ExtractHour, TruncDate
-    from django.shortcuts import render
-    from django.utils import timezone as tz
-
-    from . import library
-
-    if not request.user.is_authenticated:
-        from django.contrib.auth.views import redirect_to_login
-
-        return redirect_to_login(request.get_full_path())
-    channel = get_object_or_404(ForumChannel, slug=slug)
-    permissions.require_member(request, channel)
-
-    visible = channel.messages.filter(deleted_at__isnull=True)
-    files = library.library_files(channel)
-    total_bytes = files.aggregate(total=models.Sum("file_size_bytes"))["total"] or 0
-
-    # The trailing order_by() defeats the Meta-ordering GROUP BY trap:
-    # ForumMessage orders by created_at, and Django folds an ORDER BY column
-    # into the GROUP BY — one row per message instead of one per bucket.
-    since = tz.now() - timedelta(days=30)
-    by_day = dict(
-        visible.filter(created_at__gte=since)
-        .annotate(day=TruncDate("created_at"))
-        .values_list("day").annotate(n=models.Count("id")).order_by("day"))
-    days, day_counts = [], []
-    for offset in range(29, -1, -1):
-        day = (tz.now() - timedelta(days=offset)).date()
-        days.append(day.isoformat())
-        day_counts.append(by_day.get(day, 0))
-
-    by_hour = dict(
-        visible.annotate(hour=ExtractHour("created_at"))
-        .values_list("hour").annotate(n=models.Count("id")).order_by("hour"))
-    hour_counts = [by_hour.get(hour, 0) for hour in range(24)]
-
-    context = _room_context(request, channel, "stats")
-    context.update({
-        "message_count": visible.count(),
-        "active_members": channel.forum_members.filter(is_active=True).count(),
-        "file_count": files.count(),
-        "total_mb": round(total_bytes / (1024 * 1024), 1),
-        "day_chart_json": json.dumps({
-            "chart_type": "bar",
-            "labels": days,
-            "datasets": [{"label": "Messages", "data": day_counts,
-                          "backgroundColor": "#4F46E5"}],
-            "options": {"scales": {"y": {"beginAtZero": True}}},
-        }) if sum(day_counts) else "",
-        "hour_chart_json": json.dumps({
-            "chart_type": "bar",
-            "labels": [f"{hour:02d}" for hour in range(24)],
-            "datasets": [{"label": "Messages", "data": hour_counts,
-                          "backgroundColor": "#10B981"}],
-            "options": {"scales": {"y": {"beginAtZero": True}}},
-        }) if sum(hour_counts) else "",
-    })
-    return render(request, "forum/room_stats.html", context)
-
-
-# ---------------------------------------------------------------------------
-# Cleanup — forum-level, staff only (/forum/cleanup/).
-#
-# Removed on 2026-08-29 and back on 2026-10-02 at the owner's request ("forum
-# manual cleanup button and task"). It is the PLATFORM's desk: the retention
-# dial every room follows until it sets its own, what that dial would remove,
-# and a "Run cleanup now" that runs what the night runs — each room with its
-# own enabled setting at its own boundary, the platform setting for every
-# other room. Rooms keep their own desk on their Settings tab; neither replaces
-# the other. The whole-forum EXPORT did not come back: an archive is handed to
-# the people in a room, and one holding every room is not.
-#
-# Every run goes to the worker, as one run of the "Forum cleanup" workflow
-# (`dispatch.py`). There is no inline run in the request any more: with no
-# worker listening, nothing is claimed and the page says so.
-#
-# STAFF ONLY, checked in every view here and not merely hidden in the list.
-# ---------------------------------------------------------------------------
-
-
-def _workflow_run_url(workflow_run_id):
-    """The Workflows tab's page for a run, or "" — when there is no run, the
-    workflow engine is not installed, or its routes are not mounted."""
-    from django.apps import apps
-    from django.urls import NoReverseMatch
-
-    if not workflow_run_id or not apps.is_installed("toto.workflows"):
-        return ""
-    try:
-        return reverse("workflows:workflow_run_detail", args=[workflow_run_id])
-    except NoReverseMatch:
-        return ""
-
-
-def _with_workflow_links(runs):
-    """The runs as a list, each carrying `workflow_url` for the template."""
-    runs = list(runs)
-    for run in runs:
-        run.workflow_url = _workflow_run_url(run.workflow_run_id)
-    return runs
-
-
-@login_required
-@require_safe
-def cleanup_page(request):
-    """The platform's retention dial, what it would remove, and what it did."""
-    from django.shortcuts import render
-
-    from toto.celery_utils import celery_available
-
-    from . import cleanup as cleanup_engine
-    from .forms import ConfirmCleanupForm, RetentionSettingsForm
-    from .models import ForumCleanupRun, ForumRetentionPolicy
-
-    permissions.require_operator(request)
-    policy = ForumRetentionPolicy.default()
-    # Forum-wide runs only. A room's sweep lives on its Settings tab; shown
-    # here, in a table with no room column, it would read as a forum-wide run
-    # that somehow removed nine messages. `channel_name=""` keeps out the
-    # sweeps of rooms deleted since (their FK went NULL, their name stayed).
-    wide = ForumCleanupRun.objects.filter(channel__isnull=True,
-                                          channel_name="")
-    recent = _with_workflow_links(wide[:10])
-    own_rooms = (ForumRetentionPolicy.objects
-                 .filter(channel__isnull=False, enabled=True).count())
-
-    context = {
-        "policy": policy,
-        "settings_form": RetentionSettingsForm(instance=policy),
-        "confirm_form": ConfirmCleanupForm(),
-        "boundary": policy.boundary(),
-        "preview": cleanup_engine.preview(policy),
-        "rooms_with_own_rule": own_rooms,
-        "last_run": recent[0] if recent else None,
-        "recent_runs": recent,
-        "next_run": cleanup_engine.next_scheduled_run(),
-        # Asked once and said out loud: without a worker the schedule never
-        # fires and the button has nowhere to send the work.
-        "worker_available": celery_available(),
-        "in_flight": cleanup_engine.in_flight(),
-        "page_title": "Forum cleanup",
-    }
-    return render(request, "forum/cleanup.html",
-                  PageProcessor().decorate(context, request))
-
-
-@login_required
-@require_POST
-def cleanup_settings(request):
-    """Save the platform dial. Staff only, re-checked here and not merely
-    hidden. Rooms with a setting of their own are not moved by it."""
-    from .forms import RetentionSettingsForm
-    from .models import ForumRetentionPolicy
-
-    permissions.require_operator(request)
-    policy = ForumRetentionPolicy.default()
-    form = RetentionSettingsForm(request.POST, instance=policy)
-    if form.is_valid():
-        saved = form.save(commit=False)
-        saved.channel = None
-        saved.updated_by = request.user
-        saved.save()
-        messages.success(request, _("Retention settings saved."))
-    else:
-        messages.error(request, "; ".join(
-            m for errors in form.errors.values() for m in errors))
-    return redirect("forum:cleanup")
-
-
-@login_required
-@require_POST
-def cleanup_run(request):
-    """Run what the night runs, now, after an explicit confirmation.
-
-    Every boundary is RE-DERIVED from the policies and the clock when the
-    passes are claimed. Nothing the preview put on the page is trusted: a
-    form field carrying a cutoff would be a cutoff somebody could edit, and a
-    stale one would delete more than the screen said it would.
-    """
-    from . import cleanup as cleanup_engine
-    from . import dispatch
-    from .forms import ConfirmCleanupForm
-
-    permissions.require_operator(request)
-    form = ConfirmCleanupForm(request.POST)
-    if not form.is_valid():
-        messages.error(request, _("Nothing was deleted — the confirmation "
-                                  "did not match."))
-        return redirect("forum:cleanup")
-
-    try:
-        runs = dispatch.start_forum(request.user)
-    except (dispatch.CannotQueue, cleanup_engine.CleanupInProgress) as exc:
-        messages.error(request, str(exc))
-        return redirect("forum:cleanup")
-
-    if runs:
-        messages.success(request, _("Cleanup started. This page shows the "
-                                    "result when it finishes."))
-    return redirect("forum:cleanup")
-
-
-# ---------------------------------------------------------------------------
-# Room settings — the room's own half of forum hygiene.
-#
-# The forum-level Cleanup desk above is NOT replaced by this: it is the
-# platform view and sets the default every room follows until it says
-# otherwise. This tab is the same operation SCOPED TO ONE ROOM — a retention
-# period is a property of a conversation as much as of a server. The archive
-# is per room only (the Archive tab); the whole-forum export was removed on
-# 2026-08-29 and stays removed.
-#
-# The platform default retention period is editable on /forum/cleanup/ (and
-# in the Django admin). It ships at 365 days with `enabled` FALSE, so nothing
-# expires anywhere until staff turn a dial on — the safe direction.
-#
-# STAFF ONLY, checked in every one of these views and not merely hidden in the
-# tab strip. `require_operator` answers 403 rather than 404 for the reason it
-# documents: the URL is derived from a slug the member already knows.
-# ---------------------------------------------------------------------------
-
-
-def _room_hygiene_context(request, channel):
-    """Everything the Settings tab shows, in one place.
-
-    Shared by the GET and by every POST that falls back to re-rendering, so a
-    form with errors cannot come back beside numbers computed differently.
-    """
-    from toto.celery_utils import celery_available
-
-    from . import cleanup as cleanup_engine
-    from .forms import ConfirmCleanupForm, RetentionSettingsForm
-    from .models import ForumCleanupRun, ForumRetentionPolicy
-
-    governing = ForumRetentionPolicy.current(channel)
-    own = ForumRetentionPolicy.objects.filter(channel=channel).first()
-
-    context = _room_context(request, channel, "settings")
-    context.update({
-        # `policy` is what GOVERNS the room, which may be the platform
-        # default; `own_policy` is None until this room overrides it. The
-        # template needs both to say "following the platform" honestly.
-        "policy": governing,
-        "own_policy": own,
-        "follows_default": own is None,
-        "settings_form": RetentionSettingsForm(instance=own or governing),
-        "confirm_form": ConfirmCleanupForm(),
-        "boundary": governing.boundary(),
-        "preview": cleanup_engine.preview(governing, channel=channel),
-        "last_run": ForumCleanupRun.objects.filter(channel=channel).first(),
-        "recent_runs": _with_workflow_links(
-            ForumCleanupRun.objects.filter(channel=channel)[:10]),
-        "next_run": cleanup_engine.next_scheduled_run(),
-        "worker_available": celery_available(),
-        "in_flight": cleanup_engine.in_flight(channel),
-        "page_title": f"{channel.name} — settings",
-    })
-    return context
-
-
-@login_required
-@require_safe
-def room_archive(request, slug):
-    """The Archive tab (2026-09-28, out of Settings): what a ZIP of this
-    room would hold, and the button that streams it. Staff only, like the
-    download it offers."""
-    from django.shortcuts import render
-
-    from . import export as export_engine
+def _message(channel, message_id):
     from .models import ForumMessage
 
-    channel = get_object_or_404(ForumChannel, slug=slug)
-    permissions.require_operator(request)
-    # Cheap aggregates only — the survey that walks every message and reads
-    # every blob is the POST's job.
-    files = (ForumMessage.objects.filter(channel=channel, deleted_at__isnull=True)
-             .exclude(attachment="").exclude(attachment__isnull=True)
-             .aggregate(n=models.Count("id"), total=models.Sum("attachment_size")))
-    context = _room_context(request, channel, "archive")
-    context.update({
-        "message_count": ForumMessage.objects.filter(channel=channel).count(),
-        "attachments": files["n"] or 0,
-        "attachment_bytes": files["total"] or 0,
-        "caps": {
-            "messages_per_room": export_engine.MAX_MESSAGES_PER_ROOM,
-            "attachments": export_engine.MAX_ATTACHMENTS,
-            "total_mb": export_engine.MAX_TOTAL_BYTES // (1024 * 1024),
+    row = ForumMessage.objects.filter(pk=message_id, channel=channel).select_related(
+        "channel__community").first()
+    if row is None:
+        raise Refusal(_("Message not found."), 404)
+    return row
+
+
+def _poll(channel, poll_id):
+    from .models import ChannelPoll
+
+    row = ChannelPoll.objects.filter(pk=poll_id, channel=channel).select_related(
+        "channel__community").first()
+    if row is None or row.removed_at is not None:
+        raise Refusal(_("Poll not found."), 404)
+    return row
+
+
+def _key(channel) -> bytes:
+    return posting._key(channel)
+
+
+# ---------------------------------------------------------------------------
+# Pages
+# ---------------------------------------------------------------------------
+
+
+@door(MEMBER, method="GET", page=True)
+def channel_list(request):
+    """The member's communities, each with the way into its channel."""
+    communities = list(access.communities_of(request.user))
+    return render(request, "forum/channel_list.html", {"communities": communities})
+
+
+@door(MEMBER, method="GET", page=True)
+def channel_detail(request, channel):
+    """The channel's page. Its data travels in a ``json_script`` block."""
+    from .models import ForumSettings
+
+    community = channel.community
+    slug = community.slug
+    nil = "00000000-0000-0000-0000-000000000000"
+    config = {
+        "community": {"name": community.name, "slug": slug},
+        "viewer": {"name": posting.display_name(request.user),
+                   "may_moderate": access.may_moderate(request.user, community)},
+        "urls": {
+            "feed": reverse("forum:feed", args=[slug]),
+            "post": reverse("forum:post", args=[slug]),
+            "poll_open": reverse("forum:poll_open", args=[slug]),
+            # Patterns: the page puts a row's id where the nil id is.
+            "message_remove": reverse("forum:message_remove", args=[slug, nil]),
+            "poll_vote": reverse("forum:poll_vote", args=[slug, nil]),
+            "poll_close": reverse("forum:poll_close", args=[slug, nil]),
+            "poll_remove": reverse("forum:poll_remove", args=[slug, nil]),
+            "nil": nil,
         },
-        "page_title": f"{channel.name} — archive",
+        "limits": {"text_bytes": posting.MAX_TEXT_BYTES, "image_bytes": images.MAX_BYTES,
+                   "image_types": sorted(images.TYPES), "poll_options": voting.MAX_OPTIONS},
+        "refresh_seconds": ForumSettings.current().refresh_seconds,
+        "feed": posting.feed(request.user, channel),
+    }
+    response = render(request, "forum/channel.html", {
+        "community": community, "channel": channel, "forum_config": config,
+        "communities": list(access.communities_of(request.user)),
     })
-    return render(request, "forum/room_archive.html", context)
-
-
-@login_required
-@require_safe
-def room_settings(request, slug):
-    """This room's retention period, its cleanup history, and its archive."""
-    from django.shortcuts import render
-
-    channel = get_object_or_404(ForumChannel, slug=slug)
-    permissions.require_operator(request)
-    return render(request, "forum/room_settings.html",
-                  _room_hygiene_context(request, channel))
-
-
-@login_required
-@require_POST
-def room_retention(request, slug):
-    """Set this room's own retention period.
-
-    Saving here is what makes the room STOP following the platform default:
-    `for_channel` mints the override row from the default's value, so a staff
-    member who opens the form and presses Save without changing anything gets
-    the same number they were already on — pinned, and no longer moving when
-    the platform dial does.
-    """
-    from .forms import RetentionSettingsForm
-    from .models import ForumRetentionPolicy
-
-    channel = get_object_or_404(ForumChannel, slug=slug)
-    permissions.require_operator(request)
-
-    # Validate FIRST, against no instance, and only then touch the database.
-    # `for_channel()` CREATES the override row, and creating it is what makes
-    # the room stop following the platform — run_scheduled excludes every
-    # override channel from the wide sweep, disabled ones included. Minting it
-    # before is_valid() meant a rejected save (an empty retention_days) still
-    # detached the room, silently and permanently, with the page reporting
-    # only that the form was bad.
-    form = RetentionSettingsForm(request.POST)
-    if form.is_valid():
-        policy = ForumRetentionPolicy.for_channel(channel)
-        policy.enabled = form.cleaned_data["enabled"]
-        policy.retention_days = form.cleaned_data["retention_days"]
-        # The form has no `channel` field and the row is minted from the slug
-        # in the URL, so a forged POST cannot move an override across rooms.
-        policy.updated_by = request.user
-        policy.save()
-        messages.success(request, _("Retention settings saved for this room."))
-    else:
-        messages.error(request, "; ".join(
-            m for errors in form.errors.values() for m in errors))
-    return redirect("forum:room_settings", slug=channel.slug)
-
-
-@login_required
-@require_POST
-def room_retention_reset(request, slug):
-    """Give up the override and follow the platform default again.
-
-    Deletes the row rather than disabling it, because those two are different
-    states and the difference is visible: a row with `enabled=False` is a room
-    that has decided to keep everything, and `run_scheduled` excludes it from
-    the forum-wide sweep for that reason. No row at all is a room that has not
-    decided, and the platform dial governs it.
-    """
-    from .models import ForumRetentionPolicy
-
-    channel = get_object_or_404(ForumChannel, slug=slug)
-    permissions.require_operator(request)
-
-    deleted, _ignored = (ForumRetentionPolicy.objects
-                         .filter(channel=channel).delete())
-    if deleted:
-        messages.success(request, _("This room follows the platform "
-                                    "retention setting again."))
-    return redirect("forum:room_settings", slug=channel.slug)
-
-
-@login_required
-@require_POST
-def room_cleanup_run(request, slug):
-    """Run this room's cleanup now, after an explicit confirmation.
-
-    The boundary is re-derived from the governing policy and the clock, never
-    read from the page — the forum-wide endpoint carries the same rule and the
-    same reason: a cutoff in a form field is a cutoff somebody can edit.
-
-    On the worker only, as one run of the "Forum cleanup" workflow started by
-    this staff member. With no worker listening nothing is claimed, and the
-    page says so instead of deleting inside the request.
-    """
-    from . import cleanup as cleanup_engine
-    from . import dispatch
-    from .forms import ConfirmCleanupForm
-
-    channel = get_object_or_404(ForumChannel, slug=slug)
-    permissions.require_operator(request)
-
-    form = ConfirmCleanupForm(request.POST)
-    if not form.is_valid():
-        messages.error(request, _("Nothing was deleted — the confirmation "
-                                  "did not match."))
-        return redirect("forum:room_settings", slug=channel.slug)
-
-    try:
-        dispatch.start_room(channel, request.user)
-    except (dispatch.CannotQueue, cleanup_engine.CleanupInProgress) as exc:
-        messages.error(request, str(exc))
-        return redirect("forum:room_settings", slug=channel.slug)
-
-    messages.success(request, _("Cleanup started. This page shows the "
-                                "result when it finishes."))
-    return redirect("forum:room_settings", slug=channel.slug)
-
-
-@login_required
-@require_POST
-def room_export_download(request, slug):
-    """Archive THIS ROOM and stream it.
-
-    `survey(channel=...)` is what keeps the archive to one room — the plan it
-    returns holds one `RoomPlan`, so the index, the manifest and the media
-    folder all name this room and nothing else. Scoping anywhere later would
-    still have measured, and listed, rooms the reader may not see.
-    """
-    from asgiref.sync import sync_to_async
-    from django.http import StreamingHttpResponse
-
-    from . import export as export_engine
-
-    channel = get_object_or_404(ForumChannel, slug=slug)
-    permissions.require_operator(request)
-
-    try:
-        plan = export_engine.survey(actor=request.user.get_username(),
-                                    channel=channel)
-    except export_engine.ExportTooLarge as exc:
-        messages.error(request, str(exc))
-        return redirect("forum:room_archive", slug=channel.slug)
-
-    chunks = export_engine.stream_archive(plan)
-
-    async def astream():
-        while True:
-            chunk = await sync_to_async(next, thread_sensitive=True)(
-                chunks, None)
-            if chunk is None:
-                return
-            yield chunk
-
-    response = StreamingHttpResponse(astream(), content_type="application/zip")
-    response["Content-Disposition"] = (
-        'attachment; filename="'
-        f'{export_engine.export_filename(channel=channel)}"')
+    response["Cache-Control"] = "no-store"
     return response
+
+
+# ---------------------------------------------------------------------------
+# Messages
+# ---------------------------------------------------------------------------
+
+
+@door(MEMBER, method="GET")
+def feed(request, channel):
+    return posting.feed(request.user, channel, after=request.GET.get("after"),
+                        before=request.GET.get("before"), limit=request.GET.get("limit"))
+
+
+@door(MEMBER)
+def post(request, channel):
+    """Post text, an image, or both. Form fields ``op`` and ``text``, a file
+    ``image``. 201 with the message; 200 with ``"replay": true`` for a
+    repeated op."""
+    upload = request.FILES.get("image")
+    image = images.read_upload(upload) if upload is not None else None
+    message, replay = posting.post_message(
+        request.user, channel, text=request.POST.get("text", ""),
+        op=request.POST.get("op"), image=image)
+    payload = posting.message_to_dict(
+        message, key=_key(channel), user=request.user, slug=channel.community.slug,
+        moderator=access.may_moderate(request.user, channel.community))
+    return {"message": payload, "replay": replay}, (200 if replay else 201)
+
+
+@door(AUTHOR)
+def message_remove(request, channel, message_id):
+    message = _message(channel, message_id)
+    if not access.may_remove_message(request.user, message):
+        raise Refusal(_("Only its author or the community's head removes a message."), 403)
+    posting.remove_message(request.user, message)
+    return {"message": {"id": str(message.id), "number": message.number,
+                        "seq": message.seq, "removed": True}}
+
+
+@door(MEMBER, method="GET")
+def message_image(request, channel, message_id):
+    """A message's image, opened for who may read the channel. Served with
+    the type its own bytes had when it was stored, never guessed."""
+    message = _message(channel, message_id)
+    if message.removed_at is not None or message.attachment_id is None:
+        raise Refusal(_("This message has no image."), 404)
+    if message.attachment_mime not in images.TYPES:
+        raise Refusal(_("This message has no image."), 404)
+    try:
+        data = images.open_image(message, _key(channel))
+    except FileNotFoundError:
+        raise Refusal(_("This message has no image."), 404) from None
+    except sealing.SealBroken:
+        raise Refusal(_("This image cannot be opened."), 409) from None
+    if images.sniff(data) != message.attachment_mime:
+        raise Refusal(_("This image cannot be opened."), 409)
+    response = HttpResponse(data, content_type=message.attachment_mime)
+    response["Content-Disposition"] = "inline"
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Cache-Control"] = "private, no-store"
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Polls
+# ---------------------------------------------------------------------------
+
+
+def _poll_answer(request, channel, poll):
+    poll.refresh_from_db()
+    return voting.polls_to_dicts(
+        [poll], key=_key(channel), user=request.user,
+        moderator=access.may_moderate(request.user, channel.community))[0]
+
+
+def _closes_at(value):
+    if value in (None, ""):
+        return None
+    moment = parse_datetime(value) if isinstance(value, str) else None
+    if moment is None:
+        raise Refusal(_("The closing time is not a date and time."), 400)
+    if timezone.is_naive(moment):
+        moment = timezone.make_aware(moment)
+    return moment
+
+
+@door(MEMBER)
+def poll_open(request, channel):
+    data = _body(request)
+    try:
+        poll = voting.open_poll(
+            channel, request.user, _key(channel), title=data.get("title"),
+            options=data.get("options"), closes_at=_closes_at(data.get("closes_at")),
+            revisability=data.get("revisability"), visibility=data.get("visibility"))
+    except ValidationError as exc:
+        raise Refusal(" ".join(exc.messages), 400) from None
+    return {"poll": _poll_answer(request, channel, poll)}, 201
+
+
+@door(MEMBER)
+def poll_vote(request, channel, poll_id):
+    from .models import PollChoice
+
+    poll = _poll(channel, poll_id)
+    data = _body(request)
+    raw = data.get("choice")
+    choice = None
+    if isinstance(raw, int) and not isinstance(raw, bool):
+        choice = PollChoice.objects.filter(pk=raw, poll=poll).first()
+    try:
+        voting.cast(poll, request.user, choice)
+    except voting.NotOpen as exc:
+        raise Refusal(exc, 409) from None
+    except voting.AlreadyAnswered as exc:
+        raise Refusal(exc, 409) from None
+    except voting.UnknownChoice as exc:
+        raise Refusal(exc, 400) from None
+    except voting.NotEligible as exc:
+        raise Refusal(exc, 403) from None
+    return {"poll": _poll_answer(request, channel, poll)}
+
+
+@door(AUTHOR)
+def poll_close(request, channel, poll_id):
+    poll = _poll(channel, poll_id)
+    if not access.may_manage_poll(request.user, poll):
+        raise Refusal(_("Only who opened a poll or the community's head closes it."), 403)
+    voting.close_poll(poll)
+    return {"poll": _poll_answer(request, channel, poll)}
+
+
+@door(AUTHOR)
+def poll_remove(request, channel, poll_id):
+    poll = _poll(channel, poll_id)
+    if not access.may_manage_poll(request.user, poll):
+        raise Refusal(_("Only who opened a poll or the community's head removes it."), 403)
+    voting.remove_poll(poll, request.user)
+    return {"poll": {"id": str(poll.id), "number": poll.number, "seq": poll.seq,
+                     "removed": True}}

@@ -1,226 +1,112 @@
 # Forum security
 
-What protects a conversation on this forum, in transit and at rest, and what
-the three kinds of room add. Written 2026-09-25 with the change that
-introduced them; `zenobia/forum_security.md` in the host carries the
-deployment specifics.
+What protects a community's channel, in transit and at rest, and how its
+keys are kept. Written 2026-10-07 with the simplified forum (one channel per
+community). The forum before it (rooms, room passwords, temporary rooms) is
+in git history, with its own version of this file.
 
-## 1. What was there before
+## 1. In transit
 
-- **In transit**: TLS 1.2/1.3 terminated by nginx (deploy.py
-  `build_nginx_conf`, HSTS, nosniff, CSP), then HTTP and the WebSocket upgrade
-  to the ASGI server. The socket authenticates with the session cookie, or
-  `?token=<session key>` for the desktop client (`toto.api.middleware`).
-- **At rest**: every message body in plaintext in `forum_forummessage.body`;
-  attachments as plain files under `FORUM_ATTACHMENT_ROOT`, outside the media
-  volume nginx serves, handed out only by a membership-checked view.
-- **Access**: any signed-in member could list and join any room; membership
-  (`ForumMember`) gated reading and sending, re-checked on the open socket.
-- **Missing**: no private rooms, no rate limit, no origin check on the socket
-  (a page on another origin could open it with the member's cookies), the JSON
-  doors accepted cookie writes from other sites, and nothing was metered.
-- An earlier design sealed every message under a per-room gervazy key and was
-  removed (store.py): history capped at 24 h, a lost deploy secret lost all
-  history, and bodies could not be searched.
+TLS, terminated by the host's nginx. Every door is plain HTTP over it: a
+page asks the feed door for what changed; there is no WebSocket and no held
+request. The doors are session doors: Django's CSRF check applies, and a
+write that another site sent is refused by Fetch Metadata
+(`toto.api.fetch_metadata`).
 
-## 2. Gervazy: what its trust model fits
+## 2. Who gets in
 
-Gervazy is **custody**: a password (a person's, or a deploy secret for a
-service box) → Argon2id → a key-encryption key → a master key → data keys →
-AES-256-GCM. It has no per-person encryption key pairs, no directory where
-one member could find another's public key, no browser key store, and
-`PersonSigningKey` is Ed25519 for signatures only. So it does **not** fit
-identity or key distribution between people, and end-to-end encryption would
-need all of those built first. It fits exactly one thing here: holding room
-keys at rest on the server, which is what it now does.
+`access.py`, asked by every door (`views.door`; each route carries a
+`forum_door` mark and a test walks the URLconf):
 
-The reference the request pointed at (pgp-sms) is client-side OpenPGP:
-browser-generated key pairs, public keys exchanged as `.asc`, ciphertext
-prefixed `PGP1:`. It was studied and not copied, for the reasons above.
+- signed in;
+- the `forum` entitlement on the member's plan (never Free). The plan gate's
+  middleware asks the same of the URL namespace; the forum asks again;
+- a member, a senior member or the head of the community, or an
+  administrator (a real superuser on the Superuser plan). Staff alone is
+  nobody. Leaving the community closes the channel at the next request:
+  there is no member list of the channel's own;
+- to remove another member's message, or close or remove another member's
+  poll: the community's head, or an administrator.
 
-## 3. Room kinds
+There are no private channels, no channel passwords, no direct messages and
+no second channel: `ForumChannel.community` is a one-to-one, so the database
+refuses one.
 
-Chosen when a room is made, fixed for its life (only a password may change).
-There are no invitations (2026-09-28): a password will do. Invite-only rooms
-from before became password rooms with no password (migration 0007) — their
-members stayed, nobody new joins until the creator or staff set one:
+## 3. At rest
 
-| Kind | Who joins | At rest | Search |
-|---|---|---|---|
-| open (every room from before) | any member | plaintext | yes |
-| password | whoever knows the password | plaintext unless encrypted | yes unless encrypted |
-| **encrypted** (any of the above) | as above | AES-256-GCM ciphertext | **no** |
-| **temporary** (any of the above) | as above | as above | as above; the room and everything in it are deleted at expiry |
+Sealed with AES-256-GCM (`sealing.py`, through `toto.gervazy.crypto`), a
+fresh 96-bit nonce per seal, the associated data binding each frame to its
+channel and its row, so a frame copied onto another row or into another
+channel fails authentication instead of opening:
 
-The UI says which on the room list, the room header and the create form
-(`_room_badges.html`); an encrypted room shows a notice, hides the search box,
-and the search page counts the encrypted rooms it skipped. Each room's
-**Security** tab (2026-09-28, `room_security.html`) says all of it to its
-members in one place — who may join and how, whether a password is set, the
-KDF costs and the guessing limits, encryption at rest and the room key's
-version, the room's lifetime, the mana a message costs, what protects it in
-transit — and is where the room's creator or staff set or change the
-password (the Members tab no longer does).
+| What | Where | Sealed |
+|---|---|---|
+| a message's text | `forum_forummessage.body_sealed` | yes |
+| a poll's question | `forum_channelpoll.title_sealed` | yes |
+| an option's label and text | `forum_pollchoice.sealed` | yes |
+| an image's bytes | a `vault.VaultFile` in the channel's bucket | yes |
+| who sent a row, and when | the row | no |
+| the sender's display name on a row | `sender_name`, `opener_name` | no |
+| an image's type and size | `attachment_mime`, `attachment_size` | no |
+| the ballots (who chose which option) | `forum_pollballot` | no |
+
+There is no plaintext column for any sealed thing, so nothing can be stored
+in clear by mistake or by fallback. Removing a message or a poll wipes its
+sealed content at once; an image's bytes leave the vault with it.
+
+This is server-side encryption at rest, not end-to-end: the server opens a
+channel's key to serve its members. It protects a database dump, a backup
+and a disk from whoever holds them without the secret; it does not protect
+against the running server or its operators. The platform has no
+per-person encryption keys, no key directory and no browser key store, so
+end-to-end would need all of those first.
 
 ## 4. Keys
 
-```
-FORUM_VAULT_PASSWORD ─Argon2id▶ UKEK ▶ VMK ▶ DEK   (strongbox "forum-rooms")
-                                              └─AES-GCM▶ room key ─AES-GCM▶ messages, attachments
-room password ─Argon2id(64 B)▶ [wrap key | verifier]
-                                  └─AES-GCM▶ room key                (password rooms)
-shared cache, TTL = expiry ─▶ room key                              (temporary rooms)
-```
+    FORUM_VAULT_PASSWORD ─Argon2id▶ UKEK ▶ VMK ▶ DEK   (the `forum-channels` strongbox, gervazy)
+                                                 └─AES-GCM▶ channel key ─AES-GCM▶ content
 
-- A 256-bit room key per encrypted room (`rooms.create_room_key`), stored only
-  wrapped (`ForumRoomKey`), AAD `toto:forum:roomkey:v1:<room>`.
-- The room password is never stored. One Argon2id derivation (64 MiB, t=3,
-  p=4 by default; per-room costs stored) yields two independent halves: a
-  verifier (stored, compared in constant time) and a wrap key (never stored).
-- A temporary room's key is never written to the database: it lives in the
-  shared cache until the room expires (crypto-shredding), and a host whose
-  cache is per-process refuses to make one.
-- The key never reaches the browser. A process unwraps it on demand and keeps
-  it in memory by room and version.
+- **One 32-byte key per channel**, made once by `keys.ensure_key` when the
+  channel is made, and stored only wrapped (`forum_forumchannelkey`).
+- **One platform secret**, `FORUM_VAULT_PASSWORD`, opens the strongbox the
+  channel keys are wrapped under. There is no channel password and no key
+  derived from one.
+- **Minted once, kept for good.** The host's `deploy.py` mints the secret on
+  the first deploy and carries the existing value forward on every later
+  one; it is never on a command line and lives only in the server's
+  git-ignored env file.
+- **Restarts.** A process keeps opened keys in memory only. After a restart
+  the wrapped rows are read again with the secret; nothing else is needed.
+- **Backups.** The database dump holds the wrapped keys and the sealed rows;
+  the media volume holds the sealed images. **Neither can be read without
+  `FORUM_VAULT_PASSWORD`**, which is in neither: keep the server's env file
+  with the backups, somewhere else than the backups themselves. A restore
+  needs all three, and the secret must be the one the data was sealed under.
+- **Losing the secret loses every message, poll and image for good.** There
+  is no escrow and no recovery.
+- **Without the secret, or with another one**, every door that reads or
+  writes content answers 503 with a sentence, a new channel is not made,
+  and nothing is stored.
+- **Rotation.** The secret can be changed without touching any content
+  (`keys.vault.rotate_passphrase(old, new)` re-wraps the strongbox's master
+  key only), then the env file is updated. A channel key itself is not
+  rotated: `ForumChannelKey.version` is there for the day it is.
 
-## 5. Sealing
+## 5. Images
 
-`sealing.py`: AES-256-GCM through `cryptography` (gervazy's
-`aes_gcm_encrypt`), a fresh random 96-bit nonce per seal, AAD
-`toto:forum:{msg|att}:v1:<room>:<message>` binding each frame to its room and
-message, framed `0x01 || nonce || ciphertext+tag`. The sealed body is its own
-column (`body_sealed`); `body` stays empty, so search, the admin and any
-filter over `body` find nothing. An edit re-seals with a fresh nonce. No
-primitive is home-made.
+Told by their first bytes to be a JPEG, PNG, GIF or WebP (`images.sniff`),
+never by the sender's word or the file's name; anything else is refused, so
+a page, an SVG or an Office file is never stored. At most 10 MB. Stored
+sealed through the vault in the channel's own bucket (no owner; the vault's
+own doors can give the file's owner or a superuser the ciphertext only).
+Read through one door, which asks `access.may_read` every time and answers
+with the checked type, `X-Content-Type-Options: nosniff` and
+`Cache-Control: private, no-store`. The forum owns exactly the files its
+message rows point at; any other file in that bucket is not the forum's.
 
-## 6. Recovery matrix
+## 6. On the page
 
-| Lost | Persistent room | Password room | Temporary room |
-|---|---|---|---|
-| FORUM_VAULT_PASSWORD | unreadable (the custody rule) | members recover with the password (`rooms.open_key_with_password`) | unaffected until expiry |
-| the room password | unaffected | the platform still reads it; the owner sets a new one | as for a persistent room |
-| the cache (restart, eviction) | unaffected | unaffected | unreadable at once — early crypto-shredding, by design |
-
-`FORUM_VAULT_PASSWORD` is minted once by deploy.py and kept, like every other
-`*_VAULT_PASSWORD`; it belongs in the operator's secret custody.
-
-## 7. Membership, expiry, retention, export
-
-- Reading and sending need an active membership and an unexpired room
-  (`permissions.can_read` asks the clock); the socket re-checks on every
-  membership change and closes 4403, and an expired room's socket gets
-  `room_closed` and 4410.
-- Leaving deactivates the membership; rejoining a password room needs the
-  password again. Replay decrypts everything the room key opens for any active
-  member: membership, not the time one joined, is the boundary.
-- Expiry (`expiry.py`, every five minutes): messages, attachment bytes and
-  polls through the cleanup machinery (a run triggered by `expiry` that keeps
-  the room's name), then the key, then the sockets, then the room.
-- Retention (staff-set, nightly) applies to encrypted rooms exactly as to
-  ordinary ones; it deletes rows and keeps the room key.
-- Every cleanup runs on the worker (2026-10-02): the request or the beat
-  CLAIMS the passes (staff only, typed `DELETE`, boundary re-derived from the
-  policy and the clock) and dispatches one "Forum cleanup" workflow run. The
-  workflow's node finishes only rows still PENDING/RUNNING whose
-  `workflow_run_id` is its own run's, written before the task was queued;
-  it never claims or derives a boundary from its input. The node is
-  dispatch-only, so `POST /workflows/api/<id>/runs/` refuses it for everyone,
-  staff included. With no worker nothing is claimed; a failed dispatch closes
-  its rows FAILED, and the stuck-run sweeper (which now also revokes the
-  task) closes anything a dead worker left RUNNING.
-- The staff room archive is the plaintext copy somebody chooses to take: it
-  decrypts bodies with the room key and names sealed attachments as left out.
-- Attachments are not in any backup until the host's media sidecar includes
-  `FORUM_ATTACHMENT_ROOT` (see the host document).
-
-## 8. Rate limits
-
-`toto.core.ratelimit`: a fixed-window counter in the shared cache.
-Defaults (`FORUM_RATE_LIMITS` overrides): password joins 5 per person per room
-and 30 per room per 5 minutes (each attempt is a 64 MiB Argon2id), messages 20
-per 10 s per sender (three refusals in a row close the socket 4429), API
-posts 30 per minute. A cache outage fails open and logs; nginx `limit_req` is
-the backstop.
-
-## 9. Cross-site and origin
-
-The socket is wrapped in `toto.api.ws_origin.TotoOriginValidator` by the host
-(an Origin must be an allowed host; no Origin, as from the desktop client, is
-allowed). Every forum JSON write refuses a cookie-authenticated request that a
-browser labelled `Sec-Fetch-Site: same-site|cross-site`
-(`toto.api.fetch_metadata`); a Bearer token passes.
-
-The desktop's token is the session key `/api/login/` hands out, sent as
-`?token=` on the socket and as a Bearer header to the JSON doors. Since
-2026-09-30 both doors check it as a cookie is checked (`toto.api.tokens`): the
-auth backend's `get_user`, which refuses an inactive account, and the session
-hash, which a password change breaks. A refused token is answered as no token
-at all, its session is ended, and `AUTH.TOKEN_REFUSED` goes on the audit chain
-with the door and the reason, never the key. It dies with the account, the
-password, or a sign-out.
-
-Since 2026-10-01 the key goes in the subprotocol header instead of the URL:
-the client offers `toto.bearer` and then the key (`new WebSocket(url,
-["toto.bearer", key])`), the server answers `toto.bearer` and never the key (a
-browser closes a socket whose answer names none of the subprotocols it
-offered), and the consumer sees the offer without the key. `?token=` still
-works for today's desktop clients, and the header's key wins when both come.
-Because a URL is what logs keep, uvicorn's own lines drop the query string
-(`toto.api.server_logs`) and so does the host's nginx access log; nginx's
-error log still names the request line of a request that fails, which is why
-`?token=` goes once the desktop client has moved.
-
-## 10. Billing
-
-`billing.py`, the platform charge ladder:
-
-| Metric | Pool | One unit |
-|---|---|---|
-| `forum.message` | security | an ordinary message stored |
-| `forum.encrypt` | compute | a message sealed |
-| `forum.room_key` | compute | an encrypted room's key made |
-
-Quota and mana are checked before anything is stored; the message insert and
-the event-gated charge run in one transaction, so a refused charge stores no
-message and a failed store charges nothing; the usage event's idempotency key
-(`<metric>:<id>`) makes a retry charge nothing more. An empty pool refuses the
-send with the pool's own sentence — never a negative balance. Rates are Tariff
-rows seeded once (`ingress_mana`), overridable with `MANA_PRICES`; the composer
-shows the price with `{% price_hint %}`.
-
-## 11. What this does not do
-
-- The server can read every encrypted room: that is the trust model chosen,
-  and the reason it is called encryption **at rest**.
-- The WebSocket still accepts a session key in the query string (open risk,
-  technology.md).
-- Encrypted attachments are not in the room archive.
-
-## 12. Links in messages
-
-Since 2026-10-02 (`static/forum/linkify.js`, `links.py`) a URL in a room's
-messages is a link only when it points at this platform: its host is the
-room page's own host or one of the platform's public names the room view
-hands the page (PLATFORM_DOMAIN, the certificate's name, the tailnet name,
-ALLOWED_HOSTS without the compose aliases, `testserver`, `localhost`,
-loopback addresses and `*`; a leading-dot entry gives its bare name, never
-its subdomains). Every other URL stays text, and so does anything not
-`http`/`https`, a URL with `user@` before the host, a look-alike host
-(`ours.evil.com`, `ours.` with its trailing dot, an IDN double) and a URL
-glued to a word or an address. URLs are found as Markdown Play finds them
-(zenobia's `toto.htmlview.markdown_source`); trailing punctuation and an unbalanced `)` stay outside the link.
-
-A link to another of our names points at the page's own origin with the same
-path, query and fragment, so the session cookie goes with it; it opens in the
-same tab, `rel="noopener"`, and a `#msg-<uuid>` in the same room only jumps.
-
-The body is built from text nodes and `createElement("a")` with `.href`, never
-from markup: a message is whatever its sender typed, the row goes through
-`Alpine.initTree`, and the page's CSP allows `unsafe-eval`, so markup from a
-message would be script. The link's text is the typed substring exactly, so
-Edit, Reply and reply quotes read the message back unchanged.
-
-Only the room page links. The search page (its whole result card is a link),
-the Files tab's captions, the ZIP export (offline, link-free by design), the
-JSON doors, the desktop client's payloads and the admin all show the same
-URL as escaped text; the wire format is unchanged (`tests/test_links.py`).
+Names, messages, questions and options leave the server as JSON strings, or
+inside a `json_script` block, and are written by `static/forum/channel.js`
+as text nodes. Nothing a member wrote is put into a page as markup, and an
+address in a message is not made a link.

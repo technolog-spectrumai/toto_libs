@@ -1,13 +1,7 @@
-"""Room polls: opening one, answering it, counting it.
+"""Channel polls: opening one, answering it, counting it.
 
-This used to be half a contract. The rules lived in ``toto.polls`` — a separate
-app with its own pages, its own dashboard tile and its own price — and this
-module owned only the scope and the shape of the form. The engine has moved in:
-polls are a forum feature now, the data hangs off :class:`RoomPoll` by a real
-ForeignKey, and there is no registry between a room and its own question.
-
-Two things came across from the old engine unchanged, because both were argued
-about once already and settling them again would be a step backwards:
+The rules are the old forum's, unchanged, because each was argued about once
+already:
 
 * **the order of the checks in :func:`cast`** — is it open, is that a real
   option, are you allowed, have you already answered. That is the order
@@ -15,21 +9,29 @@ about once already and settling them again would be a step backwards:
 * **a revision never re-reads the answerer's standing.** A poll that changed
   who counts halfway through would make the tally depend on when people last
   clicked.
+* **one member, one answer**, with no weights.
+* **a final answer is never altered** (``PollBallot.save``), and a poll's
+  count is shown as it grows or only once it has closed, as its opener chose.
 
-What did NOT come across: weights. The old room electorate answered 1 for every
-member, always, so a weight column here would be a column of ones and a whole
-vocabulary ("weighted", "roll", "electorate") for a distinction rooms do not
-make. One member, one answer.
+What is new is where the words are kept: a poll's question and every
+option's label and text are sealed under the channel's key (``sealing``,
+kinds ``poll`` and ``choice``), so nothing of what a poll asks is readable
+in the database. The ballots are relations (who chose which option) and are
+not sealed. Every change (opened, answered, closed, removed) takes the
+channel's next event number, so the feed tells an open page of it.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils import timezone
 from django.utils.translation import gettext as _
+
+from . import access, channels, sealing
 
 #: The most options one poll may carry. A radio list longer than this is a
 #: survey, and a survey is a different product.
@@ -68,99 +70,29 @@ class Result:
 class Tally:
     results: tuple
     total_ballots: int
-    audience: int
 
     def share(self, result) -> float:
-        """Percent of the answers cast — not of the room. A bar that shrank
-        when somebody joined would be reporting attendance, not opinion."""
+        """Percent of the answers cast — not of the community. A bar that
+        shrank when somebody joined would be reporting attendance."""
         if not self.total_ballots:
             return 0.0
         return round(result.ballots * 100.0 / self.total_ballots, 1)
 
 
-def polls_for(channel):
-    """Every poll belonging to this room, and nothing else.
-
-    The single door. Room A's polls and room B's are different sets, and the
-    way to keep them that way is to make "all polls" awkward to ask for.
-    """
-    return channel.polls.select_related("channel").prefetch_related("choices")
-
-
-def page_of(channel, user):
-    """Every poll in the room with its count and this user's answer.
-
-    Three queries for the page instead of three PER POLL: the tally was a
-    per-card aggregate plus a per-card audience count plus a per-card ballot
-    lookup, which is fine for the two polls a test makes and is not fine for a
-    room that has been running for a year.
-    """
-    from .models import PollBallot
-
-    polls = list(polls_for(channel))
-    if not polls:
-        return []
-
-    counts: dict[int, dict[int, int]] = {}
-    rows = (PollBallot.objects.filter(poll__in=polls)
-            .values("poll_id", "choice_id")
-            .annotate(n=models.Count("id"))
-            .order_by("poll_id", "choice_id"))
-    for row in rows:
-        counts.setdefault(row["poll_id"], {})[row["choice_id"]] = row["n"]
-
-    mine = {}
-    if getattr(user, "is_authenticated", False):
-        mine = {b.poll_id: b for b in
-                PollBallot.objects.filter(poll__in=polls, voter=user)
-                .select_related("choice")}
-
-    audience = channel.forum_members.filter(is_active=True).count()
-    out = []
-    for poll in polls:
-        per_choice = counts.get(poll.pk, {})
-        results = tuple(
-            Result(choice_id=c.pk, label=c.label, text=c.text,
-                   ballots=int(per_choice.get(c.pk, 0)))
-            for c in poll.choices.all())
-        out.append((poll,
-                    Tally(results=results,
-                          total_ballots=sum(r.ballots for r in results),
-                          audience=audience),
-                    mine.get(poll.pk)))
-    return out
-
-
-def may_answer(poll, user):
-    """Whether this user may answer this poll, and why not if they may not.
-
-    Membership of the poll's own room, nothing else — the rule the old
-    RoomAudience registered with the engine, now asked directly.
-    """
-    from . import permissions
-
-    if not getattr(user, "is_authenticated", False):
-        return False, _("Sign in to answer.")
-    if permissions.member_for(user, poll.channel) is None:
-        return False, _("Only members of this room answer here.")
-    return True, ""
-
-
-def audience_size(poll) -> int:
-    """How many people could answer — active members of the room."""
-    return poll.channel.forum_members.filter(is_active=True).count()
-
-
 def parse_options(raw):
-    """Turn the textarea into labels, or raise ValidationError.
+    """Turn the options into ``[(label, text)]``, or raise ValidationError.
 
-    One option per line, either ``Label`` or ``Label: longer text``. Blank
-    lines are skipped rather than refused, because a trailing newline is not a
-    mistake worth an error message.
+    One option per line (or per list item), either ``Label`` or
+    ``Label: longer text``. Blank lines are skipped rather than refused,
+    because a trailing newline is not a mistake worth an error message.
     """
+    if isinstance(raw, (list, tuple)):
+        lines = [str(item) if isinstance(item, (str, int, float)) else "" for item in raw]
+    else:
+        lines = str(raw or "").splitlines()
     options = []
     seen = set()
-    for line in (raw or "").splitlines():
+    for line in lines:
         line = line.strip()
         if not line:
             continue
@@ -182,45 +114,93 @@ def parse_options(raw):
     return options
 
 
-@transaction.atomic
-def open_poll(channel, user, *, title, options, closes_at=None,
-              revisability=None, visibility=None):
-    """Create a poll in this room with its options."""
-    from .models import PollChoice, ResultVisibility, Revisability, RoomPoll
+def _storable(text: str) -> bool:
+    if "\x00" in text:
+        return False
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
-    title = (title or "").strip()[:150]
+
+def _seal_choice(key, poll, position, label, text) -> bytes:
+    data = json.dumps({"label": label, "text": text}, ensure_ascii=False).encode("utf-8")
+    return sealing.seal_bytes(key, data, kind="choice", channel_id=poll.channel_id,
+                              message_id=f"{poll.id}:{position}")
+
+
+def open_choice(key, choice) -> tuple[str, str]:
+    """``(label, text)`` of a stored option; a marker if it cannot be read."""
+    try:
+        data = json.loads(sealing.open_bytes(
+            key, choice.sealed, kind="choice", channel_id=choice.poll.channel_id,
+            message_id=f"{choice.poll_id}:{choice.position}").decode("utf-8"))
+        return str(data.get("label", "")), str(data.get("text", ""))
+    except (sealing.SealBroken, ValueError):
+        return "[unreadable]", ""
+
+
+def open_title(key, poll) -> str:
+    if poll.title_sealed is None:
+        return ""
+    try:
+        return sealing.open_bytes(key, poll.title_sealed, kind="poll",
+                                  channel_id=poll.channel_id, message_id=poll.id).decode("utf-8")
+    except (sealing.SealBroken, ValueError):
+        return "[unreadable]"
+
+
+@transaction.atomic
+def open_poll(channel, user, key, *, title, options, closes_at=None,
+              revisability=None, visibility=None):
+    """Create a poll in this channel with its options, sealed."""
+    from .models import ChannelPoll, PollChoice, ResultVisibility, Revisability
+    from .posting import display_name
+
+    title = str(title or "").strip()[:150]
     if not title:
         raise ValidationError(_("A poll needs a question."))
     parsed = parse_options(options)
+    if not _storable(title) or not all(_storable(a) and _storable(b) for a, b in parsed):
+        raise ValidationError(_("The text holds a character that cannot be stored."))
+    if revisability not in (None, "") and revisability not in Revisability.values:
+        raise ValidationError(_("Choose whether answers may be changed."))
+    if visibility not in (None, "") and visibility not in ResultVisibility.values:
+        raise ValidationError(_("Choose when the count is shown."))
+    if closes_at is not None and closes_at <= timezone.now():
+        raise ValidationError(_("The closing time must be in the future."))
 
-    poll = RoomPoll(
-        channel=channel, title=title, question_text=title,
-        closes_at=closes_at, created_by=user,
+    number = channels.next_seq(channel)
+    poll = ChannelPoll(
+        channel=channel, number=number, seq=number, closes_at=closes_at, created_by=user,
+        opener_name=display_name(user),
         revisability=revisability or Revisability.OPEN,
-        visibility=visibility or ResultVisibility.LIVE,
-    )
-    poll.slug = _unique_slug(channel, title)
+        visibility=visibility or ResultVisibility.LIVE)
+    poll.title_sealed = sealing.seal_bytes(key, title.encode("utf-8"), kind="poll",
+                                           channel_id=channel.pk, message_id=poll.id)
     poll.save()
     PollChoice.objects.bulk_create([
-        PollChoice(poll=poll, label=label, text=text, position=index)
+        PollChoice(poll=poll, position=index,
+                   sealed=_seal_choice(key, poll, index, label, text))
         for index, (label, text) in enumerate(parsed)
     ])
     return poll
 
 
-def _unique_slug(channel, title) -> str:
-    """A slug free within THIS room. Scoped, so two rooms may both hold a
-    poll called "lunch" — the uniqueness constraint is per channel."""
-    from django.utils.text import slugify
+def may_answer(poll, user):
+    """Whether this user may answer this poll, and why not if they may not:
+    who may read the poll's channel, nothing else."""
+    if not getattr(user, "is_authenticated", False):
+        return False, _("Sign in to answer.")
+    if not access.may_read(user, poll.channel.community):
+        return False, _("Only members of this community answer here.")
+    return True, ""
 
-    from .models import RoomPoll
 
-    base = slugify(title)[:160] or "poll"
-    slug, suffix = base, 1
-    while RoomPoll.objects.filter(channel=channel, slug=slug).exists():
-        suffix += 1
-        slug = f"{base}-{suffix}"[:170]
-    return slug
+def _touch(poll) -> None:
+    poll.seq = channels.next_seq(poll.channel)
+    poll.save(update_fields=["seq"])
 
 
 @transaction.atomic
@@ -231,7 +211,7 @@ def cast(poll, user, choice):
     if not poll.is_open:
         raise NotOpen(_("This poll is closed. No more answers can be recorded."))
 
-    if choice.poll_id != poll.pk:
+    if choice is None or choice.poll_id != poll.pk:
         raise UnknownChoice(_("That option does not belong to this poll."))
 
     allowed, reason = may_answer(poll, user)
@@ -245,7 +225,9 @@ def cast(poll, user, choice):
                 .filter(poll=poll, voter=user).first())
 
     if existing is None:
-        return PollBallot.objects.create(poll=poll, choice=choice, voter=user)
+        ballot = PollBallot.objects.create(poll=poll, choice=choice, voter=user)
+        _touch(poll)
+        return ballot
 
     if poll.revisability == Revisability.FINAL:
         raise AlreadyAnswered(
@@ -258,11 +240,61 @@ def cast(poll, user, choice):
     existing.revised_at = timezone.now()
     existing.revisions += 1
     existing.save(update_fields=["choice", "revised_at", "revisions"])
+    _touch(poll)
     return existing
 
 
+@transaction.atomic
+def close_poll(poll) -> bool:
+    """Shut it by hand. False if it was closed already."""
+    from .models import PollStatus
+
+    if poll.status != PollStatus.OPEN or poll.removed_at is not None:
+        return False
+    poll.close()
+    _touch(poll)
+    return True
+
+
+@transaction.atomic
+def remove_poll(poll, user) -> bool:
+    """Wipe a poll — its question, its options and its ballots — and leave a
+    tombstone. False if it was removed already. The ballots go by a bulk
+    delete: a removed poll has no final answers left to protect."""
+    if poll.removed_at is not None:
+        return False
+    poll.ballots.all().delete()
+    poll.choices.all().delete()
+    poll.title_sealed = None
+    poll.removed_at = timezone.now()
+    poll.removed_by = user
+    poll.seq = channels.next_seq(poll.channel)
+    poll.save(update_fields=["title_sealed", "removed_at", "removed_by", "seq"])
+    return True
+
+
+def tally(poll, key) -> Tally:
+    """Count it. One aggregate query regardless of how many options there
+    are. Every option appears, including ones nobody chose: "no answers for
+    this" is information."""
+    counted = {
+        row["choice_id"]: row["ballots"]
+        # The trailing order_by() defeats the Meta-ordering GROUP BY trap:
+        # PollBallot orders by cast_at, and Django folds an ORDER BY column
+        # into the GROUP BY — one row per ballot instead of one per option.
+        for row in (poll.ballots.values("choice_id")
+                    .annotate(ballots=models.Count("id")).order_by("choice_id"))
+    }
+    results = []
+    for choice in poll.choices.all():
+        label, text = open_choice(key, choice)
+        results.append(Result(choice_id=choice.pk, label=label, text=text,
+                              ballots=int(counted.get(choice.pk, 0))))
+    return Tally(results=tuple(results), total_ballots=sum(r.ballots for r in results))
+
+
 def ballot_of(poll, user):
-    """This user's answer, or None. Cheap enough to call on every render."""
+    """This user's answer, or None."""
     from .models import PollBallot
 
     if not getattr(user, "is_authenticated", False):
@@ -270,42 +302,47 @@ def ballot_of(poll, user):
     return PollBallot.objects.filter(poll=poll, voter=user).first()
 
 
-def tally(poll) -> Tally:
-    """Count it. One aggregate query regardless of how many options there are.
+def polls_to_dicts(polls, *, key, user, moderator=False) -> list:
+    """The polls as the page gets them, removed ones as tombstones. Three
+    queries for the lot, not three per poll."""
+    from .models import PollBallot, PollChoice
 
-    Every option appears in the result, including ones nobody chose: a bar
-    chart missing its empty bars misreports the shape of an opinion, and "no
-    answers for this" is information.
-    """
-    counted = {
-        row["choice_id"]: row["ballots"]
-        # The trailing order_by() defeats the Meta-ordering GROUP BY trap:
-        # PollBallot orders by cast_at, and Django folds an ORDER BY column
-        # into the GROUP BY — one row per ballot instead of one per option.
-        for row in (poll.ballots.values("choice_id")
-                    .annotate(ballots=models.Count("id"))
-                    .order_by("choice_id"))
-    }
-    results = tuple(
-        Result(choice_id=choice.pk, label=choice.label, text=choice.text,
-               ballots=int(counted.get(choice.pk, 0)))
-        for choice in poll.choices.all()
-    )
-    return Tally(results=results,
-                 total_ballots=sum(r.ballots for r in results),
-                 audience=audience_size(poll))
+    live = [poll for poll in polls if poll.removed_at is None]
+    choices: dict = {}
+    counts: dict = {}
+    mine: dict = {}
+    if live:
+        for choice in PollChoice.objects.filter(poll__in=live).select_related("poll"):
+            choices.setdefault(choice.poll_id, []).append(choice)
+        for row in (PollBallot.objects.filter(poll__in=live).values("poll_id", "choice_id")
+                    .annotate(n=models.Count("id")).order_by("poll_id", "choice_id")):
+            counts.setdefault(row["poll_id"], {})[row["choice_id"]] = row["n"]
+        mine = dict(PollBallot.objects.filter(poll__in=live, voter=user)
+                    .values_list("poll_id", "choice_id"))
 
-
-def may_manage(poll, user) -> bool:
-    """Who may close or delete a poll: whoever opened it, or staff.
-
-    Staff is `permissions.is_operator`, so this app carries ONE definition of
-    who an operator is rather than two that can drift apart.
-    """
-    from .permissions import is_operator
-
-    if not getattr(user, "is_authenticated", False):
-        return False
-    if poll.created_by_id and poll.created_by_id == user.id:
-        return True
-    return is_operator(user)
+    out = []
+    for poll in polls:
+        if poll.removed_at is not None:
+            out.append({"id": str(poll.id), "number": poll.number, "seq": poll.seq,
+                        "removed": True})
+            continue
+        visible = poll.results_visible
+        per_choice = counts.get(poll.pk, {})
+        rows = []
+        for choice in choices.get(poll.pk, []):
+            label, text = open_choice(key, choice)
+            rows.append({"id": choice.pk, "label": label, "text": text,
+                         "ballots": int(per_choice.get(choice.pk, 0)) if visible else None})
+        owner = poll.created_by_id is not None and poll.created_by_id == user.pk
+        out.append({
+            "id": str(poll.id), "number": poll.number, "seq": poll.seq,
+            "title": open_title(key, poll), "status": poll.status, "open": poll.is_open,
+            "closes_at": poll.closes_at.isoformat() if poll.closes_at else None,
+            "revisability": poll.revisability, "visibility": poll.visibility,
+            "created_at": poll.created_at.isoformat(), "opener": poll.opener_name,
+            "mine": owner, "may_manage": bool(owner or moderator),
+            "choices": rows,
+            "total": sum(per_choice.values()) if visible else None,
+            "my_choice": mine.get(poll.pk), "results_visible": visible,
+        })
+    return out

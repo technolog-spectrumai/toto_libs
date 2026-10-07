@@ -1,142 +1,55 @@
 # toto-chat
 
-`toto-chat` is the forum chat distribution of the **toto** suite: Discord-style group chat organised into named, persistent channels with permanent, paginated, searchable history. It ships a single Django app, `toto.forum`, that combines a real-time Django Channels WebSocket transport, a JSON API, and server-rendered HTML views. Confidentiality is TLS in transit only — messages are stored as plaintext rows, which is precisely what makes durable history, full-text search, and "read everything said before you joined" possible. It is one of 9 lockstep-versioned wheels sharing the `toto.*` PEP 420 namespace and depends on `toto-base`.
+`toto-chat` is the forum of the **toto** suite: a community chat with one channel per community. It ships a single Django app, `toto.forum` (label `forum`, URL namespace `forum`), and depends on `toto-base` only. Since 2026-10-07 it is the simplified forum: no rooms, no room passwords, no direct messages, no WebSocket. The forum it replaced (rooms over WebSockets, search, exports, voice notes) is in git history; the last commit with it is `aaa37a41`.
 
-## What it does (functional)
+## What it does
 
-toto-chat gives an operator a self-hosted, real-time team chat that behaves like Discord or Slack, with the deliberate twist that **history is permanent and fully searchable**.
+- **One channel per community.** `ForumChannel.community` is a one-to-one to `socialhub.Community`, so the database refuses a second channel. A channel has no name, slug, password or member list of its own: its address is the community's slug and whoever belongs to the community may read it.
+- **Messages, images and polls.** A message is text, an image (JPEG, PNG, GIF or WebP, told by its bytes, at most 10 MB), or both. A poll has two to ten options, answers that may be changed or are final, and a count shown as it grows or when it closes. A message is never edited; it may be removed, which wipes its content and leaves a tombstone.
+- **Sealed at rest.** Message text, poll questions, option labels and texts and image bytes are AES-256-GCM ciphertext under one key per channel; the keys are wrapped under a strongbox that the platform secret `FORUM_VAULT_PASSWORD` opens. `src/toto/forum/SECURITY.md` says what is sealed, what is not, and how the secret is kept.
+- **Images through the vault.** Each channel has one bucket in `toto.vault`; an image is stored there sealed, and read only through the forum's image door.
+- **Plain HTTP.** A page asks the feed door for what changed since a cursor. Nothing is held open.
 
-For an end user who is signed in:
+## Access (`access.py`)
 
-- **Channels** — browse the list of channels, create a new one, and join or leave channels. Joining a channel gives you access to its entire past, not just messages sent after you arrived.
-- **Messaging** — post text messages, reply to a specific earlier message (threading anchor), and edit or delete your own messages. Deletes are soft: a removed message leaves a placeholder so replies to it still make sense and the conversation keeps its shape.
-- **Attachments** — upload image and voice (audio) attachments. These are stored as real files, so large uploads do not bloat the message history.
-- **Live experience** — messages appear in real time; typing indicators show when someone is composing; presence dots show who actually has the channel open right now; a live roster lists channel members.
-- **Search** — run a text query across the channels you belong to and jump to matching messages. The UI tells you which search engine actually served the query.
-- **Permanent, paginated history** — a freshly opened channel shows the most recent messages and lets you scroll back through everything ever said, page by page.
+Signed in; the `forum` entitlement on the member's plan (never Free); a member, senior member or head of the community, or an administrator (a superuser on the Superuser plan). The head and administrators moderate; staff alone is nobody. Every route's view carries a `forum_door` mark and `tests/test_access.py` walks the URLconf.
 
-Privacy and access, in plain terms:
+## Addresses
 
-- Anonymous visitors see **nothing** — not even the channel list.
-- Signed-in users can browse and join channels.
-- Only **active members** of a channel can read its history, search it, post to it, and download its attachments.
-- Private-channel content and attachments are scoped to current membership, and that scoping is enforced live: if someone is removed from a channel (via the app or the Django admin), any tab they still have open is disconnected on the spot.
+Mounted by the host at `/forum/`; `<slug>` is the community's.
 
-There is nothing to provision beyond infrastructure: no vault, no encryption secret, no build artifact to generate. The trade-off is explicit — because rows are plaintext, they are readable at rest. History is permanent by default; staff may set a retention period, after which older messages and their attachments are deleted permanently.
+| Method | URL | What |
+|--------|-----|------|
+| GET | `` | the member's communities, one channel each |
+| GET | `<slug>/` | the channel's page (its data in a `json_script` block; `static/forum/channel.js`) |
+| GET | `<slug>/feed/` | `?after=<seq>` what changed; `?before=<number>` older history; `?limit=` |
+| POST | `<slug>/post/` | form fields `op`, `text`; a file `image` |
+| POST | `<slug>/messages/<uuid>/remove/` | its author, the head, an administrator |
+| GET | `<slug>/messages/<uuid>/image/` | the image, opened, with its checked type |
+| POST | `<slug>/polls/open/` | JSON `title`, `options`, `closes_at`, `revisability`, `visibility` |
+| POST | `<slug>/polls/<uuid>/vote/` | JSON `choice` |
+| POST | `<slug>/polls/<uuid>/close/`, `…/remove/` | who opened it, the head, an administrator |
 
-## How it works (technical)
+## Modules
 
-toto-chat contains exactly one app/module: **`toto.forum`** (app label `forum`), installed under the shared `toto.*` namespace. The sections below fold that app's design into one place.
+`models.py` (the tables), `channels.py` (the one channel, its bucket, the event counter), `keys.py` (channel keys), `sealing.py` (the seal), `access.py` (who may), `posting.py` (posting, removing, the feed), `images.py` (images and the vault), `voting.py` (polls), `billing.py` (the seam where a post is charged), `erasure.py` (an erased member), `views.py` and `urls.py` (the doors), `management/commands/ingress_forum.py` (a channel for every community).
 
-### forum
+## Wire it into a host
 
-**Surfaces.** The app exposes three coordinated entry points, all routed through a single permissions module:
-
-- **HTML views** (`views.py`, templates under `templates/forum/`) — channel list, channel create, channel detail, join/leave, and a search page.
-- **JSON API** (`api_views.py`, mounted under the app's `/api/` prefix).
-- **WebSocket transport** (`consumers.ChatConsumer`, an `AsyncWebsocketConsumer`) at `ws/forum/<channel_slug>/`, wired through `routing.websocket_urlpatterns`. Each channel maps to a channel-layer group named `forum_<slug>`. There is no MLS relay, no client-side encryption, and no CRDT mirror — the database is the single source of truth for the message list.
-
-**Data model (`models.py`).**
-
-- `ForumChannel` — `name`, `slug`, `created_by` (→ `AUTH_USER_MODEL`), and a `people` M2M to `people.Person` **through** `ForumMember`. `created_at`; ordered by name.
-- `ForumMember` — the **only** membership record (a parallel `participants` M2M was removed because the two could disagree and let a dropped user still post over a raw socket). Links a `ForumChannel` to a `people.Person`, with `joined_at` and an `is_active` flag. A unique constraint prevents duplicate `(channel, person)` rows and a check constraint requires a person — membership is always a human.
-- `ForumMessage` — a plaintext message keyed by `UUID`. Fields include `channel`, `sender` (→ `AUTH_USER_MODEL`, `SET_NULL`), denormalised `sender_name`/`sender_avatar_url` (so history renders without re-resolving membership), `msg_type` (`chat_message` / `image_message` / `voice_message`), `body`, a `reply_to` self-FK, `created_at` (indexed), `edited_at`, and `deleted_at` (soft delete). Two composite indexes on `(channel, created_at)` and `(channel, -created_at)` support forward and reverse history scans. Messages do not expire on their own: `toto.forum.cleanup` removes those older than a staff-set retention period, together with their attachment bytes, which a row delete would leave orphaned.
-- **Attachment storage is deliberately not under `MEDIA_ROOT`.** Image/voice payloads are `FileField`s stored via `forum_attachment_storage` at `settings.FORUM_ATTACHMENT_ROOT` (default: a `forum_attachments/` sibling of `MEDIA_ROOT`), under `<channel-slug>/<message-uuid><ext>`. Because nginx serves `/media/` unauthenticated with a long cache, keeping attachments outside that tree is what lets them follow the same membership rule as their message; they are handed out only by `MessageAttachmentApiView`, which applies the message's `can_read` check.
-
-**Permissions (`permissions.py`) — single source of truth.** Every surface routes through `can_browse` / `can_read` / `can_send` / `can_moderate`, plus `readable_channels(user)` (the search scope). `member_for` / `is_member` resolve the caller's `people.Person`, then their active `ForumMember` row. `can_moderate` lets authors edit/delete their own messages and lets staff delete anything. The consumer performs the same `can_send` check at connect time and closes with code `4403` on failure.
-
-**Live membership revocation (`signals.py`, `apps.ForumConfig.ready`).** Leave endpoints and the admin deactivate memberships **per instance** (not via a queryset `.update()`) so that a `post_save` on `ForumMember` fires. `signals.py` broadcasts a `membership_changed` control frame over the channel layer; the connected consumer re-checks membership and disconnects if it has been revoked. `apps.ready()` imports `signals` so this is armed on startup.
-
-**Search (`search.py`) — dual backend, chosen at query time.** `search_messages` scopes to `readable_channels`, excludes deleted and empty bodies, then branches on `connection.vendor`: PostgreSQL uses `SearchVector`/`SearchQuery`/`SearchRank` (`websearch` parse, English config, ranked); any other backend falls back to case-insensitive `body__icontains`. `search_mode()` returns a context dict (`search_engine`, `search_fallback_used`) so the template can surface which engine ran. There is intentionally **no** `SearchVectorField` and **no** `GinIndex` in the migration, because Postgres-only DDL in `Meta.indexes` would break `manage.py migrate` against the SpatiaLite database used in dev and in the clean-env test gates (PostGIS is used in deployment).
-
-**History and pagination (`store.py`).** A newly connected socket receives the newest page (default 50 messages, `DEFAULT_HISTORY_LIMIT`) plus a `has_more` flag. Older pages are fetched on demand from the messages API. The pagination cursor is the **`(created_at, id)` pair** of the oldest message already held — not the timestamp alone — because `created_at` is not a total order and a timestamp-only cursor would drop messages that share a timestamp across a page boundary.
-
-**Presence (`presence.py`).** Backed by the cache; tracks who currently has a socket open per channel. The consumer broadcasts `room_participants` (roster + `online` set) on connect/disconnect to drive presence dots.
-
-**WebSocket message types** (`ws/forum/<channel_slug>/`): `chat_message` (both directions, optional `reply_to`); `image_message` / `voice_message` (server→client broadcasts of uploads); `chat_history` (recent page replayed on connect, with `has_more`); `message_edit` / `message_delete` (author-only mutations); `typing_start` / `typing_stop` (presence only, never persisted, never echoed to sender); `room_participants` (roster + online); `membership_changed` (internal control frame); `system_error`.
-
-**Key couplings and dependencies.**
-
-- Depends on **`toto-base`** (`toto-base==2.0`) for the `people.Person` model (membership identity), the `toto.api` layer, and `toto.ingress` (management-command base).
-- Requires a **Redis channel layer** (WebSocket delivery and the membership-revocation control frame) and a **cache** (presence), plus a writable `FORUM_ATTACHMENT_ROOT`.
-- Auth/identity endpoints (`login`, `logout`, `me`, `me/mesh`, `health`, `apps`) are intentionally **not** in this package — they are not chat and live in `toto.api`, mounted by the host at `/api/` (with a legacy `/telegraph/api/` alias for a shipped desktop binary).
-- `ingress_forum` (management command, extends `toto.ingress.IngressCommand`) seeds sample channels (`CandyLand`, `Announcements`) with the `admin` user on the roster and grants that user data-mesh read access; it is gated on the ingress `--full` flag.
-
-**History note.** The app was renamed from **telegraph** and had three cryptographic schemes (at-rest message encryption, client-side secure-on-send E2E, and an MLS relay over a prebuilt rotor WASM bundle) plus a 24-hour message TTL removed. Those supported a Signal-style privacy story but cost a deployment secret whose loss made history unrecoverable, capped history at one day, and made message bodies impossible to query. The current design keeps TLS in transit and stores plaintext rows to make permanent, searchable, paginated history possible.
-
-### API endpoints
-
-The app is mounted by the host (conventionally at `/forum/`). Relative to that mount:
-
-| Method | URL | Description |
-|--------|-----|-------------|
-| GET · POST | `api/channels/` | List channels · create one |
-| GET | `api/channels/<slug>/` | Channel detail + members (roster is members-only) |
-| GET | `api/channels/<slug>/messages/` | Paginated history (`?before=<iso8601>&before_id=<uuid>&limit=`) |
-| POST | `api/channels/<slug>/join/` · `leave/` · `api/channels/leave-all/` | Membership |
-| POST | `api/channels/<slug>/upload/` · `upload-audio/` | Image / voice attachment |
-| GET | `api/search/` | Message search (`?q=&channel=`) |
-| GET | `api/messages/<uuid>/attachment/` | Membership-checked attachment download |
-
-HTML routes: `` (channel list), `create/`, `search/`, `<slug>/`, `<slug>/join/`, `<slug>/leave/`, the room tabs `<slug>/files/`, `<slug>/polls/`, `<slug>/stats/` (and the staff-only `<slug>/settings/` and `<slug>/archive/`), and one staff-only forum-level page, `cleanup/` (with `cleanup/settings/` and `cleanup/run/`). `create`, `search`, `cleanup`, `export` and `api` are reserved: `ForumChannel.RESERVED_SLUGS` refuses them, because they are (or were) declared before the `<slug>/` catch-all and a room holding one could never be opened.
-
-**Room tabs.** *Files* lists the images and voice recordings posted in the room's chat — sender, date, and a link back to the message — and offers no upload of its own: a file enters a room by being posted in it. *Polls* is the room's own question-and-count, owned by this app (`RoomPoll`/`PollChoice`/`PollBallot`) since polls stopped being a separate product. *Statistics* counts what was said.
-
-**Room archive.** Each room's staff-only Archive tab streams that room as a ZIP (the whole-forum `export/` desk was removed on 2026-08-29) that unpacks into a working offline website: `index.html`, one `rooms/<slug>.html` per room with messages in daily sections, `attachments/<sha256>-<name>` for every file, and a `manifest.json`. Every link inside is relative and every page is standalone — no stylesheet link, no script, one inline `<style>` — so it opens from a USB stick on a machine that has never heard of this platform. Staff-only. Two exports of unchanged data are byte-identical apart from the manifest. `manage.py export_forum` does the same off-request, with `--no-caps` for a forum past the request-shaped limits.
-
-**Cleanup.** `cleanup/` is the staff desk for the platform's retention setting (removed 2026-08-29, back 2026-10-02): a period in days, the deletion boundary, the last run, the next scheduled one and the latest result, plus a previewed "Run cleanup now" behind a typed `DELETE`. That button runs what the night runs — each room with its own enabled setting at its own boundary, the platform setting for every other room — recorded as started by that staff member. Each room's Settings tab has the same desk for that room alone. It is irreversible, keeps no copy, and says so; the nightly task is scheduled from the start and does nothing until a setting is enabled.
-
-**Cleanup runs on the worker only.** Every cleanup — nightly, forum-wide, per room — is claimed in the request or the beat task and handed to the worker as one run of the "Forum cleanup" workflow (`dispatch.py`, `workflow.py`, `predefined_tasks.py`), so it shows in the Workflows tab with who started it ("System" at night) and each cleanup record links to its workflow run. With no worker listening nothing is claimed and the page says so; there is no inline run in a web request. The workflow's node only finishes records already claimed for its own run, and it is dispatch-only: the Workflows API refuses to start it by hand, staff included. It is not billed — the dispatcher never goes through the Workflows API's priced door. `ingress_forum` seeds the workflow in every mode but `none`.
-
-## Usage
-
-toto-chat is a Django app distributed as a wheel; it is used from inside a toto host project, not run standalone.
-
-**Install.** In practice the version is pinned by the host in `requirements.toto.txt` alongside the other lockstep siblings:
-
-```
-toto-chat==2.0
+```python
+INSTALLED_APPS += ["toto.forum"]           # after toto.socialhub, toto.vault, toto.gervazy
+FORUM_VAULT_PASSWORD = os.environ.get("FORUM_VAULT_PASSWORD", "")   # minted once, kept for good
+path("forum/", include("toto.forum.urls")),
 ```
 
-For local development against a checkout, install the package (editable) from its directory; it pulls `toto-base==2.0` transitively.
+Then `manage.py migrate` and `manage.py ingress_forum`. No channel layer, no ASGI route, no attachment directory.
 
-**Wire it into a host.**
-
-1. Add the app to `INSTALLED_APPS`:
-   ```python
-   INSTALLED_APPS = [
-       # ...
-       "toto.forum",
-   ]
-   ```
-2. Include its URLs, e.g.:
-   ```python
-   path("forum/", include("toto.forum.urls")),
-   ```
-3. Add the WebSocket routes to your ASGI application:
-   ```python
-   from toto.forum.routing import websocket_urlpatterns
-   ```
-4. Configure a **Redis channel layer** (`CHANNEL_LAYERS`), a **cache** (for presence), and optionally `FORUM_ATTACHMENT_ROOT` (defaults to a `forum_attachments/` sibling of `MEDIA_ROOT`).
-5. Run migrations and serve over ASGI (daphne/uvicorn), since the app needs WebSockets:
-   ```bash
-   python manage.py migrate
-   ```
-
-**Seed sample data (optional):**
+**Tests.** Name the modules (`toto` is a namespace package):
 
 ```bash
-python manage.py ingress_forum --full
-```
-
-Requires an existing `admin` user; creates the `CandyLand` and `Announcements` channels with `admin` on the roster.
-
-**Tests.** Name the test modules explicitly — `toto` is a PEP 420 namespace package, so `manage.py test toto.forum` cannot be discovered by unittest:
-
-```bash
-python manage.py test \
-  toto.forum.tests.test_api_views toto.forum.tests.test_consumers \
-  toto.forum.tests.test_history toto.forum.tests.test_models toto.forum.tests.test_views
+python manage.py test toto.forum.tests.test_access toto.forum.tests.test_encryption \
+  toto.forum.tests.test_posting toto.forum.tests.test_images toto.forum.tests.test_polls \
+  toto.forum.tests.test_pages
 ```
 
 ## Build & packaging

@@ -1,0 +1,10 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Forum" %} | {{ platform.site_name }}{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-3xl px-4 py-10">
+  <h1 class="text-2xl font-bold">{% trans "Forum" %}</h1>
+  <p class="mt-4" data-testid="forum-refused" data-status="{{ status }}">{{ sentence }}</p>
+  <p class="mt-4 text-sm"><a class="underline" href="{% url 'forum:channel_list' %}">{% trans "Back to the channels" %}</a></p>
+</section>
+{% endblock %}
