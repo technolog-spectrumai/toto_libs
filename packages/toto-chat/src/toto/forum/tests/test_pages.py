@@ -1,5 +1,5 @@
 """The two pages, the seed, an erased member and the copy of one's data
-(stage 68, 2026-10-07).
+(stage 68, 2026-10-07; the pages' look is stage 70's).
 
     manage.py test toto.forum.tests.test_pages
 """
@@ -11,6 +11,7 @@ from io import StringIO
 from django.contrib.staticfiles import finders
 from django.core.management import call_command
 from django.test import override_settings
+from django.urls import NoReverseMatch, reverse
 
 from toto.forum import channels, erasure
 from toto.forum.models import ChannelPoll, ForumChannel, ForumMessage, ForumSettings
@@ -24,6 +25,20 @@ CONFIG = re.compile(
 
 def config_of(response):
     return json.loads(CONFIG.search(response.content.decode()).group(1))
+
+
+def settings_url():
+    """The forum's Settings page, where this tree has one (stage 69)."""
+    try:
+        return reverse("forum:settings")
+    except NoReverseMatch:
+        return None
+
+
+def part(page, testid, tag):
+    """The element of ``page`` that carries ``data-testid`` (its markup)."""
+    found = re.search(rf'<{tag}\b[^>]*data-testid="{testid}".*?</{tag}>', page, re.S)
+    return found.group(0) if found else None
 
 
 class ListPageTests(ForumCase):
@@ -48,6 +63,27 @@ class ListPageTests(ForumCase):
         page = client_of(self.member).get("/forum/").content.decode()
         self.assertNotIn("<script>x</script>", page)
         self.assertIn("&lt;b&gt;Guild&lt;/b&gt;", page)
+
+    def test_each_entry_is_one_link_that_enters_the_channel(self):
+        """The whole row is the link, in this tab, with the community's kind
+        beside its name; the list page loads no script of the forum's."""
+        Community.objects.filter(pk=self.guild.pk).update(org_type=Community.COMPANY)
+        page = client_of(self.member).get("/forum/").content.decode()
+        rows = re.findall(r'<a\b[^>]*data-testid="forum-channel-link".*?</a>', page, re.S)
+        self.assertEqual(len(rows), 1)
+        self.assertIn(f'href="{self.url("channel_detail")}"', rows[0])
+        self.assertNotIn("target=", rows[0])
+        self.assertIn("Guild", rows[0])
+        self.assertIn(str(Community.objects.get(pk=self.guild.pk).get_org_type_display()), rows[0])
+        self.assertNotIn("forum/channel.js", page)
+
+    def test_the_settings_link_is_an_administrators(self):
+        address = settings_url()
+        for user, shown in ((self.admin, True), (self.head, False), (self.member, False),
+                            (self.staff, False)):
+            page = client_of(user).get("/forum/").content.decode()
+            self.assertEqual('data-testid="forum-settings-link"' in page,
+                             bool(shown and address), user.username)
 
 
 class ChannelPageTests(ForumCase):
@@ -107,6 +143,114 @@ class ChannelPageTests(ForumCase):
         response = client_of(self.outsider).get(self.url("channel_detail"))
         self.assertEqual(response.status_code, 403)
         self.assertIn('data-testid="forum-refused"', response.content.decode())
+
+    def test_the_column_lists_the_members_channels_and_marks_the_open_one(self):
+        third = Community.objects.create(name="Third")
+        self.member_person.communities.add(third)
+        page = client_of(self.member).get(self.url("channel_detail")).content.decode()
+        column = part(page, "forum-channels", "nav")
+        self.assertIsNotNone(column)
+        self.assertEqual(sorted(re.findall(r'href="(/forum/[^/"]+/)"', column)),
+                         sorted([self.url("channel_detail"),
+                                 self.url("channel_detail", community=third)]))
+        self.assertNotIn(self.url("channel_detail", community=self.other), column)
+        (current,) = [link for link in re.findall(r"<a\b[^>]*>", column)
+                      if 'aria-current="page"' in link]
+        self.assertIn(f'href="{self.url("channel_detail")}"', current)
+        self.assertIn(f'href="{reverse("forum:channel_list")}"', column)
+        # The same list as the forum's own page, in the same order.
+        from toto.forum import access
+
+        names = [community.name for community in access.communities_of(self.member)]
+        places = [column.index(f">{name}<") for name in names]
+        self.assertEqual(places, sorted(places))
+        self.assertIn(">Mem<", part(page, "forum-viewer", "p"))
+
+    def test_the_header_says_whose_channel_it_is_and_who_moderates(self):
+        page = client_of(self.member).get(self.url("channel_detail")).content.decode()
+        header = part(page, "forum-header", "header")
+        self.assertIn("Guild", header)
+        self.assertIn(str(self.guild.get_org_type_display()), header)
+        self.assertIn("moderated by Head", header)
+        self.assertIn(f'href="{reverse("socialhub:community_detail", args=[self.guild.slug])}"',
+                      header)
+        self.assertIn("data-forum-refresh", header)
+        self.assertIn('data-forum-toggle="channels"', header)
+        self.assertIn('data-forum-toggle="polls"', header)
+        # A community without a head is moderated by the administrators.
+        page = client_of(self.outsider).get(
+            self.url("channel_detail", community=self.other)).content.decode()
+        self.assertIn("moderated by the administrators", part(page, "forum-header", "header"))
+
+    def test_a_heads_name_in_the_header_is_text(self):
+        self.head_person.display_name = "<b>Head</b><script>x</script>"
+        self.head_person.save()
+        page = client_of(self.member).get(self.url("channel_detail")).content.decode()
+        self.assertNotIn("<script>x</script>", page)
+        self.assertIn("&lt;b&gt;Head&lt;/b&gt;", part(page, "forum-header", "header"))
+
+    def test_the_settings_link_is_an_administrators(self):
+        address = settings_url()
+        for user, shown in ((self.admin, True), (self.head, False), (self.member, False)):
+            page = client_of(user).get(self.url("channel_detail")).content.decode()
+            header = part(page, "forum-header", "header")
+            self.assertEqual('data-testid="forum-settings-link"' in header,
+                             bool(shown and address), user.username)
+            if shown and address:
+                self.assertIn(f'href="{address}"', header)
+
+    def test_the_page_is_the_windows_height_and_carries_the_scripts_words(self):
+        page = client_of(self.member).get(self.url("channel_detail")).content.decode()
+        self.assertNotIn("<footer", page)           # the composer is the page's last line
+        box = re.search(r"<section\b[^>]*data-forum-channel[^>]*>", page, re.S).group(0)
+        self.assertIn("100dvh", box)
+        self.assertIn("group/forum", box)
+        self.assertIn('data-forum-theme="light"', box)
+        self.assertIn(":data-forum-theme=", box)    # the header's switch sets it
+        words = re.search(r"<div\b[^>]*data-forum-words[^>]*>", page, re.S).group(0)
+        for name in ("remove", "gone", "unreadable", "you", "vote", "close", "open", "closed",
+                     "closes", "poll", "rule-open", "rule-final", "answers-count", "hidden-count",
+                     "your-answer", "image", "image-type", "image-large", "live", "retrying",
+                     "sending", "cost", "unaffordable", "failed", "confirm-remove"):
+            self.assertRegex(words, rf'data-{name}="[^"]+"', name)
+        self.assertIn('data-image-large="The image is too large. The most is 10 MB."', words)
+        self.assertIn("{amount}", words)
+        self.assertIn("{count}", words)
+        self.assertIn("{when}", words)
+        for hook in ("data-forum-scroll", "data-forum-messages", "data-forum-older",
+                     "data-forum-new", "data-forum-empty", "data-forum-status", "data-forum-live",
+                     "data-forum-post", "data-forum-text", "data-forum-image", "data-forum-pick",
+                     "data-forum-picked", "data-forum-unpick", "data-forum-send",
+                     "data-forum-estimate", "data-forum-polls", "data-forum-polls-empty",
+                     "data-forum-poll-form", 'data-forum-panel="channels"',
+                     'data-forum-panel="polls"'):
+            self.assertIn(hook, page, hook)
+        # A picture is chosen with the picture button: the file field itself
+        # is hidden and takes the four raster types only.
+        field = re.search(r"<input\b[^>]*data-forum-image[^>]*>", page).group(0)
+        self.assertIn('accept="image/jpeg,image/png,image/gif,image/webp"', field)
+
+    def test_the_theme_is_the_platforms_and_no_colour_is_the_pages_own(self):
+        """Lines and accents are the theme's tokens, light and dark; the
+        page names no colour of its own and loads no stylesheet."""
+        from django.template.loader import get_template
+
+        for name in ("forum/channel.html", "forum/channel_list.html"):
+            source = open(get_template(name).origin.name, encoding="utf-8").read()
+            self.assertNotRegex(source, r"#[0-9a-fA-F]{3,8}\b", name)
+            self.assertNotRegex(source, r"\brgba?\(", name)
+            self.assertNotIn("<style", source, name)
+            self.assertNotIn("style=", source, name)
+            self.assertNotRegex(source, r"\brounded", name)          # square corners
+            self.assertNotIn("border-current/", source, name)       # which Tailwind 3 does not build
+            self.assertNotIn("bg-current/", source, name)
+            for colour in re.findall(r"(?:bg|text|border|divide)-(?:[a-z]+-)?(?:\d{2,3})\b", source):
+                self.fail(f"{name} names a palette colour: {colour}")
+        channel = open(get_template("forum/channel.html").origin.name, encoding="utf-8").read()
+        self.assertIn("border-accent-2/40 group-data-[forum-theme=dark]/forum:border-accent-1/40",
+                      channel)
+        for variant in set(re.findall(r"group-data-\[[^\]]*\](?:/\w+)?:", channel)):
+            self.assertEqual(variant, "group-data-[forum-theme=dark]/forum:")
 
     def test_the_script_writes_text_and_opens_no_socket(self):
         source = open(finders.find("forum/channel.js"), encoding="utf-8").read()

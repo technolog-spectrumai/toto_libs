@@ -1,0 +1,1457 @@
+"""The channel page's script, run in node (stage 70, 2026-10-07).
+
+``HARNESS`` runs the half with no page in it: what one answer of the feed
+does to what a page holds, the timer that asks (its interval, a hidden tab,
+the return, ``more``, the back-off), the wait before an estimate is asked,
+the rule that makes a link.
+
+``PAGE`` runs ``mount()``, the half that draws, on the page the server
+really answers a member with: its HTML is read into a tree here and rebuilt
+in node as elements faked just far enough (attributes, classes, values,
+listeners, children, simple selectors), with a clock the test moves and a
+``fetch`` that records and answers from a queue. That is where a message
+is added once, a poll's card is filled again, a removal becomes a quiet
+line, a cleanup takes nodes out, a post is not drawn twice, the estimate is
+shown and Send is switched off. No browser draws anything: how it looks is
+the owner's by-hand note.
+
+    manage.py test toto.forum.tests.test_channel_js
+"""
+
+import json
+import re
+import shutil
+import subprocess
+import tempfile
+from html.parser import HTMLParser
+from pathlib import Path
+from unittest import skipUnless
+
+from django.contrib.staticfiles import finders
+from django.test import SimpleTestCase
+
+from toto.forum.testing import ForumCase, client_of
+
+_NODE = shutil.which("node")
+
+CONFIG = re.compile(
+    r'<script id="forum-channel-config" type="application/json">(.*?)</script>', re.S)
+
+_VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
+         "source", "track", "wbr"}
+
+
+def tree_of(html: str) -> list:
+    """The elements of ``html`` as nested dicts: ``{"tag", "attrs",
+    "children"}``, a text as ``{"text"}``. Far enough for a page this app
+    draws; no browser's repairs."""
+    root = {"tag": "", "attrs": {}, "children": []}
+    stack = [root]
+
+    class Build(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            node = {"tag": tag, "attrs": {name: "" if value is None else value
+                                          for name, value in attrs}, "children": []}
+            stack[-1]["children"].append(node)
+            if tag not in _VOID:
+                stack.append(node)
+
+        def handle_startendtag(self, tag, attrs):
+            stack[-1]["children"].append(
+                {"tag": tag, "attrs": {name: "" if value is None else value
+                                       for name, value in attrs}, "children": []})
+
+        def handle_endtag(self, tag):
+            for index in range(len(stack) - 1, 0, -1):
+                if stack[index]["tag"] == tag:
+                    del stack[index:]
+                    break
+
+        def handle_data(self, data):
+            if data.strip():
+                stack[-1]["children"].append({"text": data})
+
+    parser = Build(convert_charrefs=True)
+    parser.feed(html)
+    parser.close()
+    return root["children"]
+
+
+def element(tree, attr):
+    """The first element that carries ``attr``, or None."""
+    for node in tree:
+        if "tag" not in node:
+            continue
+        if attr in node["attrs"]:
+            return node
+        found = element(node["children"], attr)
+        if found is not None:
+            return found
+    return None
+
+
+#: A clock the test moves: timers run only when ``advance`` reaches them.
+CLOCK = r"""
+const timers = [];
+let clock = 0, timerIds = 0;
+const setTimer = (fn, ms) => { const id = ++timerIds; timers.push({id: id, at: clock + ms, ms: ms, fn: fn}); return id; };
+const clearTimer = (id) => { const at = timers.findIndex((t) => t.id === id); if (at >= 0) { timers.splice(at, 1); } };
+const settle = async () => { for (let i = 0; i < 12; i++) { await new Promise((r) => setImmediate(r)); } };
+async function advance(ms) {
+  const until = clock + ms;
+  for (;;) {
+    const due = timers.filter((t) => t.at <= until).sort((a, b) => a.at - b.at)[0];
+    if (!due) { break; }
+    timers.splice(timers.indexOf(due), 1);
+    clock = due.at;
+    due.fn();
+    await settle();
+  }
+  clock = until;
+  await settle();
+}
+const waits = () => timers.map((t) => t.ms);
+"""
+
+HARNESS = CLOCK + r"""
+const touched = [];
+globalThis.fetch = () => { touched.push("fetch"); return Promise.reject(new Error("no")); };
+const F = require(process.argv[1]);
+(async () => {
+  const out = {};
+  __BODY__
+  out.touched = touched;
+  console.log(JSON.stringify(out));
+  process.exit(0);
+})().catch((error) => { console.error(error); process.exit(1); });
+"""
+
+
+@skipUnless(_NODE, "node is not installed")
+class ScriptCase(SimpleTestCase):
+    def run_js(self, body):
+        script = finders.find("forum/channel.js")
+        done = subprocess.run([_NODE, "-e", HARNESS.replace("__BODY__", body), script],
+                              capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return json.loads(done.stdout.strip().splitlines()[-1])
+
+
+class FeedStateTests(ScriptCase):
+    """``applyFeed``: rows by id, replaced only by a newer ``seq``."""
+
+    def test_a_new_row_is_added_and_the_same_row_again_changes_nothing(self):
+        out = self.run_js("""
+          const s = F.newState();
+          const row = {id: "a", number: 1, seq: 1, text: "one", created_at: "2026-10-07T10:00:00Z"};
+          out.first = F.applyFeed(s, {cursor: 1, messages: [row], polls: []}).messages.length;
+          out.again = F.applyFeed(s, {cursor: 1, messages: [Object.assign({}, row)], polls: []}).messages.length;
+          out.older = F.applyFeed(s, {messages: [Object.assign({}, row, {seq: 0, text: "stale"})]}).messages.length;
+          out.text = s.messages.a.text;
+          out.newer = F.applyFeed(s, {cursor: 4, messages: [Object.assign({}, row, {seq: 4, text: "new"})]}).messages.length;
+          out.after = [s.messages.a.text, s.cursor, Object.keys(s.messages).length];
+        """)
+        self.assertEqual((out["first"], out["again"], out["older"]), (1, 0, 0))
+        self.assertEqual(out["text"], "one")
+        self.assertEqual(out["newer"], 1)
+        self.assertEqual(out["after"], ["new", 4, 1])
+
+    def test_what_the_members_own_door_answered_is_not_added_again_by_the_feed(self):
+        out = self.run_js("""
+          const s = F.newState();
+          F.applyFeed(s, {cursor: 3, messages: [], polls: []});
+          const mine = {id: "m", number: 4, seq: 4, text: "hello", created_at: "2026-10-07T10:00:00Z"};
+          out.own = F.applyFeed(s, {messages: [mine]}).messages.length;
+          out.cursorAfterOwn = s.cursor;          // an own answer moves no cursor
+          const fed = F.applyFeed(s, {cursor: 4, messages: [Object.assign({}, mine)], polls: []});
+          out.fed = fed.messages.length;
+          out.cursor = s.cursor;
+          out.held = Object.keys(s.messages);
+        """)
+        self.assertEqual((out["own"], out["cursorAfterOwn"]), (1, 3))
+        self.assertEqual((out["fed"], out["cursor"], out["held"]), (0, 4, ["m"]))
+
+    def test_a_tombstone_takes_the_row_and_a_late_answer_cannot_bring_it_back(self):
+        out = self.run_js("""
+          const s = F.newState();
+          const row = {id: "a", number: 1, seq: 1, text: "one", created_at: "2026-10-07T10:00:00Z"};
+          const poll = {id: "p", number: 2, seq: 2, title: "Q", created_at: "2026-10-07T10:00:00Z"};
+          F.applyFeed(s, {cursor: 2, messages: [row], polls: [poll]});
+          const gone = F.applyFeed(s, {cursor: 4, messages: [{id: "a", number: 1, seq: 3, removed: true}],
+                                       polls: [{id: "p", number: 2, seq: 4, removed: true}]});
+          out.gone = [gone.removedMessages, gone.removedPolls, gone.purgedMessages];
+          out.late = F.applyFeed(s, {messages: [row], polls: [poll]});
+          out.unknown = F.applyFeed(s, {cursor: 5, messages: [{id: "z", number: 9, seq: 5, removed: true}]})
+            .removedMessages;
+          out.held = [Object.keys(s.messages), Object.keys(s.polls)];
+        """)
+        self.assertEqual(out["gone"], [["a"], ["p"], []])
+        self.assertEqual((out["late"]["messages"], out["late"]["polls"]), ([], []))
+        self.assertEqual(out["unknown"], [])
+        self.assertEqual(out["held"], [[], []])
+
+    def test_a_cleanup_drops_everything_from_before_its_edge(self):
+        out = self.run_js("""
+          const s = F.newState();
+          const at = (h) => "2026-10-07T" + h + ":00:00Z";
+          F.applyFeed(s, {cursor: 4, messages: [
+            {id: "old", number: 1, seq: 1, created_at: at("08")},
+            {id: "new", number: 3, seq: 3, created_at: at("12")}],
+            polls: [{id: "oldpoll", number: 2, seq: 2, created_at: at("09")},
+                    {id: "newpoll", number: 4, seq: 4, created_at: at("13")}]});
+          const changed = F.applyFeed(s, {cursor: 4, messages: [], polls: [], purged_before: at("10")});
+          out.changed = [changed.removedMessages, changed.purgedMessages, changed.removedPolls,
+                         changed.purgedPolls, changed.edge === Date.parse(at("10"))];
+          out.held = [Object.keys(s.messages), Object.keys(s.polls), s.purgedBefore];
+          out.same = F.applyFeed(s, {cursor: 4, messages: [], polls: [], purged_before: at("10")}).edge;
+          out.bad = F.applyFeed(s, {purged_before: "not a date"}).edge;
+        """)
+        self.assertEqual(out["changed"], [["old"], ["old"], ["oldpoll"], ["oldpoll"], True])
+        self.assertEqual(out["held"], [["new"], ["newpoll"], "2026-10-07T10:00:00Z"])
+        self.assertEqual((out["same"], out["bad"]), (None, None))
+
+    def test_older_history_moves_oldest_only(self):
+        out = self.run_js("""
+          const s = F.newState();
+          F.applyFeed(s, {cursor: 60, messages: [{id: "b", number: 50, seq: 50, created_at: ""}],
+                          polls: [], more: true, oldest: 50});
+          out.first = [s.cursor, s.oldest, s.more];
+          F.applyFeed(s, {messages: [{id: "a", number: 10, seq: 10, created_at: ""}], more: false, oldest: 10});
+          out.then = [s.cursor, s.oldest, s.more, F.byNumber(s.messages).map((r) => r.id)];
+          // What changed after a cursor says `more` of ITSELF: the history's flag stays.
+          F.applyFeed(s, {cursor: 61, messages: [], polls: [], more: true});
+          out.live = [s.cursor, s.more];
+        """)
+        self.assertEqual(out["first"], [60, 50, True])
+        self.assertEqual(out["then"], [60, 10, False, ["a", "b"]])
+        self.assertEqual(out["live"], [61, False])
+
+    def test_the_length_a_post_is_priced_by_is_utf8_bytes(self):
+        out = self.run_js("""
+          out.sizes = ["", "abc", "zażółć", "€", "😀", "a\\nb"].map(F.utf8Length);
+          out.none = [F.utf8Length(null), F.utf8Length(undefined)];
+        """)
+        self.assertEqual(out["sizes"], [0, 3, len("zażółć".encode()), 3, 4, 3])
+        self.assertEqual(out["none"], [0, 0])
+
+
+class PollerTests(ScriptCase):
+    """``createPoller``: the timer, with a clock the test moves."""
+
+    SETUP = """
+      const asked = [];
+      const answers = [];
+      let hidden = false;
+      const states = [];
+      const poller = F.createPoller({
+        seconds: SECONDS, setTimer: setTimer, clearTimer: clearTimer,
+        hidden: () => hidden, onState: (s) => states.push([s.ok, s.failures, s.wait]),
+        ask: () => {
+          asked.push(clock);
+          const next = answers.length ? answers.shift() : {ok: true};
+          if (next.hold) { return new Promise((resolve) => { next.release = () => resolve(next.then || {ok: true}); held.push(next); }); }
+          return next.fail ? Promise.reject(new Error("offline")) : Promise.resolve(next);
+        }});
+      const held = [];
+    """
+
+    def poller(self, body, seconds=5):
+        return self.run_js(self.SETUP.replace("SECONDS", json.dumps(seconds)) + body)
+
+    def test_the_interval_is_the_page_datas_and_each_timer_follows_an_answer(self):
+        out = self.poller("""
+          poller.start();
+          out.first = waits();
+          await advance(6999);
+          out.before = asked.length;
+          await advance(1);
+          out.at = asked.slice();
+          out.next = waits();
+          await advance(7000);
+          out.second = asked.slice();
+          out.bounds = [F.waitOf(0.2), F.waitOf(5), F.waitOf("9"), F.waitOf(99999), F.waitOf(null),
+                        F.waitOf("x"), F.waitOf(-3)];
+        """, seconds=7)
+        self.assertEqual(out["first"], [7000])
+        self.assertEqual(out["before"], 0)
+        self.assertEqual(out["at"], [7000])
+        self.assertEqual(out["next"], [7000])
+        self.assertEqual(out["second"], [7000, 14000])
+        self.assertEqual(out["bounds"], [1000, 5000, 9000, 3600000, 5000, 5000, 5000])
+
+    def test_no_timer_is_set_while_a_request_is_out(self):
+        out = self.poller("""
+          answers.push({hold: true});
+          poller.start();
+          await advance(5000);
+          out.asked = asked.length;
+          out.whileOut = [waits(), poller.flying(), poller.waiting()];
+          await advance(60000);                 // a slow server is not asked twice
+          out.still = asked.length;
+          held[0].release();
+          await settle();
+          out.after = [waits(), poller.flying()];
+        """)
+        self.assertEqual(out["asked"], 1)
+        self.assertEqual(out["whileOut"], [[], True, False])
+        self.assertEqual(out["still"], 1)
+        self.assertEqual(out["after"], [[5000], False])
+
+    def test_a_hidden_tab_asks_nothing_and_the_return_asks_once_at_once(self):
+        out = self.poller("""
+          poller.start();
+          await advance(5000);
+          out.visible = asked.length;
+          hidden = true;
+          poller.visibility();
+          out.hiddenTimers = waits();
+          await advance(600000);
+          out.whileHidden = asked.length;
+          hidden = false;
+          poller.visibility();
+          await settle();
+          out.onReturn = asked.slice(1);
+          out.then = waits();
+          await advance(4999);
+          out.notYet = asked.length;
+          await advance(1);
+          out.next = asked.length;
+        """)
+        self.assertEqual(out["visible"], 1)
+        self.assertEqual(out["hiddenTimers"], [])
+        self.assertEqual(out["whileHidden"], 1)
+        self.assertEqual(out["onReturn"], [605000])       # at once, and once
+        self.assertEqual(out["then"], [5000])
+        self.assertEqual((out["notYet"], out["next"]), (2, 3))
+
+    def test_a_timer_that_fires_in_a_hidden_tab_asks_nothing(self):
+        out = self.poller("""
+          poller.start();
+          hidden = true;                 // hidden, and no event told the page
+          await advance(20000);
+          out.asked = asked.length;
+          out.timers = waits();
+        """)
+        self.assertEqual((out["asked"], out["timers"]), (0, []))
+
+    def test_an_answer_that_lands_in_a_hidden_tab_sets_no_timer(self):
+        out = self.poller("""
+          answers.push({hold: true});
+          poller.start();
+          await advance(5000);
+          hidden = true;
+          poller.visibility();
+          held[0].release();
+          await settle();
+          out.timers = waits();
+          await advance(60000);
+          out.asked = asked.length;
+        """)
+        self.assertEqual((out["timers"], out["asked"]), ([], 1))
+
+    def test_more_asks_again_at_once_until_there_is_no_more(self):
+        out = self.poller("""
+          answers.push({ok: true, more: true}, {ok: true, more: true}, {ok: true, more: false});
+          poller.start();
+          await advance(5000);
+          out.asked = asked.slice();
+          out.timers = waits();
+        """)
+        self.assertEqual(out["asked"], [5000, 5000, 5000])
+        self.assertEqual(out["timers"], [5000])
+
+    def test_a_failure_doubles_the_wait_up_to_a_minute_and_an_answer_brings_it_back(self):
+        out = self.poller("""
+          for (let i = 0; i < 6; i++) { answers.push(i % 2 ? {ok: false} : {fail: true}); }
+          poller.start();
+          out.waits = [];
+          for (let i = 0; i < 6; i++) { await advance(poller.wait()); out.waits.push(waits()[0]); }
+          out.asked = asked.slice();
+          await advance(60000);                   // the seventh is answered
+          out.back = [waits(), poller.wait()];
+          out.states = states.map((s) => s[0] + ":" + s[1] + ":" + s[2]);
+        """)
+        self.assertEqual(out["waits"], [10000, 20000, 40000, 60000, 60000, 60000])
+        self.assertEqual(out["asked"], [5000, 15000, 35000, 75000, 135000, 195000])
+        self.assertEqual(out["back"], [[5000], 5000])
+        self.assertEqual(out["states"][0], "false:1:10000")
+        self.assertEqual(out["states"][-1], "true:0:5000")
+
+    def test_a_long_interval_is_never_shortened_by_the_back_off(self):
+        out = self.poller("""
+          answers.push({fail: true}, {fail: true});
+          poller.start();
+          await advance(120000);
+          out.one = waits();
+          await advance(120000);
+          out.two = waits();
+        """, seconds=120)
+        self.assertEqual((out["one"], out["two"]), ([120000], [120000]))
+
+    def test_now_asks_at_once_and_during_a_request_once_more_after_it(self):
+        out = self.poller("""
+          poller.start();
+          poller.now();
+          await settle();
+          out.atOnce = asked.slice();
+          out.timers = waits();                    // the old timer is gone: one timer
+          answers.push({hold: true});
+          poller.now(); poller.now(); poller.now();
+          await settle();
+          out.out = asked.length;                  // one request, however often it is pressed
+          held[0].release();
+          await settle();
+          out.after = asked.length;                // and one more, as it was asked for
+          out.timersAfter = waits();
+        """)
+        self.assertEqual(out["atOnce"], [0])
+        self.assertEqual(out["timers"], [5000])
+        self.assertEqual(out["out"], 2)
+        self.assertEqual(out["after"], 3)
+        self.assertEqual(out["timersAfter"], [5000])
+
+    def test_stop_ends_it(self):
+        out = self.poller("""
+          poller.start();
+          poller.stop();
+          out.timers = waits();
+          await advance(60000);
+          out.asked = asked.length;
+          out.visibility = poller.visibility();
+          await settle();
+          out.still = asked.length;
+        """)
+        self.assertEqual((out["timers"], out["asked"], out["visibility"], out["still"]),
+                         ([], 0, None, 0))
+
+
+class EstimatorTests(ScriptCase):
+    """``createEstimator``: asked a moment after the last change."""
+
+    SETUP = """
+      const asked = [], shown = [];
+      const answers = [];
+      const estimator = F.createEstimator({
+        setTimer: setTimer, clearTimer: clearTimer, show: (data) => shown.push(data),
+        ask: (text, image) => {
+          asked.push([clock, text, image]);
+          const next = answers.length ? answers.shift() : {ok: true, data: {display: "1 mana"}};
+          if (next.hold) { return new Promise((resolve) => { next.release = () => resolve(next.then); held.push(next); }); }
+          return next.fail ? Promise.reject(new Error("offline")) : Promise.resolve(next);
+        }});
+      const held = [];
+    """
+
+    def test_it_waits_for_the_typing_to_stop(self):
+        out = self.run_js(self.SETUP + """
+          out.wait = F.ESTIMATE_WAIT;
+          estimator.request(1, 0); await advance(200);
+          estimator.request(2, 0); await advance(200);
+          estimator.request(3, 0); await advance(399);
+          out.before = asked.length;
+          await advance(1);
+          out.asked = asked.slice();
+          out.shown = shown.slice();
+        """)
+        self.assertEqual(out["wait"], 400)
+        self.assertEqual(out["before"], 0)
+        self.assertEqual(out["asked"], [[800, 3, 0]])
+        self.assertEqual(out["shown"], [{"display": "1 mana"}])
+
+    def test_a_chosen_picture_is_asked_at_once_and_an_empty_post_asks_nothing(self):
+        out = self.run_js(self.SETUP + """
+          estimator.request(0, 2048, true);
+          await settle();
+          out.atOnce = asked.slice();
+          estimator.request(0, 0);
+          await advance(1000);
+          out.empty = [asked.length, shown[shown.length - 1]];
+        """)
+        self.assertEqual(out["atOnce"], [[0, 0, 2048]])
+        self.assertEqual(out["empty"], [1, None])
+
+    def test_an_overtaken_answer_is_dropped_and_a_failure_shows_nothing(self):
+        out = self.run_js(self.SETUP + """
+          answers.push({hold: true, then: {ok: true, data: {display: "old"}}},
+                       {ok: true, data: {display: "new"}}, {fail: true}, {ok: false, data: {error: "no"}});
+          estimator.request(5, 0, true);
+          estimator.request(6, 0, true);
+          await settle();
+          held[0].release();
+          await settle();
+          out.shown = shown.map((d) => d && d.display);
+          estimator.request(7, 0, true); await settle();
+          estimator.request(8, 0, true); await settle();
+          out.after = shown.slice(1);
+        """)
+        self.assertEqual(out["shown"], ["new"])
+        self.assertEqual(out["after"], [None, None])
+
+
+class LinkTests(ScriptCase):
+    """A link only to this platform; everything else stays text."""
+
+    def test_only_this_platforms_addresses_become_links(self):
+        out = self.run_js("""
+          const hosts = ["forum.example", "WWW.Other.Example"];
+          const cut = (text) => F.splitLinks(text, hosts, "https://forum.example");
+          out.own = cut("see https://forum.example/vault/x?a=1#b, please");
+          out.other = cut("see https://evil.example/a and http://forum.example.evil.test/");
+          out.second = cut("www.other.example/forum/guild/ is ours too");
+          out.user = cut("https://forum.example@evil.example/ and https://x@forum.example/");
+          out.scheme = cut("javascript:alert(1) data:text/html,x ftp://forum.example/x");
+          out.glued = cut("xhttps://forum.example/a mail@www.forum.example");
+          out.plain = cut("<b>bold</b> & <script>x</script>");
+          out.joined = ["see https://forum.example/a.", "(https://forum.example/a)", ""].map(
+            (text) => cut(text).map((part) => part.text).join("") === text);
+        """)
+        self.assertEqual(out["own"], [
+            {"text": "see "},
+            {"text": "https://forum.example/vault/x?a=1#b", "href": "https://forum.example/vault/x?a=1#b"},
+            {"text": ", please"}])
+        self.assertEqual([part.get("href") for part in out["other"]], [None])
+        # Another of the platform's names leads to THIS origin, same path.
+        self.assertEqual(out["second"][0], {"text": "www.other.example/forum/guild/",
+                                            "href": "https://forum.example/forum/guild/"})
+        for name in ("user", "scheme", "glued", "plain"):
+            self.assertEqual([part.get("href") for part in out[name]], [None], name)
+        self.assertEqual(out["plain"], [{"text": "<b>bold</b> & <script>x</script>"}])
+        self.assertEqual(out["joined"], [True, True, True])
+
+
+PAGE = CLOCK + r"""
+const DATA = JSON.parse(require("fs").readFileSync(process.argv[2], "utf8"));
+const config = DATA.config;
+// The estimate door is the tests' own to add: without it the page asks none.
+delete config.urls.estimate;
+const touched = [];
+function spy(name) {
+  return new Proxy({}, {
+    get(_t, key) { touched.push(name + "." + String(key)); return () => null; },
+    set(_t, key) { touched.push(name + "." + String(key) + "="); return true; },
+  });
+}
+globalThis.localStorage = spy("localStorage");
+globalThis.sessionStorage = spy("sessionStorage");
+globalThis.WebSocket = function () { touched.push("WebSocket"); };
+globalThis.EventSource = function () { touched.push("EventSource"); };
+globalThis.setInterval = () => { touched.push("setInterval"); return 0; };
+globalThis.setTimeout = setTimer;
+globalThis.clearTimeout = clearTimer;
+globalThis.location = {hostname: "forum.example", origin: "https://forum.example"};
+let confirms = 0;
+globalThis.confirm = () => { confirms += 1; return true; };
+
+const calls = [], queue = [], held = [];
+let flying = 0, mostFlying = 0;
+function bodyOf(body) {
+  if (body === undefined || body === null) { return null; }
+  if (typeof body === "string") { try { return JSON.parse(body); } catch (e) { return body; } }
+  if (body instanceof URLSearchParams) { return Object.fromEntries(body.entries()); }
+  if (body instanceof FormData) {
+    const out = {};
+    for (const [key, value] of body.entries()) {
+      out[key] = typeof value === "string" ? value : {name: value.name, size: value.size};
+    }
+    return out;
+  }
+  return String(body);
+}
+globalThis.fetch = function (url, init) {
+  init = init || {};
+  calls.push({url: String(url), method: init.method || "GET", body: bodyOf(init.body),
+              headers: init.headers || {}, at: clock});
+  const next = queue.length ? queue.shift() : {status: 200, data: {}};
+  flying += 1; mostFlying = Math.max(mostFlying, flying);
+  const answer = () => {
+    flying -= 1;
+    if (next.network) { return Promise.reject(new Error("offline")); }
+    return Promise.resolve({ok: next.status >= 200 && next.status < 300, status: next.status,
+      json: () => (next.notJson ? Promise.reject(new Error("not json")) : Promise.resolve(next.data || {}))});
+  };
+  if (next.hold) { return new Promise((resolve, reject) => { held.push(() => answer().then(resolve, reject)); }); }
+  return answer();
+};
+
+const camel = (name) => name.replace(/-([a-z])/g, (_m, c) => c.toUpperCase());
+function parseSelector(selector) {
+  return selector.trim().split(/\s+/).map((part) => {
+    const m = /^([a-zA-Z]*)((?:\[[^\]]+\])*)$/.exec(part);
+    if (!m) { throw new Error("an unexpected selector: " + selector); }
+    const tests = (m[2].match(/\[[^\]]+\]/g) || []).map((t) => {
+      const mm = /^\[([\w-]+)(?:=(?:"([^"]*)"|([^\]]*)))?\]$/.exec(t);
+      return {name: mm[1], value: mm[2] !== undefined ? mm[2] : mm[3]};
+    });
+    return {tag: m[1].toUpperCase(), tests: tests};
+  });
+}
+let made = 0;
+class Txt {
+  constructor(text) { this.textContent = String(text); this.parentNode = null; }
+}
+class El {
+  constructor(tag, attrs) {
+    this.tagName = String(tag).toUpperCase();
+    this.serial = ++made;                       // which node this is: identity across redraws
+    this.attrs = Object.assign({}, attrs || {});
+    this.childNodes = []; this.parentNode = null; this.handlers = {}; this.dataset = {};
+    this.style = {}; this._text = "";
+    this.type = this.attrs.type || "";
+    this.disabled = "disabled" in this.attrs;
+    this._value = this.attrs.value !== undefined ? this.attrs.value : "";
+    this.files = [];
+    this.scrollTop = 0; this.scrollHeight = 0; this.clientHeight = 0;
+    Object.keys(this.attrs).forEach((key) => {
+      if (key.startsWith("data-")) { this.dataset[camel(key.slice(5))] = this.attrs[key]; }
+    });
+    const names = new Set(String(this.attrs.class || "").split(/\s+/).filter(Boolean));
+    this._classes = names;
+    this.classList = {
+      contains: (name) => names.has(name), add: (name) => { names.add(name); },
+      remove: (name) => { names.delete(name); },
+      toggle: (name, on) => { const want = on === undefined ? !names.has(name) : !!on;
+                              if (want) { names.add(name); } else { names.delete(name); } return want; }};
+  }
+  get className() { return Array.from(this._classes).join(" "); }
+  set className(value) {
+    this._classes.clear();
+    String(value).split(/\s+/).filter(Boolean).forEach((name) => this._classes.add(name));
+  }
+  get children() { return this.childNodes.filter((child) => child instanceof El); }
+  all() {
+    const out = [];
+    const walk = (node) => node.children.forEach((child) => { out.push(child); walk(child); });
+    walk(this);
+    return out;
+  }
+  get value() {
+    if (this.tagName !== "SELECT") { return this._value; }
+    const options = this.all().filter((o) => o.tagName === "OPTION");
+    if (options.some((o) => o.value === this._value)) { return this._value; }
+    const picked = options.find((o) => "selected" in o.attrs) || options[0];
+    return picked ? picked.value : "";
+  }
+  set value(value) { this._value = String(value); if (this.type === "file" && !this._value) { this.files = []; } }
+  get textContent() { return this._text + this.childNodes.map((c) => c.textContent).join(""); }
+  set textContent(value) {
+    this.childNodes.forEach((child) => { child.parentNode = null; });
+    this._text = String(value); this.childNodes = [];
+  }
+  set innerHTML(_value) { throw new Error("the page is never written as markup"); }
+  set outerHTML(_value) { throw new Error("the page is never written as markup"); }
+  insertAdjacentHTML() { throw new Error("the page is never written as markup"); }
+  _take(child) {
+    if (child.parentNode) { child.parentNode.removeChild(child); }
+    child.parentNode = this;
+    return child;
+  }
+  appendChild(child) { this.childNodes.push(this._take(child)); return child; }
+  insertBefore(child, before) {
+    this._take(child);
+    const at = before ? this.childNodes.indexOf(before) : -1;
+    if (before && at < 0) { throw new Error("insertBefore: not a child"); }
+    if (at < 0) { this.childNodes.push(child); } else { this.childNodes.splice(at, 0, child); }
+    return child;
+  }
+  removeChild(child) {
+    const at = this.childNodes.indexOf(child);
+    if (at < 0) { throw new Error("removeChild: not a child"); }
+    this.childNodes.splice(at, 1); child.parentNode = null;
+    return child;
+  }
+  replaceChild(fresh, old) {
+    const at = this.childNodes.indexOf(old);
+    if (at < 0) { throw new Error("replaceChild: not a child"); }
+    this._take(fresh);
+    this.childNodes.splice(this.childNodes.indexOf(old), 1, fresh); old.parentNode = null;
+    return old;
+  }
+  addEventListener(name, fn) { (this.handlers[name] = this.handlers[name] || []).push(fn); }
+  fire(name, more) {
+    const event = Object.assign({type: name, target: this, defaultPrevented: false,
+                                 preventDefault() { this.defaultPrevented = true; },
+                                 stopPropagation() {}}, more || {});
+    (this.handlers[name] || []).forEach((fn) => fn(event));
+    return event;
+  }
+  click() { return this.fire("click"); }
+  focus() { document.activeElement = this; }
+  getAttribute(name) {
+    if (name.startsWith("data-")) {
+      const value = this.dataset[camel(name.slice(5))];
+      return value === undefined ? null : String(value);
+    }
+    if (name === "type" && this.type) { return this.type; }
+    return name in this.attrs ? this.attrs[name] : null;
+  }
+  setAttribute(name, value) {
+    this.attrs[name] = String(value);
+    if (name.startsWith("data-")) { this.dataset[camel(name.slice(5))] = String(value); }
+  }
+  removeAttribute(name) { delete this.attrs[name]; }
+  hasAttribute(name) { return this.getAttribute(name) !== null; }
+  querySelectorAll(selector) {
+    const parts = parseSelector(selector);
+    const fits = (el, part) => (!part.tag || el.tagName === part.tag) && part.tests.every((t) => {
+      const value = el.getAttribute(t.name);
+      return value !== null && (t.value === undefined || value === t.value);
+    });
+    return this.all().filter((el) => {
+      if (!fits(el, parts[parts.length - 1])) { return false; }
+      let at = parts.length - 2;
+      for (let up = el.parentNode; up && up !== this.parentNode && at >= 0; up = up.parentNode) {
+        if (fits(up, parts[at])) { at -= 1; }
+      }
+      return at < 0;
+    });
+  }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+}
+function build(node) {
+  if (node.text !== undefined) { return new Txt(node.text); }
+  const el = new El(node.tag, node.attrs);
+  if (node.tag === "textarea") {
+    el._value = node.children.map((child) => child.text || "").join("");
+    return el;
+  }
+  node.children.forEach((child) => el.appendChild(build(child)));
+  return el;
+}
+
+const box = build(DATA.tree);
+const docHandlers = {};
+globalThis.document = {
+  readyState: "loading", activeElement: null, visibilityState: "visible", hidden: false,
+  documentElement: {lang: DATA.lang},
+  getElementById: (id) => (id === "forum-channel-config" ? {textContent: JSON.stringify(config)} : null),
+  createElement: (tag) => new El(tag),
+  createTextNode: (text) => new Txt(text),
+  addEventListener(name, fn) { (docHandlers[name] = docHandlers[name] || []).push(fn); },
+  fire(name, event) { (docHandlers[name] || []).forEach((fn) => fn(event || {type: name})); },
+  querySelectorAll: () => [],
+};
+const F = require(process.argv[1]);
+
+const part = (name) => box.querySelector("[data-forum-" + name + "]");
+const list = part("messages"), polls = part("polls"), scroll = part("scroll");
+const T0 = Date.now() - 6 * 3600 * 1000;
+const at = (n) => new Date(T0 + n * 600000).toISOString();
+const msg = (n, more) => Object.assign({
+  id: "m" + n, number: n, seq: n, kind: "text", sender: "Ann", sender_id: 1, mine: false,
+  avatar: "", created_at: at(n), text: "text " + n, image: null, may_remove: false}, more || {});
+const pollRow = (n, more) => Object.assign({
+  id: "p" + n, number: n, seq: n, title: "Lunch?", status: "open", open: true, closes_at: null,
+  revisability: "open", visibility: "live", created_at: at(n), opener: "Ann", mine: false,
+  may_manage: false,
+  choices: [{id: 1, label: "Soup", text: "", ballots: 0}, {id: 2, label: "Salad", text: "with bread", ballots: 0}],
+  total: 0, my_choice: null, results_visible: true}, more || {});
+const feedOf = (cursor, messages, pollRows, more) => Object.assign(
+  {cursor: cursor, messages: messages || [], polls: pollRows || [], more: false, purged_before: null},
+  more || {});
+const ids = () => list.children.map((n) => n.dataset.messageId || "gone");
+const node = (id) => list.querySelector('[data-message-id="' + id + '"]');
+const card = (id) => polls.querySelector('[data-poll-id="' + id + '"]');
+const bodyText = (id) => { const p = node(id).querySelector("[data-forum-body]"); return p ? p.textContent : null; };
+const bars = (id) => card(id).querySelectorAll("[data-forum-bar]").map((b) => [b.dataset.forumBar, b.style.width]);
+const ballots = (id) => card(id).querySelectorAll("[data-forum-ballots]").map((b) => b.dataset.forumBallots);
+const votes = (id) => card(id).querySelectorAll("[data-forum-vote]");
+const status = () => [part("status").textContent, part("status").classList.contains("hidden")];
+const estimate = () => [part("estimate").textContent, part("estimate").classList.contains("hidden")];
+const feeds = () => calls.filter((c) => c.url.indexOf("/feed/") >= 0).map((c) => c.url.split("/feed/")[1]);
+const hide = async () => { document.visibilityState = "hidden"; document.hidden = true; document.fire("visibilitychange"); await settle(); };
+const show = async () => { document.visibilityState = "visible"; document.hidden = false; document.fire("visibilitychange"); await settle(); };
+const type = async (text) => { part("text").value = text; part("text").fire("input"); await settle(); };
+const choose = async (name, size, kind) => {
+  const input = part("image");
+  input.files = [new File([new Uint8Array(size)], name, {type: kind || "image/png"})];
+  input.fire("change");
+  await settle();
+};
+const submit = async () => { const e = part("post").fire("submit"); await settle(); return e; };
+(async () => {
+  const out = {};
+  __BEFORE__
+  const mounted = F.mount(box);
+  await settle();
+  __BODY__
+  out.touched = touched;
+  out.calls = calls;
+  out.mostFlying = mostFlying;
+  console.log(JSON.stringify(out));
+  process.exit(0);
+})().catch((error) => { console.error(error); process.exit(1); });
+"""
+
+
+class PageCase(ForumCase):
+    """``mount()`` run on the page the server answers a member with."""
+
+    def setUp(self):
+        super().setUp()
+        if not _NODE:
+            self.skipTest("node is not installed")
+
+    def run_page(self, body, *, before="", user=None):
+        response = client_of(user or self.member).get(self.url("channel_detail"))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        data = {"tree": element(tree_of(html), "data-forum-channel"),
+                "config": json.loads(CONFIG.search(html).group(1)), "lang": "en"}
+        self.assertIsNotNone(data["tree"])
+        with tempfile.TemporaryDirectory() as folder:
+            handed = Path(folder) / "page.json"
+            handed.write_text(json.dumps(data), encoding="utf-8")
+            source = PAGE.replace("__BEFORE__", before).replace("__BODY__", body)
+            done = subprocess.run([_NODE, "-e", source, finders.find("forum/channel.js"),
+                                   str(handed)], capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return json.loads(done.stdout.strip().splitlines()[-1])
+
+
+class PagePollingTests(PageCase):
+    def test_the_real_page_mounts_and_its_interval_is_the_settings(self):
+        from toto.forum.models import ForumSettings
+
+        self.say(self.second, "the first word")
+        self.open_poll(self.second)
+        settings = ForumSettings.current()
+        settings.refresh_seconds = 9
+        settings.save()
+        out = self.run_page("""
+          out.rows = list.children.map((n) => n.querySelector("[data-forum-body]").textContent);
+          out.polls = polls.children.length;
+          out.count = box.querySelectorAll("[data-forum-poll-count]").map((n) => n.textContent);
+          out.waits = waits();
+          out.cursor = mounted.state.cursor;
+          out.asked = calls.length;
+          await advance(9000);
+          out.feeds = feeds();
+          out.live = [part("live").textContent, part("live").dataset.state];
+        """)
+        self.assertEqual(out["rows"], ["the first word"])
+        self.assertEqual(out["polls"], 1)
+        self.assertEqual(out["count"], ["1", "1"])
+        self.assertEqual(out["waits"], [9000])          # one timer, the Settings' interval
+        self.assertEqual(out["asked"], 0)               # the page's own feed came with it
+        self.assertEqual(out["feeds"], [f"?after={out['cursor']}"])
+        self.assertEqual(out["live"], ["live", "live"])
+        self.assertEqual(out["touched"], [])
+
+    def test_a_hidden_tab_asks_nothing_and_catches_up_on_return_with_its_cursor(self):
+        out = self.run_page(before="config.refresh_seconds = 5; config.feed = feedOf(3, [msg(1), msg(3)]);",
+                            body="""
+          await hide();
+          out.timers = waits();
+          await advance(300000);
+          out.whileHidden = feeds();
+          // What happened meanwhile comes in two pages: `more` asks again at once.
+          queue.push({status: 200, data: feedOf(5, [msg(4), msg(5)], [], {more: true})},
+                     {status: 200, data: feedOf(7, [msg(6), msg(7)])});
+          await show();
+          out.onReturn = feeds();
+          out.at = calls.map((c) => c.at);
+          out.ids = ids();
+          out.then = waits();
+          await advance(5000);
+          out.next = feeds().slice(2);
+        """)
+        self.assertEqual(out["timers"], [])
+        self.assertEqual(out["whileHidden"], [])
+        self.assertEqual(out["onReturn"], ["?after=3", "?after=5"])   # once, then once more for `more`
+        self.assertEqual(out["at"], [300000, 300000])
+        self.assertEqual(out["ids"], ["m1", "m3", "m4", "m5", "m6", "m7"])
+        self.assertEqual(out["then"], [5000])
+        self.assertEqual(out["next"], ["?after=7"])
+        self.assertEqual(out["mostFlying"], 1)
+
+    def test_one_request_at_a_time_however_often_refresh_is_pressed(self):
+        out = self.run_page(before="config.refresh_seconds = 5; config.feed = feedOf(1, [msg(1)]);",
+                            body="""
+          queue.push({hold: true, status: 200, data: feedOf(2, [msg(2)])});
+          await advance(5000);
+          part("refresh").click(); part("refresh").click();
+          await show();                          // a visibility event during the request
+          await advance(60000);                  // and no timer runs beside it
+          out.out = feeds();
+          held.shift()();
+          await settle();
+          out.after = feeds();
+          out.ids = ids();
+        """)
+        self.assertEqual(out["out"], ["?after=1"])
+        self.assertEqual(out["after"], ["?after=1", "?after=2"])
+        self.assertEqual(out["mostFlying"], 1)
+        self.assertEqual(out["ids"], ["m1", "m2"])
+
+    def test_a_failed_request_backs_off_says_so_and_recovers(self):
+        out = self.run_page(before="config.refresh_seconds = 5; config.feed = feedOf(1, [msg(1)]);",
+                            body="""
+          queue.push({network: true}, {status: 503, data: {error: "The key is away."}},
+                     {status: 502, notJson: true}, {status: 200, data: feedOf(2, [msg(2)])});
+          await advance(5000);
+          out.one = [waits(), part("live").dataset.state, part("live").textContent, status()];
+          await advance(10000);
+          out.two = [waits(), status()];
+          await advance(20000);
+          out.three = waits();
+          await advance(40000);
+          out.back = [waits(), part("live").dataset.state, status(), ids()];
+          out.feeds = feeds();
+        """)
+        self.assertEqual(out["one"], [[10000], "retrying", "offline, retrying", ["", True]])
+        self.assertEqual(out["two"], [[20000], ["The key is away.", False]])
+        self.assertEqual(out["three"], [40000])
+        self.assertEqual(out["back"], [[5000], "live", ["", True], ["m1", "m2"]])
+        # Every question carried the cursor the page kept: nothing was skipped.
+        self.assertEqual(out["feeds"], ["?after=1"] * 4)
+
+
+class PageMessagesTests(PageCase):
+    def test_a_new_message_is_appended_once_and_the_nodes_there_are_not_rebuilt(self):
+        out = self.run_page(before="config.feed = feedOf(2, [msg(1), msg(2)]);", body="""
+          const before = list.children.map((n) => n.serial);
+          queue.push({status: 200, data: feedOf(3, [msg(3)])},
+                     {status: 200, data: feedOf(3, [msg(3)])},            // the same row again
+                     {status: 200, data: feedOf(3, [])});
+          await advance(5000);
+          out.ids = ids();
+          const third = node("m3").serial;
+          await advance(5000); await advance(5000);
+          out.again = ids();
+          out.kept = [list.children.slice(0, 2).map((n) => n.serial).join() === before.join(),
+                      node("m3").serial === third];
+          out.history = feeds().filter((q) => q.indexOf("before") >= 0);
+          out.empty = part("empty").classList.contains("hidden");
+        """)
+        self.assertEqual(out["ids"], ["m1", "m2", "m3"])
+        self.assertEqual(out["again"], ["m1", "m2", "m3"])
+        self.assertEqual(out["kept"], [True, True])
+        self.assertEqual(out["history"], [])              # history is never loaded again
+        self.assertTrue(out["empty"])
+
+    def test_a_removal_becomes_a_quiet_line_and_a_cleanup_takes_nodes_out(self):
+        out = self.run_page(
+            before="config.feed = feedOf(5, [msg(1), msg(2), msg(4), msg(5)], [pollRow(3)]);", body="""
+          queue.push({status: 200, data: feedOf(6, [{id: "m2", number: 2, seq: 6, removed: true}])});
+          await advance(5000);
+          out.afterRemoval = ids();
+          out.line = list.children[1].textContent;
+          out.text = list.textContent.indexOf("text 2");
+          // The cleanup's edge lies between the fourth and the fifth: the quiet
+          // line, two messages and the poll are from before it.
+          queue.push({status: 200, data: feedOf(6, [], [], {purged_before: new Date(T0 + 4.5 * 600000).toISOString()})});
+          await advance(5000);
+          out.afterCleanup = ids();
+          out.polls = polls.children.length;
+          out.pollsEmpty = part("polls-empty").classList.contains("hidden");
+          out.count = box.querySelectorAll("[data-forum-poll-count]").map((n) => n.textContent);
+          out.held = Object.keys(mounted.state.messages);
+          // A poll's own tombstone takes its card.
+          queue.push({status: 200, data: feedOf(7, [], [pollRow(7)])},
+                     {status: 200, data: feedOf(8, [], [{id: "p7", number: 7, seq: 8, removed: true}])});
+          await advance(5000);
+          out.opened = polls.children.length;
+          await advance(5000);
+          out.closed = polls.children.length;
+        """)
+        self.assertEqual(out["afterRemoval"], ["m1", "gone", "m4", "m5"])
+        self.assertEqual(out["line"], "A message was removed.")
+        self.assertEqual(out["text"], -1)
+        self.assertEqual(out["afterCleanup"], ["m5"])
+        self.assertEqual((out["polls"], out["pollsEmpty"], out["count"]), (0, False, ["0", "0"]))
+        self.assertEqual(out["held"], ["m5"])
+        self.assertEqual((out["opened"], out["closed"]), (1, 0))
+
+    def test_what_a_member_typed_is_text_whatever_it_looks_like(self):
+        evil = '</script><img src=x onerror=alert(1)> <b>bold</b> "q" https://evil.example/x'
+        out = self.run_page(before=f"""
+          const evil = {json.dumps(evil)};
+          config.feed = feedOf(3, [msg(1, {{text: evil, sender: "<i>Mallory</i>"}}),
+            msg(2, {{text: "see https://forum.example/vault/ and http://evil.example/"}})],
+            [pollRow(3, {{title: "<u>Q</u>", opener: "<s>O</s>",
+                          choices: [{{id: 1, label: "<b>a</b>", text: "<script>t</script>", ballots: 0}}]}})]);
+        """, body="""
+          out.text = bodyText("m1");
+          out.sender = node("m1").querySelector("[data-forum-sender]").textContent;
+          const tags = (root) => root.all().map((n) => n.tagName);
+          out.tags = Array.from(new Set(tags(list).concat(tags(polls)))).sort();
+          out.links = list.all().filter((n) => n.tagName === "A").map((a) => [a.textContent, a.href, a.rel]);
+          out.joined = bodyText("m2");
+          out.poll = card("p3").textContent;
+        """)
+        self.assertEqual(out["text"], evil)
+        self.assertEqual(out["sender"], "<i>Mallory</i>")
+        # Only what the script itself makes: no element came out of a member's words.
+        self.assertEqual(out["tags"], ["A", "ARTICLE", "BUTTON", "DIV", "H3", "LI", "P", "SPAN",
+                                       "TIME", "UL"])
+        self.assertEqual(out["links"], [["https://forum.example/vault/",
+                                         "https://forum.example/vault/", "noopener"]])
+        self.assertEqual(out["joined"], "see https://forum.example/vault/ and http://evil.example/")
+        for words in ("<u>Q</u>", "<s>O</s>", "<b>a</b>", "<script>t</script>"):
+            self.assertIn(words, out["poll"])
+
+    def test_a_picture_is_the_image_doors_address_and_opens_in_a_new_tab(self):
+        out = self.run_page(before="""
+          config.feed = feedOf(2, [msg(1, {kind: "image", text: "",
+            image: {url: "/forum/guild/messages/m1/image/", mime: "image/png", size: 10}}),
+            msg(2, {avatar: "/media/avatars/ann.png"})]);
+        """, body="""
+          const pictures = list.all().filter((n) => n.tagName === "IMG");
+          out.sources = pictures.map((img) => img.src);
+          const door = pictures[0].parentNode;
+          out.door = [door.tagName, door.href, door.target, door.rel];
+          out.noBody = node("m1").querySelector("[data-forum-body]");
+        """)
+        self.assertEqual(out["sources"], ["/forum/guild/messages/m1/image/", "/media/avatars/ann.png"])
+        self.assertEqual(out["door"], ["A", "/forum/guild/messages/m1/image/", "_blank",
+                                       "noopener noreferrer"])
+        self.assertIsNone(out["noBody"])
+
+    def test_consecutive_messages_of_one_sender_share_one_name(self):
+        out = self.run_page(before="""
+          const near = (n, minutes, more) => msg(n, Object.assign(
+            {created_at: new Date(T0 + minutes * 60000).toISOString()}, more || {}));
+          config.feed = feedOf(5, [near(1, 0), near(2, 1), near(3, 2, {sender: "Bob", sender_id: 2}),
+                                   near(4, 3), near(5, 30)]);
+        """, body="""
+          const joined = () => list.children.map((n) => n.dataset.joined === "1");
+          const heads = () => list.children.map((n) => n.querySelector("[data-forum-head]").classList.contains("hidden"));
+          out.joined = joined();
+          out.heads = heads();
+          // The message between them is removed: what follows starts anew.
+          queue.push({status: 200, data: feedOf(6, [{id: "m1", number: 1, seq: 6, removed: true}])});
+          await advance(5000);
+          out.after = list.children.map((n) => n.dataset.messageId ? n.dataset.joined === "1" : "gone");
+          out.mine = node("m2").dataset.mine || "";
+        """)
+        self.assertEqual(out["joined"], [False, True, False, False, False])
+        self.assertEqual(out["heads"], out["joined"])
+        self.assertEqual(out["after"], ["gone", False, False, False, False])
+        self.assertEqual(out["mine"], "")
+
+    def test_the_readers_place_is_kept_unless_they_are_at_the_bottom(self):
+        out = self.run_page(before="config.feed = feedOf(2, [msg(1), msg(2)], [], {more: true, oldest: 1});",
+                            body="""
+          out.olderShown = !part("older").classList.contains("hidden");
+          scroll.scrollHeight = 1000; scroll.clientHeight = 300; scroll.scrollTop = 200;
+          scroll.fire("scroll");                         // reading further up
+          queue.push({status: 200, data: feedOf(3, [msg(3)])});
+          await advance(5000);
+          out.up = [scroll.scrollTop, part("new").classList.contains("hidden")];
+          part("new").click();
+          out.jumped = [scroll.scrollTop, part("new").classList.contains("hidden")];
+          scroll.scrollHeight = 1200;
+          queue.push({status: 200, data: feedOf(4, [msg(4)])});
+          await advance(5000);
+          out.bottom = scroll.scrollTop;                 // at the bottom: it follows
+          // Older history: the distance to the bottom stays what it was.
+          scroll.scrollTop = 0; scroll.fire("scroll");
+          queue.push({status: 200, data: {messages: [msg(0)], more: false, oldest: 0, purged_before: null}});
+          scroll.scrollHeight = 1200;
+          part("older").click();
+          scroll.scrollHeight = 1500;                    // what the new nodes add
+          await settle();
+          out.ids = ids();
+          out.olderCall = feeds().filter((q) => q.indexOf("before") >= 0);
+          out.olderHidden = part("older").classList.contains("hidden");
+        """)
+        self.assertTrue(out["olderShown"])
+        self.assertEqual(out["up"], [200, False])
+        self.assertEqual(out["jumped"], [1000, True])
+        self.assertEqual(out["bottom"], 1200)
+        self.assertEqual(out["ids"], ["m0", "m1", "m2", "m3", "m4"])
+        self.assertEqual(out["olderCall"], ["?before=1"])
+        self.assertTrue(out["olderHidden"])
+
+
+class PagePollTests(PageCase):
+    def test_a_polls_counts_are_updated_in_its_card(self):
+        out = self.run_page(before="config.feed = feedOf(2, [msg(1)], [pollRow(2)]);", body="""
+          const same = card("p2").serial;
+          out.before = [bars("p2"), ballots("p2"), card("p2").querySelector("[data-forum-total]").textContent];
+          queue.push({status: 200, data: feedOf(5, [], [pollRow(2, {seq: 5, total: 4,
+            choices: [{id: 1, label: "Soup", text: "", ballots: 3},
+                      {id: 2, label: "Salad", text: "with bread", ballots: 1}]})])});
+          await advance(5000);
+          out.after = [bars("p2"), ballots("p2"), card("p2").querySelector("[data-forum-total]").textContent];
+          out.sameCard = [card("p2").serial === same, polls.children.length];
+          out.messages = ids();
+        """)
+        self.assertEqual(out["before"], [[["0", "0%"], ["0", "0%"]], ["0", "0"], "Answers: 0"])
+        self.assertEqual(out["after"], [[["75", "75%"], ["25", "25%"]], ["3", "1"], "Answers: 4"])
+        self.assertEqual(out["sameCard"], [True, 1])
+        self.assertEqual(out["messages"], ["m1"])
+
+    def test_a_vote_moves_the_bars_at_once_and_the_feed_adds_nothing(self):
+        out = self.run_page(before="config.feed = feedOf(2, [], [pollRow(2)]);", body="""
+          const voted = pollRow(2, {seq: 3, total: 1, my_choice: 2,
+            choices: [{id: 1, label: "Soup", text: "", ballots: 0},
+                      {id: 2, label: "Salad", text: "with bread", ballots: 1}]});
+          out.buttons = votes("p2").map((b) => b.dataset.forumVote);
+          queue.push({status: 200, data: {poll: voted}});
+          votes("p2")[1].click();
+          await settle();
+          out.call = calls[0];
+          out.bars = bars("p2");
+          out.yours = card("p2").querySelectorAll("[data-forum-yours]").length;
+          out.left = votes("p2").map((b) => b.dataset.forumVote);   // the other one may still be chosen
+          const same = card("p2").serial;
+          queue.push({status: 200, data: feedOf(3, [], [voted])});
+          await advance(5000);
+          out.fed = [polls.children.length, card("p2").serial === same, feeds()];
+        """)
+        self.assertEqual(out["buttons"], ["1", "2"])
+        self.assertTrue(out["call"]["url"].endswith("/polls/p2/vote/"))
+        self.assertEqual((out["call"]["method"], out["call"]["body"]), ("POST", {"choice": 2}))
+        self.assertEqual(out["bars"], [["0", "0%"], ["100", "100%"]])
+        self.assertEqual(out["yours"], 1)
+        self.assertEqual(out["left"], ["1"])
+        self.assertEqual(out["fed"], [1, True, ["?after=2"]])
+
+    def test_a_final_answer_a_closed_poll_and_a_withheld_count(self):
+        out = self.run_page(before="""
+          config.feed = feedOf(4, [], [
+            pollRow(2, {revisability: "final", my_choice: 1, total: 1,
+                        choices: [{id: 1, label: "Soup", text: "", ballots: 1}, {id: 2, label: "Salad", text: "", ballots: 0}]}),
+            pollRow(3, {open: false, status: "closed"}),
+            pollRow(4, {visibility: "on_close", results_visible: false, total: null, may_manage: true,
+                        choices: [{id: 1, label: "Soup", text: "", ballots: null}, {id: 2, label: "Salad", text: "", ballots: null}]})]);
+        """, body="""
+          out.order = polls.children.map((c) => c.dataset.pollId);      // the newest first
+          out.final = votes("p2").length;
+          out.closed = [votes("p3").length, card("p3").dataset.open];
+          out.hidden = [bars("p4").length, card("p4").querySelector("[data-forum-total]").textContent,
+                        votes("p4").length];
+          const tools = card("p4").all().filter((n) => n.tagName === "BUTTON" && !n.dataset.forumVote)
+            .map((b) => b.textContent);
+          out.tools = tools;
+          out.noTools = card("p2").all().filter((n) => n.tagName === "BUTTON").length;
+        """)
+        self.assertEqual(out["order"], ["p4", "p3", "p2"])
+        self.assertEqual(out["final"], 0)
+        self.assertEqual(out["closed"], [0, ""])
+        self.assertEqual(out["hidden"], [0, "The count appears when the poll closes.", 2])
+        self.assertEqual(out["tools"], ["Close", "Remove"])
+        self.assertEqual(out["noTools"], 0)
+
+    def test_opening_a_poll_sends_its_form_and_draws_the_answer(self):
+        out = self.run_page(before="config.feed = feedOf(1, [msg(1)]);", body="""
+          const form = part("poll-form");
+          form.querySelector("[name=title]").value = "Where?";
+          form.querySelector("[name=options]").value = "Here\\nThere";
+          form.querySelector("[name=closes_at]").value = "2030-01-02T03:04";
+          queue.push({hold: true, status: 201, data: {poll: pollRow(2, {title: "Where?"})}});
+          form.fire("submit"); form.fire("submit");                 // a double press
+          await settle();
+          out.sent = calls.length;
+          held.shift()();
+          await settle();
+          out.call = [calls[0].url.endsWith("/polls/open/"), calls[0].body.title, calls[0].body.options,
+                      calls[0].body.revisability, calls[0].body.visibility,
+                      calls[0].body.closes_at === new Date("2030-01-02T03:04").toISOString()];
+          out.cards = polls.children.map((c) => c.dataset.pollId);
+          out.cleared = [form.querySelector("[name=title]").value, form.querySelector("[name=options]").value];
+        """)
+        self.assertEqual(out["sent"], 1)
+        self.assertEqual(out["call"], [True, "Where?", "Here\nThere", "open", "live", True])
+        self.assertEqual(out["cards"], ["p2"])
+        self.assertEqual(out["cleared"], ["", ""])
+
+
+class PagePostingTests(PageCase):
+    def test_an_own_post_is_drawn_at_once_and_the_next_answer_does_not_draw_it_again(self):
+        out = self.run_page(before="config.feed = feedOf(1, [msg(1)]);", body="""
+          const mine = msg(2, {text: "hello there", mine: true, may_remove: true, sender: "Mem"});
+          await type("hello there");
+          queue.push({status: 201, data: {message: mine, replay: false}});
+          await submit();
+          out.post = [calls[0].url.endsWith("/post/"), calls[0].method, calls[0].body.text,
+                      /^[0-9a-f-]{36}$/.test(calls[0].body.op), calls[0].headers["X-CSRFToken"].length > 10];
+          out.ids = ids();
+          out.box = part("text").value;
+          out.cursor = mounted.state.cursor;             // the post's answer moves no cursor
+          out.mine = node("m2").dataset.mine;
+          const same = node("m2").serial;
+          queue.push({status: 200, data: feedOf(2, [mine])});
+          await advance(5000);
+          out.fed = [ids(), node("m2").serial === same, feeds(), mounted.state.cursor];
+        """)
+        self.assertEqual(out["post"], [True, "POST", "hello there", True, True])
+        self.assertEqual(out["ids"], ["m1", "m2"])
+        self.assertEqual((out["box"], out["cursor"], out["mine"]), ("", 1, "1"))
+        self.assertEqual(out["fed"], [["m1", "m2"], True, ["?after=1"], 2])
+
+    def test_a_refusal_keeps_what_was_typed_and_shows_the_doors_sentence(self):
+        out = self.run_page(before="config.feed = feedOf(1, [msg(1)]);", body="""
+          await type("too dear");
+          queue.push({status: 402, data: {error: "Not enough mana: this post costs 3."}});
+          await submit();
+          out.refused = [part("text").value, status(), ids(), part("send").disabled];
+          out.bad = part("status").dataset.bad;
+        """)
+        self.assertEqual(out["refused"], ["too dear", ["Not enough mana: this post costs 3.", False],
+                                          ["m1"], False])
+        self.assertEqual(out["bad"], "1")
+
+    def test_a_press_never_answered_is_sent_again_under_its_op_and_a_changed_one_is_new(self):
+        out = self.run_page(before="config.feed = feedOf(1, [msg(1)]);", body="""
+          await type("once");
+          queue.push({network: true}, {status: 502, notJson: true},
+                     {status: 400, data: {error: "no"}}, {network: true},
+                     {status: 409, data: {error: "used"}});
+          await submit(); await submit(); await submit();
+          out.same = [calls[0].body.op === calls[1].body.op, calls[1].body.op === calls[2].body.op];
+          await submit();                         // after an answer: a new press
+          out.fresh = calls[3].body.op !== calls[2].body.op;
+          await type("twice");                    // never answered, but the text changed
+          await submit();
+          out.changed = calls[4].body.op !== calls[3].body.op;
+          out.kept = part("text").value;
+        """)
+        self.assertEqual(out["same"], [True, True])
+        self.assertTrue(out["fresh"])
+        self.assertTrue(out["changed"])
+        self.assertEqual(out["kept"], "twice")
+
+    def test_one_post_at_a_time_and_an_empty_one_is_not_sent(self):
+        out = self.run_page(before="config.feed = feedOf(1, [msg(1)]);", body="""
+          await submit();
+          await type("   ");
+          await submit();
+          out.empty = calls.length;
+          await type("slow");
+          queue.push({hold: true, status: 201, data: {message: msg(2, {mine: true})}});
+          await submit(); await submit();
+          part("text").fire("keydown", {key: "Enter", shiftKey: false});
+          await settle();
+          out.sent = calls.length;
+          out.busy = [part("send").disabled, status()[0]];
+          held.shift()();
+          await settle();
+          out.done = [part("send").disabled, status(), ids()];
+          // Enter sends; Shift+Enter does not.
+          await type("by key");
+          part("text").fire("keydown", {key: "Enter", shiftKey: true});
+          await settle();
+          out.shift = calls.length;
+          queue.push({status: 201, data: {message: msg(3, {mine: true})}});
+          const pressed = part("text").fire("keydown", {key: "Enter", shiftKey: false});
+          await settle();
+          out.enter = [calls.length, pressed.defaultPrevented, calls[1].body.text];
+        """)
+        self.assertEqual(out["empty"], 0)
+        self.assertEqual(out["sent"], 1)
+        self.assertEqual(out["busy"], [True, "Sending…"])
+        self.assertEqual(out["done"], [False, ["", True], ["m1", "m2"]])
+        self.assertEqual(out["shift"], 1)
+        self.assertEqual(out["enter"], [2, True, "by key"])
+
+    def test_a_picture_goes_with_the_post_and_a_wrong_or_large_file_is_refused_here(self):
+        out = self.run_page(before="config.feed = feedOf(1, [msg(1)]);", body="""
+          await choose("notes.pdf", 10, "application/pdf");
+          out.wrong = [status()[0], part("image").files.length];
+          await choose("huge.png", config.limits.image_bytes + 1);
+          out.large = [status()[0], part("image").files.length];
+          await choose("harbour.png", 2048);
+          out.picked = [part("picked-name").textContent, part("picked").classList.contains("hidden"), status()];
+          queue.push({status: 201, data: {message: msg(2, {kind: "image", text: "",
+            image: {url: "/forum/guild/messages/m2/image/", mime: "image/png", size: 2048}})}});
+          await submit();
+          out.sent = calls[0].body;
+          out.after = [part("image").files.length, part("picked").classList.contains("hidden")];
+          await choose("again.png", 100);
+          part("unpick").click();
+          out.unpicked = [part("image").files.length, part("picked").classList.contains("hidden")];
+        """)
+        self.assertEqual(out["wrong"], ["Send a JPEG, PNG, GIF or WebP image.", 0])
+        self.assertEqual(out["large"], ["The image is too large. The most is 10 MB.", 0])
+        self.assertEqual(out["picked"], ["harbour.png · 2 KB", False, ["", True]])
+        self.assertEqual(out["sent"]["image"], {"name": "harbour.png", "size": 2048})
+        self.assertEqual(out["sent"]["text"], "")
+        self.assertEqual(out["after"], [0, True])
+        self.assertEqual(out["unpicked"], [0, True])
+
+    def test_removing_a_message_asks_first_and_draws_the_answer(self):
+        out = self.run_page(before="config.feed = feedOf(2, [msg(1), msg(2, {mine: true, may_remove: true})]);",
+                            body="""
+          out.buttons = [node("m1").all().filter((n) => n.tagName === "BUTTON").length,
+                         node("m2").all().filter((n) => n.tagName === "BUTTON").length];
+          queue.push({status: 200, data: {message: {id: "m2", number: 2, seq: 3, removed: true}}});
+          node("m2").all().filter((n) => n.tagName === "BUTTON")[0].click();
+          await settle();
+          out.confirms = confirms;
+          out.call = [calls[0].url.endsWith("/messages/m2/remove/"), calls[0].method];
+          out.ids = ids();
+          queue.push({status: 200, data: feedOf(3, [{id: "m2", number: 2, seq: 3, removed: true}])});
+          await advance(5000);
+          out.fed = ids();
+        """)
+        self.assertEqual(out["buttons"], [0, 1])
+        self.assertEqual(out["confirms"], 1)
+        self.assertEqual(out["call"], [True, "POST"])
+        self.assertEqual(out["ids"], ["m1", "gone"])
+        self.assertEqual(out["fed"], ["m1", "gone"])
+
+
+class PageEstimateTests(PageCase):
+    DOOR = 'config.urls.estimate = "/forum/guild/estimate/"; config.feed = feedOf(1, [msg(1)]);'
+
+    def test_the_estimate_is_asked_after_the_typing_stops_and_shown_beside_send(self):
+        out = self.run_page(before=self.DOOR, body="""
+          queue.push({status: 200, data: {amount: "0.0021", text: "0.0021", image: "0", affordable: true,
+                                          balance: "10", display: "0.0021 mana"}});
+          await type("z"); await advance(200);
+          await type("za"); await advance(200);
+          await type("zażółć"); await advance(399);
+          out.before = [calls.length, estimate()];
+          await advance(1);
+          out.call = [calls.length, calls[0].url, calls[0].method, calls[0].body];
+          out.shown = [estimate(), part("send").disabled];
+          // A picture is asked at once, with the text there is.
+          queue.push({status: 200, data: {affordable: true, display: "0.5 mana"}});
+          await choose("harbour.png", 4096);
+          out.picture = [calls[1].body, estimate()[0]];
+          // Emptied, nothing is asked and nothing is shown.
+          part("unpick").click();
+          await type("");
+          await advance(1000);
+          out.empty = [calls.filter((c) => c.url.indexOf("estimate") >= 0).length, estimate()];
+        """)
+        self.assertEqual(out["before"], [0, ["", True]])
+        self.assertEqual(out["call"], [1, "/forum/guild/estimate/", "POST",
+                                       {"text_bytes": str(len("zażółć".encode())), "image_bytes": "0"}])
+        self.assertEqual(out["shown"], [["This will cost 0.0021 mana.", False], False])
+        self.assertEqual(out["picture"], [{"text_bytes": str(len("zażółć".encode())),
+                                           "image_bytes": "4096"}, "This will cost 0.5 mana."])
+        self.assertEqual(out["empty"][1], ["", True])
+        self.assertEqual(out["empty"][0], 3)      # the two above, and the picture taken away
+
+    def test_a_balance_that_does_not_cover_it_switches_send_off(self):
+        out = self.run_page(before=self.DOOR, body="""
+          queue.push({status: 200, data: {affordable: false, balance: "0.001", display: "3 mana"}});
+          await type("a long letter"); await advance(400);
+          out.dear = [estimate(), part("estimate").dataset.bad, part("send").disabled];
+          await submit();
+          part("text").fire("keydown", {key: "Enter", shiftKey: false});
+          await settle();
+          out.posts = calls.filter((c) => c.url.indexOf("/post/") >= 0).length;
+          queue.push({status: 200, data: {affordable: true, display: "0.1 mana"}});
+          await type("short"); await advance(400);
+          out.cheap = [estimate(), part("send").disabled];
+          // The door refusing, or failing, shows nothing and blocks nothing.
+          queue.push({status: 402, data: {error: "The forum is not part of your plan."}});
+          await type("shorter"); await advance(400);
+          out.refused = [estimate(), part("send").disabled];
+          // Where nothing is priced the door answers an empty amount: nothing is said.
+          queue.push({status: 200, data: {amount: "0", affordable: true, balance: null, display: ""}});
+          await type("free"); await advance(400);
+          out.free = [estimate(), part("send").disabled];
+          queue.push({network: true});
+          await type("shortest"); await advance(400);
+          out.failed = [estimate(), part("send").disabled, status()];
+        """)
+        self.assertEqual(out["dear"], [["This will cost 3 mana. You do not have enough mana for this.",
+                                        False], "1", True])
+        self.assertEqual(out["posts"], 0)
+        self.assertEqual(out["cheap"], [["This will cost 0.1 mana.", False], False])
+        self.assertEqual(out["refused"], [["", True], False])
+        self.assertEqual(out["free"], [["", True], False])
+        self.assertEqual(out["failed"], [["", True], False, ["", True]])
+
+    def test_without_the_door_nothing_is_asked_shown_or_broken(self):
+        out = self.run_page(before="delete config.urls.estimate; delete config.prices; "
+                                   "config.feed = feedOf(1, [msg(1)]);", body="""
+          await type("hello"); await advance(1000);
+          await choose("harbour.png", 2048); await advance(1000);
+          out.asked = calls.length;
+          out.shown = [estimate(), part("send").disabled];
+          queue.push({status: 201, data: {message: msg(2, {mine: true})}});
+          await submit();
+          out.posted = [calls.length, ids()];
+        """)
+        self.assertEqual(out["asked"], 0)
+        self.assertEqual(out["shown"], [["", True], False])
+        self.assertEqual(out["posted"], [1, ["m1", "m2"]])
+
+    def test_a_post_clears_the_estimate(self):
+        out = self.run_page(before=self.DOOR, body="""
+          queue.push({status: 200, data: {affordable: true, display: "1 mana"}});
+          await type("hello"); await advance(400);
+          out.shown = estimate();
+          queue.push({status: 201, data: {message: msg(2, {mine: true})}});
+          await submit();
+          out.after = [estimate(), part("send").disabled];
+          await advance(1000);
+          out.doors = calls.map((c) => c.url.split("/").slice(-2)[0]);
+        """)
+        self.assertEqual(out["shown"], ["This will cost 1 mana.", False])
+        self.assertEqual(out["after"], [["", True], False])
+        self.assertEqual(out["doors"], ["estimate", "post"])
+
+
+class PageNarrowTests(PageCase):
+    def test_the_two_side_columns_fold_behind_the_headers_buttons(self):
+        out = self.run_page(before="config.feed = feedOf(1, [msg(1)]);", body="""
+          const panel = (name) => box.querySelector('[data-forum-panel="' + name + '"]');
+          const knob = (name) => box.querySelector('[data-forum-toggle="' + name + '"]');
+          const open = () => ["channels", "polls"].map((name) =>
+            [!panel(name).classList.contains("hidden"), panel(name).classList.contains("flex"),
+             knob(name).getAttribute("aria-expanded")]);
+          out.start = open();
+          knob("channels").click(); out.channels = open();
+          knob("polls").click(); out.polls = open();
+          knob("polls").click(); out.shut = open();
+          // On a wide screen both are columns whatever the buttons did.
+          out.wide = ["channels", "polls"].map((name) => panel(name).classList.contains("lg:flex"));
+          out.links = panel("channels").all().filter((n) => n.tagName === "A").map((a) => a.attrs.href);
+        """)
+        shut = [[False, False, "false"], [False, False, "false"]]
+        self.assertEqual(out["start"], shut)
+        self.assertEqual(out["channels"], [[True, True, "true"], [False, False, "false"]])
+        self.assertEqual(out["polls"], [[False, False, "false"], [True, True, "true"]])
+        self.assertEqual(out["shut"], shut)
+        self.assertEqual(out["wide"], [True, True])
+        self.assertIn(self.url("channel_detail"), out["links"])
+
+
+class ScriptSourceTests(SimpleTestCase):
+    """What the script may not hold, read as text (no node needed)."""
+
+    def code(self):
+        source = Path(finders.find("forum/channel.js")).read_text(encoding="utf-8")
+        return source, re.sub(r"/\*.*?\*/", "", source, flags=re.S)
+
+    def test_short_polling_and_nothing_else(self):
+        _source, code = self.code()
+        for word in ("WebSocket", "EventSource", "setInterval", "localStorage", "sessionStorage",
+                     "indexedDB", "document.cookie", "sendBeacon", "XMLHttpRequest", "keepalive",
+                     "ServiceWorker", "BroadcastChannel", "SharedWorker"):
+            self.assertNotIn(word, code, word)
+        self.assertIn("setTimeout", code)
+        self.assertIn("visibilitychange", code)
+        self.assertEqual(code.count("root.setTimeout("), 1)      # one way to set a timer
+        for line in code.splitlines():                           # every comment is a block
+            self.assertFalse(line.strip().startswith("//"), line)
+
+    def test_everything_is_written_as_text(self):
+        _source, code = self.code()
+        for word in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(",
+                     "new Function", "DOMParser", "createContextualFragment", "srcdoc",
+                     "createObjectURL"):
+            self.assertNotIn(word, code, word)
+        self.assertIn("textContent", code)
+        self.assertIn("createTextNode", code)
+        # A picture's address is the feed's own: the two places an <img> gets
+        # one are a message's image and a sender's avatar.
+        self.assertEqual(re.findall(r"\.src = ([\w.]+);", code), ["row.avatar", "row.image.url"])
+        # A link's address is made by the one rule, and a picture's door is the feed's.
+        self.assertEqual(sorted(re.findall(r"\.href = ([\w.]+);", code)),
+                         ["part.href", "row.image.url"])
+
+    def test_every_class_is_written_whole(self):
+        """The stylesheet is built from what it can read: no class is glued
+        from pieces, and a dark colour always comes with the page's box."""
+        source, _code = self.code()
+        self.assertNotRegex(source, r"[a-z0-9]-[\"'] *\+")
+        for variant in re.findall(r"group-data-\[[^\]]*\](?:/\w+)?:", source):
+            self.assertEqual(variant, "group-data-[forum-theme=dark]/forum:")

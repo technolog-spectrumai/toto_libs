@@ -1,6 +1,7 @@
 """The dashboard's Forum section (stage 68, 2026-10-07): one entry for each
 community whose channel the member may open, built from the access rule the
-doors ask.
+doors ask. Since stage 70 it is drawn as compact rows, each one link into
+that community's channel.
 
     manage.py test toto.forum.tests.test_dashboard
 """
@@ -146,6 +147,44 @@ class EntryTests(SectionCase):
     def test_the_tile_in_basic_stays(self):
         page = self.dashboard(self.member)
         self.assertIn(f'href="{reverse("forum:channel_list")}"', page)
+
+    def test_each_entry_is_one_row_that_enters_the_channel(self):
+        """Stage 70: the section is compact rows, not tiles. The whole row
+        is the link, it opens in this tab, and it leads into the community's
+        channel itself; the groups of tiles around it stay cards."""
+        self.say(self.member, "one")
+        section = self.section(self.member)
+        rows = re.findall(r"<a\b[^>]*data-dashboard-row.*?</a>", section, re.S)
+        self.assertEqual(len(rows), 1)
+        (row,) = rows
+        self.assertIn(f'href="{self.channel_url(self.guild)}"', row)
+        self.assertNotIn("target=", row)
+        self.assertIn("Guild", row)
+        self.assertIn("1 message, the last on", row)
+        self.assertIn("fa-hashtag", row)
+        self.assertNotIn("<article", section)            # no tile's card in the section
+        self.assertNotIn("rounded", section)             # square corners
+        # A link in the section is a row or nothing: no second way in.
+        self.assertEqual(len(re.findall(r"<a\b", section)), 1)
+        page = self.dashboard(self.member)
+        self.assertIn("<article", page)                  # the tiles are cards still
+        self.assertEqual(len(re.findall(r"data-dashboard-row(?!s)", page)), 1)
+
+    def test_the_rows_are_in_the_lists_order(self):
+        for name in ("Aardvark", "Zebra"):
+            self.member_person.communities.add(Community.objects.create(name=name))
+        section = self.section(self.member)
+        places = [section.index(name) for name in ("Aardvark", "Guild", "Zebra")]
+        self.assertEqual(places, sorted(places))
+        self.assertEqual(len(re.findall(r"<a\b[^>]*data-dashboard-row", section)), 3)
+
+    def test_a_member_of_no_community_gets_the_sentence_and_no_rows(self):
+        loner, _person = member("lone")
+        on_plan(loner)
+        section = self.section(loner)
+        self.assertNotIn("data-dashboard-row", section)
+        self.assertNotIn("data-dashboard-rows", section)
+        self.assertIn("data-dashboard-note", section)
 
 
 class CostTests(SectionCase):
