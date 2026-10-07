@@ -2,8 +2,8 @@
 
 Nothing a member wrote is readable here: text, questions and options are
 sealed and their columns are not shown. Channels are made by
-``channels.ensure_channel`` and never by hand; ballots and cleanup records
-are read-only.
+``channels.ensure_channel`` and never by hand; ballots, cleanup records and
+the settings are read-only (the settings have their own page).
 """
 
 from django.contrib import admin
@@ -59,12 +59,13 @@ class PollBallotAdmin(_ReadOnly):
 
 
 @admin.register(ForumSettings)
-class ForumSettingsAdmin(admin.ModelAdmin):
-    list_display = ("retention_enabled", "retention_days", "refresh_seconds", "updated_at")
-    readonly_fields = ("updated_at", "updated_by")
+class ForumSettingsAdmin(_ReadOnly):
+    """To look at. The dials are changed on the forum's Settings page
+    (``/forum/settings/``), which asks for an administrator of the platform;
+    a staff account with a model permission must not be a second way in."""
 
-    def has_add_permission(self, request):
-        return not ForumSettings.objects.exists()
+    list_display = ("retention_enabled", "retention_days", "refresh_seconds", "updated_at",
+                    "updated_by")
 
     def has_delete_permission(self, request, obj=None):
         return False
