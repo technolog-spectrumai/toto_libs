@@ -1,84 +1,183 @@
 {% extends "oya/base.html" %}
-{% load i18n static %}
-{% comment %}One community's channel, plain and working (stage 68). What the
-page is handed is DATA: one json_script block, read by static/forum/channel.js,
-which writes every name, message, question and option as a text node. The
-script asks the feed door when Refresh is pressed and after each thing the
-member does; a timer that asks by itself is stage 70's.{% endcomment %}
+{% load i18n static forum_page %}
+{% comment %}One community's channel (stage 68; its look and its timer are
+stage 70's, 2026-10-07). What the page is handed is DATA: one json_script
+block, read by static/forum/channel.js, which writes every name, message,
+question and option as a text node, asks the feed door on a short timer and
+applies what changed to the nodes that are there.
+
+The look: the old forum's full-height page, drawn thinner. Three columns on
+a wide screen (the member's channels, the messages with the composer under
+them, the polls); on a narrow one the two side columns are folded away
+behind the header's two buttons. One-pixel lines, square corners, the
+theme's own colours: the box below carries data-forum-theme, which the
+header's switch sets, and a line names its light colour and its dark one.
+
+The box is as high as the window under the platform's header, so only the
+messages scroll and the composer stays on the screen: the class says so for
+the header's usual height, and the script measures the real one.
+{% endcomment %}
 {% block title %}{{ community.name }} · {% trans "Forum" %} | {{ platform.site_name }}{% endblock %}
+{% block footer %}{% endblock %}
 {% block content %}
 {{ forum_config|json_script:"forum-channel-config" }}
-<section class="mx-auto max-w-5xl px-4 py-6" data-forum-channel data-testid="forum-channel">
+{% url 'forum:settings' as settings_url %}
+{% forum_administrator user as viewer_is_administrator %}
+{% with line="border-accent-2/40 group-data-[forum-theme=dark]/forum:border-accent-1/40" side="bg-sunken-light group-data-[forum-theme=dark]/forum:bg-sunken-dark" accent="text-accent-light group-data-[forum-theme=dark]/forum:text-accent-dark" caps="font-mono text-[11px] font-bold uppercase tracking-widest" %}
+<section
+  data-forum-channel data-testid="forum-channel" data-forum-theme="light"
+  :data-forum-theme="darkMode ? 'dark' : 'light'"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="group/forum flex h-[calc(100dvh-3.5rem)] min-h-[20rem] flex-col px-2 py-2 sm:px-4 sm:py-3">
   <form class="hidden" data-forum-csrf>{% csrf_token %}</form>
-  <div class="flex flex-col gap-4 md:flex-row">
-    <nav class="md:w-56 md:shrink-0" aria-label="{% trans "Channels" %}">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-70"><a href="{% url 'forum:channel_list' %}">{% trans "Forum" %}</a></p>
-      <ul class="mt-2 border border-current/15 text-sm">
+
+  <div class="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col overflow-hidden border bg-bubble-bg-light group-data-[forum-theme=dark]/forum:bg-bubble-bg-dark lg:grid lg:grid-cols-[13rem_minmax(0,1fr)_17rem] {{ line }}">
+
+    {% comment %}Left: the member's channels, one for each community; the
+    list the forum's own page and the dashboard draw.{% endcomment %}
+    <nav data-forum-panel="channels" data-testid="forum-channels" aria-label="{% trans "Channels" %}"
+         class="hidden max-h-[45vh] min-h-0 shrink-0 flex-col overflow-hidden border-b lg:flex lg:max-h-none lg:border-b-0 lg:border-r {{ side }} {{ line }}">
+      <div class="flex items-center justify-between gap-2 border-b px-3 py-2 {{ line }}">
+        <a href="{% url 'forum:channel_list' %}" class="hover:underline {{ caps }}">{% trans "Forum" %}</a>
+        <span class="font-mono text-[11px] opacity-60">{{ communities|length }}</span>
+      </div>
+      <ul class="min-h-0 flex-1 overflow-y-auto py-1 text-sm">
         {% for other in communities %}
-        <li><a class="block truncate px-2 py-1 hover:underline{% if other.pk == community.pk %} font-bold{% endif %}"
-               {% if other.pk == community.pk %}aria-current="page"{% endif %}
-               href="{% url 'forum:channel_detail' other.slug %}"># {{ other.name }}</a></li>
+        <li>
+          {% if other.pk == community.pk %}
+          <a href="{% url 'forum:channel_detail' other.slug %}" aria-current="page"
+             class="flex items-baseline gap-1.5 border-l-2 border-accent-light bg-black/5 px-3 py-1 font-semibold group-data-[forum-theme=dark]/forum:border-accent-dark group-data-[forum-theme=dark]/forum:bg-white/5"><span class="font-mono opacity-50" aria-hidden="true">#</span><span class="min-w-0 truncate">{{ other.name }}</span></a>
+          {% else %}
+          <a href="{% url 'forum:channel_detail' other.slug %}"
+             class="flex items-baseline gap-1.5 border-l-2 border-transparent px-3 py-1 opacity-80 hover:bg-black/5 hover:opacity-100 group-data-[forum-theme=dark]/forum:hover:bg-white/5"><span class="font-mono opacity-50" aria-hidden="true">#</span><span class="min-w-0 truncate">{{ other.name }}</span></a>
+          {% endif %}
+        </li>
         {% endfor %}
       </ul>
+      <p class="truncate border-t px-3 py-1.5 font-mono text-[11px] opacity-70 {{ line }}" data-testid="forum-viewer">{{ forum_config.viewer.name }}</p>
     </nav>
-    <div class="min-w-0 flex-1">
-      <header class="flex items-center justify-between gap-2 border-b border-current/15 pb-2">
-        <h1 class="truncate text-xl font-bold"># {{ community.name }}</h1>
-        <button type="button" class="border border-current/30 px-2 py-1 text-sm" data-forum-refresh>{% trans "Refresh" %}</button>
-      </header>
-      <p class="mt-2 hidden border border-current/30 px-2 py-1 text-sm" role="status" data-forum-status></p>
 
-      <div class="mt-3" data-forum-polls data-testid="forum-polls"></div>
-
-      <div class="mt-3 text-center"><button type="button" class="hidden border border-current/30 px-2 py-1 text-xs" data-forum-older>{% trans "Older messages" %}</button></div>
-      <ol class="mt-2 space-y-2" data-forum-messages data-testid="forum-messages" aria-live="polite"></ol>
-      <p class="mt-2 hidden text-sm italic opacity-70" data-forum-empty>{% trans "Nothing has been said here yet." %}</p>
-
-      <form class="mt-4 border-t border-current/15 pt-3" data-forum-post>
-        <label class="block text-sm font-semibold" for="forum-text">{% trans "Message" %}</label>
-        <textarea id="forum-text" name="text" rows="3" class="mt-1 w-full border border-current/30 bg-transparent p-2 text-sm" data-forum-text></textarea>
-        <div class="mt-2 flex flex-wrap items-center gap-2">
-          <label class="text-sm">{% trans "Image" %} <input type="file" name="image" accept="image/jpeg,image/png,image/gif,image/webp" class="text-sm" data-forum-image></label>
-          <button type="submit" class="border border-current/40 px-3 py-1 text-sm font-semibold" data-forum-send>{% trans "Send" %}</button>
+    {% comment %}Centre: the header, the messages (the only part that
+    scrolls), the composer.{% endcomment %}
+    <div class="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto]">
+      <header class="flex min-w-0 items-center gap-2 border-b px-3 py-1.5 {{ line }}" data-testid="forum-header">
+        <button type="button" data-forum-toggle="channels" aria-expanded="false" aria-label="{% trans "Channels" %}"
+                class="inline-flex h-8 w-8 shrink-0 items-center justify-center border lg:hidden {{ line }}"><i class="fa-solid fa-bars text-xs" aria-hidden="true"></i></button>
+        <div class="min-w-0 flex-1">
+          <h1 class="truncate text-base font-bold leading-tight"><span class="font-mono opacity-50" aria-hidden="true">#</span> {{ community.name }}</h1>
+          <p class="truncate text-[11px] leading-tight opacity-70" data-testid="forum-facts"><a href="{% url 'socialhub:community_detail' community.slug %}" class="underline sm:hidden">{% trans "Community" %}</a><span class="sm:hidden" aria-hidden="true"> · </span>{{ community.get_org_type_display }} · {% if community.head %}{% blocktrans with name=community.head.full_name %}moderated by {{ name }}{% endblocktrans %}{% else %}{% trans "moderated by the administrators" %}{% endif %}</p>
         </div>
-      </form>
+        <span data-forum-live data-state="live" class="hidden shrink-0 opacity-60 sm:inline {{ caps }}">{% trans "live" %}</span>
+        <a href="{% url 'socialhub:community_detail' community.slug %}" data-testid="forum-community-link"
+           class="hidden shrink-0 text-xs underline opacity-80 hover:opacity-100 sm:inline">{% trans "Community" %}</a>
+        {% if settings_url and viewer_is_administrator %}
+        <a href="{{ settings_url }}" data-testid="forum-settings-link"
+           class="shrink-0 text-xs underline opacity-80 hover:opacity-100">{% trans "Settings" %}</a>
+        {% endif %}
+        <button type="button" data-forum-refresh aria-label="{% trans "Refresh" %}" title="{% trans "Refresh" %}"
+                class="inline-flex h-8 w-8 shrink-0 items-center justify-center border hover:opacity-80 {{ line }}"><i class="fa-solid fa-rotate text-xs" aria-hidden="true"></i></button>
+        <button type="button" data-forum-toggle="polls" aria-expanded="false"
+                class="inline-flex h-8 shrink-0 items-center gap-1 border px-2 text-xs font-semibold lg:hidden {{ line }}">{% trans "Polls" %} <span class="font-mono opacity-60" data-forum-poll-count>0</span></button>
+      </header>
 
-      <details class="mt-4 border-t border-current/15 pt-3">
-        <summary class="cursor-pointer text-sm font-semibold">{% trans "Open a poll" %}</summary>
-        <form class="mt-2 space-y-2" data-forum-poll-form>
-          <label class="block text-sm">{% trans "Question" %}
-            <input type="text" name="title" maxlength="150" class="mt-1 w-full border border-current/30 bg-transparent p-1 text-sm"></label>
-          <label class="block text-sm">{% trans "Options, one a line" %}
-            <textarea name="options" rows="4" class="mt-1 w-full border border-current/30 bg-transparent p-1 text-sm"></textarea></label>
-          <label class="block text-sm">{% trans "Answers" %}
-            <select name="revisability" class="border border-current/30 bg-transparent p-1 text-sm">
-              <option value="open">{% trans "may be changed" %}</option>
-              <option value="final">{% trans "are final" %}</option>
-            </select></label>
-          <label class="block text-sm">{% trans "The count" %}
-            <select name="visibility" class="border border-current/30 bg-transparent p-1 text-sm">
-              <option value="live">{% trans "is shown as it grows" %}</option>
-              <option value="on_close">{% trans "appears when the poll closes" %}</option>
-            </select></label>
-          <button type="submit" class="border border-current/40 px-3 py-1 text-sm font-semibold">{% trans "Open the poll" %}</button>
+      <div class="relative min-h-0">
+        <div data-forum-scroll class="h-full overflow-y-auto overflow-x-hidden py-2">
+          <div class="pb-1 text-center"><button type="button" data-forum-older class="hidden border px-2 py-0.5 opacity-70 hover:opacity-100 {{ caps }} {{ line }}">{% trans "Older messages" %}</button></div>
+          <ol data-forum-messages data-testid="forum-messages" aria-live="polite"></ol>
+          <p data-forum-empty class="hidden px-3 py-10 text-center text-sm italic opacity-60">{% trans "Nothing has been said here yet." %}</p>
+        </div>
+        <button type="button" data-forum-new
+                class="absolute bottom-2 left-1/2 hidden -translate-x-1/2 border bg-bubble-bg-light px-2 py-0.5 shadow group-data-[forum-theme=dark]/forum:bg-bubble-bg-dark {{ caps }} {{ line }}">{% trans "New messages" %} <span aria-hidden="true">↓</span></button>
+      </div>
+
+      <div class="border-t px-3 py-2 {{ line }}">
+        <p class="mb-1.5 hidden border px-2 py-1 text-xs {{ line }}" role="status" data-forum-status data-testid="forum-status"></p>
+        <form class="flex items-end gap-2" data-forum-post>
+          <input type="file" name="image" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden" data-forum-image>
+          <button type="button" data-forum-pick aria-label="{% trans "Image" %}" title="{% trans "Image" %}"
+                  class="inline-flex h-9 w-9 shrink-0 items-center justify-center border hover:opacity-80 {{ line }}"><i class="fa-solid fa-image text-sm" aria-hidden="true"></i></button>
+          <div class="min-w-0 flex-1">
+            <p class="mb-1 hidden items-center gap-2 text-xs" data-forum-picked><i class="fa-solid fa-image opacity-60" aria-hidden="true"></i><span class="min-w-0 truncate font-mono" data-forum-picked-name></span><button type="button" class="shrink-0 underline opacity-70 hover:opacity-100" data-forum-unpick>{% trans "Remove" %}</button></p>
+            <label class="sr-only" for="forum-text">{% trans "Message" %}</label>
+            <textarea id="forum-text" name="text" rows="1" data-forum-text placeholder="{% trans "Message" %} # {{ community.name }}"
+                      class="block max-h-40 min-h-[2.25rem] w-full resize-none border bg-transparent px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-current {{ line }}"></textarea>
+          </div>
+          <button type="submit" data-forum-send
+                  class="h-9 shrink-0 border px-3 text-sm font-semibold hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40 {{ line }} {{ accent }}">{% trans "Send" %}</button>
         </form>
-      </details>
+        {% comment %}What this post will cost, asked a moment after the typing
+        stops. Empty until the estimate door answers.{% endcomment %}
+        <p class="mt-1 hidden text-right font-mono text-[11px] opacity-80" data-forum-estimate data-testid="forum-estimate" aria-live="polite"></p>
+      </div>
     </div>
+
+    {% comment %}Right: the polls, the newest first, and the form that opens
+    one.{% endcomment %}
+    <aside data-forum-panel="polls" aria-label="{% trans "Polls" %}"
+           class="order-first hidden max-h-[60vh] min-h-0 shrink-0 flex-col overflow-hidden border-b lg:order-none lg:flex lg:max-h-none lg:border-b-0 lg:border-l {{ side }} {{ line }}">
+      <div class="flex items-center justify-between gap-2 border-b px-3 py-2 {{ line }}">
+        <h2 class="{{ caps }}">{% trans "Polls" %}</h2>
+        <span class="font-mono text-[11px] opacity-60" data-forum-poll-count>0</span>
+      </div>
+      <div class="min-h-0 flex-1 overflow-y-auto p-2">
+        <div class="space-y-2" data-forum-polls data-testid="forum-polls"></div>
+        <p class="px-1 py-4 text-center text-xs italic opacity-60" data-forum-polls-empty>{% trans "No polls yet." %}</p>
+        <details class="mt-2 border {{ line }}">
+          <summary class="cursor-pointer px-2 py-1.5 {{ caps }}">{% trans "Open a poll" %}</summary>
+          <form class="space-y-2 border-t p-2 text-xs {{ line }}" data-forum-poll-form>
+            <label class="block">{% trans "Question" %}
+              <input type="text" name="title" maxlength="150" class="mt-0.5 w-full border bg-transparent px-1.5 py-1 text-sm {{ line }}"></label>
+            <label class="block">{% trans "Options, one a line" %}
+              <textarea name="options" rows="4" class="mt-0.5 w-full border bg-transparent px-1.5 py-1 text-sm {{ line }}"></textarea></label>
+            <label class="block">{% trans "Answers" %}
+              <select name="revisability" class="mt-0.5 w-full border bg-transparent px-1 py-1 text-sm {{ line }}">
+                <option value="open">{% trans "may be changed" %}</option>
+                <option value="final">{% trans "are final" %}</option>
+              </select></label>
+            <label class="block">{% trans "The count" %}
+              <select name="visibility" class="mt-0.5 w-full border bg-transparent px-1 py-1 text-sm {{ line }}">
+                <option value="live">{% trans "is shown as it grows" %}</option>
+                <option value="on_close">{% trans "appears when the poll closes" %}</option>
+              </select></label>
+            <label class="block">{% trans "Closes at (may be left empty)" %}
+              <input type="datetime-local" name="closes_at" class="mt-0.5 w-full border bg-transparent px-1 py-1 text-sm {{ line }}"></label>
+            <button type="submit" class="border px-2 py-1 text-sm font-semibold hover:opacity-80 {{ line }} {{ accent }}">{% trans "Open the poll" %}</button>
+          </form>
+        </details>
+      </div>
+    </aside>
   </div>
-  {% comment %}The page's words, for the script: it writes them as text.{% endcomment %}
+
+  {% comment %}The page's words, for the script: it writes them as text.
+  The limit in the sentence about a large image is the door's own.{% endcomment %}
+  {% widthratio forum_config.limits.image_bytes 1048576 1 as image_megabytes %}
   <div class="hidden" data-forum-words
        data-remove="{% trans "Remove" %}"
-       data-removed="{% trans "removed" %}"
+       data-gone="{% trans "A message was removed." %}"
+       data-unreadable="{% trans "This message cannot be read." %}"
+       data-you="{% trans "you" %}"
        data-vote="{% trans "Vote" %}"
        data-close="{% trans "Close" %}"
+       data-open="{% trans "open" %}"
        data-closed="{% trans "closed" %}"
+       data-closes="{% trans "closes {when}" %}"
        data-poll="{% trans "Poll" %}"
-       data-answers="{% trans "answers" %}"
+       data-rule-open="{% trans "Answers may be changed" %}"
+       data-rule-final="{% trans "One answer, final" %}"
+       data-answers-count="{% trans "Answers: {count}" %}"
        data-hidden-count="{% trans "The count appears when the poll closes." %}"
        data-your-answer="{% trans "your answer" %}"
        data-image="{% trans "image" %}"
+       data-image-type="{% trans "Send a JPEG, PNG, GIF or WebP image." %}"
+       data-image-large="{% blocktrans with size=image_megabytes %}The image is too large. The most is {{ size }} MB.{% endblocktrans %}"
+       data-live="{% trans "live" %}"
+       data-retrying="{% trans "offline, retrying" %}"
+       data-sending="{% trans "Sending…" %}"
+       data-cost="{% trans "This will cost {amount}." %}"
+       data-unaffordable="{% trans "You do not have enough mana for this." %}"
        data-failed="{% trans "The request failed. Try again." %}"
        data-confirm-remove="{% trans "Remove this for everybody? It cannot be undone." %}"></div>
 </section>
+{% endwith %}
 <script src="{% static 'forum/channel.js' %}"></script>
 {% endblock %}

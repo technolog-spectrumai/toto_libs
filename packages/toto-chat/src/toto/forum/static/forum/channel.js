@@ -1,29 +1,61 @@
-/* One community's channel (stage 68, 2026-10-07): plain and working.
+/* One community's channel: the forum's page (stage 68, 2026-10-07; live,
+ * with its look, since stage 70 of the same day).
  *
- * Two halves. The functions at the top have no page in them (the state a
- * page keeps of its channel, and what one feed answer does to it) and can
- * run under node. `mount` is the page.
+ * Two halves. The functions at the top have no page in them and run under
+ * node: the state a page keeps of its channel and what one feed answer does
+ * to it (`applyFeed`), the timer that asks the feed (`createPoller`), the
+ * wait before an estimate is asked (`createEstimator`), the rule that makes
+ * a link (`splitLinks`). `mount` is the page.
  *
  * THE RULES KEPT HERE
  *  - Every name, message, question and option is written as TEXT
- *    (textContent). Nothing a member wrote is ever put into the page as
- *    markup, and an address in a message is not made a link.
- *  - The page keeps a CURSOR: the last event of the channel it has seen.
- *    `applyFeed` merges one answer of the feed door into the state and says
- *    what changed, so the page touches only those nodes: a new message is
- *    added, a removed one is taken out, a poll's counts are redrawn. History
- *    is never loaded again.
+ *    (textContent, text nodes). Nothing a member wrote is ever put into the
+ *    page as markup.
+ *  - An address in a message becomes a link only when it points at THIS
+ *    platform (the page's own host, or a name the page data lists); the link
+ *    then leads to this page's origin. Every other address stays text.
+ *  - A picture is an <img> whose address is the image door's, as the feed
+ *    gave it, and nothing else; pressed, it opens that door in a new tab.
+ *  - SHORT POLLING, and nothing else. The page asks the feed door for what
+ *    changed after its CURSOR (the last event of the channel it has seen),
+ *    waits for the answer, and only then sets a timer for the next question,
+ *    so one request is out at a time and a slow server is never asked
+ *    twice. The wait is the page data's `refresh_seconds` (the forum's
+ *    Settings). A hidden tab asks nothing; shown again it asks once at once
+ *    with the cursor it kept, and again at once while the answer says there
+ *    is more. A failed request doubles the wait, up to a minute, and the
+ *    first answer brings it back. No socket, no event stream, no request
+ *    held open, no repeating timer.
+ *  - What an answer brings is applied to the nodes that are there: a new
+ *    message is added in its place, a removed one becomes a quiet line, a
+ *    poll's card is filled again with its counts, and everything from before
+ *    a cleanup's edge (`purged_before`) is taken out. History is never
+ *    loaded again, and the reader's place is kept unless they are at the
+ *    bottom.
+ *  - Rows are kept by id, and a row is replaced only by one whose `seq` is
+ *    newer: what the member's own post, vote or removal answered is drawn at
+ *    once, and the next answer of the feed, which holds it too, adds nothing.
  *  - A post carries an `op` minted once per deliberate press. It is kept and
- *    sent again only when the server never answered, so a retry is the same
- *    post and is stored (and, from stage 69, charged) once.
- *  - This page asks the feed when it is loaded, when Refresh is pressed and
- *    after each thing the member does. A timer that asks by itself, paused
- *    in a hidden tab, is stage 70's: it calls `refresh`.
+ *    sent again only when the server never answered (or answered 5xx) and
+ *    the member changed nothing, so a retry is the same post: stored once,
+ *    charged once.
+ *  - Before a post the page asks what it will cost (the estimate door, when
+ *    the page data names one), a moment after the typing stops, and shows
+ *    the answer beside Send; when the balance does not cover it, Send is
+ *    off. Without that door nothing is shown and nothing fails.
+ *  - Nothing is kept in the browser's storage.
  */
 (function (root) {
   "use strict";
 
   var api = {};
+
+  /* --- no page from here to `mount` ---------------------------------------- */
+
+  /* The longest wait between two questions after failures, in milliseconds. */
+  var MOST_WAIT = 60000;
+  /* How long after the typing stops the estimate is asked, in milliseconds. */
+  var ESTIMATE_WAIT = 400;
 
   function mintOp() {
     var c = root.crypto;
@@ -42,8 +74,24 @@
 
   function urlFor(pattern, nil, id) { return String(pattern).replace(nil, String(id)); }
 
+  /* The UTF-8 length of `text`, which is what a post is priced by. */
+  function utf8Length(text) {
+    text = text === undefined || text === null ? "" : String(text);
+    if (typeof root.TextEncoder === "function") { return new root.TextEncoder().encode(text).length; }
+    var bytes = 0;
+    for (var i = 0; i < text.length; i++) {
+      var code = text.charCodeAt(i);
+      if (code < 0x80) { bytes += 1; }
+      else if (code < 0x800) { bytes += 2; }
+      else if (code >= 0xd800 && code < 0xdc00) { bytes += 4; i += 1; }
+      else { bytes += 3; }
+    }
+    return bytes;
+  }
+
   function newState() {
-    return {cursor: 0, messages: {}, polls: {}, oldest: null, more: false, purgedBefore: null};
+    return {cursor: 0, messages: {}, polls: {}, gone: {}, oldest: null, more: false,
+            purgedBefore: null};
   }
 
   function byNumber(map) {
@@ -51,29 +99,51 @@
       .sort(function (a, b) { return a.number - b.number; });
   }
 
-  /* Merge one answer of the feed door into `state`. Returns what changed:
-   * {messages: [added or changed], removedMessages: [ids], polls: [added or
-   * changed], removedPolls: [ids]}. An answer of older history (no cursor in
-   * it) adds messages and moves `oldest` only. */
+  /* One list of rows of an answer into what the page holds. A tombstone
+   * takes its row out and is remembered, so an older answer that arrives
+   * late cannot bring the row back; a row replaces the one held only when
+   * its `seq` is newer. */
+  function merge(held, gone, rows, changedRows, removedIds) {
+    (rows || []).forEach(function (row) {
+      if (!row || row.id === undefined || row.id === null) { return; }
+      var seq = Number(row.seq) || 0;
+      if (row.removed) {
+        gone[row.id] = Math.max(gone[row.id] || 0, seq);
+        if (held[row.id]) { delete held[row.id]; removedIds.push(row.id); }
+        return;
+      }
+      if (gone[row.id] !== undefined && seq <= gone[row.id]) { return; }
+      var old = held[row.id];
+      if (old && (Number(old.seq) || 0) >= seq) { return; }
+      held[row.id] = row;
+      changedRows.push(row);
+    });
+  }
+
+  function drop(held, edge, removedIds, purgedIds) {
+    Object.keys(held).forEach(function (id) {
+      if (Date.parse(held[id].created_at) < edge) {
+        delete held[id];
+        removedIds.push(id);
+        purgedIds.push(id);
+      }
+    });
+  }
+
+  /* Merge one answer of the feed door (or of a door the member used: the
+   * same shape, without a cursor) into `state`. Returns what changed:
+   * {messages: [added or newer], removedMessages: [ids], polls: [added or
+   * newer], removedPolls: [ids], purgedMessages: [ids], purgedPolls: [ids],
+   * edge: the cleanup's instant in milliseconds, or null}. The purged ids
+   * are among the removed ones too. An answer of older history (no cursor
+   * in it) adds messages and moves `oldest` only. */
   function applyFeed(state, answer) {
-    var changed = {messages: [], removedMessages: [], polls: [], removedPolls: []};
+    var changed = {messages: [], removedMessages: [], polls: [], removedPolls: [],
+                   purgedMessages: [], purgedPolls: [], edge: null};
     if (!answer) { return changed; }
-    (answer.messages || []).forEach(function (row) {
-      if (row.removed) {
-        if (state.messages[row.id]) { delete state.messages[row.id]; changed.removedMessages.push(row.id); }
-        return;
-      }
-      state.messages[row.id] = row;
-      changed.messages.push(row);
-    });
-    (answer.polls || []).forEach(function (row) {
-      if (row.removed) {
-        if (state.polls[row.id]) { delete state.polls[row.id]; changed.removedPolls.push(row.id); }
-        return;
-      }
-      state.polls[row.id] = row;
-      changed.polls.push(row);
-    });
+    if (!state.gone) { state.gone = {}; }
+    merge(state.messages, state.gone, answer.messages, changed.messages, changed.removedMessages);
+    merge(state.polls, state.gone, answer.polls, changed.polls, changed.removedPolls);
     if (typeof answer.cursor === "number" && answer.cursor > state.cursor) {
       state.cursor = answer.cursor;
     }
@@ -83,49 +153,300 @@
     }
     if (answer.oldest !== undefined && answer.more !== undefined) { state.more = !!answer.more; }
     if (answer.purged_before && answer.purged_before !== state.purgedBefore) {
-      state.purgedBefore = answer.purged_before;
       var edge = Date.parse(answer.purged_before);
-      Object.keys(state.messages).forEach(function (id) {
-        if (Date.parse(state.messages[id].created_at) < edge) {
-          delete state.messages[id]; changed.removedMessages.push(id);
-        }
-      });
-      Object.keys(state.polls).forEach(function (id) {
-        if (Date.parse(state.polls[id].created_at) < edge) {
-          delete state.polls[id]; changed.removedPolls.push(id);
-        }
-      });
+      if (!isNaN(edge)) {
+        state.purgedBefore = answer.purged_before;
+        changed.edge = edge;
+        drop(state.messages, edge, changed.removedMessages, changed.purgedMessages);
+        drop(state.polls, edge, changed.removedPolls, changed.purgedPolls);
+      }
     }
     return changed;
   }
 
+  /* The interval of the page data as milliseconds: a second at the least,
+   * an hour at the most, five seconds when it says nothing usable. */
+  function waitOf(seconds) {
+    var value = Number(seconds);
+    if (!isFinite(value) || value <= 0) { value = 5; }
+    return Math.round(Math.min(Math.max(value, 1), 3600) * 1000);
+  }
+
+  /* The timer that asks the feed.
+   *
+   *   ask()        asks once; a promise of {ok, more}. A rejection is a
+   *                failure, as an answer that is not ok is.
+   *   seconds      the wait between an answer and the next question
+   *   hidden()     true while the tab is hidden: nothing is asked then
+   *   setTimer(fn, ms), clearTimer(handle)   the one-shot timer to use
+   *   onState({ok, failures, wait})          told after every answer
+   *
+   * start() sets the first timer. now() asks at once (the Refresh button;
+   * during a request it asks again as soon as that one is answered).
+   * visibility() is for the page's `visibilitychange`: hidden, the timer is
+   * dropped; shown, one question at once. stop() ends it. One request is
+   * out at a time, and the next timer is set only when it has come back. */
+  function createPoller(options) {
+    var base = waitOf(options.seconds);
+    var most = Math.max(base, MOST_WAIT);
+    var hidden = options.hidden || function () { return false; };
+    var wait = base;
+    var failures = 0;
+    var timer = null;
+    var flying = null;
+    var again = false;
+    var stopped = true;
+
+    function cancel() {
+      if (timer !== null) { options.clearTimer(timer); timer = null; }
+    }
+
+    function plan() {
+      cancel();
+      if (stopped || hidden()) { return; }
+      timer = options.setTimer(function () {
+        timer = null;
+        if (!stopped && !hidden()) { go(); }
+      }, wait);
+    }
+
+    function go() {
+      if (flying) { again = true; return flying; }
+      again = false;
+      var asked;
+      try { asked = Promise.resolve(options.ask()); } catch (error) { asked = Promise.reject(error); }
+      flying = asked.then(function (answer) { return answer || {ok: false}; },
+                          function () { return {ok: false}; })
+        .then(function (answer) {
+          flying = null;
+          if (answer.ok) { failures = 0; wait = base; }
+          else { failures += 1; wait = Math.min(wait * 2, most); }
+          if (options.onState) { options.onState({ok: !!answer.ok, failures: failures, wait: wait}); }
+          if (stopped) { return answer; }
+          if (answer.ok && (answer.more || again) && !hidden()) { return go(); }
+          again = false;
+          plan();
+          return answer;
+        });
+      return flying;
+    }
+
+    return {
+      start: function () { stopped = false; plan(); },
+      stop: function () { stopped = true; again = false; cancel(); },
+      now: function () { stopped = false; cancel(); return go(); },
+      visibility: function () {
+        if (stopped) { return null; }
+        cancel();
+        return hidden() ? null : go();
+      },
+      wait: function () { return wait; },
+      base: function () { return base; },
+      waiting: function () { return timer !== null; },
+      flying: function () { return flying !== null; }
+    };
+  }
+
+  /* The estimate, asked a moment after the last change.
+   *
+   *   ask(textBytes, imageBytes)   a promise of {ok, data}
+   *   show(data | null)            the estimate to show, or nothing
+   *   wait                         milliseconds after the last change
+   *   setTimer, clearTimer
+   *
+   * request(textBytes, imageBytes, atOnce) is called on every change. An
+   * empty post asks nothing and shows nothing. An answer to a question that
+   * has been overtaken by a newer one is dropped. */
+  function createEstimator(options) {
+    var wait = options.wait === undefined ? ESTIMATE_WAIT : options.wait;
+    var timer = null;
+    var serial = 0;
+
+    function cancel() {
+      if (timer !== null) { options.clearTimer(timer); timer = null; }
+      serial += 1;
+    }
+
+    function fire(textBytes, imageBytes) {
+      var mine = serial;
+      var asked;
+      try { asked = Promise.resolve(options.ask(textBytes, imageBytes)); }
+      catch (error) { asked = Promise.reject(error); }
+      return asked.then(function (answer) {
+        if (mine !== serial) { return; }
+        options.show(answer && answer.ok && answer.data ? answer.data : null);
+      }, function () {
+        if (mine === serial) { options.show(null); }
+      });
+    }
+
+    function request(textBytes, imageBytes, atOnce) {
+      cancel();
+      if (!textBytes && !imageBytes) { options.show(null); return null; }
+      if (atOnce) { return fire(textBytes, imageBytes); }
+      timer = options.setTimer(function () {
+        timer = null;
+        fire(textBytes, imageBytes);
+      }, wait);
+      return null;
+    }
+
+    return {request: request, cancel: cancel};
+  }
+
+  /* --- links: only to this platform ---------------------------------------- */
+
+  /* An address the way Markdown finds one: http://, https:// or www., not
+   * glued to a word, an address or another URL. Built in a try: a browser
+   * that does not know the look-behind keeps every message plain text. */
+  var URL_RE = null;
+  try {
+    URL_RE = new RegExp("(?<![\\p{L}\\p{N}_/@.:\\-])(?:https?:\\/\\/|www\\.)" +
+                        "[^\\s\\x85<>\"'\\x00-\\x1f\\x7f]+", "giu");
+  } catch (error) { URL_RE = null; }
+  var URL_TRAILING = ".,:;!?'\"*_~";
+
+  function count(text, char) { return text.split(char).length - 1; }
+
+  function trimUrl(url) {
+    while (url && (URL_TRAILING.indexOf(url[url.length - 1]) !== -1 ||
+                   (url[url.length - 1] === ")" && count(url, "(") < count(url, ")")))) {
+      url = url.slice(0, -1);
+    }
+    return url;
+  }
+
+  /* Where a candidate address may point, or null when it stays text. */
+  function selfHref(candidate, hosts, origin) {
+    var absolute = /^https?:\/\//i.test(candidate) ? candidate : "https://" + candidate;
+    /* No user@ before the host: "https://ours@elsewhere" reads as ours. */
+    var authority = absolute.replace(/^https?:\/\//i, "").split(/[/?#\\]/)[0];
+    if (authority.indexOf("@") !== -1) { return null; }
+    var url;
+    try { url = new root.URL(absolute); } catch (error) { return null; }
+    if (url.protocol !== "http:" && url.protocol !== "https:") { return null; }
+    if (url.username || url.password) { return null; }
+    var names = {};
+    (hosts || []).forEach(function (host) {
+      if (typeof host === "string" && host.trim()) { names[host.trim().toLowerCase()] = true; }
+    });
+    if (!names[url.hostname.toLowerCase()]) { return null; }
+    return String(origin) + url.pathname + url.search + url.hash;
+  }
+
+  /* The message cut into pieces: {text} or {text, href}. Joined, the texts
+   * are the message exactly. */
+  function splitLinks(text, hosts, origin) {
+    var message = text === undefined || text === null ? "" : String(text);
+    if (!URL_RE || !message) { return message ? [{text: message}] : []; }
+    var parts = [];
+    var last = 0;
+    var match;
+    URL_RE.lastIndex = 0;
+    while ((match = URL_RE.exec(message)) !== null) {
+      var url = trimUrl(match[0]);
+      var low = url.toLowerCase();
+      if (low === "http://" || low === "https://" || low === "www." || low === "") { continue; }
+      var href = selfHref(url, hosts, origin);
+      if (!href) { continue; }
+      if (match.index > last) { parts.push({text: message.slice(last, match.index)}); }
+      parts.push({text: url, href: href});
+      last = match.index + url.length;
+    }
+    if (last < message.length) { parts.push({text: message.slice(last)}); }
+    return parts;
+  }
+
   api.mintOp = mintOp;
   api.urlFor = urlFor;
+  api.utf8Length = utf8Length;
   api.newState = newState;
   api.byNumber = byNumber;
   api.applyFeed = applyFeed;
+  api.waitOf = waitOf;
+  api.createPoller = createPoller;
+  api.createEstimator = createEstimator;
+  api.selfHref = selfHref;
+  api.splitLinks = splitLinks;
+  api.MOST_WAIT = MOST_WAIT;
+  api.ESTIMATE_WAIT = ESTIMATE_WAIT;
 
   /* --- the page ------------------------------------------------------------ */
+
+  /* The theme's own colours, light and dark. The page's box carries
+   * data-forum-theme (the header's switch sets it), and a node made here
+   * names both colours, so nothing is redrawn when the switch is pressed.
+   * Every class is written whole: the stylesheet is built from what it can
+   * read. */
+  var LINE = "border-accent-2/40 group-data-[forum-theme=dark]/forum:border-accent-1/40";
+  var NAME = "text-accent-light group-data-[forum-theme=dark]/forum:text-accent-dark";
+  var MINE = "border-accent-light group-data-[forum-theme=dark]/forum:border-accent-dark";
+  var FILL = "bg-accent-light group-data-[forum-theme=dark]/forum:bg-accent-dark";
+  var TRACK = "bg-black/10 group-data-[forum-theme=dark]/forum:bg-white/10";
+  var HOVER = "hover:bg-black/5 group-data-[forum-theme=dark]/forum:hover:bg-white/5";
+  var LINK = "text-link-light group-data-[forum-theme=dark]/forum:text-link-dark";
+  var GOOD = "text-success-light group-data-[forum-theme=dark]/forum:text-success-dark";
+  var BAD = "text-warn-light group-data-[forum-theme=dark]/forum:text-warn-dark";
+  var BUTTON = "border px-2 py-0.5 text-xs font-semibold hover:opacity-80";
+  var QUIET = "text-[11px] underline opacity-70 hover:opacity-100";
+  var CAPS = "font-mono text-[10px] font-bold uppercase tracking-widest";
+
+  /* Messages of one sender this close together are drawn under one name. */
+  var GROUP_MS = 5 * 60 * 1000;
+  /* This near the bottom, the reader is "at the bottom". */
+  var NEAR = 60;
 
   function mount(section) {
     var doc = root.document;
     var config = JSON.parse(doc.getElementById("forum-channel-config").textContent);
-    var urls = config.urls;
+    var urls = config.urls || {};
+    var limits = config.limits || {};
     var words = section.querySelector("[data-forum-words]").dataset;
+    var scroll = section.querySelector("[data-forum-scroll]");
     var list = section.querySelector("[data-forum-messages]");
     var pollBox = section.querySelector("[data-forum-polls]");
+    var pollsEmpty = section.querySelector("[data-forum-polls-empty]");
     var status = section.querySelector("[data-forum-status]");
+    var liveChip = section.querySelector("[data-forum-live]");
     var older = section.querySelector("[data-forum-older]");
+    var newer = section.querySelector("[data-forum-new]");
     var empty = section.querySelector("[data-forum-empty]");
+    var postForm = section.querySelector("[data-forum-post]");
+    var textBox = section.querySelector("[data-forum-text]");
+    var fileInput = section.querySelector("[data-forum-image]");
+    var pick = section.querySelector("[data-forum-pick]");
+    var picked = section.querySelector("[data-forum-picked]");
+    var pickedName = section.querySelector("[data-forum-picked-name]");
+    var unpick = section.querySelector("[data-forum-unpick]");
+    var send = section.querySelector("[data-forum-send]");
+    var estimateBox = section.querySelector("[data-forum-estimate]");
+    var pollForm = section.querySelector("[data-forum-poll-form]");
     var csrfInput = section.querySelector("[data-forum-csrf] input[name=csrfmiddlewaretoken]");
     var csrf = csrfInput ? csrfInput.value : "";
+    var lang = (doc.documentElement && doc.documentElement.lang) || undefined;
+    var place = root.location || {};
+    var hosts = [place.hostname].concat(config.link_hosts || []);
     var state = newState();
-    var pendingOp = null;
+    var pending = null;      /* the op of a press the server has not answered */
+    var busy = false;        /* a post is on its way */
+    var blocked = false;     /* the estimate says the balance does not cover it */
+    var pinned = true;       /* the reader is at the bottom of the messages */
+    var pollSaid = false;    /* the status line holds a sentence of the timer's */
+
+    function setTimer(fn, ms) { return root.setTimeout(fn, ms); }
+    function clearTimer(handle) { root.clearTimeout(handle); }
+
+    /* The warning colour on or off: `classes` is one of the pairs above. */
+    function tint(node, classes, on) {
+      classes.split(" ").forEach(function (name) { node.classList.toggle(name, !!on); });
+    }
 
     function say(text, bad) {
+      pollSaid = false;
       status.textContent = text || "";
       status.classList.toggle("hidden", !text);
       status.dataset.bad = bad ? "1" : "";
+      tint(status, BAD, !!text && !!bad);
     }
 
     function ask(url, options) {
@@ -135,7 +456,7 @@
                                       options.headers || {});
       return root.fetch(url, options).then(function (response) {
         return response.json().then(function (data) {
-          return {ok: response.ok, status: response.status, data: data};
+          return {ok: response.ok, status: response.status, data: data || {}};
         }, function () { return {ok: false, status: response.status, data: {}}; });
       });
     }
@@ -152,198 +473,640 @@
       return node;
     }
 
+    function button(className, text, press) {
+      var node = el("button", className, text);
+      node.type = "button";
+      node.addEventListener("click", press);
+      return node;
+    }
+
+    /* "14:05" for today, "7 Oct, 14:05" for another day of this year. */
+    /* A date in the page's language; in the browser's when the page's is
+     * one it does not know. */
+    function local(date, method, options) {
+      try { return date[method](lang, options); } catch (error) { return date[method](undefined, options); }
+    }
+
     function when(iso) {
       var date = new Date(iso);
-      return isNaN(date.getTime()) ? "" : date.toLocaleString();
+      if (isNaN(date.getTime())) { return ""; }
+      var now = new Date();
+      var time = local(date, "toLocaleTimeString", {hour: "2-digit", minute: "2-digit"});
+      if (date.toDateString() === now.toDateString()) { return time; }
+      var day = date.getFullYear() === now.getFullYear()
+        ? local(date, "toLocaleDateString", {day: "numeric", month: "short"})
+        : local(date, "toLocaleDateString", {day: "numeric", month: "short", year: "numeric"});
+      return day + ", " + time;
+    }
+
+    function whole(iso) {
+      var date = new Date(iso);
+      return isNaN(date.getTime()) ? "" : local(date, "toLocaleString");
+    }
+
+    /* --- where the reader is ------------------------------------------- */
+
+    function nearBottom() {
+      return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < NEAR;
+    }
+
+    function toBottom() {
+      scroll.scrollTop = scroll.scrollHeight;
+      pinned = true;
+      if (newer) { newer.classList.add("hidden"); }
+    }
+
+    scroll.addEventListener("scroll", function () {
+      pinned = nearBottom();
+      if (pinned && newer) { newer.classList.add("hidden"); }
+    });
+    if (newer) { newer.addEventListener("click", toBottom); }
+
+    /* --- messages ------------------------------------------------------- */
+
+    function textNode(row) {
+      var body = el("p", "whitespace-pre-wrap break-words text-sm leading-snug [overflow-wrap:anywhere]");
+      body.dataset.forumBody = "";
+      splitLinks(row.text, hosts, place.origin).forEach(function (part) {
+        if (!part.href) { body.appendChild(doc.createTextNode(part.text)); return; }
+        var link = el("a", "underline underline-offset-2 hover:opacity-80 " + LINK, part.text);
+        link.href = part.href;
+        link.rel = "noopener";
+        body.appendChild(link);
+      });
+      return body;
     }
 
     function messageNode(row) {
-      var item = el("li", "border border-current/15 px-2 py-1");
+      var item = el("li", "group/row relative flex gap-2 border-l-2 px-3 py-0.5 " + HOVER + " " +
+                          (row.mine ? MINE : "border-transparent"));
       item.dataset.messageId = row.id;
       item.dataset.number = String(row.number);
-      var head = el("div", "flex flex-wrap items-baseline gap-2 text-xs opacity-80");
-      head.appendChild(el("span", "font-semibold", row.sender));
-      head.appendChild(el("time", "", when(row.created_at)));
-      if (row.may_remove) {
-        var remove = el("button", "ml-auto underline", words.remove);
-        remove.type = "button";
-        remove.addEventListener("click", function () {
-          if (root.confirm && !root.confirm(words.confirmRemove)) { return; }
-          sendJson(urlFor(urls.message_remove, urls.nil, row.id)).then(afterAction, failed);
-        });
-        head.appendChild(remove);
+      item.dataset.at = String(Date.parse(row.created_at) || 0);
+      item.dataset.sender = String(row.sender_id) + "|" + String(row.sender);
+      if (row.mine) { item.dataset.mine = "1"; }
+      item.title = whole(row.created_at);
+
+      var gutter = el("div", "w-7 shrink-0 pt-0.5");
+      gutter.dataset.forumGutter = "";
+      var face;
+      if (row.avatar) {
+        face = el("img", "h-7 w-7 border object-cover " + LINE);
+        face.alt = "";
+        face.loading = "lazy";
+        face.src = row.avatar;
+      } else {
+        face = el("div", "flex h-7 w-7 items-center justify-center border font-mono text-xs font-bold " +
+                         LINE, (String(row.sender || "?").trim().charAt(0) || "?").toUpperCase());
+        face.setAttribute("aria-hidden", "true");
       }
-      item.appendChild(head);
-      if (row.text) { item.appendChild(el("p", "whitespace-pre-wrap break-words text-sm", row.text)); }
-      if (row.image) {
-        var image = el("img", "mt-1 max-h-80 max-w-full");
+      gutter.appendChild(face);
+      item.appendChild(gutter);
+
+      var main = el("div", "min-w-0 flex-1");
+      var head = el("div", "flex flex-wrap items-baseline gap-x-2");
+      head.dataset.forumHead = "";
+      var name = el("span", "text-sm font-semibold " + NAME, row.sender);
+      name.dataset.forumSender = "";
+      head.appendChild(name);
+      var time = el("time", "font-mono text-[11px] opacity-60", when(row.created_at));
+      time.setAttribute("datetime", String(row.created_at));
+      head.appendChild(time);
+      if (row.mine) { head.appendChild(el("span", CAPS + " opacity-50", words.you)); }
+      main.appendChild(head);
+      if (row.unreadable) {
+        main.appendChild(el("p", "text-sm italic opacity-60", words.unreadable));
+      } else if (row.text) {
+        main.appendChild(textNode(row));
+      }
+      if (row.image && row.image.url) {
+        var door = el("a", "mt-1 inline-block");
+        door.href = row.image.url;
+        door.target = "_blank";
+        door.rel = "noopener noreferrer";
+        var image = el("img", "max-h-56 max-w-[min(100%,18rem)] border object-contain " + LINE);
         image.alt = words.image;
         image.loading = "lazy";
+        image.addEventListener("load", function () { if (pinned) { toBottom(); } });
         image.src = row.image.url;
-        item.appendChild(image);
+        door.appendChild(image);
+        main.appendChild(door);
+      }
+      item.appendChild(main);
+
+      if (row.may_remove) {
+        item.appendChild(button(
+          "shrink-0 self-start lg:opacity-0 lg:focus:opacity-100 lg:group-hover/row:opacity-100 " + QUIET,
+          words.remove, function () {
+            if (root.confirm && !root.confirm(words.confirmRemove)) { return; }
+            sendJson(urlFor(urls.message_remove, urls.nil, row.id)).then(mine, failed);
+          }));
       }
       return item;
     }
 
+    /* What stands where a removed message stood: one quiet line. */
+    function goneNode(old) {
+      var item = el("li", "px-3 py-0.5 pl-12 text-xs italic opacity-50", words.gone);
+      item.dataset.forumGone = "";
+      item.dataset.number = old.dataset.number;
+      item.dataset.at = old.dataset.at;
+      return item;
+    }
+
+    function messageById(id) {
+      return list.querySelector('[data-message-id="' + id + '"]');
+    }
+
     function drawMessage(row) {
-      var old = list.querySelector('[data-message-id="' + row.id + '"]');
       var node = messageNode(row);
+      var old = messageById(row.id);
       if (old) { list.replaceChild(node, old); return; }
       var after = null;
-      Array.prototype.forEach.call(list.children, function (child) {
-        if (after === null && Number(child.dataset.number) > row.number) { after = child; }
-      });
+      var rows = list.children;
+      /* From the end: a new message nearly always belongs there. */
+      for (var i = rows.length - 1; i >= 0; i--) {
+        if (Number(rows[i].dataset.number) < row.number) { break; }
+        after = rows[i];
+      }
       list.insertBefore(node, after);
     }
 
-    function pollNode(row) {
-      var card = el("div", "mb-2 border border-current/30 p-2 text-sm");
-      card.dataset.pollId = row.id;
-      card.dataset.number = String(row.number);
-      var head = el("div", "flex flex-wrap items-baseline gap-2");
-      head.appendChild(el("span", "text-xs font-semibold uppercase opacity-70", words.poll));
-      head.appendChild(el("span", "font-semibold", row.title));
-      head.appendChild(el("span", "text-xs opacity-70", row.opener));
-      if (!row.open) { head.appendChild(el("span", "text-xs italic", words.closed)); }
-      card.appendChild(head);
-      var options = el("ul", "mt-1 space-y-1");
-      row.choices.forEach(function (choice) {
-        var line = el("li", "flex flex-wrap items-baseline gap-2");
-        if (row.open) {
-          var vote = el("button", "border border-current/40 px-2", words.vote);
-          vote.type = "button";
-          vote.addEventListener("click", function () {
-            sendJson(urlFor(urls.poll_vote, urls.nil, row.id), {choice: choice.id})
-              .then(afterAction, failed);
-          });
-          line.appendChild(vote);
+    /* Consecutive messages of one sender, minutes apart, under one name. */
+    function regroup() {
+      var before = null;
+      Array.prototype.forEach.call(list.children, function (node) {
+        if (node.dataset.messageId) {
+          var joined = !!(before && before.dataset.messageId &&
+            before.dataset.sender === node.dataset.sender &&
+            Number(node.dataset.at) - Number(before.dataset.at) < GROUP_MS &&
+            new Date(Number(node.dataset.at)).toDateString() ===
+              new Date(Number(before.dataset.at)).toDateString());
+          var head = node.querySelector("[data-forum-head]");
+          var gutter = node.querySelector("[data-forum-gutter]");
+          if (head) { head.classList.toggle("hidden", joined); }
+          if (gutter) { gutter.classList.toggle("invisible", joined); }
+          if (gutter) { gutter.classList.toggle("h-0", joined); }
+          node.classList.toggle("mt-2", !joined);
+          node.dataset.joined = joined ? "1" : "";
         }
-        line.appendChild(el("span", "font-semibold", choice.label));
-        if (choice.text) { line.appendChild(el("span", "opacity-80", choice.text)); }
-        if (choice.ballots !== null) { line.appendChild(el("span", "opacity-70", choice.ballots)); }
-        if (row.my_choice === choice.id) {
-          line.appendChild(el("span", "text-xs italic", words.yourAnswer));
+        before = node;
+      });
+    }
+
+    /* --- polls ----------------------------------------------------------- */
+
+    function fillPoll(card, row) {
+      card.textContent = "";
+      card.dataset.seq = String(row.seq);
+      card.dataset.open = row.open ? "1" : "";
+      var answered = row.my_choice !== null && row.my_choice !== undefined;
+      var votable = !!row.open && (!answered || row.revisability === "open");
+
+      var head = el("div", "flex items-baseline gap-2");
+      head.appendChild(el("span", CAPS + " opacity-60", words.poll));
+      head.appendChild(el("span", "ml-auto " + CAPS + " " + (row.open ? GOOD : "opacity-50"),
+                          row.open ? words.open : words.closed));
+      card.appendChild(head);
+      card.appendChild(el("h3", "mt-0.5 break-words text-sm font-semibold leading-snug [overflow-wrap:anywhere]",
+                          row.title));
+      var facts = [row.opener, row.revisability === "final" ? words.ruleFinal : words.ruleOpen];
+      if (row.closes_at) { facts.push(words.closes.replace("{when}", when(row.closes_at))); }
+      card.appendChild(el("p", "mt-0.5 text-[11px] leading-snug opacity-60",
+                          facts.filter(Boolean).join(" · ")));
+
+      var options = el("ul", "mt-1.5 space-y-1.5");
+      row.choices.forEach(function (choice) {
+        var line = el("li", "text-sm");
+        line.dataset.choiceId = String(choice.id);
+        var top = el("div", "flex items-baseline gap-2");
+        var chosen = answered && row.my_choice === choice.id;
+        if (votable && !chosen) {
+          var vote = button("shrink-0 " + BUTTON + " " + LINE, words.vote, function () {
+            sendJson(urlFor(urls.poll_vote, urls.nil, row.id), {choice: choice.id})
+              .then(mine, failed);
+          });
+          vote.dataset.forumVote = String(choice.id);
+          top.appendChild(vote);
+        }
+        var label = el("span", "min-w-0 break-words [overflow-wrap:anywhere]");
+        label.appendChild(el("span", "font-semibold", choice.label));
+        if (choice.text) { label.appendChild(el("span", "ml-1.5 opacity-70", choice.text)); }
+        top.appendChild(label);
+        if (chosen) {
+          var yours = el("span", "ml-auto shrink-0 " + CAPS + " " + NAME, words.yourAnswer);
+          yours.dataset.forumYours = "";
+          top.appendChild(yours);
+        }
+        line.appendChild(top);
+        if (choice.ballots !== null && choice.ballots !== undefined) {
+          var share = row.total ? Math.round(100 * choice.ballots / row.total) : 0;
+          var meter = el("div", "mt-0.5 flex items-center gap-2");
+          var track = el("div", "h-1.5 min-w-0 flex-1 " + TRACK);
+          var fill = el("div", "h-full " + FILL);
+          fill.style.width = share + "%";
+          fill.dataset.forumBar = String(share);
+          track.appendChild(fill);
+          meter.appendChild(track);
+          var tally = el("span", "w-16 shrink-0 text-right font-mono text-[11px] tabular-nums opacity-70",
+                         choice.ballots + " · " + share + "%");
+          tally.dataset.forumBallots = String(choice.ballots);
+          meter.appendChild(tally);
+          line.appendChild(meter);
         }
         options.appendChild(line);
       });
       card.appendChild(options);
-      card.appendChild(el("p", "mt-1 text-xs opacity-70",
-        row.total === null ? words.hiddenCount : row.total + " " + words.answers));
+
+      var foot = el("p", "mt-1.5 text-[11px] opacity-60",
+                    row.total === null || row.total === undefined
+                      ? words.hiddenCount
+                      : words.answersCount.replace("{count}", String(row.total)));
+      foot.dataset.forumTotal = row.total === null || row.total === undefined ? "" : String(row.total);
+      card.appendChild(foot);
+
       if (row.may_manage) {
-        var tools = el("div", "mt-1 flex gap-3 text-xs");
+        var tools = el("div", "mt-1.5 flex gap-3 border-t pt-1 " + LINE);
         if (row.open) {
-          var close = el("button", "underline", words.close);
-          close.type = "button";
-          close.addEventListener("click", function () {
-            sendJson(urlFor(urls.poll_close, urls.nil, row.id)).then(afterAction, failed);
-          });
-          tools.appendChild(close);
+          tools.appendChild(button(QUIET, words.close, function () {
+            sendJson(urlFor(urls.poll_close, urls.nil, row.id)).then(mine, failed);
+          }));
         }
-        var remove = el("button", "underline", words.remove);
-        remove.type = "button";
-        remove.addEventListener("click", function () {
+        tools.appendChild(button(QUIET, words.remove, function () {
           if (root.confirm && !root.confirm(words.confirmRemove)) { return; }
-          sendJson(urlFor(urls.poll_remove, urls.nil, row.id)).then(afterAction, failed);
-        });
-        tools.appendChild(remove);
+          sendJson(urlFor(urls.poll_remove, urls.nil, row.id)).then(mine, failed);
+        }));
         card.appendChild(tools);
       }
-      return card;
     }
 
+    function pollById(id) {
+      return pollBox.querySelector('[data-poll-id="' + id + '"]');
+    }
+
+    /* A poll that is there keeps its card: the card is filled again, so its
+     * counts, its bars and its buttons are the answer's. The newest first. */
     function drawPoll(row) {
-      var old = pollBox.querySelector('[data-poll-id="' + row.id + '"]');
-      var node = pollNode(row);
-      if (old) { pollBox.replaceChild(node, old); } else { pollBox.appendChild(node); }
+      var card = pollById(row.id);
+      if (!card) {
+        card = el("article", "border p-2 " + LINE);
+        card.dataset.pollId = row.id;
+        card.dataset.number = String(row.number);
+        card.dataset.at = String(Date.parse(row.created_at) || 0);
+        var after = null;
+        var cards = pollBox.children;
+        for (var i = 0; i < cards.length; i++) {
+          if (Number(cards[i].dataset.number) < row.number) { after = cards[i]; break; }
+        }
+        pollBox.insertBefore(card, after);
+      }
+      fillPoll(card, row);
     }
 
-    function draw(changed) {
+    /* --- one answer onto the page ------------------------------------------ */
+
+    /* `how`: "first" (the page's own first feed), "live" (the timer),
+     * "older" (history asked for), "mine" (what the member just did). */
+    function draw(changed, how) {
+      var wasPinned = pinned || how === "first";
+      var fromBottom = scroll.scrollHeight - scroll.scrollTop;
+      var purged = {};
+      changed.purgedMessages.forEach(function (id) { purged[id] = true; });
       changed.removedMessages.forEach(function (id) {
-        var node = list.querySelector('[data-message-id="' + id + '"]');
-        if (node) { list.removeChild(node); }
+        var node = messageById(id);
+        if (!node) { return; }
+        if (purged[id]) { list.removeChild(node); }
+        else { list.replaceChild(goneNode(node), node); }
       });
       changed.removedPolls.forEach(function (id) {
-        var node = pollBox.querySelector('[data-poll-id="' + id + '"]');
+        var node = pollById(id);
         if (node) { pollBox.removeChild(node); }
       });
+      if (changed.edge !== null) {
+        /* The quiet lines of removed messages from before the cleanup. */
+        Array.prototype.slice.call(list.children).forEach(function (node) {
+          if (Number(node.dataset.at) < changed.edge) { list.removeChild(node); }
+        });
+      }
       changed.messages.forEach(drawMessage);
       changed.polls.forEach(drawPoll);
+      regroup();
+
       older.classList.toggle("hidden", !state.more);
       empty.classList.toggle("hidden", list.children.length > 0);
+      if (pollsEmpty) { pollsEmpty.classList.toggle("hidden", pollBox.children.length > 0); }
+      Array.prototype.forEach.call(section.querySelectorAll("[data-forum-poll-count]"),
+        function (node) { node.textContent = String(pollBox.children.length); });
+
+      if (how === "older") {
+        scroll.scrollTop = scroll.scrollHeight - fromBottom;
+      } else if (wasPinned || how === "mine") {
+        toBottom();
+      } else if (newer && changed.messages.length) {
+        newer.classList.remove("hidden");
+      }
     }
 
     function failed() { say(words.failed, true); }
 
-    /* Ask the feed for what changed since the cursor, until it has no more. */
-    function refresh() {
-      return ask(urls.feed + "?after=" + state.cursor).then(function (answer) {
-        if (!answer.ok) { say(answer.data.error || words.failed, true); return null; }
-        draw(applyFeed(state, answer.data));
-        if (answer.data.more) { return refresh(); }
-        return answer.data;
-      }, failed);
-    }
-
-    function afterAction(answer) {
-      if (!answer.ok) { say(answer.data.error || words.failed, true); return; }
+    /* What a door answered to the member's own press, drawn at once. The
+     * next answer of the feed holds the same row with the same `seq`, and
+     * `applyFeed` passes it by. */
+    function mine(answer) {
+      if (!answer.ok) { say(answer.data.error || words.failed, true); return answer; }
       say("");
-      return refresh();
+      var rows = {};
+      if (answer.data.message) { rows.messages = [answer.data.message]; }
+      if (answer.data.poll) { rows.polls = [answer.data.poll]; }
+      draw(applyFeed(state, rows), answer.data.message && !answer.data.message.removed ? "mine" : "live");
+      return answer;
     }
 
-    draw(applyFeed(state, config.feed));
+    /* --- the timer ------------------------------------------------------------ */
+
+    function showLive(ok) {
+      if (!liveChip) { return; }
+      liveChip.textContent = ok ? words.live : words.retrying;
+      liveChip.dataset.state = ok ? "live" : "retrying";
+      liveChip.classList.toggle("opacity-60", ok);
+      tint(liveChip, BAD, !ok);
+    }
+
+    function askFeed() {
+      return ask(urls.feed + "?after=" + state.cursor).then(function (answer) {
+        if (!answer.ok) {
+          if (answer.data.error) { say(answer.data.error, true); pollSaid = true; }
+          return {ok: false};
+        }
+        if (pollSaid) { say(""); }
+        draw(applyFeed(state, answer.data), "live");
+        return {ok: true, more: !!answer.data.more};
+      });
+    }
+
+    var poller = createPoller({
+      ask: askFeed,
+      seconds: config.refresh_seconds,
+      hidden: function () { return doc.visibilityState === "hidden" || doc.hidden === true; },
+      setTimer: setTimer,
+      clearTimer: clearTimer,
+      onState: function (now) { showLive(now.ok); }
+    });
+
+    /* --- the composer -------------------------------------------------------- */
+
+    function chosenFile() {
+      return fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+    }
+
+    function syncSend() {
+      send.disabled = busy || blocked;
+      if (busy) { send.setAttribute("aria-busy", "true"); } else { send.removeAttribute("aria-busy"); }
+    }
+
+    function showEstimate(data) {
+      blocked = !!data && data.affordable === false;
+      if (estimateBox) {
+        /* Where nothing is priced the door's `display` is empty: nothing to say. */
+        if (!data || !data.display) {
+          estimateBox.textContent = "";
+          estimateBox.classList.add("hidden");
+        } else {
+          estimateBox.textContent = words.cost.replace("{amount}", String(data.display)) +
+            (blocked ? " " + words.unaffordable : "");
+          estimateBox.classList.remove("hidden");
+        }
+        estimateBox.dataset.bad = blocked ? "1" : "";
+        tint(estimateBox, BAD, blocked);
+      }
+      syncSend();
+    }
+
+    var estimator = null;
+    if (urls.estimate && estimateBox) {
+      estimator = createEstimator({
+        wait: ESTIMATE_WAIT,
+        setTimer: setTimer,
+        clearTimer: clearTimer,
+        show: showEstimate,
+        ask: function (textBytes, imageBytes) {
+          var body = new root.URLSearchParams();
+          body.append("text_bytes", String(textBytes));
+          body.append("image_bytes", String(imageBytes));
+          return ask(urls.estimate, {method: "POST", body: body});
+        }
+      });
+    }
+
+    function estimate(atOnce) {
+      if (!estimator) { return; }
+      var file = chosenFile();
+      estimator.request(utf8Length(textBox.value.trim()), file ? Number(file.size) || 0 : 0, atOnce);
+    }
+
+    function grow() {
+      if (!textBox.style) { return; }
+      textBox.style.height = "auto";
+      if (textBox.scrollHeight) { textBox.style.height = Math.min(textBox.scrollHeight + 2, 160) + "px"; }
+    }
+
+    function showPicked() {
+      var file = chosenFile();
+      if (picked) {
+        picked.classList.toggle("hidden", !file);
+        picked.classList.toggle("flex", !!file);
+      }
+      if (pickedName) {
+        pickedName.textContent = file
+          ? String(file.name) + " · " + Math.max(1, Math.round((Number(file.size) || 0) / 1024)) + " KB"
+          : "";
+      }
+    }
+
+    function clearFile() {
+      fileInput.value = "";
+      showPicked();
+    }
+
+    fileInput.addEventListener("change", function () {
+      var file = chosenFile();
+      if (file) {
+        var types = limits.image_types || [];
+        if (file.type && types.length && types.indexOf(file.type) === -1) {
+          clearFile(); say(words.imageType, true); estimate(true); return;
+        }
+        if (limits.image_bytes && Number(file.size) > limits.image_bytes) {
+          clearFile(); say(words.imageLarge, true); estimate(true); return;
+        }
+        say("");
+      }
+      showPicked();
+      estimate(true);
+    });
+    if (pick) { pick.addEventListener("click", function () { fileInput.click(); }); }
+    if (unpick) { unpick.addEventListener("click", function () { clearFile(); estimate(true); }); }
+
+    textBox.addEventListener("input", function () { grow(); estimate(false); });
+    textBox.addEventListener("keydown", function (event) {
+      /* Enter sends, Shift+Enter is a new line; on a touch keyboard Enter is
+       * a new line and Send is the button. */
+      if (event.key !== "Enter" || event.shiftKey || event.isComposing) { return; }
+      if (root.matchMedia && root.matchMedia("(pointer: coarse)").matches) { return; }
+      event.preventDefault();
+      post();
+    });
+
+    function post() {
+      if (busy || blocked) { return null; }
+      var text = textBox.value;
+      var file = chosenFile();
+      if (!text.trim() && !file) { textBox.focus(); return null; }
+      /* The same op again only for the same press, never answered. */
+      if (!pending || pending.text !== text || pending.file !== file) {
+        pending = {op: mintOp(), text: text, file: file};
+      }
+      var body = new root.FormData();
+      body.append("op", pending.op);
+      body.append("text", text);
+      if (file) { body.append("image", file); }
+      busy = true;
+      syncSend();
+      say(words.sending);
+      return ask(urls.post, {method: "POST", body: body}).then(function (answer) {
+        busy = false;
+        if (answer.status < 500) { pending = null; }
+        if (!answer.ok) {
+          /* The door's own sentence (not enough mana, too fast, too long),
+           * and what was typed stays in the box. */
+          say(answer.data.error || words.failed, true);
+          syncSend();
+          return answer;
+        }
+        textBox.value = "";
+        clearFile();
+        grow();
+        if (estimator) { estimator.cancel(); }
+        showEstimate(null);
+        mine(answer);
+        return answer;
+      }, function () {
+        busy = false;
+        syncSend();
+        failed();
+      });
+    }
+
+    postForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      post();
+    });
+
+    /* --- opening a poll -------------------------------------------------------- */
+
+    if (pollForm) {
+      var pollBusy = false;
+      pollForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        if (pollBusy) { return; }
+        var title = pollForm.querySelector("[name=title]");
+        var options = pollForm.querySelector("[name=options]");
+        var closes = pollForm.querySelector("[name=closes_at]");
+        var body = {
+          title: title.value, options: options.value,
+          revisability: pollForm.querySelector("[name=revisability]").value,
+          visibility: pollForm.querySelector("[name=visibility]").value
+        };
+        if (closes && closes.value) {
+          var moment = new Date(closes.value);
+          body.closes_at = isNaN(moment.getTime()) ? closes.value : moment.toISOString();
+        }
+        pollBusy = true;
+        sendJson(urls.poll_open, body).then(function (answer) {
+          pollBusy = false;
+          if (answer.ok) {
+            title.value = ""; options.value = "";
+            if (closes) { closes.value = ""; }
+          }
+          mine(answer);
+        }, function () { pollBusy = false; failed(); });
+      });
+    }
+
+    /* --- the two side panels on a narrow screen ------------------------------- */
+
+    Array.prototype.forEach.call(section.querySelectorAll("[data-forum-toggle]"), function (knob) {
+      knob.addEventListener("click", function () {
+        var name = knob.dataset.forumToggle;
+        Array.prototype.forEach.call(section.querySelectorAll("[data-forum-panel]"), function (panel) {
+          var show = panel.dataset.forumPanel === name && panel.classList.contains("hidden");
+          panel.classList.toggle("hidden", !show);
+          panel.classList.toggle("flex", show);
+        });
+        Array.prototype.forEach.call(section.querySelectorAll("[data-forum-toggle]"), function (other) {
+          var panel = section.querySelector('[data-forum-panel="' + other.dataset.forumToggle + '"]');
+          other.setAttribute("aria-expanded", panel && !panel.classList.contains("hidden") ? "true" : "false");
+        });
+      });
+    });
+
+    /* --- start ---------------------------------------------------------------- */
+
+    /* The box fills the window under whatever stands above it, so only the
+     * messages scroll and the composer stays on the screen. */
+    function fit() {
+      if (!section.getBoundingClientRect || !root.innerHeight) { return; }
+      var top = section.getBoundingClientRect().top + (root.scrollY || 0);
+      section.style.height = Math.max(320, Math.round(root.innerHeight - top)) + "px";
+      dodge();
+      if (pinned) { toBottom(); }
+    }
+
+    /* A button the platform floats in the window's corner (what an app
+     * costs) may lie on Send on a narrow screen: the composer then keeps
+     * clear of it. */
+    function dodge() {
+      if (!doc.elementFromPoint || !send.getBoundingClientRect) { return; }
+      postForm.style.paddingRight = "";
+      if (estimateBox) { estimateBox.style.paddingRight = ""; }
+      var box = send.getBoundingClientRect();
+      var over = doc.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      if (!over || section.contains(over) || !over.getBoundingClientRect) { return; }
+      var shift = Math.ceil(box.right - over.getBoundingClientRect().left) + 8;
+      if (shift <= 0 || shift >= 200) { return; }
+      postForm.style.paddingRight = shift + "px";
+      if (estimateBox) { estimateBox.style.paddingRight = shift + "px"; }
+    }
+    fit();
+    if (section.getBoundingClientRect && root.addEventListener) {
+      root.addEventListener("resize", fit);
+    }
+
+    draw(applyFeed(state, config.feed), "first");
+    showLive(true);
 
     section.querySelector("[data-forum-refresh]").addEventListener("click", function () {
-      say(""); refresh();
+      say("");
+      poller.now();
     });
 
     older.addEventListener("click", function () {
       if (state.oldest === null) { return; }
       ask(urls.feed + "?before=" + state.oldest).then(function (answer) {
         if (!answer.ok) { say(answer.data.error || words.failed, true); return; }
-        draw(applyFeed(state, answer.data));
+        draw(applyFeed(state, answer.data), "older");
       }, failed);
     });
 
-    var postForm = section.querySelector("[data-forum-post]");
-    postForm.addEventListener("submit", function (event) {
-      event.preventDefault();
-      var text = postForm.querySelector("[data-forum-text]");
-      var file = postForm.querySelector("[data-forum-image]");
-      var body = new root.FormData();
-      /* The same op again only for a press the server never answered. */
-      pendingOp = pendingOp || mintOp();
-      body.append("op", pendingOp);
-      body.append("text", text.value);
-      if (file.files && file.files[0]) { body.append("image", file.files[0]); }
-      ask(urls.post, {method: "POST", body: body}).then(function (answer) {
-        pendingOp = null;
-        if (!answer.ok) { say(answer.data.error || words.failed, true); return; }
-        text.value = "";
-        file.value = "";
-        afterAction(answer);
-      }, failed);
-    });
+    doc.addEventListener("visibilitychange", function () { poller.visibility(); });
+    poller.start();
 
-    var pollForm = section.querySelector("[data-forum-poll-form]");
-    pollForm.addEventListener("submit", function (event) {
-      event.preventDefault();
-      var fields = pollForm.elements;
-      sendJson(urls.poll_open, {
-        title: fields.title.value, options: fields.options.value,
-        revisability: fields.revisability.value, visibility: fields.visibility.value
-      }).then(function (answer) {
-        if (answer.ok) { fields.title.value = ""; fields.options.value = ""; }
-        afterAction(answer);
-      }, failed);
-    });
-
-    return {state: state, refresh: refresh, config: config};
+    return {state: state, refresh: poller.now, poller: poller, config: config, post: post};
   }
 
   api.mount = mount;
   if (typeof module !== "undefined" && module.exports) { module.exports = api; }
   root.TotoForumChannel = api;
-  if (root.document && root.document.addEventListener) {
+  if (root.document && root.document.addEventListener && root.document.querySelectorAll) {
     var all = function () {
       Array.prototype.forEach.call(
         root.document.querySelectorAll("[data-forum-channel]"), mount);

@@ -1,20 +1,37 @@
 {% extends "oya/base.html" %}
-{% load i18n %}
+{% load i18n forum_page %}
 {% comment %}The member's communities, one channel each. A channel has no
-name of its own: it is the community's. The names are text.{% endcomment %}
+name of its own: it is the community's. The names are text. Each row is one
+link that enters that community's channel. The look is the channel page's
+(stage 70): one-pixel lines in the theme's colours, square corners.{% endcomment %}
 {% block title %}{% trans "Forum" %} | {{ platform.site_name }}{% endblock %}
 {% block content %}
-<section class="mx-auto max-w-3xl px-4 py-10" data-testid="forum-channel-list">
-  <h1 class="text-2xl font-bold"><i class="fa-solid fa-comments" aria-hidden="true"></i> {% trans "Forum" %}</h1>
-  <p class="mt-1 text-sm opacity-70">{% trans "One channel for each of your communities." %}</p>
+{% url 'forum:settings' as settings_url %}
+{% forum_administrator user as viewer_is_administrator %}
+<section class="mx-auto max-w-3xl px-4 py-8" data-testid="forum-channel-list">
+  <header :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'"
+          class="flex items-baseline justify-between gap-3 border-b pb-2">
+    <h1 class="text-xl font-bold"><span class="font-mono opacity-50" aria-hidden="true">#</span> {% trans "Forum" %}</h1>
+    <p class="flex shrink-0 items-baseline gap-3">
+      {% if settings_url and viewer_is_administrator %}
+      <a href="{{ settings_url }}" class="text-xs underline opacity-80 hover:opacity-100" data-testid="forum-settings-link">{% trans "Settings" %}</a>
+      {% endif %}
+      <span class="font-mono text-[11px] opacity-60">{{ communities|length }}</span>
+    </p>
+  </header>
+  <p class="mt-2 text-sm opacity-70">{% trans "One channel for each of your communities." %}</p>
   {% if communities %}
-  <ul class="mt-6 divide-y divide-current/10 border border-current/15">
+  <ul :class="darkMode ? 'divide-accent-1/40 border-accent-1/40 bg-bubble-bg-dark' : 'divide-accent-2/40 border-accent-2/40 bg-bubble-bg-light'"
+      class="mt-4 divide-y border">
     {% for community in communities %}
     <li>
-      <a class="flex items-center gap-2 px-3 py-2 hover:underline" data-testid="forum-channel-link"
+      <a :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="flex items-baseline gap-2 px-3 py-2" data-testid="forum-channel-link"
          href="{% url 'forum:channel_detail' community.slug %}">
-        <i class="fa-solid fa-hashtag opacity-60" aria-hidden="true"></i>
-        <span>{{ community.name }}</span>
+        <span class="font-mono opacity-50" aria-hidden="true">#</span>
+        <span class="min-w-0 truncate font-semibold">{{ community.name }}</span>
+        <span class="ml-auto shrink-0 font-mono text-[11px] uppercase tracking-widest opacity-60">{{ community.get_org_type_display }}</span>
+        <i class="fa-solid fa-arrow-right shrink-0 text-xs opacity-50" aria-hidden="true"></i>
       </a>
     </li>
     {% endfor %}
