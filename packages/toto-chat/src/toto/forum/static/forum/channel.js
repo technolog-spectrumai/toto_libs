@@ -634,18 +634,24 @@
       return list.querySelector('[data-message-id="' + id + '"]');
     }
 
+    /* Into the conversation at its number's place: a message, or the
+     * question of an open poll (one run of numbers serves both). From the
+     * end: a new row nearly always belongs there. */
+    function inOrder(node, number) {
+      var after = null;
+      var rows = list.children;
+      for (var i = rows.length - 1; i >= 0; i--) {
+        if (Number(rows[i].dataset.number) < number) { break; }
+        after = rows[i];
+      }
+      list.insertBefore(node, after);
+    }
+
     function drawMessage(row) {
       var node = messageNode(row);
       var old = messageById(row.id);
       if (old) { list.replaceChild(node, old); return; }
-      var after = null;
-      var rows = list.children;
-      /* From the end: a new message nearly always belongs there. */
-      for (var i = rows.length - 1; i >= 0; i--) {
-        if (Number(rows[i].dataset.number) < row.number) { break; }
-        after = rows[i];
-      }
-      list.insertBefore(node, after);
+      inOrder(node, row.number);
     }
 
     /* Consecutive messages of one sender, minutes apart, under one name. */
@@ -677,7 +683,6 @@
       card.dataset.seq = String(row.seq);
       card.dataset.open = row.open ? "1" : "";
       var answered = row.my_choice !== null && row.my_choice !== undefined;
-      var votable = !!row.open && (!answered || row.revisability === "open");
 
       var head = el("div", "flex items-baseline gap-2");
       head.appendChild(el("span", CAPS + " opacity-60", words.poll));
@@ -686,7 +691,7 @@
       card.appendChild(head);
       card.appendChild(el("h3", "mt-1 break-words text-sm font-bold leading-snug [overflow-wrap:anywhere]",
                           row.title));
-      var facts = [row.opener, row.revisability === "final" ? words.ruleFinal : words.ruleOpen];
+      var facts = [row.opener, words.ruleFinal];
       if (row.closes_at) { facts.push(words.closes.replace("{when}", when(row.closes_at))); }
       card.appendChild(el("p", "mt-1 text-xs leading-snug opacity-60",
                           facts.filter(Boolean).join(" · ")));
@@ -697,14 +702,6 @@
         line.dataset.choiceId = String(choice.id);
         var top = el("div", "flex items-center gap-2");
         var chosen = answered && row.my_choice === choice.id;
-        if (votable && !chosen) {
-          var vote = button("shrink-0 " + BUTTON + " " + LINE + " " + GROUND, words.vote, function () {
-            sendJson(urlFor(urls.poll_vote, urls.nil, row.id), {choice: choice.id})
-              .then(mine, failed);
-          });
-          vote.dataset.forumVote = String(choice.id);
-          top.appendChild(vote);
-        }
         var label = el("span", "min-w-0 break-words [overflow-wrap:anywhere]");
         label.appendChild(el("span", "font-semibold", choice.label));
         if (choice.text) { label.appendChild(el("span", "ml-1.5 opacity-70", choice.text)); }
@@ -741,6 +738,21 @@
       foot.dataset.forumTotal = row.total === null || row.total === undefined ? "" : String(row.total);
       card.appendChild(foot);
 
+      /* Results only: the answer is given in the conversation, and this
+       * leads who has not answered to the question there. */
+      if (row.open && !answered) {
+        var go = button("mt-2 " + BUTTON + " " + LINE + " " + GROUND, words.toQuestion, function () {
+          showTab("messages", true);
+          var asked = questionById(row.id);
+          if (asked && typeof asked.scrollIntoView === "function") {
+            asked.scrollIntoView({block: "center"});
+            pinned = nearBottom();
+          }
+        });
+        go.dataset.forumToQuestion = "";
+        card.appendChild(go);
+      }
+
       if (row.may_manage) {
         var tools = el("div", "mt-2 flex gap-3 border-t pt-2 " + LINE);
         if (row.open) {
@@ -760,8 +772,124 @@
       return pollBox.querySelector('[data-poll-id="' + id + '"]');
     }
 
+    /* --- a poll's question, in the conversation ------------------------------
+     * The Polls tab holds results only. The QUESTION of a poll that is open
+     * stands in the conversation itself, at the place where the poll was
+     * opened (a poll takes its number from the same run as the messages):
+     * the options, one to choose, and Submit. An answer is final, so it is
+     * chosen first and sent on purpose; who has answered reads their answer
+     * there instead. A closed or a removed poll leaves the conversation, so
+     * no more questions stand in it than the server lets be open (three). */
+
+    function questionById(id) {
+      return list.querySelector('[data-question-id="' + id + '"]');
+    }
+
+    function tickedIn(box) {
+      var found = null;
+      Array.prototype.forEach.call(box.querySelectorAll("input"), function (input) {
+        if (input.checked) { found = input.value; }
+      });
+      return found;
+    }
+
+    function questionNode(row, answered) {
+      var item = el("li", "my-2 rounded-xl border p-3 text-sm " + LINE + " " + SUNKEN);
+      item.dataset.questionId = row.id;
+      item.dataset.number = String(row.number);
+      item.dataset.at = String(Date.parse(row.created_at) || 0);
+      item.dataset.state = answered ? "answered" : "asked";
+      item.title = whole(row.created_at);
+
+      var head = el("div", "flex items-baseline gap-2");
+      head.appendChild(el("span", CAPS + " opacity-60", words.poll));
+      var facts = [row.opener, words.ruleFinal];
+      if (row.closes_at) { facts.push(words.closes.replace("{when}", when(row.closes_at))); }
+      head.appendChild(el("span", "min-w-0 truncate text-xs opacity-60", facts.filter(Boolean).join(" · ")));
+      item.appendChild(head);
+      item.appendChild(el("h3", "mt-1 break-words font-bold leading-snug [overflow-wrap:anywhere]", row.title));
+
+      var results = button(QUIET, words.results, function () { showTab("polls", true); });
+      results.dataset.forumToResults = "";
+
+      if (answered) {
+        var said = el("p", "mt-2 break-words [overflow-wrap:anywhere]");
+        said.dataset.forumAnswered = "";
+        said.appendChild(el("span", CAPS + " " + NAME, words.yourAnswer));
+        row.choices.forEach(function (choice) {
+          if (choice.id !== row.my_choice) { return; }
+          said.appendChild(el("span", "ml-2 font-semibold", choice.label));
+          if (choice.text) { said.appendChild(el("span", "ml-1.5 opacity-70", choice.text)); }
+        });
+        item.appendChild(said);
+        var under = el("div", "mt-2");
+        under.appendChild(results);
+        item.appendChild(under);
+        return item;
+      }
+
+      var form = el("form", "mt-2");
+      form.setAttribute("aria-label", words.question);
+      var send = el("button", "rounded-lg px-4 py-1.5 text-xs font-semibold shadow-sm transition hover:opacity-90 " +
+                              "disabled:cursor-not-allowed disabled:opacity-40 " + FILL + " " +
+                              "text-primary-bg-light group-data-[forum-theme=dark]/forum:text-primary-bg-dark",
+                    words.submit);
+      send.type = "submit";
+      send.dataset.forumSubmit = "";
+      send.disabled = true;
+      var options = el("div", "space-y-1");
+      row.choices.forEach(function (choice) {
+        var line = el("label", "flex cursor-pointer items-start gap-2");
+        var input = el("input", "mt-1 shrink-0");
+        input.type = "radio";
+        input.name = "choice_" + row.id;
+        input.value = String(choice.id);
+        input.addEventListener("change", function () { send.disabled = false; });
+        line.appendChild(input);
+        var label = el("span", "min-w-0 break-words [overflow-wrap:anywhere]");
+        label.appendChild(el("span", "font-semibold", choice.label));
+        if (choice.text) { label.appendChild(el("span", "ml-1.5 opacity-70", choice.text)); }
+        line.appendChild(label);
+        options.appendChild(line);
+      });
+      form.appendChild(options);
+      var foot = el("div", "mt-2 flex items-center gap-3");
+      foot.appendChild(send);
+      foot.appendChild(results);
+      form.appendChild(foot);
+      form.addEventListener("submit", function (event) {
+        if (event && event.preventDefault) { event.preventDefault(); }
+        var choice = tickedIn(form);
+        if (choice === null || send.disabled) { return; }
+        send.disabled = true;
+        sendJson(urlFor(urls.poll_vote, urls.nil, row.id), {choice: Number(choice)})
+          .then(function (answer) { if (!answer.ok) { send.disabled = false; } mine(answer); },
+                function () { send.disabled = false; failed(); });
+      });
+      item.appendChild(form);
+      return item;
+    }
+
+    /* True when the question is new to the conversation. One that stands
+     * keeps its node, and what is ticked in it, until its state changes:
+     * asked, answered, gone. The counts are the Polls tab's, not its. */
+    function drawQuestion(row) {
+      var old = questionById(row.id);
+      if (!row.open) {
+        if (old) { list.removeChild(old); }
+        return false;
+      }
+      var answered = row.my_choice !== null && row.my_choice !== undefined;
+      if (old && old.dataset.state === (answered ? "answered" : "asked")) { return false; }
+      var node = questionNode(row, answered);
+      if (old) { list.replaceChild(node, old); return false; }
+      inOrder(node, row.number);
+      return true;
+    }
+
     /* A poll that is there keeps its card: the card is filled again, so its
-     * counts, its bars and its buttons are the answer's. The newest first. */
+     * counts, its bars and its buttons are the answer's. The newest first.
+     * True when its question is new to the conversation. */
     function drawPoll(row) {
       var card = pollById(row.id);
       if (!card) {
@@ -777,6 +905,7 @@
         pollBox.insertBefore(card, after);
       }
       fillPoll(card, row);
+      return drawQuestion(row);
     }
 
     /* --- one answer onto the page ------------------------------------------ */
@@ -797,6 +926,8 @@
       changed.removedPolls.forEach(function (id) {
         var node = pollById(id);
         if (node) { pollBox.removeChild(node); }
+        var asked = questionById(id);
+        if (asked) { list.removeChild(asked); }
       });
       if (changed.edge !== null) {
         /* The quiet lines of removed messages from before the cleanup. */
@@ -805,7 +936,8 @@
         });
       }
       changed.messages.forEach(drawMessage);
-      changed.polls.forEach(drawPoll);
+      var questions = 0;
+      changed.polls.forEach(function (row) { if (drawPoll(row)) { questions += 1; } });
       regroup();
 
       older.classList.toggle("hidden", !state.more);
@@ -818,7 +950,7 @@
         scroll.scrollTop = scroll.scrollHeight - fromBottom;
       } else if (wasPinned || how === "mine") {
         toBottom();
-      } else if (newer && changed.messages.length) {
+      } else if (newer && (changed.messages.length || questions)) {
         newer.classList.remove("hidden");
       }
     }
@@ -1029,7 +1161,6 @@
         var closes = pollForm.querySelector("[name=closes_at]");
         var body = {
           title: title.value, options: options.value,
-          revisability: pollForm.querySelector("[name=revisability]").value,
           visibility: pollForm.querySelector("[name=visibility]").value
         };
         if (closes && closes.value) {
@@ -1044,6 +1175,13 @@
             if (closes) { closes.value = ""; }
           }
           mine(answer);
+          if (answer.ok) {
+            /* The question stands at the end of the conversation: the form
+             * folds away and the opener is shown it. */
+            var fold = section.querySelector("[data-forum-poll-open]");
+            if (fold) { fold.removeAttribute("open"); }
+            toBottom();
+          }
         }, function () { pollBusy = false; failed(); });
       });
     }

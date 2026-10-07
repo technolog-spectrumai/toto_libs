@@ -741,20 +741,24 @@ const msg = (n, more) => Object.assign({
   avatar: "", created_at: at(n), text: "text " + n, image: null, may_remove: false}, more || {});
 const pollRow = (n, more) => Object.assign({
   id: "p" + n, number: n, seq: n, title: "Lunch?", status: "open", open: true, closes_at: null,
-  revisability: "open", visibility: "live", created_at: at(n), opener: "Ann", mine: false,
+  revisability: "final", visibility: "live", created_at: at(n), opener: "Ann", mine: false,
   may_manage: false,
   choices: [{id: 1, label: "Soup", text: "", ballots: 0}, {id: 2, label: "Salad", text: "with bread", ballots: 0}],
   total: 0, my_choice: null, results_visible: true}, more || {});
 const feedOf = (cursor, messages, pollRows, more) => Object.assign(
   {cursor: cursor, messages: messages || [], polls: pollRows || [], more: false, purged_before: null},
   more || {});
-const ids = () => list.children.map((n) => n.dataset.messageId || "gone");
+// What stands in the conversation: a message's id, "?" and the poll's id for a
+// question, "gone" for the quiet line of a removed message.
+const ids = () => list.children.map((n) => n.dataset.messageId ||
+  (n.dataset.questionId ? "?" + n.dataset.questionId : "gone"));
+const asked = (id) => list.querySelector('[data-question-id="' + id + '"]');
+const radios = (id) => asked(id).querySelectorAll("input");
 const node = (id) => list.querySelector('[data-message-id="' + id + '"]');
 const card = (id) => polls.querySelector('[data-poll-id="' + id + '"]');
 const bodyText = (id) => { const p = node(id).querySelector("[data-forum-body]"); return p ? p.textContent : null; };
 const bars = (id) => card(id).querySelectorAll("[data-forum-bar]").map((b) => [b.dataset.forumBar, b.style.width]);
 const ballots = (id) => card(id).querySelectorAll("[data-forum-ballots]").map((b) => b.dataset.forumBallots);
-const votes = (id) => card(id).querySelectorAll("[data-forum-vote]");
 const status = () => [part("status").textContent, part("status").classList.contains("hidden")];
 const estimate = () => [part("estimate").textContent, part("estimate").classList.contains("hidden")];
 const feeds = () => calls.filter((c) => c.url.indexOf("/feed/") >= 0).map((c) => c.url.split("/feed/")[1]);
@@ -818,7 +822,9 @@ class PagePollingTests(PageCase):
         settings.refresh_seconds = 9
         settings.save()
         out = self.run_page("""
-          out.rows = list.children.map((n) => n.querySelector("[data-forum-body]").textContent);
+          out.rows = list.querySelectorAll("[data-forum-body]").map((n) => n.textContent);
+          out.conversation = list.children.map((n) => (n.dataset.messageId ? "message" : n.dataset.state));
+          out.options = list.querySelectorAll("input").map((n) => n.type);
           out.polls = polls.children.length;
           out.count = box.querySelectorAll("[data-forum-poll-count]").map((n) => n.textContent);
           out.waits = waits();
@@ -829,6 +835,10 @@ class PagePollingTests(PageCase):
           out.live = [part("live").textContent, part("live").dataset.state];
         """)
         self.assertEqual(out["rows"], ["the first word"])
+        # The poll's question stands in the conversation, after the message
+        # it was opened after, with its two options to choose from.
+        self.assertEqual(out["conversation"], ["message", "asked"])
+        self.assertEqual(out["options"], ["radio", "radio"])
         self.assertEqual(out["polls"], 1)
         self.assertEqual(out["count"], ["1"])
         self.assertEqual(out["waits"], [9000])          # one timer, the Settings' interval
@@ -954,7 +964,7 @@ class PageMessagesTests(PageCase):
           await advance(5000);
           out.closed = polls.children.length;
         """)
-        self.assertEqual(out["afterRemoval"], ["m1", "gone", "m4", "m5"])
+        self.assertEqual(out["afterRemoval"], ["m1", "gone", "?p3", "m4", "m5"])
         self.assertEqual(out["line"], "A message was removed.")
         self.assertEqual(out["text"], -1)
         self.assertEqual(out["afterCleanup"], ["m5"])
@@ -978,17 +988,19 @@ class PageMessagesTests(PageCase):
           out.links = list.all().filter((n) => n.tagName === "A").map((a) => [a.textContent, a.href, a.rel]);
           out.joined = bodyText("m2");
           out.poll = card("p3").textContent;
+          out.question = asked("p3").textContent;
         """)
         self.assertEqual(out["text"], evil)
         self.assertEqual(out["sender"], "<i>Mallory</i>")
         # Only what the script itself makes: no element came out of a member's words.
-        self.assertEqual(out["tags"], ["A", "ARTICLE", "BUTTON", "DIV", "H3", "LI", "P", "SPAN",
-                                       "TIME", "UL"])
+        self.assertEqual(out["tags"], ["A", "ARTICLE", "BUTTON", "DIV", "FORM", "H3", "INPUT",
+                                       "LABEL", "LI", "P", "SPAN", "TIME", "UL"])
         self.assertEqual(out["links"], [["https://forum.example/vault/",
                                          "https://forum.example/vault/", "noopener"]])
         self.assertEqual(out["joined"], "see https://forum.example/vault/ and http://evil.example/")
         for words in ("<u>Q</u>", "<s>O</s>", "<b>a</b>", "<script>t</script>"):
             self.assertIn(words, out["poll"])
+            self.assertIn(words, out["question"])       # the question in the conversation too
 
     def test_a_picture_is_the_image_doors_address_and_opens_in_a_new_tab(self):
         out = self.run_page(before="""
@@ -1067,7 +1079,7 @@ class PageMessagesTests(PageCase):
 class PagePollTests(PageCase):
     def test_a_polls_counts_are_updated_in_its_card(self):
         out = self.run_page(before="config.feed = feedOf(2, [msg(1)], [pollRow(2)]);", body="""
-          const same = card("p2").serial;
+          const same = card("p2").serial, question = asked("p2").serial;
           out.before = [bars("p2"), ballots("p2"), card("p2").querySelector("[data-forum-total]").textContent];
           queue.push({status: 200, data: feedOf(5, [], [pollRow(2, {seq: 5, total: 4,
             choices: [{id: 1, label: "Soup", text: "", ballots: 3},
@@ -1076,86 +1088,209 @@ class PagePollTests(PageCase):
           out.after = [bars("p2"), ballots("p2"), card("p2").querySelector("[data-forum-total]").textContent];
           out.sameCard = [card("p2").serial === same, polls.children.length];
           out.messages = ids();
+          out.sameQuestion = asked("p2").serial === question;
+          out.counted = asked("p2").querySelectorAll("[data-forum-bar]").length;
         """)
         self.assertEqual(out["before"], [[["0", "0%"], ["0", "0%"]], ["0", "0"], "Answers: 0"])
         self.assertEqual(out["after"], [[["75", "75%"], ["25", "25%"]], ["3", "1"], "Answers: 4"])
         self.assertEqual(out["sameCard"], [True, 1])
-        self.assertEqual(out["messages"], ["m1"])
+        self.assertEqual(out["messages"], ["m1", "?p2"])
+        # The question is not drawn again for a count (what is ticked in it
+        # stays), and holds none: the results are the Polls tab's.
+        self.assertTrue(out["sameQuestion"])
+        self.assertEqual(out["counted"], 0)
 
-    def test_a_vote_moves_the_bars_at_once_and_the_feed_adds_nothing(self):
-        out = self.run_page(before="config.feed = feedOf(2, [], [pollRow(2)]);", body="""
-          const voted = pollRow(2, {seq: 3, total: 1, my_choice: 2,
+    def test_an_answer_is_chosen_and_submitted_in_the_conversation(self):
+        """The owner, 2026-10-07: "once you answer you have to press submit
+        button. The poll quarions box apears in the forum in the conversation
+        not in polls tab. polls tab only hold results"."""
+        out = self.run_page(before="config.feed = feedOf(3, [msg(1), msg(3)], [pollRow(2)]);", body="""
+          const voted = pollRow(2, {seq: 4, total: 1, my_choice: 2,
             choices: [{id: 1, label: "Soup", text: "", ballots: 0},
                       {id: 2, label: "Salad", text: "with bread", ballots: 1}]});
-          out.buttons = votes("p2").map((b) => b.dataset.forumVote);
-          queue.push({status: 200, data: {poll: voted}});
-          votes("p2")[1].click();
+          out.order = ids();                                    // where the poll was opened
+          out.card = [card("p2").querySelectorAll("input").length,
+                      card("p2").querySelectorAll("form").length,
+                      card("p2").querySelectorAll("[data-forum-to-question]").length];
+          const q = asked("p2"), send = q.querySelector("[data-forum-submit]");
+          out.radios = radios("p2").map((r) => [r.type, r.value, !!r.checked]);
+          out.text = q.textContent;
+          out.off = send.disabled;
+          q.querySelector("form").fire("submit");               // nothing is ticked: nothing is sent
+          await settle();
+          out.unsent = calls.length;
+          radios("p2")[1].checked = true; radios("p2")[1].fire("change");
+          await settle();
+          out.ticked = [send.disabled, calls.length];           // a tick alone sends nothing
+          queue.push({hold: true, status: 200, data: {poll: voted}});
+          const pressed = q.querySelector("form").fire("submit");
+          q.querySelector("form").fire("submit");               // a double press
+          await settle();
+          out.sent = [calls.length, pressed.defaultPrevented];
+          held.shift()();
           await settle();
           out.call = calls[0];
+          out.after = [asked("p2").dataset.state, radios("p2").length,
+                       asked("p2").querySelectorAll("[data-forum-submit]").length,
+                       asked("p2").querySelector("[data-forum-answered]").textContent];
           out.bars = bars("p2");
           out.yours = card("p2").querySelectorAll("[data-forum-yours]").length;
-          out.left = votes("p2").map((b) => b.dataset.forumVote);   // the other one may still be chosen
+          out.cardAfter = card("p2").querySelectorAll("[data-forum-to-question]").length;
           const same = card("p2").serial;
-          queue.push({status: 200, data: feedOf(3, [], [voted])});
+          queue.push({status: 200, data: feedOf(4, [], [voted])});
           await advance(5000);
-          out.fed = [polls.children.length, card("p2").serial === same, feeds()];
+          out.fed = [polls.children.length, card("p2").serial === same, feeds(), ids()];
         """)
-        self.assertEqual(out["buttons"], ["1", "2"])
+        self.assertEqual(out["order"], ["m1", "?p2", "m3"])
+        # The Polls tab's card takes no answer: it leads to the question.
+        self.assertEqual(out["card"], [0, 0, 1])
+        self.assertEqual(out["radios"], [["radio", "1", False], ["radio", "2", False]])
+        for words in ("Poll", "Ann", "One answer, final", "Lunch?", "Soup", "Salad", "with bread",
+                      "Submit"):
+            self.assertIn(words, out["text"])
+        self.assertTrue(out["off"])
+        self.assertEqual(out["unsent"], 0)
+        self.assertEqual(out["ticked"], [False, 0])
+        self.assertEqual(out["sent"], [1, True])
         self.assertTrue(out["call"]["url"].endswith("/polls/p2/vote/"))
         self.assertEqual((out["call"]["method"], out["call"]["body"]), ("POST", {"choice": 2}))
+        # Answered: the question stays where it stood and says the answer;
+        # nothing in it can be chosen or sent again.
+        self.assertEqual(out["after"][:3], ["answered", 0, 0])
+        self.assertIn("Salad", out["after"][3])
+        self.assertNotIn("Soup", out["after"][3])
         self.assertEqual(out["bars"], [["0", "0%"], ["100", "100%"]])
         self.assertEqual(out["yours"], 1)
-        self.assertEqual(out["left"], ["1"])
-        self.assertEqual(out["fed"], [1, True, ["?after=2"]])
+        self.assertEqual(out["cardAfter"], 0)
+        self.assertEqual(out["fed"], [1, True, ["?after=3"], ["m1", "?p2", "m3"]])
 
-    def test_a_final_answer_a_closed_poll_and_a_withheld_count(self):
+    def test_a_refused_answer_says_why_and_may_be_sent_again(self):
+        out = self.run_page(before="config.feed = feedOf(2, [], [pollRow(2)]);", body="""
+          const q = asked("p2"), send = q.querySelector("[data-forum-submit]");
+          radios("p2")[0].checked = true; radios("p2")[0].fire("change");
+          queue.push({status: 409, data: {error: "This poll is closed. No more answers can be recorded."}});
+          q.querySelector("form").fire("submit");
+          await settle();
+          out.refused = [status(), send.disabled, asked("p2").dataset.state,
+                         radios("p2").map((r) => !!r.checked)];
+          queue.push({network: true});
+          q.querySelector("form").fire("submit");
+          await settle();
+          out.offline = [status()[0], send.disabled, calls.length];
+        """)
+        self.assertEqual(out["refused"], [["This poll is closed. No more answers can be recorded.",
+                                           False], False, "asked", [True, False]])
+        self.assertEqual(out["offline"], ["The request failed. Try again.", False, 2])
+
+    def test_an_answered_a_closed_and_a_withheld_poll(self):
         out = self.run_page(before="""
           config.feed = feedOf(4, [], [
-            pollRow(2, {revisability: "final", my_choice: 1, total: 1,
+            pollRow(2, {my_choice: 1, total: 1,
                         choices: [{id: 1, label: "Soup", text: "", ballots: 1}, {id: 2, label: "Salad", text: "", ballots: 0}]}),
             pollRow(3, {open: false, status: "closed"}),
             pollRow(4, {visibility: "on_close", results_visible: false, total: null, may_manage: true,
                         choices: [{id: 1, label: "Soup", text: "", ballots: null}, {id: 2, label: "Salad", text: "", ballots: null}]})]);
         """, body="""
           out.order = polls.children.map((c) => c.dataset.pollId);      // the newest first
-          out.final = votes("p2").length;
-          out.closed = [votes("p3").length, card("p3").dataset.open];
+          out.questions = ids();                                        // the open ones, as they were opened
+          out.states = [asked("p2").dataset.state, asked("p3"), asked("p4").dataset.state];
+          out.answered = [radios("p2").length, asked("p2").querySelector("[data-forum-answered]").textContent];
+          out.closed = [card("p3").dataset.open, card("p3").all().filter((n) => n.tagName === "BUTTON").length];
           out.hidden = [bars("p4").length, card("p4").querySelector("[data-forum-total]").textContent,
-                        votes("p4").length];
-          const tools = card("p4").all().filter((n) => n.tagName === "BUTTON" && !n.dataset.forumVote)
-            .map((b) => b.textContent);
-          out.tools = tools;
+                        radios("p4").length];
+          out.tools = card("p4").all().filter((n) => n.tagName === "BUTTON").map((b) => b.textContent);
           out.noTools = card("p2").all().filter((n) => n.tagName === "BUTTON").length;
+          // The poll closes: its question leaves the conversation, its card stays.
+          queue.push({status: 200, data: feedOf(6, [], [pollRow(4, {seq: 6, open: false, status: "closed",
+            may_manage: true})])});
+          await advance(5000);
+          out.afterClose = [ids(), polls.children.length, card("p4").dataset.open];
+          // A removed one takes both.
+          queue.push({status: 200, data: feedOf(7, [], [{id: "p2", number: 2, seq: 7, removed: true}])});
+          await advance(5000);
+          out.afterRemoval = [ids(), polls.children.map((c) => c.dataset.pollId),
+                              part("empty").classList.contains("hidden")];
         """)
         self.assertEqual(out["order"], ["p4", "p3", "p2"])
-        self.assertEqual(out["final"], 0)
-        self.assertEqual(out["closed"], [0, ""])
+        self.assertEqual(out["questions"], ["?p2", "?p4"])
+        self.assertEqual(out["states"], ["answered", None, "asked"])
+        self.assertEqual(out["answered"][0], 0)
+        self.assertIn("Soup", out["answered"][1])
+        self.assertEqual(out["closed"], ["", 0])
         self.assertEqual(out["hidden"], [0, "The count appears when the poll closes.", 2])
-        self.assertEqual(out["tools"], ["Close", "Remove"])
+        self.assertEqual(out["tools"], ["Answer in the conversation", "Close", "Remove"])
         self.assertEqual(out["noTools"], 0)
+        self.assertEqual(out["afterClose"], [["?p2"], 3, ""])
+        self.assertEqual(out["afterRemoval"], [[], ["p4", "p3"], False])
 
-    def test_opening_a_poll_sends_its_form_and_draws_the_answer(self):
+    def test_the_results_lead_to_the_question_and_the_question_to_the_results(self):
+        out = self.run_page(before="config.feed = feedOf(2, [msg(1)], [pollRow(2)]);", body="""
+          const panel = (name) => box.querySelector('[data-forum-tabpanel="' + name + '"]');
+          const shown = () => ["messages", "polls"].filter((n) => !panel(n).classList.contains("hidden"));
+          out.first = shown();
+          asked("p2").querySelector("[data-forum-to-results]").click();
+          out.results = shown();
+          card("p2").querySelector("[data-forum-to-question]").click();
+          out.back = shown();
+          out.asked = calls.length;
+        """)
+        self.assertEqual((out["first"], out["results"], out["back"]),
+                         (["messages"], ["polls"], ["messages"]))
+        self.assertEqual(out["asked"], 0)
+
+    def test_a_question_that_arrives_while_reading_further_up_is_announced(self):
+        out = self.run_page(before="config.feed = feedOf(2, [msg(1), msg(2)]);", body="""
+          scroll.scrollHeight = 2000; scroll.clientHeight = 400; scroll.scrollTop = 300;
+          scroll.fire("scroll");                                 // reading further up
+          queue.push({status: 200, data: feedOf(3, [], [pollRow(3)])});
+          await advance(5000);
+          out.arrived = [ids(), scroll.scrollTop, part("new").classList.contains("hidden")];
+          queue.push({status: 200, data: feedOf(4, [], [pollRow(3, {seq: 4, total: 1})])});
+          part("new").classList.add("hidden");
+          await advance(5000);
+          out.counted = part("new").classList.contains("hidden");   // a count is no news down there
+        """)
+        self.assertEqual(out["arrived"], [["m1", "m2", "?p3"], 300, False])
+        self.assertTrue(out["counted"])
+
+    def test_opening_a_poll_sends_its_form_and_draws_the_question(self):
         out = self.run_page(before="config.feed = feedOf(1, [msg(1)]);", body="""
-          const form = part("poll-form");
+          const form = part("poll-form"), fold = part("poll-open");
+          fold.setAttribute("open", "");
           form.querySelector("[name=title]").value = "Where?";
           form.querySelector("[name=options]").value = "Here\\nThere";
           form.querySelector("[name=closes_at]").value = "2030-01-02T03:04";
-          queue.push({hold: true, status: 201, data: {poll: pollRow(2, {title: "Where?"})}});
+          queue.push({hold: true, status: 201, data: {poll: pollRow(2, {title: "Where?", mine: true})}});
           form.fire("submit"); form.fire("submit");                 // a double press
           await settle();
           out.sent = calls.length;
           held.shift()();
           await settle();
           out.call = [calls[0].url.endsWith("/polls/open/"), calls[0].body.title, calls[0].body.options,
-                      calls[0].body.revisability, calls[0].body.visibility,
+                      "revisability" in calls[0].body, calls[0].body.visibility,
                       calls[0].body.closes_at === new Date("2030-01-02T03:04").toISOString()];
           out.cards = polls.children.map((c) => c.dataset.pollId);
+          out.conversation = ids();
+          out.folded = !fold.hasAttribute("open");
           out.cleared = [form.querySelector("[name=title]").value, form.querySelector("[name=options]").value];
+          // The channel is full: the door's sentence is shown and what was typed is kept.
+          form.querySelector("[name=title]").value = "A fourth?";
+          form.querySelector("[name=options]").value = "a\\nb";
+          queue.push({status: 400, data: {error: "This channel already has 3 open polls. Close one before opening another."}});
+          form.fire("submit");
+          await settle();
+          out.full = [status(), form.querySelector("[name=title]").value, ids()];
         """)
         self.assertEqual(out["sent"], 1)
-        self.assertEqual(out["call"], [True, "Where?", "Here\nThere", "open", "live", True])
+        # No word of changeable answers is sent: there is no such poll.
+        self.assertEqual(out["call"], [True, "Where?", "Here\nThere", False, "live", True])
         self.assertEqual(out["cards"], ["p2"])
+        self.assertEqual(out["conversation"], ["m1", "?p2"])
+        self.assertTrue(out["folded"])
         self.assertEqual(out["cleared"], ["", ""])
+        self.assertEqual(out["full"], [["This channel already has 3 open polls. "
+                                        "Close one before opening another.", False],
+                                       "A fourth?", ["m1", "?p2"]])
 
 
 class PagePostingTests(PageCase):

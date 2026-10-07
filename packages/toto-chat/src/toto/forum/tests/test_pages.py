@@ -243,11 +243,16 @@ class ChannelPageTests(ForumCase):
         self.assertIn('data-forum-theme="light"', box)
         self.assertIn(":data-forum-theme=", box)    # the header's switch sets it
         words = re.search(r"<div\b[^>]*data-forum-words[^>]*>", page, re.S).group(0)
-        for name in ("remove", "gone", "unreadable", "you", "vote", "close", "open", "closed",
-                     "closes", "poll", "rule-open", "rule-final", "answers-count", "hidden-count",
-                     "your-answer", "image", "image-type", "image-large", "live", "retrying",
+        for name in ("remove", "gone", "unreadable", "you", "close", "open", "closed",
+                     "closes", "poll", "rule-final", "answers-count", "hidden-count",
+                     "your-answer", "submit", "question", "results", "to-question",
+                     "image", "image-type", "image-large", "live", "retrying",
                      "sending", "cost", "unaffordable", "failed", "confirm-remove"):
             self.assertRegex(words, rf'data-{name}="[^"]+"', name)
+        # Every answer is final: the page has no word for a changeable one
+        # and none for a vote button.
+        for name in ("vote", "rule-open"):
+            self.assertNotRegex(words, rf'data-{name}="', name)
         self.assertIn('data-image-large="The image is too large. The most is 10 MB."', words)
         self.assertIn("{amount}", words)
         self.assertIn("{count}", words)
@@ -265,6 +270,30 @@ class ChannelPageTests(ForumCase):
         # is hidden and takes the four raster types only.
         field = re.search(r"<input\b[^>]*data-forum-image[^>]*>", page).group(0)
         self.assertIn('accept="image/jpeg,image/png,image/gif,image/webp"', field)
+
+    def test_a_poll_is_opened_in_the_conversation_and_the_polls_tab_holds_results(self):
+        """The owner, 2026-10-07: "The poll quarions box apears in the forum
+        in the conversation not in polls tab. polls tab only hold results"."""
+        page = client_of(self.member).get(self.url("channel_detail")).content.decode()
+
+        def panel(key):
+            start = page.index(f'data-forum-tabpanel="{key}"')
+            more = page.find("data-forum-tabpanel=", start + 1)
+            return page[start:more if more > 0 else len(page)]
+
+        messages, polls = panel("messages"), panel("polls")
+        for hook in ("data-forum-messages", "data-forum-post", "data-forum-poll-open",
+                     "data-forum-poll-form", 'name="title"', 'name="options"',
+                     'name="visibility"', 'name="closes_at"'):
+            self.assertIn(hook, messages, hook)
+        self.assertIn("data-forum-polls ", polls)
+        self.assertIn('data-testid="forum-polls-note"', polls)
+        self.assertIn("Results only.", polls)
+        for word in ("<form", "<input", "<select", "<textarea", "<button", "data-forum-poll-form"):
+            self.assertNotIn(word, polls, word)
+        # An answer is always final, so nothing on the page asks.
+        self.assertNotIn('name="revisability"', page)
+        self.assertNotIn("Answers may be changed", page)
 
     def test_the_theme_is_the_platforms_and_no_colour_is_the_pages_own(self):
         """Grounds, lines and accents are the theme's tokens, light and
