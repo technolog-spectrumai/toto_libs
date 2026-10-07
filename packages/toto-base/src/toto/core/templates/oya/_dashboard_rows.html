@@ -1,0 +1,24 @@
+{% comment %}The entries of a section an app fills for the member looking
+(toto.core.dashboard), as compact rows: an icon, the title, one line of
+description, and the whole row one link that ENTERS the entry in this tab.
+Title and description are text. One-pixel lines in the theme's colours,
+square corners (2026-10-07; its first user is the forum's section).{% endcomment %}
+{% if items %}
+<ul :class="darkMode ? 'divide-accent-1/40 border-accent-1/40 bg-bubble-bg-dark' : 'divide-accent-2/40 border-accent-2/40 bg-bubble-bg-light'"
+    class="divide-y border md:col-span-2" data-dashboard-rows>
+  {% for block in items %}
+  <li>
+    <a href="{{ block.link|default:'#' }}" data-dashboard-row
+       :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+       class="flex items-baseline gap-2 px-3 py-2 transition">
+      <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="{{ block.icon|default:'fa-solid fa-cube' }} w-4 shrink-0 text-center text-xs" aria-hidden="true"></i>
+      <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="max-w-[60%] shrink-0 truncate font-bold">{{ block.title|default:"Untitled" }}</span>
+      <span class="min-w-0 flex-1 truncate text-sm opacity-70">{{ block.description }}</span>
+      <i class="fa-solid fa-arrow-right shrink-0 text-xs opacity-50" aria-hidden="true"></i>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
