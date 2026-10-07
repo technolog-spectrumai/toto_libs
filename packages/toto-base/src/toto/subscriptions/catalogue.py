@@ -300,7 +300,7 @@ _DEFAULTS = (
     # still see what they owe and pay it.
     Entitlement("forum", "Forum", order=28,
                 icon="fa-solid fa-comments",
-                description="Channels and direct messages."),
+                description="One channel for each of your communities, with pictures and polls."),
     Entitlement("bourse", "Exchange", order=29,
                 icon="fa-solid fa-chart-line",
                 description="Trade one asset for another."),
