@@ -55,6 +55,21 @@ class MapTests(SimpleTestCase):
                 self.assertEqual(COLOUR_OF[code], role)
                 self.assertEqual(PRICES[code], Decimal(price))
 
+    def test_the_forum_s_two_prices_per_kilobyte(self):
+        """A kilobyte of a post's text and a kilobyte of its image draw on
+        storage, the image the dearer (2026-10-07, stage 69); the old forum's
+        three codes are gone. Seeds; staff own the numbers."""
+        from decimal import Decimal
+
+        self.assertEqual(COLOUR_OF["forum.text_kb"], "storage")
+        self.assertEqual(COLOUR_OF["forum.image_kb"], "storage")
+        self.assertEqual(PRICES["forum.text_kb"], Decimal("0.001"))
+        self.assertEqual(PRICES["forum.image_kb"], Decimal("0.002"))
+        self.assertGreater(PRICES["forum.image_kb"], PRICES["forum.text_kb"])
+        for code in ("forum.message", "forum.encrypt", "forum.room_key"):
+            self.assertNotIn(code, COLOUR_OF)
+            self.assertNotIn(code, PRICES)
+
     def test_geography_s_metrics_are_registered_where_it_is_installed(self):
         from django.apps import apps
 

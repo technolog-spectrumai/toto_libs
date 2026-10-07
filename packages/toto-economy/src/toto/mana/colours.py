@@ -46,6 +46,10 @@ COLOUR_OF: dict[str, str] = {
     "geography.note": "storage",
     # A comment under a community's pin or zone (2026-10-06, stage 64).
     "geography.comment": "storage",
+    # What a forum post keeps (2026-10-07, stage 69): a kilobyte of its text
+    # and a kilobyte of its image, both sealed and held for the channel.
+    "forum.text_kb": "storage",
+    "forum.image_kb": "storage",
     # -- compute ------------------------------------------------------------
     "workflows.run": "compute",
     "repo.run": "compute",
@@ -64,10 +68,6 @@ COLOUR_OF: dict[str, str] = {
     "assets.chain.verify": "compute",
     "ai.request": "compute",
     "ai.tokens_1k": "compute",
-    # Sealing a message and making a room key are work the server does for
-    # an encrypted room (2026-09-25).
-    "forum.encrypt": "compute",
-    "forum.room_key": "compute",
     # A place name or map point resolved by the host's geocoding provider
     # (2026-09-28). Clicking the map is free; asking the server is not.
     "locations.geocode": "compute",
@@ -77,9 +77,6 @@ COLOUR_OF: dict[str, str] = {
     "geography.route": "compute",
     # -- security -----------------------------------------------------------
     "antivirus.scan": "security",
-    # Talking in the clear (2026-09-25): an ordinary forum message draws on
-    # the security pool, the way plaintext storage does.
-    "forum.message": "security",
     "security.plain_gb_day": "security",        # a levy, clamped
 }
 
@@ -114,10 +111,12 @@ PRICES: dict[str, Decimal] = {
     "ai.request": Decimal("2"),
     "ai.tokens_1k": Decimal("0.5"),
     "antivirus.scan": Decimal("3"),
-    # A day's refill (4/hour) buys about a thousand ordinary messages.
-    "forum.message": Decimal("0.1"),
-    "forum.encrypt": Decimal("0.2"),
-    "forum.room_key": Decimal("5"),
+    # The forum, per KILOBYTE (2026-10-07, stage 69), both tiny and the image
+    # the dearer: a line of 100 bytes is about 0.0001, the longest message
+    # (8 KB) 0.008; a picture of 1 MB is 2.048 and the largest (10 MB) 20.48,
+    # a fifth of a full pool. toto/forum/billing.py has the arithmetic.
+    "forum.text_kb": Decimal("0.001"),
+    "forum.image_kb": Decimal("0.002"),
     # A search or an address from a pin: a day's refill buys about 200.
     "locations.geocode": Decimal("0.5"),
     # Geography (2026-10-06). A search costs what the parked map's lookup

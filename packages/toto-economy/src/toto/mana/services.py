@@ -518,12 +518,21 @@ def _label(role: str) -> str:
 
 
 def _amount(value) -> str:
-    """A pool amount for a sentence: whole numbers bare, else two places."""
+    """A pool amount for a sentence: whole numbers bare, else two places.
+
+    An amount under a hundredth is written with its first three significant
+    digits instead (2026-10-07): a forum post is charged per kilobyte, and a
+    refusal that said "this needs 0 and you have 0" would explain nothing.
+    """
     from decimal import ROUND_DOWN, Decimal
 
     value = Decimal(value)
     if value == value.to_integral_value():
         return str(value.to_integral_value())
+    if abs(value) < Decimal("0.01"):
+        from toto.quota.rates import significant
+
+        return significant(value)
     return str(value.quantize(Decimal("0.01"), rounding=ROUND_DOWN).normalize())
 
 

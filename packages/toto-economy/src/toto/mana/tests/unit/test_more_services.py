@@ -103,7 +103,11 @@ class AmountAndKindTests(SimpleTestCase):
     def test_whole_numbers_are_bare_and_fractions_lose_trailing_zeros(self):
         self.assertEqual(services._amount(Decimal("7")), "7")
         self.assertEqual(services._amount(Decimal("1.10")), "1.1")
-        self.assertEqual(services._amount(Decimal("0.005")), "0")
+        # Under a hundredth: three significant digits, never a bare 0
+        # (2026-10-07; a forum post is charged per kilobyte).
+        self.assertEqual(services._amount(Decimal("0.005")), "0.005")
+        self.assertEqual(services._amount(Decimal("0.000000977")), "0.000000977")
+        self.assertEqual(services._amount(Decimal("0.019")), "0.01")
 
     def tx(self, reference="", source_type="", metadata=None, reversed_id=None):
         return SimpleNamespace(reference=reference, source_type=source_type,
