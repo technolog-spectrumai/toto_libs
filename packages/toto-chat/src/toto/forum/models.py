@@ -316,6 +316,13 @@ class ForumSettings(models.Model):
     refresh_seconds = models.PositiveSmallIntegerField(
         default=5, validators=[MinValueValidator(2), MaxValueValidator(120)],
         help_text=_("How often an open channel asks for new messages, in seconds."))
+    #: A post whose text and picture together are smaller than this many
+    #: kilobytes costs nothing (the owner, 2026-10-07: "make forum messages
+    #: free below threshold (like 300kB) - make this setting param"). 0: no
+    #: post is free. Read by ``billing.is_free``.
+    free_below_kb = models.PositiveIntegerField(
+        default=300, validators=[MaxValueValidator(102400)],
+        help_text=_("A message whose text and picture together are smaller than this costs nothing. 0 charges every message."))
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")

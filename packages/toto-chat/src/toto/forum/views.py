@@ -237,6 +237,7 @@ def channel_detail(request, channel):
     community = channel.community
     slug = community.slug
     nil = "00000000-0000-0000-0000-000000000000"
+    dials = ForumSettings.current()
     config = {
         "community": {"name": community.name, "slug": slug},
         "viewer": {"name": posting.display_name(request.user),
@@ -259,8 +260,10 @@ def channel_detail(request, channel):
         # The list price of a kilobyte of text and of image, as decimal
         # strings ("0" where nothing is priced). The estimate door has the
         # member's own figure, their discount included.
-        "prices": billing.prices(),
-        "refresh_seconds": ForumSettings.current().refresh_seconds,
+        # ``free_below_kb``: a post smaller than this (text and picture
+        # together) costs nothing; 0 where every post is charged.
+        "prices": {**billing.prices(), "free_below_kb": dials.free_below_kb},
+        "refresh_seconds": dials.refresh_seconds,
         "feed": posting.feed(request.user, channel),
     }
     response = render(request, "forum/channel.html", _page(request, {
@@ -324,9 +327,10 @@ def estimate(request, channel):
     ``text_bytes`` and ``image_bytes``, each a whole number of bytes (0 or
     absent for none), form-encoded or as a JSON object. Answers ``{"amount",
     "text", "image"}`` as decimal strings, ``"affordable"``, ``"balance"``
-    (a decimal string, or null where nothing is priced) and ``"display"``,
+    (a decimal string, or null where nothing is priced), ``"display"``,
     the amount as the platform writes it with the pool's name ("" where
-    nothing is priced). Nothing is stored and nothing is charged: it is the
+    nothing is priced or the post is free) and ``"free"``: the post is under
+    the free threshold of the forum's Settings. Nothing is stored and nothing is charged: it is the
     charge's own arithmetic (``billing.quote``). A size no post may have is
     400, in the posting door's words."""
     if (request.content_type or "").split(";")[0].strip() == "application/json":
@@ -466,16 +470,18 @@ def poll_remove(request, channel, poll_id):
 
 
 class SettingsForm(forms.ModelForm):
-    """The three dials, checked by the model's own bounds: the age from 1 to
-    3650 days, the interval from 2 to 120 seconds."""
+    """The dials, checked by the model's own bounds: the age from 1 to 3650
+    days, the interval from 2 to 120 seconds, the free threshold from 0 to
+    102400 kilobytes."""
 
     class Meta:
         model = ForumSettings
-        fields = ["retention_enabled", "retention_days", "refresh_seconds"]
+        fields = ["retention_enabled", "retention_days", "refresh_seconds", "free_below_kb"]
         labels = {
             "retention_enabled": gettext_lazy("Remove old messages and polls on a schedule"),
             "retention_days": gettext_lazy("Retention age, in days"),
             "refresh_seconds": gettext_lazy("Refresh interval, in seconds"),
+            "free_below_kb": gettext_lazy("Messages are free below, in kilobytes"),
         }
 
 
@@ -512,7 +518,7 @@ def settings_page(request):
 
 @door(ADMINISTRATOR, page=True)
 def settings_save(request):
-    """Save the three dials. Nothing is saved unless all three are in range."""
+    """Save the dials. Nothing is saved unless every one is in range."""
     form = SettingsForm(request.POST, instance=ForumSettings.current())
     if form.is_valid():
         saved = form.save(commit=False)

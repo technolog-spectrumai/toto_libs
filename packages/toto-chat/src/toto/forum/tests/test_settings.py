@@ -26,7 +26,8 @@ from .test_cleanup import CleanupCase, no_worker, worker
 PAGE = "/forum/settings/"
 SAVE = "/forum/settings/save/"
 CLEAN = "/forum/settings/cleanup/"
-VALID = {"retention_enabled": "on", "retention_days": "90", "refresh_seconds": "10"}
+VALID = {"retention_enabled": "on", "retention_days": "90", "refresh_seconds": "10",
+         "free_below_kb": "300"}
 ALL_NOW = {"scope": "all", "age": "everything", "confirm": "yes"}
 
 
@@ -160,12 +161,13 @@ class SaveTests(SettingsCase):
     def test_the_switch_is_off_when_its_box_is_not_ticked(self):
         client = client_of(self.admin)
         client.post(SAVE, VALID)
-        client.post(SAVE, {"retention_days": "90", "refresh_seconds": "10"})
+        client.post(SAVE, {"retention_days": "90", "refresh_seconds": "10", "free_below_kb": "300"})
         self.assertEqual(self.dials(), (False, 90, 10))
 
     def test_the_bounds_are_the_server_s(self):
         client = client_of(self.admin)
-        for field, good in (("retention_days", ("1", "3650")), ("refresh_seconds", ("2", "120"))):
+        for field, good in (("retention_days", ("1", "3650")), ("refresh_seconds", ("2", "120")),
+                            ("free_below_kb", ("0", "1", "102400"))):
             for value in good:
                 with self.subTest(field=field, value=value):
                     client.post(SAVE, {**VALID, field: value})
@@ -173,7 +175,8 @@ class SaveTests(SettingsCase):
         client.post(SAVE, VALID)
         before = self.dials()
         for field, bad in (("retention_days", ("0", "3651", "-5", "ten", "", "1.5", "9" * 30)),
-                           ("refresh_seconds", ("1", "121", "0", "-2", "soon", "", "2.5"))):
+                           ("refresh_seconds", ("1", "121", "0", "-2", "soon", "", "2.5")),
+                           ("free_below_kb", ("102401", "-1", "much", "", "1.5", "9" * 30))):
             for value in bad:
                 with self.subTest(field=field, value=value):
                     response = client.post(SAVE, {**VALID, field: value}, follow=True)
@@ -183,8 +186,27 @@ class SaveTests(SettingsCase):
 
     def test_one_bad_value_saves_none_of_the_three(self):
         client = client_of(self.admin)
-        client.post(SAVE, {"retention_days": "45", "refresh_seconds": "999"})
+        client.post(SAVE, {"retention_days": "45", "refresh_seconds": "999", "free_below_kb": "7"})
         self.assertEqual(self.dials(), (False, 365, 5))
+        self.assertEqual(ForumSettings.current().free_below_kb, 300)
+
+    def test_the_free_threshold_is_on_the_page_and_saved(self):
+        client = client_of(self.admin)
+        self.assertContains(client.get(PAGE), 'data-testid="forum-settings-free-below"')
+        self.assertContains(client.get(PAGE), 'name="free_below_kb"')
+        client.post(SAVE, {**VALID, "free_below_kb": "512"})
+        self.assertEqual(ForumSettings.current().free_below_kb, 512)
+        self.assertContains(client.get(PAGE), 'value="512"')
+
+    def test_no_card_repeats_whether_the_schedule_is_on(self):
+        """The owner, 2026-10-07: "Scheduled cleanup - Off. Nothing is removed
+        on a schedule. - remove that it adds nothing"."""
+        for enabled in (False, True):
+            ForumSettings.objects.filter(pk=1).update(retention_enabled=enabled)
+            response = client_of(self.admin).get(PAGE)
+            self.assertNotContains(response, "forum-settings-schedule")
+            self.assertNotContains(response, "Scheduled cleanup")
+            self.assertNotContains(response, "Nothing is removed on a schedule.</p>")
 
     def test_the_refresh_interval_reaches_the_channel_s_page(self):
         client_of(self.admin).post(SAVE, {**VALID, "refresh_seconds": "30"})

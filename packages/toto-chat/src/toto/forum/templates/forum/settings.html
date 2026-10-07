@@ -2,8 +2,10 @@
 {% load i18n %}
 {% comment %}The forum's Settings page (stage 69), for an administrator of the
 platform: the retention age and its switch, the refresh interval, a cleanup
-started by hand, and what the last cleanups removed. Three plain forms, each
-a POST that comes back here with a sentence. A community's name is text.
+started by hand, and what the last cleanups removed; and the size under which
+a message costs nothing. Plain forms, each a POST that comes back here with a
+sentence. (No card of its own says whether the schedule is on: the switch
+says it; the owner, 2026-10-07: "remove that it adds nothing".) A community's name is text.
 
 It must be unmistakable that a cleanup destroys things, and it must never
 suggest that a copy is kept: there is none.
@@ -45,6 +47,15 @@ cleanup's card has the warning colour's border.{% endcomment %}
         <span>
           <span class="font-semibold">{{ form.retention_enabled.label }}</span>
           <span class="block text-xs opacity-70">{% trans "While this is off, nothing is removed on a schedule. A cleanup can still be started by hand below." %}</span>
+          {% if settings_row.retention_enabled %}
+            {% if next_run %}
+              <span class="block text-xs opacity-70" data-testid="forum-settings-next-run">{% blocktrans with when=next_run|date:"Y-m-d H:i" %}Next run: {{ when }}.{% endblocktrans %}</span>
+            {% else %}
+              <span data-testid="forum-settings-no-schedule"
+                    :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+                    class="block text-xs">{% trans "This server has no schedule for it, so it will not run by itself." %}</span>
+            {% endif %}
+          {% endif %}
         </span>
       </label>
       <div class="grid gap-4 sm:grid-cols-2">
@@ -64,30 +75,20 @@ cleanup's card has the warning colour's border.{% endcomment %}
                  class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2">
           <span class="mt-1 block text-xs opacity-70">{% trans "How often an open channel asks for new messages. From 2 to 120." %}</span>
         </label>
+        <label class="block text-sm">
+          <span class="mb-1 block font-semibold">{{ form.free_below_kb.label }}</span>
+          <input type="number" name="free_below_kb" required min="0" max="102400" step="1"
+                 value="{{ settings_row.free_below_kb }}" data-testid="forum-settings-free-below"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark focus:ring-accent-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:ring-accent-light/40'"
+                 class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2">
+          <span class="mt-1 block text-xs opacity-70">{% trans "A message whose text and picture together are smaller than this costs nothing. 0 charges every message." %}</span>
+        </label>
       </div>
       <button type="submit"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
               class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
         <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>{% trans "Save" %}</button>
     </form>
-
-    <div data-testid="forum-settings-schedule"
-         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="space-y-2 rounded-2xl border p-4 text-sm shadow-sm sm:p-5">
-      <h2 class="flex items-center gap-2 text-lg font-bold">
-        <i class="fa-solid fa-calendar-day" aria-hidden="true"></i>{% trans "Scheduled cleanup" %}</h2>
-      {% if settings_row.retention_enabled %}
-        <p>{% blocktrans with days=settings_row.retention_days %}On. Every night, everything older than {{ days }} days is removed.{% endblocktrans %}</p>
-        {% if next_run %}
-          <p>{% blocktrans with when=next_run|date:"Y-m-d H:i" %}Next run: {{ when }}.{% endblocktrans %}</p>
-        {% else %}
-          <p data-testid="forum-settings-no-schedule"
-             :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "This server has no schedule for it, so it will not run by itself." %}</p>
-        {% endif %}
-      {% else %}
-        <p>{% trans "Off. Nothing is removed on a schedule." %}</p>
-      {% endif %}
-    </div>
 
     <form method="post" action="{% url 'forum:cleanup_start' %}" data-testid="forum-cleanup-form"
           :class="darkMode ? 'border-warn-dark bg-bubble-bg-dark' : 'border-warn-light bg-bubble-bg-light'"

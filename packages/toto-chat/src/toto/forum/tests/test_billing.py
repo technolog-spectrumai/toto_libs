@@ -23,7 +23,7 @@ from django.db import transaction
 from django.test import SimpleTestCase, override_settings
 
 from toto.forum import billing, images, metrics, posting
-from toto.forum.models import ForumMessage, ForumQuotaPolicy, ForumUsageEvent
+from toto.forum.models import ForumMessage, ForumQuotaPolicy, ForumSettings, ForumUsageEvent
 from toto.forum.testing import PNG, ForumCase, client_of, op, send_json, upload
 from toto.mana.tests.fixtures import MASTER, held, seed_prices, spend
 from toto.tariffs.models import TariffItem, UsageCharge, UsageRecord
@@ -111,6 +111,13 @@ class BilledCase(ForumCase):
         super().setUpTestData()
         for user in (cls.member, cls.second, cls.head, cls.admin):
             services.fill_pools(user)
+        # Every post is charged in these classes (the threshold at 0), so
+        # that the charging rules are the ones under test; FreeBelowTests
+        # sets a threshold of its own.
+        ForumSettings.objects.update_or_create(pk=1, defaults={"free_below_kb": cls.FREE_BELOW_KB})
+
+    #: The forum's free threshold in this class, in kilobytes.
+    FREE_BELOW_KB = 0
 
     def held(self, user=None) -> Decimal:
         return held(user or self.member, "storage")
@@ -221,7 +228,8 @@ class EstimateTests(BilledCase):
         self.assertEqual(response["Cache-Control"], "no-store")
         self.assertEqual(response.json(), {
             "amount": "5.860375977", "text": "0.001000977", "image": "5.859375",
-            "affordable": True, "balance": "100", "display": "5.86 storage mana"})
+            "affordable": True, "balance": "100", "display": "5.86 storage mana",
+            "free": False})
 
     def test_json_and_a_form_are_the_same_question(self):
         sizes = {"text_bytes": 300, "image_bytes": 70_000}
@@ -241,7 +249,7 @@ class EstimateTests(BilledCase):
     def test_nothing_to_send_costs_nothing(self):
         self.assertEqual(self.estimate().json(), {
             "amount": "0", "text": "0", "image": "0", "affordable": True,
-            "balance": "100", "display": "0 storage mana"})
+            "balance": "100", "display": "0 storage mana", "free": False})
 
     def test_it_says_when_the_pool_is_short(self):
         self.leave("0.5")
@@ -287,7 +295,8 @@ class EstimateTests(BilledCase):
                           r"</script>", html, re.S)
         config = json.loads(block.group(1))
         self.assertEqual(config["urls"]["estimate"], "/forum/guild/estimate/")
-        self.assertEqual(config["prices"], {"text_kb": "0.001", "image_kb": "0.002"})
+        self.assertEqual(config["prices"],
+                         {"text_kb": "0.001", "image_kb": "0.002", "free_below_kb": 0})
 
 
 class ChargeTests(BilledCase):
@@ -495,12 +504,99 @@ class ChargeTests(BilledCase):
         self.assertEqual(ForumUsageEvent.objects.count(), 1)
 
 
+class FreeBelowTests(BilledCase):
+    """The owner, 2026-10-07: "make forum messages free below threshold
+    (like 300kB) - make this setting param". A post whose text and picture
+    together are smaller than the forum's threshold costs nothing; at the
+    threshold and above it is charged for its whole size, as before."""
+
+    FREE_BELOW_KB = 2           # 2048 bytes: small enough to stand on both sides of
+
+    def charges(self):
+        return UsageCharge.objects.filter(usage_record__metric_code__startswith="forum.")
+
+    def test_the_dial_arrives_at_300(self):
+        self.assertEqual(ForumSettings._meta.get_field("free_below_kb").default, 300)
+        self.assertEqual(billing.free_below_bytes(), 2048)
+
+    def test_a_small_message_costs_nothing_and_is_still_counted(self):
+        before = self.held()
+        response = self.say(self.member, "hello")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(self.held(), before)
+        self.assertFalse(self.charges().exists())
+        # What the day's caps count is written, with its quantity.
+        (event,) = ForumUsageEvent.objects.all()
+        self.assertEqual((event.metric_code, event.quantity), (metrics.TEXT_KB, billing.kilobytes(5)))
+
+    def test_one_byte_under_is_free_and_the_threshold_itself_is_charged_whole(self):
+        before = self.held()
+        self.assertEqual(self.say(self.member, "x" * 2047).status_code, 201)
+        self.assertEqual(self.held(), before)
+        self.assertEqual(self.say(self.member, "y" * 2048).status_code, 201)
+        self.assertEqual(before - self.held(), up(2048, TEXT_PRICE))
+
+    def test_text_and_picture_are_weighed_together(self):
+        before = self.held()
+        # 800 + 1100 = 1900 bytes: free, though the picture is the larger part.
+        self.assertEqual(self.say(self.member, "a" * 800, image=upload(picture(1100))).status_code, 201)
+        self.assertEqual(self.held(), before)
+        # 1000 + 1100 = 2100 bytes: each alone is under the threshold, the post is not.
+        self.assertEqual(self.say(self.member, "b" * 1000, image=upload(picture(1100))).status_code, 201)
+        self.assertEqual(before - self.held(), up(1000, TEXT_PRICE) + up(1100, IMAGE_PRICE))
+
+    def test_an_empty_pool_posts_a_free_message_and_is_refused_a_charged_one(self):
+        self.leave(0)
+        self.assertEqual(self.say(self.member, "still here").status_code, 201)
+        refused = self.say(self.member, "z" * 4000)
+        self.assertEqual(refused.status_code, 402)
+        self.assertEqual(ForumMessage.objects.count(), 1)
+
+    def test_the_estimate_says_free_and_shows_no_cost(self):
+        self.leave(0)
+        free = self.estimate(text_bytes=100, image_bytes=1000).json()
+        self.assertEqual((free["free"], free["amount"], free["text"], free["image"], free["display"],
+                          free["affordable"]), (True, "0", "0", "0", "", True))
+        charged = self.estimate(text_bytes=100, image_bytes=2000).json()
+        self.assertFalse(charged["free"])
+        self.assertFalse(charged["affordable"])
+        self.assertGreater(Decimal(charged["amount"]), 0)
+
+    def test_a_retry_of_a_free_post_answers_the_stored_message(self):
+        the_op = op()
+        first = self.say(self.member, "once", the_op=the_op)
+        again = self.say(self.member, "once", the_op=the_op)
+        self.assertEqual((first.status_code, again.status_code), (201, 200))
+        self.assertTrue(again.json()["replay"])
+        self.assertEqual(ForumMessage.objects.count(), 1)
+        self.assertEqual(ForumUsageEvent.objects.count(), 1)
+        self.assertFalse(self.charges().exists())
+
+    def test_the_day_s_cap_still_refuses_a_free_post(self):
+        ForumQuotaPolicy.objects.create(metric_code="forum.text_kb", limit=Decimal("0.01"),
+                                        unit="kb")
+        self.assertEqual(self.say(self.member, "ten bytes!").status_code, 201)
+        self.assertEqual(self.say(self.member, "x" * 100).status_code, 429)
+        self.assertEqual(ForumMessage.objects.count(), 1)
+        self.assertFalse(self.charges().exists())
+
+    def test_the_dial_is_read_when_the_post_is_made(self):
+        ForumSettings.objects.filter(pk=1).update(free_below_kb=0)
+        before = self.held()
+        self.assertEqual(self.say(self.member, "hello").status_code, 201)
+        self.assertEqual(before - self.held(), up(5, TEXT_PRICE))
+        ForumSettings.objects.filter(pk=1).update(free_below_kb=300)
+        before = self.held()
+        self.assertEqual(self.say(self.member, "w" * 8000, image=upload(picture(200_000))).status_code, 201)
+        self.assertEqual(self.held(), before)
+
+
 class UnpricedTests(BilledCase):
     def test_without_a_price_a_post_is_free_and_still_counted(self):
         TariffItem.objects.filter(metric__code__startswith="forum.").delete()
         self.assertEqual(self.estimate(text_bytes=500, image_bytes=5000).json(), {
             "amount": "0", "text": "0", "image": "0", "affordable": True,
-            "balance": None, "display": ""})
+            "balance": None, "display": "", "free": False})
         self.assertEqual(billing.prices(), {"text_kb": "0", "image_kb": "0"})
         self.leave(0)
         self.assertEqual(self.say(self.member, "free").status_code, 201)

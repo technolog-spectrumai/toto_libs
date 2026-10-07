@@ -124,6 +124,25 @@ def lines(text_bytes: int, image_bytes: int) -> list[Line]:
     return out
 
 
+def free_below_bytes() -> int:
+    """The size under which a post costs nothing, in bytes: the forum's
+    Settings (``ForumSettings.free_below_kb``). 0: no post is free."""
+    from .models import ForumSettings
+
+    return int(ForumSettings.current().free_below_kb) * 1024
+
+
+def is_free(text_bytes: int, image_bytes: int) -> bool:
+    """Whether a post of these sizes costs nothing: its text and its picture
+    TOGETHER are strictly smaller than the threshold in force now. THE one
+    decision; the estimate, the check for funds and the charge all ask it.
+
+    A free post is still counted against the day's caps (its usage events
+    are written with their quantities) and is still limited by the posting
+    rate: free is about mana, not about how much may be posted."""
+    return (int(text_bytes) + int(image_bytes)) < free_below_bytes()
+
+
 def _charges(billed) -> list[tuple[str, Decimal, str]]:
     return [(line.code, line.quantity, line.unit) for line in billed]
 
@@ -146,6 +165,9 @@ class Quote:
     #: How the asset is named to a member ("storage mana"); "" where nothing
     #: is priced.
     label: str = ""
+    #: The post is under the free threshold: nothing is taken, whatever the
+    #: prices and whatever the pool holds.
+    free: bool = False
 
     @property
     def amount(self) -> Decimal:
@@ -167,15 +189,19 @@ class Quote:
             "amount": text_of(self.amount), "text": text_of(self.text),
             "image": text_of(self.image), "affordable": self.affordable,
             "balance": text_of(self.balance) if self.balance is not None else None,
-            "display": self.display,
+            "display": self.display, "free": self.free,
         }
 
 
 def quote(user, *, text_bytes: int, image_bytes: int) -> Quote:
     """What a post of these sizes would cost ``user`` now. Nothing is stored
     and nothing is charged; the amounts are the ones ``settle_post`` would
-    post, because the ledger's own calculator works them out."""
+    post, because the ledger's own calculator works them out. A post under
+    the free threshold costs nothing and is affordable with an empty pool;
+    its ``display`` is "", so the page shows no cost."""
     billed = lines(text_bytes, image_bytes)
+    if is_free(text_bytes, image_bytes):
+        return Quote(Decimal(0), Decimal(0), True, None, free=True)
     answer = ledger_quote(user, price_for(user, APP), _charges(billed), metrics=metrics.ALL)
     if answer is None:
         return Quote(Decimal(0), Decimal(0), True, None)
@@ -212,12 +238,15 @@ def afford_post(user, *, text_bytes: int, image_bytes: int) -> None:
     """Refuse a post ``user`` could not be charged for, before anything is
     stored. Raises ``QuotaExceeded`` (429: the day's cap), ``InArrears``
     (402) or ``InsufficientFunds`` (402: the pool's own sentence, for the
-    text and the image together)."""
+    text and the image together). A post under the free threshold is held
+    to the day's cap and asked for no funds."""
     from .models import ForumQuotaPolicy
 
     billed = lines(text_bytes, image_bytes)
     for line in billed:
         check_quota(ForumQuotaPolicy, line.code, line.quantity, user)
+    if is_free(text_bytes, image_bytes):
+        return
     check_funds_all(user, price_for(user, APP), _charges(billed))
 
 
@@ -230,9 +259,14 @@ def settle_post(user, message, *, text_bytes: int, image_bytes: int) -> None:
     is already there rolls that savepoint back alone and means this message
     was settled before: nothing is charged again); then the ledger's charge.
     The ledger's refusal is raised, and rolls the caller's transaction back.
+
+    A post under the free threshold (``is_free``, asked here once, for the
+    threshold in force now) writes its usage events, which is what the day's
+    caps count, and is charged nothing: no ledger entry.
     """
     from .models import ForumUsageEvent
 
+    free = is_free(text_bytes, image_bytes)
     tariff = price_for(user, APP)
     source = {"source_type": SOURCE_TYPE, "source_id": str(message.id)}
     for line in lines(text_bytes, image_bytes):
@@ -244,6 +278,8 @@ def settle_post(user, message, *, text_bytes: int, image_bytes: int) -> None:
                     idempotency_key=f"{line.code}:{message.id}",
                     metadata={"bytes": line.size}, occurred_at=timezone.now(), **source)
         except IntegrityError:
+            continue
+        if free:
             continue
         charge(user, tariff, line.code, line.quantity, unit=line.unit,
                description=LABEL[line.code], **source)

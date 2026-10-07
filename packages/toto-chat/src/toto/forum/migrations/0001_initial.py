@@ -153,6 +153,7 @@ class Migration(migrations.Migration):
                 ('retention_enabled', models.BooleanField(default=False)),
                 ('retention_days', models.PositiveIntegerField(default=365, help_text='Messages and polls older than this are permanently removed.', validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(3650)])),
                 ('refresh_seconds', models.PositiveSmallIntegerField(default=5, help_text='How often an open channel asks for new messages, in seconds.', validators=[django.core.validators.MinValueValidator(2), django.core.validators.MaxValueValidator(120)])),
+                ('free_below_kb', models.PositiveIntegerField(default=300, help_text='A message whose text and picture together are smaller than this costs nothing. 0 charges every message.', validators=[django.core.validators.MaxValueValidator(102400)])),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL)),
             ],
