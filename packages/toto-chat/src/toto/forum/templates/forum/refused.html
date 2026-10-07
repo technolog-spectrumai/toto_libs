@@ -1,10 +1,27 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
+{% comment %}What a refusal of one of the forum's pages looks like, with its
+status: one card in the platform's frame, as the plan gate's own refusal is
+drawn (subscriptions/locked.html). The sentence is text.{% endcomment %}
 {% block title %}{% trans "Forum" %} | {{ platform.site_name }}{% endblock %}
 {% block content %}
-<section class="mx-auto max-w-3xl px-4 py-10">
-  <h1 class="text-2xl font-bold">{% trans "Forum" %}</h1>
-  <p class="mt-4" data-testid="forum-refused" data-status="{{ status }}">{{ sentence }}</p>
-  <p class="mt-4 text-sm"><a class="underline" href="{% url 'forum:channel_list' %}">{% trans "Back to the channels" %}</a></p>
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="flex min-h-screen items-center justify-center px-6 py-16">
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="w-full max-w-lg space-y-4 rounded-2xl border p-8 text-center shadow-md">
+    <i class="fa-solid fa-lock text-3xl opacity-50" aria-hidden="true"></i>
+    <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+       class="text-xs font-semibold uppercase tracking-wide">{% trans "Forum" %}</p>
+    <h1 class="text-xl font-bold" data-testid="forum-refused" data-status="{{ status }}">{{ sentence }}</h1>
+    <div class="flex flex-wrap justify-center gap-3 pt-2">
+      <a href="{% url 'core:dashboard' %}"
+         class="rounded px-4 py-2 text-sm font-semibold underline opacity-70 transition hover:opacity-100">{% trans "Dashboard" %}</a>
+      <a href="{% url 'forum:channel_list' %}"
+         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+         class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+        <i class="fa-solid fa-comments" aria-hidden="true"></i>{% trans "Back to the channels" %}</a>
+    </div>
+  </div>
 </section>
 {% endblock %}

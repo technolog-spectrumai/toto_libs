@@ -1,5 +1,6 @@
-/* One community's channel: the forum's page (stage 68, 2026-10-07; live,
- * with its look, since stage 70 of the same day).
+/* One community's channel: the forum's page (stage 68, 2026-10-07; live
+ * since stage 70 of the same day; what it draws wears the platform's look:
+ * the theme's colours at full strength and rounded shapes).
  *
  * Two halves. The functions at the top have no page in them and run under
  * node: the state a page keeps of its channel and what one feed answer does
@@ -373,23 +374,26 @@
 
   /* --- the page ------------------------------------------------------------ */
 
-  /* The theme's own colours, light and dark. The page's box carries
-   * data-forum-theme (the header's switch sets it), and a node made here
-   * names both colours, so nothing is redrawn when the switch is pressed.
-   * Every class is written whole: the stylesheet is built from what it can
-   * read. */
-  var LINE = "border-accent-2/40 group-data-[forum-theme=dark]/forum:border-accent-1/40";
+  /* The theme's own colours, light and dark, as the platform's pages wear
+   * them: the accent lines of a card, the page's ground, the sunken ground
+   * of a box inside a card. The page's section carries data-forum-theme
+   * (the header's switch sets it), and a node made here names both colours,
+   * so nothing is redrawn when the switch is pressed. Every class is
+   * written whole: the stylesheet is built from what it can read. */
+  var LINE = "border-accent-2 group-data-[forum-theme=dark]/forum:border-accent-1";
+  var GROUND = "bg-primary-bg-light group-data-[forum-theme=dark]/forum:bg-primary-bg-dark";
+  var SUNKEN = "bg-sunken-light group-data-[forum-theme=dark]/forum:bg-sunken-dark";
   var NAME = "text-accent-light group-data-[forum-theme=dark]/forum:text-accent-dark";
   var MINE = "border-accent-light group-data-[forum-theme=dark]/forum:border-accent-dark";
   var FILL = "bg-accent-light group-data-[forum-theme=dark]/forum:bg-accent-dark";
   var TRACK = "bg-black/10 group-data-[forum-theme=dark]/forum:bg-white/10";
-  var HOVER = "hover:bg-black/5 group-data-[forum-theme=dark]/forum:hover:bg-white/5";
+  var HOVER = "hover:bg-primary-bg-light/50 group-data-[forum-theme=dark]/forum:hover:bg-primary-bg-dark/50";
   var LINK = "text-link-light group-data-[forum-theme=dark]/forum:text-link-dark";
   var GOOD = "text-success-light group-data-[forum-theme=dark]/forum:text-success-dark";
   var BAD = "text-warn-light group-data-[forum-theme=dark]/forum:text-warn-dark";
-  var BUTTON = "border px-2 py-0.5 text-xs font-semibold hover:opacity-80";
-  var QUIET = "text-[11px] underline opacity-70 hover:opacity-100";
-  var CAPS = "font-mono text-[10px] font-bold uppercase tracking-widest";
+  var BUTTON = "rounded-lg border px-2.5 py-1 text-xs font-semibold transition hover:opacity-80";
+  var QUIET = "text-xs underline opacity-70 hover:opacity-100";
+  var CAPS = "text-xs font-semibold uppercase tracking-wide";
 
   /* Messages of one sender this close together are drawn under one name. */
   var GROUP_MS = 5 * 60 * 1000;
@@ -538,8 +542,8 @@
     }
 
     function messageNode(row) {
-      var item = el("li", "group/row relative flex gap-2 border-l-2 px-3 py-0.5 " + HOVER + " " +
-                          (row.mine ? MINE : "border-transparent"));
+      var item = el("li", "group/row relative flex gap-3 rounded-r-lg border-l-2 px-3 py-1 transition " +
+                          HOVER + " " + (row.mine ? MINE : "border-transparent"));
       item.dataset.messageId = row.id;
       item.dataset.number = String(row.number);
       item.dataset.at = String(Date.parse(row.created_at) || 0);
@@ -547,17 +551,17 @@
       if (row.mine) { item.dataset.mine = "1"; }
       item.title = whole(row.created_at);
 
-      var gutter = el("div", "w-7 shrink-0 pt-0.5");
+      var gutter = el("div", "w-8 shrink-0 pt-0.5");
       gutter.dataset.forumGutter = "";
       var face;
       if (row.avatar) {
-        face = el("img", "h-7 w-7 border object-cover " + LINE);
+        face = el("img", "h-8 w-8 rounded-lg border object-cover " + LINE);
         face.alt = "";
         face.loading = "lazy";
         face.src = row.avatar;
       } else {
-        face = el("div", "flex h-7 w-7 items-center justify-center border font-mono text-xs font-bold " +
-                         LINE, (String(row.sender || "?").trim().charAt(0) || "?").toUpperCase());
+        face = el("div", "flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-bold " +
+                         LINE + " " + SUNKEN, (String(row.sender || "?").trim().charAt(0) || "?").toUpperCase());
         face.setAttribute("aria-hidden", "true");
       }
       gutter.appendChild(face);
@@ -569,7 +573,7 @@
       var name = el("span", "text-sm font-semibold " + NAME, row.sender);
       name.dataset.forumSender = "";
       head.appendChild(name);
-      var time = el("time", "font-mono text-[11px] opacity-60", when(row.created_at));
+      var time = el("time", "text-xs opacity-60", when(row.created_at));
       time.setAttribute("datetime", String(row.created_at));
       head.appendChild(time);
       if (row.mine) { head.appendChild(el("span", CAPS + " opacity-50", words.you)); }
@@ -584,7 +588,7 @@
         door.href = row.image.url;
         door.target = "_blank";
         door.rel = "noopener noreferrer";
-        var image = el("img", "max-h-56 max-w-[min(100%,18rem)] border object-contain " + LINE);
+        var image = el("img", "max-h-56 max-w-[min(100%,18rem)] rounded-lg border object-contain " + LINE);
         image.alt = words.image;
         image.loading = "lazy";
         image.addEventListener("load", function () { if (pinned) { toBottom(); } });
@@ -607,7 +611,7 @@
 
     /* What stands where a removed message stood: one quiet line. */
     function goneNode(old) {
-      var item = el("li", "px-3 py-0.5 pl-12 text-xs italic opacity-50", words.gone);
+      var item = el("li", "py-1 pl-14 pr-3 text-xs italic opacity-50", words.gone);
       item.dataset.forumGone = "";
       item.dataset.number = old.dataset.number;
       item.dataset.at = old.dataset.at;
@@ -668,21 +672,21 @@
       head.appendChild(el("span", "ml-auto " + CAPS + " " + (row.open ? GOOD : "opacity-50"),
                           row.open ? words.open : words.closed));
       card.appendChild(head);
-      card.appendChild(el("h3", "mt-0.5 break-words text-sm font-semibold leading-snug [overflow-wrap:anywhere]",
+      card.appendChild(el("h3", "mt-1 break-words text-sm font-bold leading-snug [overflow-wrap:anywhere]",
                           row.title));
       var facts = [row.opener, row.revisability === "final" ? words.ruleFinal : words.ruleOpen];
       if (row.closes_at) { facts.push(words.closes.replace("{when}", when(row.closes_at))); }
-      card.appendChild(el("p", "mt-0.5 text-[11px] leading-snug opacity-60",
+      card.appendChild(el("p", "mt-1 text-xs leading-snug opacity-60",
                           facts.filter(Boolean).join(" · ")));
 
-      var options = el("ul", "mt-1.5 space-y-1.5");
+      var options = el("ul", "mt-2 space-y-2");
       row.choices.forEach(function (choice) {
         var line = el("li", "text-sm");
         line.dataset.choiceId = String(choice.id);
-        var top = el("div", "flex items-baseline gap-2");
+        var top = el("div", "flex items-center gap-2");
         var chosen = answered && row.my_choice === choice.id;
         if (votable && !chosen) {
-          var vote = button("shrink-0 " + BUTTON + " " + LINE, words.vote, function () {
+          var vote = button("shrink-0 " + BUTTON + " " + LINE + " " + GROUND, words.vote, function () {
             sendJson(urlFor(urls.poll_vote, urls.nil, row.id), {choice: choice.id})
               .then(mine, failed);
           });
@@ -701,14 +705,14 @@
         line.appendChild(top);
         if (choice.ballots !== null && choice.ballots !== undefined) {
           var share = row.total ? Math.round(100 * choice.ballots / row.total) : 0;
-          var meter = el("div", "mt-0.5 flex items-center gap-2");
-          var track = el("div", "h-1.5 min-w-0 flex-1 " + TRACK);
-          var fill = el("div", "h-full " + FILL);
+          var meter = el("div", "mt-1 flex items-center gap-2");
+          var track = el("div", "h-2 min-w-0 flex-1 overflow-hidden rounded-full " + TRACK);
+          var fill = el("div", "h-full rounded-full " + FILL);
           fill.style.width = share + "%";
           fill.dataset.forumBar = String(share);
           track.appendChild(fill);
           meter.appendChild(track);
-          var tally = el("span", "w-16 shrink-0 text-right font-mono text-[11px] tabular-nums opacity-70",
+          var tally = el("span", "w-20 shrink-0 text-right text-xs tabular-nums opacity-70",
                          choice.ballots + " · " + share + "%");
           tally.dataset.forumBallots = String(choice.ballots);
           meter.appendChild(tally);
@@ -718,7 +722,7 @@
       });
       card.appendChild(options);
 
-      var foot = el("p", "mt-1.5 text-[11px] opacity-60",
+      var foot = el("p", "mt-2 text-xs opacity-60",
                     row.total === null || row.total === undefined
                       ? words.hiddenCount
                       : words.answersCount.replace("{count}", String(row.total)));
@@ -726,7 +730,7 @@
       card.appendChild(foot);
 
       if (row.may_manage) {
-        var tools = el("div", "mt-1.5 flex gap-3 border-t pt-1 " + LINE);
+        var tools = el("div", "mt-2 flex gap-3 border-t pt-2 " + LINE);
         if (row.open) {
           tools.appendChild(button(QUIET, words.close, function () {
             sendJson(urlFor(urls.poll_close, urls.nil, row.id)).then(mine, failed);
@@ -749,7 +753,7 @@
     function drawPoll(row) {
       var card = pollById(row.id);
       if (!card) {
-        card = el("article", "border p-2 " + LINE);
+        card = el("article", "rounded-xl border p-3 " + LINE + " " + SUNKEN);
         card.dataset.pollId = row.id;
         card.dataset.number = String(row.number);
         card.dataset.at = String(Date.parse(row.created_at) || 0);

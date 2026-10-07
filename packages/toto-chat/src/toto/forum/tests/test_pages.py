@@ -1,5 +1,6 @@
 """The two pages, the seed, an erased member and the copy of one's data
-(stage 68, 2026-10-07; the pages' look is stage 70's).
+(stage 68, 2026-10-07; the pages are live since stage 70 and sit in the
+platform's frame).
 
     manage.py test toto.forum.tests.test_pages
 """
@@ -231,24 +232,29 @@ class ChannelPageTests(ForumCase):
         self.assertIn('accept="image/jpeg,image/png,image/gif,image/webp"', field)
 
     def test_the_theme_is_the_platforms_and_no_colour_is_the_pages_own(self):
-        """Lines and accents are the theme's tokens, light and dark; the
-        page names no colour of its own and loads no stylesheet."""
+        """Grounds, lines and accents are the theme's tokens, light and
+        dark, as the platform's other pages name them (rounded cards on the
+        bubble ground with the accent line); the page names no colour of its
+        own and loads no stylesheet."""
         from django.template.loader import get_template
 
-        for name in ("forum/channel.html", "forum/channel_list.html"):
+        card = ("darkMode ? 'border-accent-1 bg-bubble-bg-dark' : "
+                "'border-accent-2 bg-bubble-bg-light'")
+        for name in ("forum/channel.html", "forum/channel_list.html", "forum/settings.html",
+                     "forum/refused.html"):
             source = open(get_template(name).origin.name, encoding="utf-8").read()
             self.assertNotRegex(source, r"#[0-9a-fA-F]{3,8}\b", name)
             self.assertNotRegex(source, r"\brgba?\(", name)
             self.assertNotIn("<style", source, name)
             self.assertNotIn("style=", source, name)
-            self.assertNotRegex(source, r"\brounded", name)          # square corners
             self.assertNotIn("border-current/", source, name)       # which Tailwind 3 does not build
             self.assertNotIn("bg-current/", source, name)
+            self.assertNotIn("ring-current/", source, name)
+            self.assertNotIn("dark:", source, name)                 # the system's, not the switch's
             for colour in re.findall(r"(?:bg|text|border|divide)-(?:[a-z]+-)?(?:\d{2,3})\b", source):
                 self.fail(f"{name} names a palette colour: {colour}")
+            self.assertIn(card, source, name)
         channel = open(get_template("forum/channel.html").origin.name, encoding="utf-8").read()
-        self.assertIn("border-accent-2/40 group-data-[forum-theme=dark]/forum:border-accent-1/40",
-                      channel)
         for variant in set(re.findall(r"group-data-\[[^\]]*\](?:/\w+)?:", channel)):
             self.assertEqual(variant, "group-data-[forum-theme=dark]/forum:")
 
@@ -259,6 +265,28 @@ class ChannelPageTests(ForumCase):
                      "EventSource", "setInterval", "eval("):
             self.assertNotIn(word, code, word)
         self.assertIn("textContent", code)
+
+
+class FrameTests(ForumCase):
+    def test_every_page_is_drawn_in_the_platforms_frame(self):
+        """The list, a channel, the Settings page and a refusal are handed
+        what every page of the platform is (``PageProcessor``): the app bar
+        names the platform and carries the host's links, and the refusal
+        keeps its status."""
+        pages = ((self.admin, "/forum/", 200), (self.admin, self.url("channel_detail"), 200),
+                 (self.admin, settings_url(), 200),
+                 (self.outsider, self.url("channel_detail"), 403))
+        for user, address, status in pages:
+            response = client_of(user).get(address)
+            self.assertEqual(response.status_code, status, address)
+            page = response.content.decode()
+            self.assertEqual(response.context["brand"]["name"], "T", address)
+            self.assertEqual(response.context["platform"]["site_name"], "T", address)
+            brand = re.search(r'<a\b[^>]*id="brand-link".*?</a>', page, re.S)
+            self.assertIsNotNone(brand, address)
+            self.assertRegex(brand.group(0), r"<h1\b[^>]*>\s*T\s*</h1>", address)
+            for item in response.context["header_nav_items"]:
+                self.assertIn(f'href="{item["url"]}"', page, address)
 
 
 class SeedTests(ForumCase):

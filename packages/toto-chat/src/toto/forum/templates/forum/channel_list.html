@@ -1,43 +1,74 @@
 {% extends "oya/base.html" %}
 {% load i18n forum_page %}
 {% comment %}The member's communities, one channel each. A channel has no
-name of its own: it is the community's. The names are text. Each row is one
-link that enters that community's channel. The look is the channel page's
-(stage 70): one-pixel lines in the theme's colours, square corners.{% endcomment %}
+name of its own: it is the community's. The names are text. Each tile is one
+link that enters that community's channel. The page sits in the platform's
+frame, as every other app's does: the app bar, the theme, the header block
+(back to the Dashboard, the app's label, the title, the buttons at the
+right) and rounded cards.{% endcomment %}
 {% block title %}{% trans "Forum" %} | {{ platform.site_name }}{% endblock %}
 {% block content %}
 {% url 'forum:settings' as settings_url %}
 {% forum_administrator user as viewer_is_administrator %}
-<section class="mx-auto max-w-3xl px-4 py-8" data-testid="forum-channel-list">
-  <header :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'"
-          class="flex items-baseline justify-between gap-3 border-b pb-2">
-    <h1 class="text-xl font-bold"><span class="font-mono opacity-50" aria-hidden="true">#</span> {% trans "Forum" %}</h1>
-    <p class="flex shrink-0 items-baseline gap-3">
-      {% if settings_url and viewer_is_administrator %}
-      <a href="{{ settings_url }}" class="text-xs underline opacity-80 hover:opacity-100" data-testid="forum-settings-link">{% trans "Settings" %}</a>
-      {% endif %}
-      <span class="font-mono text-[11px] opacity-60">{{ communities|length }}</span>
-    </p>
-  </header>
-  <p class="mt-2 text-sm opacity-70">{% trans "One channel for each of your communities." %}</p>
-  {% if communities %}
-  <ul :class="darkMode ? 'divide-accent-1/40 border-accent-1/40 bg-bubble-bg-dark' : 'divide-accent-2/40 border-accent-2/40 bg-bubble-bg-light'"
-      class="mt-4 divide-y border">
-    {% for community in communities %}
-    <li>
-      <a :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="flex items-baseline gap-2 px-3 py-2" data-testid="forum-channel-link"
-         href="{% url 'forum:channel_detail' community.slug %}">
-        <span class="font-mono opacity-50" aria-hidden="true">#</span>
-        <span class="min-w-0 truncate font-semibold">{{ community.name }}</span>
-        <span class="ml-auto shrink-0 font-mono text-[11px] uppercase tracking-widest opacity-60">{{ community.get_org_type_display }}</span>
-        <i class="fa-solid fa-arrow-right shrink-0 text-xs opacity-50" aria-hidden="true"></i>
+<section
+  data-testid="forum-channel-list"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-7xl space-y-6">
+
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'core:dashboard' %}"
+           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>{% trans "Dashboard" %}</a>
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">{% trans "Forum" %}</p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-comments" aria-hidden="true"></i>{% trans "Forum" %}</h1>
+          <p class="mt-1 text-sm opacity-70">{% trans "One channel for each of your communities." %}</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <span :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
+          <i class="fa-solid fa-comments" aria-hidden="true"></i>{{ communities|length }}</span>
+        {% if settings_url and viewer_is_administrator %}
+        <a href="{{ settings_url }}" data-testid="forum-settings-link"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-sliders" aria-hidden="true"></i>{% trans "Settings" %}</a>
+        {% endif %}
+      </div>
+    </header>
+
+    {% if communities %}
+    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {% for community in communities %}
+      <a href="{% url 'forum:channel_detail' community.slug %}" data-testid="forum-channel-link"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:border-accent-dark' : 'border-accent-2 bg-bubble-bg-light hover:border-accent-light'"
+         class="group flex min-w-0 flex-col rounded-2xl border p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+        <span class="flex min-w-0 items-center gap-3">
+          <span :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-sm">
+            <i class="fa-solid fa-comments" aria-hidden="true"></i></span>
+          <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="min-w-0 truncate text-lg font-bold">{{ community.name }}</span>
+        </span>
+        <span class="mt-4 flex items-center justify-between gap-3 text-xs opacity-70">
+          <span class="min-w-0 truncate font-semibold uppercase tracking-wide">{{ community.get_org_type_display }}</span>
+          <i class="fa-solid fa-arrow-right shrink-0 transition group-hover:translate-x-1" aria-hidden="true"></i>
+        </span>
       </a>
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <p class="mt-6 text-sm italic opacity-70" data-testid="forum-no-channels">{% trans "You belong to no community yet, so there is no channel to open." %}</p>
-  {% endif %}
+      {% endfor %}
+    </div>
+    {% else %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-8 text-center text-sm shadow-sm" data-testid="forum-no-channels">
+      <i class="fa-regular fa-folder-open mb-3 block text-2xl opacity-70" aria-hidden="true"></i>
+      {% trans "You belong to no community yet, so there is no channel to open." %}
+    </div>
+    {% endif %}
+  </div>
 </section>
 {% endblock %}

@@ -1,19 +1,22 @@
 {% extends "oya/base.html" %}
 {% load i18n static forum_page %}
-{% comment %}One community's channel (stage 68; its look and its timer are
-stage 70's, 2026-10-07). What the page is handed is DATA: one json_script
-block, read by static/forum/channel.js, which writes every name, message,
-question and option as a text node, asks the feed door on a short timer and
-applies what changed to the nodes that are there.
+{% comment %}One community's channel (stage 68; live since stage 70,
+2026-10-07). What the page is handed is DATA: one json_script block, read by
+static/forum/channel.js, which writes every name, message, question and
+option as a text node, asks the feed door on a short timer and applies what
+changed to the nodes that are there.
 
-The look: the old forum's full-height page, drawn thinner. Three columns on
-a wide screen (the member's channels, the messages with the composer under
-them, the polls); on a narrow one the two side columns are folded away
-behind the header's two buttons. One-pixel lines, square corners, the
-theme's own colours: the box below carries data-forum-theme, which the
-header's switch sets, and a line names its light colour and its dark one.
+The look is the platform's, as every other app's page: the app bar, the
+theme, the header block (back to the Forum, the app's label, the community's
+name, the buttons at the right) and three rounded cards: the member's
+channels, the conversation (the messages, which scroll, with the composer at
+the bottom) and the polls with the form that opens one. On a narrow screen
+the two side cards are folded away behind the header's two buttons.
 
-The box is as high as the window under the platform's header, so only the
+The section carries data-forum-theme, which the header's switch sets: a node
+the script makes names its light colour and its dark one after it.
+
+The section is as high as the window under the platform's header, so only the
 messages scroll and the composer stays on the screen: the class says so for
 the header's usual height, and the script measures the real one.
 {% endcomment %}
@@ -23,129 +26,182 @@ the header's usual height, and the script measures the real one.
 {{ forum_config|json_script:"forum-channel-config" }}
 {% url 'forum:settings' as settings_url %}
 {% forum_administrator user as viewer_is_administrator %}
-{% with line="border-accent-2/40 group-data-[forum-theme=dark]/forum:border-accent-1/40" side="bg-sunken-light group-data-[forum-theme=dark]/forum:bg-sunken-dark" accent="text-accent-light group-data-[forum-theme=dark]/forum:text-accent-dark" caps="font-mono text-[11px] font-bold uppercase tracking-widest" %}
 <section
   data-forum-channel data-testid="forum-channel" data-forum-theme="light"
   :data-forum-theme="darkMode ? 'dark' : 'light'"
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-  class="group/forum flex h-[calc(100dvh-3.5rem)] min-h-[20rem] flex-col px-2 py-2 sm:px-4 sm:py-3">
+  class="group/forum flex h-[calc(100dvh-3.5rem)] min-h-[32rem] flex-col px-4 py-6 transition-colors duration-300 sm:px-6 lg:px-8">
   <form class="hidden" data-forum-csrf>{% csrf_token %}</form>
 
-  <div class="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col overflow-hidden border bg-bubble-bg-light group-data-[forum-theme=dark]/forum:bg-bubble-bg-dark lg:grid lg:grid-cols-[13rem_minmax(0,1fr)_17rem] {{ line }}">
+  <div class="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4">
 
-    {% comment %}Left: the member's channels, one for each community; the
-    list the forum's own page and the dashboard draw.{% endcomment %}
-    <nav data-forum-panel="channels" data-testid="forum-channels" aria-label="{% trans "Channels" %}"
-         class="hidden max-h-[45vh] min-h-0 shrink-0 flex-col overflow-hidden border-b lg:flex lg:max-h-none lg:border-b-0 lg:border-r {{ side }} {{ line }}">
-      <div class="flex items-center justify-between gap-2 border-b px-3 py-2 {{ line }}">
-        <a href="{% url 'forum:channel_list' %}" class="hover:underline {{ caps }}">{% trans "Forum" %}</a>
-        <span class="font-mono text-[11px] opacity-60">{{ communities|length }}</span>
-      </div>
-      <ul class="min-h-0 flex-1 overflow-y-auto py-1 text-sm">
-        {% for other in communities %}
-        <li>
-          {% if other.pk == community.pk %}
-          <a href="{% url 'forum:channel_detail' other.slug %}" aria-current="page"
-             class="flex items-baseline gap-1.5 border-l-2 border-accent-light bg-black/5 px-3 py-1 font-semibold group-data-[forum-theme=dark]/forum:border-accent-dark group-data-[forum-theme=dark]/forum:bg-white/5"><span class="font-mono opacity-50" aria-hidden="true">#</span><span class="min-w-0 truncate">{{ other.name }}</span></a>
-          {% else %}
-          <a href="{% url 'forum:channel_detail' other.slug %}"
-             class="flex items-baseline gap-1.5 border-l-2 border-transparent px-3 py-1 opacity-80 hover:bg-black/5 hover:opacity-100 group-data-[forum-theme=dark]/forum:hover:bg-white/5"><span class="font-mono opacity-50" aria-hidden="true">#</span><span class="min-w-0 truncate">{{ other.name }}</span></a>
-          {% endif %}
-        </li>
-        {% endfor %}
-      </ul>
-      <p class="truncate border-t px-3 py-1.5 font-mono text-[11px] opacity-70 {{ line }}" data-testid="forum-viewer">{{ forum_config.viewer.name }}</p>
-    </nav>
-
-    {% comment %}Centre: the header, the messages (the only part that
-    scrolls), the composer.{% endcomment %}
-    <div class="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto]">
-      <header class="flex min-w-0 items-center gap-2 border-b px-3 py-1.5 {{ line }}" data-testid="forum-header">
-        <button type="button" data-forum-toggle="channels" aria-expanded="false" aria-label="{% trans "Channels" %}"
-                class="inline-flex h-8 w-8 shrink-0 items-center justify-center border lg:hidden {{ line }}"><i class="fa-solid fa-bars text-xs" aria-hidden="true"></i></button>
-        <div class="min-w-0 flex-1">
-          <h1 class="truncate text-base font-bold leading-tight"><span class="font-mono opacity-50" aria-hidden="true">#</span> {{ community.name }}</h1>
-          <p class="truncate text-[11px] leading-tight opacity-70" data-testid="forum-facts"><a href="{% url 'socialhub:community_detail' community.slug %}" class="underline sm:hidden">{% trans "Community" %}</a><span class="sm:hidden" aria-hidden="true"> · </span>{{ community.get_org_type_display }} · {% if community.head %}{% blocktrans with name=community.head.full_name %}moderated by {{ name }}{% endblocktrans %}{% else %}{% trans "moderated by the administrators" %}{% endif %}</p>
+    {% comment %}The header block every app's page has. Its buttons: the two
+    that open a folded card on a narrow screen, the community's page, the
+    forum's Settings (an administrator's), Refresh.{% endcomment %}
+    <header class="flex shrink-0 flex-col gap-3 md:flex-row md:items-end md:justify-between" data-testid="forum-header">
+      <div class="min-w-0 space-y-2">
+        <a href="{% url 'forum:channel_list' %}"
+           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>{% trans "Forum" %}</a>
+        <div class="min-w-0">
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">{% trans "Forum" %}</p>
+          <h1 class="mt-1 flex min-w-0 items-center gap-3 text-2xl font-bold sm:text-3xl">
+            <i class="fa-solid fa-comments shrink-0" aria-hidden="true"></i><span class="min-w-0 truncate">{{ community.name }}</span></h1>
+          <p class="mt-1 text-sm opacity-70" data-testid="forum-facts">{{ community.get_org_type_display }} · {% if community.head %}{% blocktrans with name=community.head.full_name %}moderated by {{ name }}{% endblocktrans %}{% else %}{% trans "moderated by the administrators" %}{% endif %}</p>
         </div>
-        <span data-forum-live data-state="live" class="hidden shrink-0 opacity-60 sm:inline {{ caps }}">{% trans "live" %}</span>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <span data-forum-live data-state="live"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="hidden shrink-0 items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide opacity-60 sm:inline-flex">{% trans "live" %}</span>
+        <button type="button" data-forum-toggle="channels" aria-expanded="false"
+                :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-85 sm:px-4 sm:text-sm lg:hidden"><i class="fa-solid fa-bars" aria-hidden="true"></i>{% trans "Channels" %}</button>
+        <button type="button" data-forum-toggle="polls" aria-expanded="false"
+                :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-85 sm:px-4 sm:text-sm lg:hidden"><i class="fa-solid fa-square-poll-vertical" aria-hidden="true"></i>{% trans "Polls" %} <span class="opacity-60" data-forum-poll-count>0</span></button>
         <a href="{% url 'socialhub:community_detail' community.slug %}" data-testid="forum-community-link"
-           class="hidden shrink-0 text-xs underline opacity-80 hover:opacity-100 sm:inline">{% trans "Community" %}</a>
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-85 sm:px-4 sm:text-sm"><i class="fa-solid fa-people-group" aria-hidden="true"></i>{% trans "Community" %}</a>
         {% if settings_url and viewer_is_administrator %}
         <a href="{{ settings_url }}" data-testid="forum-settings-link"
-           class="shrink-0 text-xs underline opacity-80 hover:opacity-100">{% trans "Settings" %}</a>
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-85 sm:px-4 sm:text-sm"><i class="fa-solid fa-sliders" aria-hidden="true"></i>{% trans "Settings" %}</a>
         {% endif %}
         <button type="button" data-forum-refresh aria-label="{% trans "Refresh" %}" title="{% trans "Refresh" %}"
-                class="inline-flex h-8 w-8 shrink-0 items-center justify-center border hover:opacity-80 {{ line }}"><i class="fa-solid fa-rotate text-xs" aria-hidden="true"></i></button>
-        <button type="button" data-forum-toggle="polls" aria-expanded="false"
-                class="inline-flex h-8 shrink-0 items-center gap-1 border px-2 text-xs font-semibold lg:hidden {{ line }}">{% trans "Polls" %} <span class="font-mono opacity-60" data-forum-poll-count>0</span></button>
-      </header>
+                :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-85 sm:px-4 sm:text-sm"><i class="fa-solid fa-rotate" aria-hidden="true"></i><span class="hidden sm:inline">{% trans "Refresh" %}</span></button>
+      </div>
+    </header>
 
-      <div class="relative min-h-0">
-        <div data-forum-scroll class="h-full overflow-y-auto overflow-x-hidden py-2">
-          <div class="pb-1 text-center"><button type="button" data-forum-older class="hidden border px-2 py-0.5 opacity-70 hover:opacity-100 {{ caps }} {{ line }}">{% trans "Older messages" %}</button></div>
-          <ol data-forum-messages data-testid="forum-messages" aria-live="polite"></ol>
-          <p data-forum-empty class="hidden px-3 py-10 text-center text-sm italic opacity-60">{% trans "Nothing has been said here yet." %}</p>
+    <div class="flex min-h-0 flex-1 flex-col gap-4 lg:grid lg:grid-cols-[15rem_minmax(0,1fr)_18rem] lg:grid-rows-[minmax(0,1fr)]">
+
+      {% comment %}Left: the member's channels, one for each community; the
+      list the forum's own page and the dashboard draw.{% endcomment %}
+      <nav data-forum-panel="channels" data-testid="forum-channels" aria-label="{% trans "Channels" %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="hidden max-h-[40vh] min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border p-4 shadow-sm lg:flex lg:max-h-none">
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="flex items-center justify-between gap-2 border-b pb-3">
+          <h2 class="flex min-w-0 items-center gap-2 text-sm font-bold">
+            <i class="fa-solid fa-comments" aria-hidden="true"></i><a href="{% url 'forum:channel_list' %}" class="truncate hover:underline">{% trans "Channels" %}</a></h2>
+          <span class="shrink-0 text-xs opacity-60">{{ communities|length }}</span>
         </div>
-        <button type="button" data-forum-new
-                class="absolute bottom-2 left-1/2 hidden -translate-x-1/2 border bg-bubble-bg-light px-2 py-0.5 shadow group-data-[forum-theme=dark]/forum:bg-bubble-bg-dark {{ caps }} {{ line }}">{% trans "New messages" %} <span aria-hidden="true">↓</span></button>
-      </div>
+        <ul class="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 text-sm">
+          {% for other in communities %}
+          <li>
+            {% if other.pk == community.pk %}
+            <a href="{% url 'forum:channel_detail' other.slug %}" aria-current="page"
+               :class="darkMode ? 'border-accent-dark bg-primary-bg-dark' : 'border-accent-light bg-primary-bg-light'"
+               class="block rounded-lg border px-3 py-2 font-semibold"><span class="block min-w-0 truncate">{{ other.name }}</span></a>
+            {% else %}
+            <a href="{% url 'forum:channel_detail' other.slug %}"
+               :class="darkMode ? 'hover:border-accent-1 hover:bg-primary-bg-dark/50' : 'hover:border-accent-2 hover:bg-primary-bg-light/50'"
+               class="block rounded-lg border border-transparent px-3 py-2 transition"><span class="block min-w-0 truncate">{{ other.name }}</span></a>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        <p :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="mt-3 truncate border-t pt-3 text-xs opacity-70" data-testid="forum-viewer">{{ forum_config.viewer.name }}</p>
+      </nav>
 
-      <div class="border-t px-3 py-2 {{ line }}">
-        <p class="mb-1.5 hidden border px-2 py-1 text-xs {{ line }}" role="status" data-forum-status data-testid="forum-status"></p>
-        <form class="flex items-end gap-2" data-forum-post>
-          <input type="file" name="image" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden" data-forum-image>
-          <button type="button" data-forum-pick aria-label="{% trans "Image" %}" title="{% trans "Image" %}"
-                  class="inline-flex h-9 w-9 shrink-0 items-center justify-center border hover:opacity-80 {{ line }}"><i class="fa-solid fa-image text-sm" aria-hidden="true"></i></button>
-          <div class="min-w-0 flex-1">
-            <p class="mb-1 hidden items-center gap-2 text-xs" data-forum-picked><i class="fa-solid fa-image opacity-60" aria-hidden="true"></i><span class="min-w-0 truncate font-mono" data-forum-picked-name></span><button type="button" class="shrink-0 underline opacity-70 hover:opacity-100" data-forum-unpick>{% trans "Remove" %}</button></p>
-            <label class="sr-only" for="forum-text">{% trans "Message" %}</label>
-            <textarea id="forum-text" name="text" rows="1" data-forum-text placeholder="{% trans "Message" %} # {{ community.name }}"
-                      class="block max-h-40 min-h-[2.25rem] w-full resize-none border bg-transparent px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-current {{ line }}"></textarea>
+      {% comment %}Centre: the conversation. The messages (the only part
+      that scrolls), then the composer.{% endcomment %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)_auto] overflow-hidden rounded-2xl border shadow-sm">
+        <div class="relative min-h-0">
+          <div data-forum-scroll class="h-full overflow-y-auto overflow-x-hidden px-2 py-3 sm:px-3">
+            <div class="pb-2 text-center"><button type="button" data-forum-older
+                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="hidden rounded-lg border px-3 py-1 text-xs font-semibold opacity-70 transition hover:opacity-100">{% trans "Older messages" %}</button></div>
+            <ol data-forum-messages data-testid="forum-messages" aria-live="polite"></ol>
+            <p data-forum-empty class="hidden px-3 py-12 text-center text-sm italic opacity-60">{% trans "Nothing has been said here yet." %}</p>
           </div>
-          <button type="submit" data-forum-send
-                  class="h-9 shrink-0 border px-3 text-sm font-semibold hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40 {{ line }} {{ accent }}">{% trans "Send" %}</button>
-        </form>
-        {% comment %}What this post will cost, asked a moment after the typing
-        stops. Empty until the estimate door answers.{% endcomment %}
-        <p class="mt-1 hidden text-right font-mono text-[11px] opacity-80" data-forum-estimate data-testid="forum-estimate" aria-live="polite"></p>
-      </div>
-    </div>
+          <button type="button" data-forum-new
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="absolute bottom-3 left-1/2 hidden -translate-x-1/2 rounded-full px-4 py-1.5 text-xs font-semibold shadow-md transition hover:opacity-90">{% trans "New messages" %} <span aria-hidden="true">↓</span></button>
+        </div>
 
-    {% comment %}Right: the polls, the newest first, and the form that opens
-    one.{% endcomment %}
-    <aside data-forum-panel="polls" aria-label="{% trans "Polls" %}"
-           class="order-first hidden max-h-[60vh] min-h-0 shrink-0 flex-col overflow-hidden border-b lg:order-none lg:flex lg:max-h-none lg:border-b-0 lg:border-l {{ side }} {{ line }}">
-      <div class="flex items-center justify-between gap-2 border-b px-3 py-2 {{ line }}">
-        <h2 class="{{ caps }}">{% trans "Polls" %}</h2>
-        <span class="font-mono text-[11px] opacity-60" data-forum-poll-count>0</span>
-      </div>
-      <div class="min-h-0 flex-1 overflow-y-auto p-2">
-        <div class="space-y-2" data-forum-polls data-testid="forum-polls"></div>
-        <p class="px-1 py-4 text-center text-xs italic opacity-60" data-forum-polls-empty>{% trans "No polls yet." %}</p>
-        <details class="mt-2 border {{ line }}">
-          <summary class="cursor-pointer px-2 py-1.5 {{ caps }}">{% trans "Open a poll" %}</summary>
-          <form class="space-y-2 border-t p-2 text-xs {{ line }}" data-forum-poll-form>
-            <label class="block">{% trans "Question" %}
-              <input type="text" name="title" maxlength="150" class="mt-0.5 w-full border bg-transparent px-1.5 py-1 text-sm {{ line }}"></label>
-            <label class="block">{% trans "Options, one a line" %}
-              <textarea name="options" rows="4" class="mt-0.5 w-full border bg-transparent px-1.5 py-1 text-sm {{ line }}"></textarea></label>
-            <label class="block">{% trans "Answers" %}
-              <select name="revisability" class="mt-0.5 w-full border bg-transparent px-1 py-1 text-sm {{ line }}">
-                <option value="open">{% trans "may be changed" %}</option>
-                <option value="final">{% trans "are final" %}</option>
-              </select></label>
-            <label class="block">{% trans "The count" %}
-              <select name="visibility" class="mt-0.5 w-full border bg-transparent px-1 py-1 text-sm {{ line }}">
-                <option value="live">{% trans "is shown as it grows" %}</option>
-                <option value="on_close">{% trans "appears when the poll closes" %}</option>
-              </select></label>
-            <label class="block">{% trans "Closes at (may be left empty)" %}
-              <input type="datetime-local" name="closes_at" class="mt-0.5 w-full border bg-transparent px-1 py-1 text-sm {{ line }}"></label>
-            <button type="submit" class="border px-2 py-1 text-sm font-semibold hover:opacity-80 {{ line }} {{ accent }}">{% trans "Open the poll" %}</button>
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-t p-3">
+          <p :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+             class="mb-2 hidden rounded-lg border px-3 py-2 text-xs font-medium" role="status" data-forum-status data-testid="forum-status"></p>
+          <form class="flex items-end gap-2" data-forum-post>
+            <input type="file" name="image" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden" data-forum-image>
+            <button type="button" data-forum-pick aria-label="{% trans "Image" %}" title="{% trans "Image" %}"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition hover:opacity-80"><i class="fa-solid fa-image text-sm" aria-hidden="true"></i></button>
+            <div class="min-w-0 flex-1">
+              <p class="mb-1 hidden items-center gap-2 text-xs" data-forum-picked><i class="fa-solid fa-image opacity-60" aria-hidden="true"></i><span class="min-w-0 truncate" data-forum-picked-name></span><button type="button" class="shrink-0 underline opacity-70 hover:opacity-100" data-forum-unpick>{% trans "Remove" %}</button></p>
+              <label class="sr-only" for="forum-text">{% trans "Message" %}</label>
+              <textarea id="forum-text" name="text" rows="1" data-forum-text placeholder="{% trans "Message" %}"
+                        :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark focus:ring-accent-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:ring-accent-light/40'"
+                        class="block max-h-40 min-h-[2.75rem] w-full resize-none rounded-xl border px-3 py-2.5 text-base outline-none transition focus:ring-2 sm:text-sm"></textarea>
+            </div>
+            <button type="submit" data-forum-send
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-paper-plane text-sm" aria-hidden="true"></i><span class="sr-only sm:not-sr-only">{% trans "Send" %}</span></button>
           </form>
-        </details>
+          {% comment %}What this post will cost, asked a moment after the typing
+          stops. Empty until the estimate door answers.{% endcomment %}
+          <p class="mt-1 hidden text-right text-xs opacity-80" data-forum-estimate data-testid="forum-estimate" aria-live="polite"></p>
+        </div>
       </div>
-    </aside>
+
+      {% comment %}Right: the polls, the newest first, and the form that opens
+      one.{% endcomment %}
+      <aside data-forum-panel="polls" aria-label="{% trans "Polls" %}"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="order-first hidden max-h-[40vh] min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border p-4 shadow-sm lg:order-none lg:flex lg:max-h-none">
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="flex items-center justify-between gap-2 border-b pb-3">
+          <h2 class="flex min-w-0 items-center gap-2 text-sm font-bold">
+            <i class="fa-solid fa-square-poll-vertical" aria-hidden="true"></i>{% trans "Polls" %}</h2>
+          <span class="shrink-0 text-xs opacity-60" data-forum-poll-count>0</span>
+        </div>
+        <div class="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
+          <div class="space-y-3" data-forum-polls data-testid="forum-polls"></div>
+          <p class="py-6 text-center text-xs italic opacity-60" data-forum-polls-empty>{% trans "No polls yet." %}</p>
+          <details :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                   class="mt-3 rounded-xl border">
+            <summary class="cursor-pointer px-3 py-2 text-sm font-semibold">{% trans "Open a poll" %}</summary>
+            <form :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                  class="space-y-3 border-t p-3 text-xs" data-forum-poll-form>
+              <label class="block"><span class="mb-1 block font-semibold">{% trans "Question" %}</span>
+                <input type="text" name="title" maxlength="150"
+                       :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark focus:ring-accent-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:ring-accent-light/40'"
+                       class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2"></label>
+              <label class="block"><span class="mb-1 block font-semibold">{% trans "Options, one a line" %}</span>
+                <textarea name="options" rows="4"
+                          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark focus:ring-accent-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:ring-accent-light/40'"
+                          class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2"></textarea></label>
+              <label class="block"><span class="mb-1 block font-semibold">{% trans "Answers" %}</span>
+                <select name="revisability"
+                        :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                        class="w-full rounded-lg border px-3 py-2 text-sm">
+                  <option value="open">{% trans "may be changed" %}</option>
+                  <option value="final">{% trans "are final" %}</option>
+                </select></label>
+              <label class="block"><span class="mb-1 block font-semibold">{% trans "The count" %}</span>
+                <select name="visibility"
+                        :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                        class="w-full rounded-lg border px-3 py-2 text-sm">
+                  <option value="live">{% trans "is shown as it grows" %}</option>
+                  <option value="on_close">{% trans "appears when the poll closes" %}</option>
+                </select></label>
+              <label class="block"><span class="mb-1 block font-semibold">{% trans "Closes at (may be left empty)" %}</span>
+                <input type="datetime-local" name="closes_at"
+                       :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark focus:ring-accent-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:ring-accent-light/40'"
+                       class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2"></label>
+              <button type="submit"
+                      :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                      class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">{% trans "Open the poll" %}</button>
+            </form>
+          </details>
+        </div>
+      </aside>
+    </div>
   </div>
 
   {% comment %}The page's words, for the script: it writes them as text.
@@ -178,6 +234,5 @@ the header's usual height, and the script measures the real one.
        data-failed="{% trans "The request failed. Try again." %}"
        data-confirm-remove="{% trans "Remove this for everybody? It cannot be undone." %}"></div>
 </section>
-{% endwith %}
 <script src="{% static 'forum/channel.js' %}"></script>
 {% endblock %}

@@ -28,6 +28,10 @@ day's cap (``billing.afford_post``).
 
 Names, messages and poll texts leave as JSON strings or in a ``json_script``
 block and are put on the page as text nodes, never as markup.
+
+A page is handed the platform's own context (``PageProcessor``: the theme,
+the font, the brand, the app bar's links), as every other app's pages are,
+so it is drawn in the platform's frame.
 """
 
 from __future__ import annotations
@@ -39,7 +43,7 @@ from django import forms
 from django.contrib import messages
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import ValidationError
-from django.http import HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.dateparse import parse_datetime
@@ -49,6 +53,7 @@ from django.utils.translation import gettext_lazy
 
 from toto.quota.api import InArrears, QuotaExceeded
 from toto.quota.charge import InsufficientFunds
+from toto.ui import PageProcessor
 
 from . import access, billing, channels, cleanup, images, keys, posting, sealing, voting
 from .models import ForumSettings
@@ -73,10 +78,22 @@ def _json(payload, status=200, retry_after=None):
     return response
 
 
+def _page(request, context):
+    """``context`` with what every page of the platform is handed: the
+    theme, the font, the brand and the app bar's links."""
+    return PageProcessor().decorate(context, request)
+
+
 def _refuse(request, page, message, status, retry_after=None):
     if page:
-        response = render(request, "forum/refused.html",
-                          {"sentence": str(message), "status": status}, status=status)
+        context = {"sentence": str(message), "status": status}
+        # Never at the cost of the refusal: with no active Platform the
+        # page loses its styling and keeps its status.
+        try:
+            context = _page(request, context)
+        except Http404:
+            pass
+        response = render(request, "forum/refused.html", context, status=status)
         response["Cache-Control"] = "no-store"
         return response
     return _json({"error": str(message)}, status, retry_after)
@@ -210,8 +227,8 @@ def _settings_url(user):
 def channel_list(request):
     """The member's communities, each with the way into its channel."""
     communities = list(access.communities_of(request.user))
-    return render(request, "forum/channel_list.html", {
-        "communities": communities, "forum_settings_url": _settings_url(request.user)})
+    return render(request, "forum/channel_list.html", _page(request, {
+        "communities": communities, "forum_settings_url": _settings_url(request.user)}))
 
 
 @door(MEMBER, method="GET", page=True)
@@ -246,11 +263,11 @@ def channel_detail(request, channel):
         "refresh_seconds": ForumSettings.current().refresh_seconds,
         "feed": posting.feed(request.user, channel),
     }
-    response = render(request, "forum/channel.html", {
+    response = render(request, "forum/channel.html", _page(request, {
         "community": community, "channel": channel, "forum_config": config,
         "communities": list(access.communities_of(request.user)),
         "forum_settings_url": _settings_url(request.user),
-    })
+    }))
     response["Cache-Control"] = "no-store"
     return response
 
@@ -478,7 +495,7 @@ def settings_page(request):
     from .models import ForumChannel, ForumCleanupRun
 
     current = ForumSettings.current()
-    response = render(request, "forum/settings.html", {
+    response = render(request, "forum/settings.html", _page(request, {
         "settings_row": current,
         "form": SettingsForm(instance=current),
         "preview": cleanup.preview(current.boundary()),
@@ -488,7 +505,7 @@ def settings_page(request):
                          .order_by("community__name")),
         "runs": list(ForumCleanupRun.objects.select_related("triggered_by_user")[:20]),
         "min_days": cleanup.MIN_DAYS, "max_days": cleanup.MAX_DAYS,
-    })
+    }))
     response["Cache-Control"] = "no-store"
     return response
 
