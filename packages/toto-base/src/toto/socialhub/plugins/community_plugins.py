@@ -4,7 +4,6 @@ from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 
 from toto.core.plugin import BasePlugin, RenderedPlugin
-from toto.socialhub.models import CommunityForum
 
 
 #: The address parameter that names a tab of the community page.
@@ -87,21 +86,20 @@ class CommunityPlugin(BasePlugin):
         return context
 
 
-@CommunityPlugin.plugin(key="community_forum", title="Forum room", order=20)
+@CommunityPlugin.plugin(key="community_forum", title="Forum", order=20)
 class CommunityForumPlugin(CommunityPlugin):
-    """A link to the community's room — what the news panel used to be.
+    """The way into the community's channel (2026-10-07).
 
-    News was a second, thinner publishing surface beside a forum this platform
-    already runs: somewhere to post that had no replies, no moderation and no
-    notifications, so a community ended up with two feeds and had to decide
-    which one people should read. This points at the one that works.
+    A community has exactly one channel in ``toto.forum``, addressed by the
+    community's own slug, so there is nothing to link by hand: the row
+    ``CommunityForum`` that named a room by its slug is gone. The panel is
+    shown to who may read the channel (``toto.forum.access.may_read``: a
+    member, a senior member or the head on a plan with the forum, or an
+    administrator) and to nobody else, so it never offers a door that would
+    answer 402 or 403.
 
-    `CommunityNewsPost` and its views are DELIBERATELY LEFT IN PLACE. Removing
-    the panel hides a feed; removing the model would delete what communities
-    already wrote. Old posts stay readable through the admin and their own
-    URLs, and this plugin is the surface everyone is sent to now.
-
-    Resolution is at render time and never raises — see `CommunityForum`.
+    `CommunityNewsPost` and its views are still in place: the panel that
+    showed them went, the posts did not.
     """
 
     section_icon = "fa-solid fa-comments"
@@ -111,20 +109,12 @@ class CommunityForumPlugin(CommunityPlugin):
         # A host without the forum shows no panel about one (2026-10-04).
         from django.apps import apps
 
-        return apps.is_installed("toto.forum") and super().is_visible(**kwargs)
+        if not apps.is_installed("toto.forum") or not super().is_visible(**kwargs):
+            return False
+        from toto.forum import access
 
-    def get_context(self, **kwargs) -> dict[str, Any]:
-        context = super().get_context(**kwargs)
-        community = kwargs["community"]
-        link = CommunityForum.objects.filter(community=community).first()
-        context.update({
-            "community_forum": link,
-            # The room itself, not just the row: the template needs its name,
-            # and "the row exists but the room is gone" has to render as "no
-            # room" rather than as a link to nothing.
-            "community_forum_room": link.channel() if link else None,
-        })
-        return context
+        user = getattr(kwargs.get("request"), "user", None)
+        return access.may_read(user, self.get_community_from_kwargs(**kwargs))
 
 
 @CommunityPlugin.plugin(key="community_calendar", title="Calendar", order=30)

@@ -531,62 +531,6 @@ class ReferenceRequest(models.Model):
                                   or timezone.now()})
 
 
-class CommunityForum(models.Model):
-    """The ONE room a community talks in.
-
-    A SLUG, NOT A FOREIGN KEY — `company.CompanyForum` explains this at length
-    and the reasoning is identical here, only the packages differ. `toto.forum`
-    ships in toto-chat; socialhub is toto-base, which cannot depend on it (an
-    FK *string* counts as a hard edge to `scripts/check_package_graph.py`). So
-    the room is named by slug and resolved when the page renders, and a host
-    with no chat app simply shows no link rather than failing to import.
-
-    WHAT THAT COSTS: deleting the room leaves this row pointing at nothing.
-    `channel()` returns None and the panel renders a "no room yet" state, so
-    the failure is a missing link and not a broken one — and remaking a room
-    with that slug restores it, which a cascade-deleted row would not allow.
-
-    This REPLACES the community news panel. News was a second, thinner
-    publishing surface next to a forum this platform already runs: two places
-    to post, one of which had no replies, no moderation and no notifications.
-    The posts and their model are untouched — the plugin that showed them is
-    what went — so nothing is lost and a community that wants a feed uses the
-    room it already has.
-    """
-
-    community = models.OneToOneField(
-        "socialhub.Community", on_delete=models.CASCADE, related_name="forum",
-        help_text="The community whose room this is.")
-    channel_slug = models.SlugField(
-        max_length=50, unique=True,
-        help_text="The forum room's slug. Resolved when the page renders.")
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ("-created_at", "-pk")
-        verbose_name = "Community forum room"
-        verbose_name_plural = "Community forum rooms"
-
-    def __str__(self):
-        return f"{self.community} → {self.channel_slug}"
-
-    def channel(self):
-        """The room, or None when chat is not installed or it is gone.
-
-        Never raises: a community page must render on a host with no forum at
-        all, which is exactly the case an FK could not express.
-        """
-        from django.apps import apps as django_apps
-
-        if not django_apps.is_installed("toto.forum"):
-            return None
-        try:
-            model = django_apps.get_model("forum", "ForumChannel")
-            return model.objects.filter(slug=self.channel_slug).first()
-        except Exception:  # noqa: BLE001 — a missing room is not an error here
-            return None
-
-
 class PendingEmailChange(models.Model):
     """A member's request to move their account to a new e-mail address
     (My account, 2026-09-30), waiting for the link mailed to that address.

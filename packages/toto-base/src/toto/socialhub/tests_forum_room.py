@@ -1,15 +1,16 @@
-"""The community's room, and the news panel it replaced.
+"""The community page's forum panel, and the news panel it replaced.
 
-The interesting assertions are the two that are easy to leave out. The room can
-be MISSING while the link row exists — the slug resolves at render time and
-nothing cascades — and that has to render as "no room yet" rather than as a
-link nobody can open. And the news POSTS must survive: this change removed a
-panel, not a model, so a community that had written news still has it.
+The panel is the way into the community's one channel (``toto.forum``,
+2026-10-07): there is no row linking a community to a room any more
+(``CommunityForum`` is gone; the channel itself holds the one-to-one), and
+the panel is drawn only for who may read the channel. Who that is, is
+tested with the forum (``toto.forum.tests.test_pages``); here is what this
+app alone can say: the link row is gone, nobody who may not read sees a
+panel, a host without the forum shows none, and the news POSTS survive —
+the change that brought the panel removed a panel, not a model.
 """
 
 from __future__ import annotations
-
-import unittest
 
 from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
@@ -17,68 +18,25 @@ from django.test import TestCase
 from django.urls import reverse
 
 from toto.core.models import Platform
-from toto.socialhub.models import Community, CommunityForum
+from toto.socialhub.models import Community
 
 
-class CommunityForumPanelTests(TestCase):
-    """Needs the forum app: it makes a real room to link to."""
+class NoLinkRowTests(TestCase):
+    def test_the_slug_link_model_is_gone(self):
+        import toto.socialhub.models as models
 
-    @classmethod
-    def setUpClass(cls):
-        if not django_apps.is_installed("toto.forum"):
-            raise unittest.SkipTest("toto.forum is not installed on this host")
-        super().setUpClass()
+        self.assertFalse(hasattr(models, "CommunityForum"))
+        self.assertFalse([m for m in django_apps.get_app_config("socialhub").get_models()
+                          if m.__name__ == "CommunityForum"])
 
-    @classmethod
-    def setUpTestData(cls):
-        from toto.forum.models import ForumChannel
-
-        Platform.objects.create(site_name="T", author="A",
-                                publication_year=2026, active=True)
-        cls.user = get_user_model().objects.create_user("v", password="pw")
-        cls.linked = Community.objects.create(name="Linked", slug="linked")
-        cls.plain = Community.objects.create(name="Plain", slug="plain")
-        cls.stale = Community.objects.create(name="Stale", slug="stale")
-        cls.room = ForumChannel.objects.create(name="Guild hall",
-                                               slug="guild-hall")
-        CommunityForum.objects.create(community=cls.linked,
-                                      channel_slug="guild-hall")
-        # A row naming a room that does not exist — the state a deleted room
-        # leaves behind, since the slug is not a foreign key.
-        CommunityForum.objects.create(community=cls.stale,
-                                      channel_slug="was-deleted")
-
-    def page(self, slug):
-        self.client.force_login(self.user)
-        return self.client.get(reverse("socialhub:community_detail",
-                                       args=[slug]))
-
-    def test_the_room_is_linked_from_the_community_page(self):
-        response = self.page("linked")
+    def test_a_visitor_who_may_not_read_the_channel_sees_no_panel(self):
+        Platform.objects.create(site_name="T", author="A", publication_year=2026, active=True)
+        user = get_user_model().objects.create_user("v", password="pw")
+        Community.objects.create(name="Plain", slug="plain")
+        self.client.force_login(user)
+        response = self.client.get(reverse("socialhub:community_detail", args=["plain"]))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Guild hall")
-        self.assertContains(response, reverse("forum:channel_detail",
-                                              args=["guild-hall"]))
-
-    def test_a_community_with_no_room_says_so(self):
-        response = self.page("plain")
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "No forum room is linked")
-
-    def test_a_row_pointing_at_a_deleted_room_reads_as_no_room(self):
-        """Not as a link to nothing. See the module docstring."""
-        response = self.page("stale")
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "No forum room is linked")
-        self.assertNotContains(response, "was-deleted")
-
-    def test_channel_resolves_the_room(self):
-        link = CommunityForum.objects.get(community=self.linked)
-        self.assertEqual(link.channel().pk, self.room.pk)
-
-    def test_channel_is_none_when_the_room_is_gone(self):
-        self.assertIsNone(
-            CommunityForum.objects.get(community=self.stale).channel())
+        self.assertNotContains(response, 'data-testid="community-forum"')
 
 
 class NewsIsGoneFromThePageOnlyTests(TestCase):
@@ -128,5 +86,4 @@ class NewsIsGoneFromThePageOnlyTests(TestCase):
             response = self.client.get(
                 reverse("socialhub:community_detail", args=["newsy"]))
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, "forum room")
-        self.assertNotContains(response, "Forum room")
+        self.assertNotContains(response, 'data-testid="community-forum"')

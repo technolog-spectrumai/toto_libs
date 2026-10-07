@@ -1,36 +1,22 @@
 {% load i18n %}
-{% comment %}The community's room. Three states, and the middle one matters:
-the link row can exist while the room does not (the slug is resolved at render
-time and nothing cascades), so "configured but gone" has to look like "no room"
-rather than like a link that 404s.{% endcomment %}
+{% comment %}The way into the community's one channel. Drawn only for who may
+read it (the plugin asks toto.forum.access), so the link never leads to a
+refusal. The community's name is text.{% endcomment %}
 <section
   :class="darkMode
     ? 'border-accent-1 bg-bubble-bg-dark'
     : 'border-accent-2 bg-bubble-bg-light'"
-  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  class="rounded-2xl border p-5 shadow-sm sm:p-6" data-testid="community-forum">
 
   <h2 class="flex items-center gap-2 text-lg font-bold">
-    <i class="{{ community_plugin_icon }}"></i>{% trans "Forum room" %}</h2>
-
-  {% if community_forum_room %}
-    {% url 'forum:channel_detail' community_forum_room.slug as room_url %}
-    {% if room_url %}
-      <p class="mt-1 text-sm opacity-70">
-        {% blocktrans with name=community.name %}Where {{ name }} talks.{% endblocktrans %}</p>
-      <a href="{{ room_url }}"
-         :class="darkMode
-           ? 'bg-accent-dark text-primary-bg-dark'
-           : 'bg-accent-light text-primary-bg-light'"
-         class="mt-4 inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-        <i class="fa-solid fa-comments" aria-hidden="true"></i>
-        {{ community_forum_room.name }}</a>
-    {% endif %}
-  {% else %}
-    <div
-      :class="darkMode
-        ? 'border-accent-1 bg-sunken-dark'
-        : 'border-accent-2 bg-sunken-light'"
-      class="mt-4 rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70">
-      {% trans "No forum room is linked to this community yet." %}</div>
-  {% endif %}
+    <i class="{{ community_plugin_icon }}"></i>{% trans "Forum" %}</h2>
+  <p class="mt-1 text-sm opacity-70">
+    {% blocktrans with name=community.name %}Where {{ name }} talks.{% endblocktrans %}</p>
+  <a href="{% url 'forum:channel_detail' community.slug %}"
+     :class="darkMode
+       ? 'bg-accent-dark text-primary-bg-dark'
+       : 'bg-accent-light text-primary-bg-light'"
+     class="mt-4 inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+    <i class="fa-solid fa-comments" aria-hidden="true"></i>
+    {% trans "Open the channel" %}</a>
 </section>

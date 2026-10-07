@@ -37,19 +37,6 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
-            name='CommunityForum',
-            fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('channel_slug', models.SlugField(help_text="The forum room's slug. Resolved when the page renders.", unique=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-            ],
-            options={
-                'verbose_name': 'Community forum room',
-                'verbose_name_plural': 'Community forum rooms',
-                'ordering': ('-created_at', '-pk'),
-            },
-        ),
-        migrations.CreateModel(
             name='CommunityNewsPost',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),

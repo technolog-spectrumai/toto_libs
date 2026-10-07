@@ -23,11 +23,6 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(blank=True, help_text="The community's statute, as a PDF in the vault.", null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='vault.vaultfile'),
         ),
         migrations.AddField(
-            model_name='communityforum',
-            name='community',
-            field=models.OneToOneField(help_text='The community whose room this is.', on_delete=django.db.models.deletion.CASCADE, related_name='forum', to='socialhub.community'),
-        ),
-        migrations.AddField(
             model_name='communitynewspost',
             name='author',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='community_news_posts', to='people.person'),
