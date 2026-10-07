@@ -276,7 +276,7 @@ TRAPPED = {
     # community zone) hold two each; the page's script opens and closes them
     # with an event. A host without toto.geography skips them.
     "geography/_map.html": ["open", "open"],
-    "geography/locations.html": ["open", "open"],
+    "geography/locations.html": ["open", "open", "open"],
 }
 
 #: Where a modal's Escape handler is when it is not in the modal's own
