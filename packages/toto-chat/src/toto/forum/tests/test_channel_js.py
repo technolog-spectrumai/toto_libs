@@ -667,6 +667,12 @@ class El {
     return old;
   }
   addEventListener(name, fn) { (this.handlers[name] = this.handlers[name] || []).push(fn); }
+  // What the page tells an element (a dialog: open or close) is kept, and heard.
+  dispatchEvent(event) {
+    (this.sent = this.sent || []).push({type: event.type, open: event.detail ? event.detail.open : undefined});
+    this.fire(event.type, {detail: event.detail});
+    return true;
+  }
   fire(name, more) {
     const event = Object.assign({type: name, target: this, defaultPrevented: false,
                                  preventDefault() { this.defaultPrevented = true; },
@@ -1253,44 +1259,74 @@ class PagePollTests(PageCase):
         self.assertEqual(out["arrived"], [["m1", "m2", "?p3"], 300, False])
         self.assertTrue(out["counted"])
 
-    def test_opening_a_poll_sends_its_form_and_draws_the_question(self):
+    def test_create_poll_opens_a_dialog_and_the_poll_is_opened_there(self):
+        """The owner, 2026-10-07: "polls subtab in a channel shall have
+        "create poll" button which will open the modal, open poll will be
+        located there not below send message"."""
         out = self.run_page(before="config.feed = feedOf(1, [msg(1)]);", body="""
-          const form = part("poll-form"), fold = part("poll-open");
-          fold.setAttribute("open", "");
-          form.querySelector("[name=title]").value = "Where?";
-          form.querySelector("[name=options]").value = "Here\\nThere";
-          form.querySelector("[name=closes_at]").value = "2030-01-02T03:04";
-          queue.push({hold: true, status: 201, data: {poll: pollRow(2, {title: "Where?", mine: true})}});
-          form.fire("submit"); form.fire("submit");                 // a double press
-          await settle();
-          out.sent = calls.length;
-          held.shift()();
-          await settle();
-          out.call = [calls[0].url.endsWith("/polls/open/"), calls[0].body.title, calls[0].body.options,
-                      "revisability" in calls[0].body, calls[0].body.visibility,
-                      calls[0].body.closes_at === new Date("2030-01-02T03:04").toISOString()];
-          out.cards = polls.children.map((c) => c.dataset.pollId);
-          out.conversation = ids();
-          out.folded = !fold.hasAttribute("open");
-          out.cleared = [form.querySelector("[name=title]").value, form.querySelector("[name=options]").value];
-          // The channel is full: the door's sentence is shown and what was typed is kept.
-          form.querySelector("[name=title]").value = "A fourth?";
-          form.querySelector("[name=options]").value = "a\\nb";
+          const dialog = part("poll-dialog"), form = part("poll-form"), error = part("poll-error");
+          const told = () => (dialog.sent || []).map((e) => [e.type, e.open]);
+          const field = (name) => form.querySelector("[name=" + name + "]");
+          out.closed = [dialog.dataset.open || "", told()];
+          part("poll-create").click();
+          out.opened = [dialog.dataset.open, told(), calls.length];
+          // Left by Escape, the backdrop, the X or Cancel: closed, and what was typed is kept.
+          field("title").value = "Where?";
+          dialog.fire("forum-poll-dismiss");
+          out.left = [dialog.dataset.open, told().map((t) => t[1]), field("title").value];
+          dialog.fire("forum-poll-dismiss");                        // closed already: nothing is told again
+          out.leftTwice = told().length;
+          part("poll-create").click();
+          field("options").value = "Here\\nThere";
+          field("closes_at").value = "2030-01-02T03:04";
+          // The channel is full: the door's sentence is said in the dialog, which stays, with what was typed.
           queue.push({status: 400, data: {error: "This channel already has 3 open polls. Close one before opening another."}});
           form.fire("submit");
           await settle();
-          out.full = [status(), form.querySelector("[name=title]").value, ids()];
+          out.full = [error.textContent, error.classList.contains("hidden"), dialog.dataset.open,
+                      field("title").value, status(), polls.children.length];
+          queue.push({network: true});
+          form.fire("submit");
+          await settle();
+          out.offline = [error.textContent, dialog.dataset.open];
+          queue.push({hold: true, status: 201, data: {poll: pollRow(2, {title: "Where?", mine: true})}});
+          const pressed = form.fire("submit");
+          form.fire("submit");                                      // a double press
+          await settle();
+          out.sent = [calls.length, error.classList.contains("hidden"), pressed.defaultPrevented];
+          held.shift()();
+          await settle();
+          const call = calls[calls.length - 1];
+          out.call = [call.url.endsWith("/polls/open/"), call.method, call.body.title, call.body.options,
+                      "revisability" in call.body, call.body.visibility,
+                      call.body.closes_at === new Date("2030-01-02T03:04").toISOString()];
+          out.done = [dialog.dataset.open, told()[told().length - 1], error.classList.contains("hidden")];
+          out.cards = polls.children.map((c) => c.dataset.pollId);
+          out.conversation = ids();
+          out.cleared = [field("title").value, field("options").value, field("closes_at").value];
+          part("poll-create").click();                              // opened again: empty, and no old sentence
+          out.again = [dialog.dataset.open, error.textContent, field("title").value];
         """)
-        self.assertEqual(out["sent"], 1)
+        self.assertEqual(out["closed"], ["", []])
+        # Opening the dialog asks the server nothing.
+        self.assertEqual(out["opened"], ["1", [["forum-poll-dialog", True]], 0])
+        self.assertEqual(out["left"], ["", [True, False], "Where?"])
+        self.assertEqual(out["leftTwice"], 2)
+        # A refusal is said in the dialog and not on the status line, which
+        # is under another tab.
+        self.assertEqual(out["full"], ["This channel already has 3 open polls. "
+                                       "Close one before opening another.", False, "1", "Where?",
+                                       ["", True], 0])
+        self.assertEqual(out["offline"], ["The request failed. Try again.", "1"])
+        self.assertEqual(out["sent"], [3, True, True])
         # No word of changeable answers is sent: there is no such poll.
-        self.assertEqual(out["call"], [True, "Where?", "Here\nThere", False, "live", True])
+        self.assertEqual(out["call"], [True, "POST", "Where?", "Here\nThere", False, "live", True])
+        # Opened: the dialog closes, the card is in the tab and the question in the conversation.
+        self.assertEqual(out["done"], ["", ["forum-poll-dialog", False], True])
         self.assertEqual(out["cards"], ["p2"])
         self.assertEqual(out["conversation"], ["m1", "?p2"])
-        self.assertTrue(out["folded"])
-        self.assertEqual(out["cleared"], ["", ""])
-        self.assertEqual(out["full"], [["This channel already has 3 open polls. "
-                                        "Close one before opening another.", False],
-                                       "A fourth?", ["m1", "?p2"]])
+        self.assertEqual(out["cleared"], ["", "", ""])
+        self.assertEqual(out["again"], ["1", "", ""])
 
 
 class PagePostingTests(PageCase):

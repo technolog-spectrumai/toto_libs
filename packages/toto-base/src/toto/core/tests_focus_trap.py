@@ -277,6 +277,10 @@ TRAPPED = {
     # with an event. A host without toto.geography skips them.
     "geography/_map.html": ["open", "open"],
     "geography/locations.html": ["open", "open", "open"],
+    # The dialog in which a forum poll is opened (2026-10-07), behind the
+    # Polls tab's "Create poll"; the page's script opens and closes it with
+    # an event. A host without toto.forum skips it.
+    "forum/channel.html": ["open"],
 }
 
 #: Where a modal's Escape handler is when it is not in the modal's own

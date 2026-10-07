@@ -1151,6 +1151,46 @@
 
     /* --- opening a poll -------------------------------------------------------- */
 
+    /* The Polls tab's "Create poll" opens a dialog, and a poll is opened
+     * there and nowhere else (the owner, 2026-10-07). The element is the
+     * library's modal (the template: role="dialog", x-show and x-trap on its
+     * own `open`, Escape, the backdrop, the X): the page tells it to open or
+     * close with the event "forum-poll-dialog" and hears
+     * "forum-poll-dismiss" when the member leaves it. Leaving keeps what was
+     * typed. A refusal is said inside the dialog: the status line is under
+     * another tab. `data-open` says the same to whoever reads the page. */
+    var pollDialog = section.querySelector("[data-forum-poll-dialog]");
+    var pollCreate = section.querySelector("[data-forum-poll-create]");
+    var pollError = section.querySelector("[data-forum-poll-error]");
+    var pollShown = false;
+
+    function pollSay(text) {
+      if (!pollError) { return; }
+      pollError.textContent = text || "";
+      pollError.classList.toggle("hidden", !text);
+    }
+
+    function showPollDialog(on) {
+      if (!pollDialog) { return; }
+      pollShown = !!on;
+      pollDialog.dataset.open = pollShown ? "1" : "";
+      if (typeof root.CustomEvent === "function") {
+        pollDialog.dispatchEvent(new root.CustomEvent("forum-poll-dialog", {detail: {open: pollShown}}));
+      }
+    }
+
+    if (pollDialog) {
+      pollDialog.addEventListener("forum-poll-dismiss", function () {
+        if (pollShown) { showPollDialog(false); }
+      });
+    }
+    if (pollCreate) {
+      pollCreate.addEventListener("click", function () {
+        pollSay("");
+        showPollDialog(true);
+      });
+    }
+
     if (pollForm) {
       var pollBusy = false;
       pollForm.addEventListener("submit", function (event) {
@@ -1168,21 +1208,18 @@
           body.closes_at = isNaN(moment.getTime()) ? closes.value : moment.toISOString();
         }
         pollBusy = true;
+        pollSay("");
         sendJson(urls.poll_open, body).then(function (answer) {
           pollBusy = false;
-          if (answer.ok) {
-            title.value = ""; options.value = "";
-            if (closes) { closes.value = ""; }
-          }
+          if (!answer.ok) { pollSay(answer.data.error || words.failed); return; }
+          title.value = ""; options.value = "";
+          if (closes) { closes.value = ""; }
+          showPollDialog(false);
           mine(answer);
-          if (answer.ok) {
-            /* The question stands at the end of the conversation: the form
-             * folds away and the opener is shown it. */
-            var fold = section.querySelector("[data-forum-poll-open]");
-            if (fold) { fold.removeAttribute("open"); }
-            toBottom();
-          }
-        }, function () { pollBusy = false; failed(); });
+          /* The question stands at the end of the conversation: the opener
+           * finds it there on going to Messages. */
+          toBottom();
+        }, function () { pollBusy = false; pollSay(words.failed); });
       });
     }
 

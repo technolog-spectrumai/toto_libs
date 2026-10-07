@@ -12,8 +12,8 @@ name, the buttons at the right: Community and Refresh) and two rounded
 cards: the member's channels, and the channel itself under its TABS (the
 owner, 2026-10-07: "polls and settings have to be TABS"): Messages (which
 scroll; the question of a poll that is open stands among them, where the
-poll was opened; the composer and the form that opens a poll are under
-them), Polls, which holds results only, Search through this channel's messages, Images, and for an
+poll was opened; the composer is under them), Polls, which holds results
+and the Create poll button, whose dialog opens a poll, Search through this channel's messages, Images, and for an
 administrator Settings, which is a page of its own. On a narrow screen the
 channels' card is folded away behind the header's button.
 
@@ -147,48 +147,23 @@ the header's usual height, and the script measures the real one.
           {% comment %}What this post will cost, asked a moment after the typing
           stops. Empty until the estimate door answers.{% endcomment %}
           <p class="mt-1 hidden text-right text-xs opacity-80" data-forum-estimate data-testid="forum-estimate" aria-live="polite"></p>
-          {% comment %}Opening a poll: here, in the conversation, since the Polls
-          tab holds results only (the owner, 2026-10-07). An answer is always
-          final, so the form does not ask.{% endcomment %}
-          <details :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-                   class="mt-2 rounded-xl border" data-forum-poll-open>
-            <summary class="cursor-pointer px-3 py-2 text-sm font-semibold">{% trans "Open a poll" %}</summary>
-            <form :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-                  class="max-h-[45vh] space-y-3 overflow-y-auto border-t p-3 text-xs" data-forum-poll-form>
-              <label class="block"><span class="mb-1 block font-semibold">{% trans "Question" %}</span>
-                <input type="text" name="title" maxlength="150"
-                       :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark focus:ring-accent-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:ring-accent-light/40'"
-                       class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2"></label>
-              <label class="block"><span class="mb-1 block font-semibold">{% trans "Options, one a line" %}</span>
-                <textarea name="options" rows="4"
-                          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark focus:ring-accent-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:ring-accent-light/40'"
-                          class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2"></textarea></label>
-              <label class="block"><span class="mb-1 block font-semibold">{% trans "The count" %}</span>
-                <select name="visibility"
-                        :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-                        class="w-full rounded-lg border px-3 py-2 text-sm">
-                  <option value="live">{% trans "is shown as it grows" %}</option>
-                  <option value="on_close">{% trans "appears when the poll closes" %}</option>
-                </select></label>
-              <label class="block"><span class="mb-1 block font-semibold">{% trans "Closes at (may be left empty)" %}</span>
-                <input type="datetime-local" name="closes_at"
-                       :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark focus:ring-accent-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:ring-accent-light/40'"
-                       class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2"></label>
-              <button type="submit"
-                      :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-                      class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">{% trans "Open the poll" %}</button>
-            </form>
-          </details>
         </div>
         </div>
 
-        {% comment %}The polls' results, the newest first, and nothing else
-        (the owner, 2026-10-07: "polls tab only hold results"): a poll is
-        opened and answered in the conversation.{% endcomment %}
+        {% comment %}The polls' results, the newest first (the owner,
+        2026-10-07: "polls tab only hold results"), and the button that opens
+        the dialog in which a poll is opened ("polls subtab in a channel shall
+        have "create poll" button which will open the modal"). A poll is
+        answered in the conversation.{% endcomment %}
         <div id="forum-panel-polls" role="tabpanel" data-forum-tabpanel="polls" aria-label="{% trans "Polls" %}"
              class="{% if forum_tab != 'polls' %}hidden {% endif %}min-h-0 flex-1 overflow-y-auto p-4">
           <div class="mx-auto max-w-3xl">
-            <p class="mb-3 text-xs opacity-70" data-testid="forum-polls-note">{% trans "Results only. A poll is answered in the conversation, where its question stands while the poll is open. An answer is final." %}</p>
+            <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
+              <p class="min-w-0 flex-1 basis-60 text-xs opacity-70" data-testid="forum-polls-note">{% trans "Results only. A poll is answered in the conversation, where its question stands while the poll is open. An answer is final." %}</p>
+              <button type="button" data-forum-poll-create data-testid="forum-poll-create" aria-haspopup="dialog"
+                      :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                      class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"><i class="fa-solid fa-plus text-xs" aria-hidden="true"></i>{% trans "Create poll" %}</button>
+            </div>
           <div class="space-y-3" data-forum-polls data-testid="forum-polls"></div>
           <p class="py-6 text-center text-xs italic opacity-60" data-forum-polls-empty>{% trans "No polls yet." %}</p>
           </div>
@@ -227,6 +202,62 @@ the header's usual height, and the script measures the real one.
                class="hidden rounded-lg border px-3 py-1 text-xs font-semibold opacity-70 transition hover:opacity-100">{% trans "Older pictures" %}</button></div>
         </div>
       </div>
+    </div>
+  </div>
+
+  {% comment %}The dialog in which a poll is opened (the owner, 2026-10-07:
+  "polls subtab in a channel shall have "create poll" button which will open
+  the modal, open poll will be located there not below send message"). The
+  library's modal: role="dialog", x-show and x-trap on its own `open`,
+  Escape, the backdrop and the X. channel.js opens and closes it with the
+  event "forum-poll-dialog" and hears "forum-poll-dismiss"; leaving it keeps
+  what was typed, and a refusal is said inside it. An answer is always
+  final, so the form does not ask.{% endcomment %}
+  <div data-forum-poll-dialog data-testid="forum-poll-dialog" x-data="{open: false}" x-show="open" x-trap="open" x-cloak
+       @forum-poll-dialog="open = $event.detail.open"
+       @keydown.escape.window="if (open) { $dispatch('forum-poll-dismiss') }"
+       class="fixed inset-0 z-50 flex items-center justify-center p-4"
+       role="dialog" aria-modal="true" aria-labelledby="forum-poll-dialog-title">
+    <div class="absolute inset-0 bg-black/60" @click="$dispatch('forum-poll-dismiss')"></div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+         class="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border p-5 text-sm shadow-xl">
+      <div class="flex items-center justify-between gap-2">
+        <h2 id="forum-poll-dialog-title" class="min-w-0 text-lg font-bold"><i class="fa-solid fa-square-poll-vertical mr-2" aria-hidden="true"></i>{% trans "Create poll" %}</h2>
+        <button type="button" @click="$dispatch('forum-poll-dismiss')" class="opacity-70 transition hover:opacity-100" aria-label="{% trans "Close" %}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      </div>
+      <p class="mt-1 text-xs opacity-70">{% trans "The question will stand in the conversation. An answer is final, and a channel holds at most three open polls." %}</p>
+      <form class="mt-4 space-y-3 text-xs" data-forum-poll-form>
+        <label class="block"><span class="mb-1 block font-semibold">{% trans "Question" %}</span>
+          <input type="text" name="title" maxlength="150" autofocus
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark focus:ring-accent-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:ring-accent-light/40'"
+                 class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2"></label>
+        <label class="block"><span class="mb-1 block font-semibold">{% trans "Options, one a line" %}</span>
+          <textarea name="options" rows="4"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark focus:ring-accent-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:ring-accent-light/40'"
+                    class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2"></textarea></label>
+        <label class="block"><span class="mb-1 block font-semibold">{% trans "The count" %}</span>
+          <select name="visibility"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm">
+            <option value="live">{% trans "is shown as it grows" %}</option>
+            <option value="on_close">{% trans "appears when the poll closes" %}</option>
+          </select></label>
+        <label class="block"><span class="mb-1 block font-semibold">{% trans "Closes at (may be left empty)" %}</span>
+          <input type="datetime-local" name="closes_at"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark focus:ring-accent-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:ring-accent-light/40'"
+                 class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2"></label>
+        <p role="alert" data-forum-poll-error data-testid="forum-poll-error"
+           :class="darkMode ? 'border-accent-1 bg-sunken-dark text-warn-dark' : 'border-accent-2 bg-sunken-light text-warn-light'"
+           class="hidden rounded-lg border px-3 py-2 text-xs font-medium"></p>
+        <div class="flex flex-wrap items-center justify-end gap-2 pt-1">
+          <button type="button" @click="$dispatch('forum-poll-dismiss')"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">{% trans "Cancel" %}</button>
+          <button type="submit" data-forum-poll-submit
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">{% trans "Create poll" %}</button>
+        </div>
+      </form>
     </div>
   </div>
 

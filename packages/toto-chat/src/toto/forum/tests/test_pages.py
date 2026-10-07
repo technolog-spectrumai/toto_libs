@@ -271,26 +271,53 @@ class ChannelPageTests(ForumCase):
         field = re.search(r"<input\b[^>]*data-forum-image[^>]*>", page).group(0)
         self.assertIn('accept="image/jpeg,image/png,image/gif,image/webp"', field)
 
-    def test_a_poll_is_opened_in_the_conversation_and_the_polls_tab_holds_results(self):
-        """The owner, 2026-10-07: "The poll quarions box apears in the forum
-        in the conversation not in polls tab. polls tab only hold results"."""
+    def test_a_poll_is_opened_in_a_dialog_behind_the_polls_tabs_button(self):
+        """The owner, 2026-10-07: "polls tab only hold results", then: "polls
+        subtab in a channel shall have "create poll" button which will open
+        the modal, open poll will be located there not below send message"."""
         page = client_of(self.member).get(self.url("channel_detail")).content.decode()
+        tag = re.search(r"<div\b[^>]*data-forum-poll-dialog[^>]*>", page, re.S)
+        self.assertIsNotNone(tag)
 
         def panel(key):
             start = page.index(f'data-forum-tabpanel="{key}"')
             more = page.find("data-forum-tabpanel=", start + 1)
-            return page[start:more if more > 0 else len(page)]
+            return page[start:more if more > 0 else tag.start()]
 
         messages, polls = panel("messages"), panel("polls")
-        for hook in ("data-forum-messages", "data-forum-post", "data-forum-poll-open",
-                     "data-forum-poll-form", 'name="title"', 'name="options"',
-                     'name="visibility"', 'name="closes_at"'):
+        # Nothing of it is under the composer.
+        for hook in ("data-forum-messages", "data-forum-post", "data-forum-send"):
             self.assertIn(hook, messages, hook)
+        for word in ("data-forum-poll-form", "data-forum-poll-create", 'name="title"',
+                     'name="options"', "Create poll", "<details"):
+            self.assertNotIn(word, messages, word)
+        # The Polls tab: the results, and the one button.
         self.assertIn("data-forum-polls ", polls)
         self.assertIn('data-testid="forum-polls-note"', polls)
         self.assertIn("Results only.", polls)
-        for word in ("<form", "<input", "<select", "<textarea", "<button", "data-forum-poll-form"):
+        buttons = re.findall(r"<button\b[^>]*>", polls, re.S)
+        self.assertEqual(len(buttons), 1, buttons)
+        self.assertIn("data-forum-poll-create", buttons[0])
+        self.assertIn('type="button"', buttons[0])
+        self.assertIn("Create poll", polls)
+        for word in ("<form", "<input", "<select", "<textarea", "data-forum-poll-form"):
             self.assertNotIn(word, polls, word)
+        # The dialog is the library's modal, outside every panel: closed on
+        # arrival, focus kept inside, Escape leaves it.
+        self.assertEqual(page.count("data-forum-poll-dialog"), 1)
+        self.assertGreater(tag.start(), page.rindex("data-forum-tabpanel="))
+        for mark in ('role="dialog"', 'aria-modal="true"', 'x-data="{open: false}"', 'x-show="open"',
+                     'x-trap="open"', "x-cloak", "@keydown.escape.window",
+                     '@forum-poll-dialog="open = $event.detail.open"',
+                     'aria-labelledby="forum-poll-dialog-title"'):
+            self.assertIn(mark, tag.group(0), mark)
+        dialog = page[tag.start():page.index("data-forum-words")]
+        for hook in ('id="forum-poll-dialog-title"', "data-forum-poll-form", 'name="title"',
+                     'name="options"', 'name="visibility"', 'name="closes_at"',
+                     "data-forum-poll-error", "data-forum-poll-submit", "Create poll", "Cancel"):
+            self.assertIn(hook, dialog, hook)
+        self.assertEqual(dialog.count("forum-poll-dismiss"), 4)   # Escape, the backdrop, the X, Cancel
+        self.assertEqual(page.count("data-forum-poll-form"), 1)
         # An answer is always final, so nothing on the page asks.
         self.assertNotIn('name="revisability"', page)
         self.assertNotIn("Answers may be changed", page)
