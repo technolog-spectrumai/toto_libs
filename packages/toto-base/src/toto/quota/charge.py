@@ -84,6 +84,39 @@ def check_funds(user, tariff, metric_code: str, quantity, unit: str = "") -> Non
     check_user_can_act(user, tariff, metric_code, quantity, unit)
 
 
+def check_funds_all(user, tariff, charges) -> None:
+    """Raise :class:`InsufficientFunds` unless the user can pay for all of
+    ``charges`` (``[(metric_code, quantity, unit), ...]``) TOGETHER.
+
+    :func:`check_funds` asks about one charge. An action that meters two
+    things drawn from one balance can pass each of those and still be short
+    of their sum; this is the check for such an action.
+    """
+    if not tariff or not charges:
+        return
+    from toto.tariffs.charge import check_user_can_act_all
+
+    check_user_can_act_all(user, tariff, charges)
+
+
+def quote(user, tariff, charges, metrics=()):
+    """What :func:`charge` would post for ``charges``
+    (``[(metric_code, quantity, unit), ...]``), as plain data, or None when
+    nothing is priced. Writes nothing.
+
+    Priced by the calculator the check and the charge themselves run, for
+    this user, so the amount quoted is the amount charged. ``metrics`` names
+    metric codes whose balance is wanted even when nothing is charged. The
+    shape is ``toto.tariffs.charge.quote_user``'s: Decimals, ints and strings
+    only — no model instance crosses this boundary.
+    """
+    if not tariff:
+        return None
+    from toto.tariffs.charge import quote_user
+
+    return quote_user(user, tariff, charges, metrics=metrics)
+
+
 def charge(user, tariff, metric_code: str, quantity, unit: str = "", **kwargs):
     """Debit the user's account. Returns (UsageRecord, LedgerTransaction) or None."""
     if not tariff:

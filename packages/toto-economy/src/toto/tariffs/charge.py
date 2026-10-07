@@ -13,6 +13,11 @@ charge_user(user, tariff, metric_code, quantity, unit, source_type, source_id)
     → (UsageRecord, LedgerTransaction)
 check_and_charge(user, tariff, metric_code, quantity, unit, source_type, source_id)
     → (UsageRecord, LedgerTransaction) — atomic check-then-charge
+quote_user(user, tariff, charges, metrics=())
+    → plain data: what charge_user WOULD post for [(metric_code, quantity, unit)],
+      the user's balance and whether it is enough. No writes.
+check_user_can_act_all(user, tariff, charges)
+    → None if the charges are affordable TOGETHER, raises InsufficientBalanceError
 
 Rules
 -----
@@ -283,6 +288,116 @@ def check_user_can_act(
             asset_name="tokens",
             needed_base_units=1,
             have_base_units=0,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Quote — what a charge WOULD post, for a page that says it first
+# ---------------------------------------------------------------------------
+
+def _asset_label(asset) -> str:
+    """How an amount in this asset is named to a member: the pool's own name
+    ("storage mana") when a mana pool is bound to it, else the ticker."""
+    from django.apps import apps
+
+    if apps.is_installed("toto.mana"):
+        try:
+            from toto.mana import services
+
+            role = services.is_mana_asset(asset)
+            if role:
+                return str(services._label(role))
+        except Exception:  # noqa: BLE001 - a label must never break a quote
+            pass
+    return asset.unit_name
+
+
+def quote_user(user, tariff: "Tariff", charges, metrics=()) -> dict:
+    """What ``charge_user`` would post for these charges, and whether the
+    user can pay for them together. Plain data; nothing is written.
+
+    ``charges`` is ``[(metric_code, quantity, unit), ...]``. Each is priced
+    by ``calculate_tariff_charge`` for the user's own billing account: the
+    one calculator the affordability check and the posted charge run, so the
+    amount quoted IS the amount charged — the row's rounding mode, its
+    minimum and the member's community discount included.
+
+    ``metrics`` names metric codes whose asset belongs in ``totals`` even
+    when nothing is charged in it, so a page can show the balance beside an
+    empty estimate.
+
+    Returns ``{"lines": [{"metric_code", "base_units", "amount", "asset",
+    "decimals"}], "totals": [{"asset", "asset_id", "label", "decimals",
+    "base_units", "amount", "balance_base_units", "balance", "affordable"}],
+    "affordable"}``. ``amount`` and ``balance`` are Decimals in the asset's
+    display units; ``label`` is how the asset is named to a member (a mana
+    pool's own name, else the ticker). An unpriced metric is a line of 0 in
+    no asset.
+    """
+    from toto.assets.models import Asset, AssetHolding, from_base_units
+    from toto.tariffs.services import calculate_tariff_charge
+
+    payer = _get_billing_account(user)
+    lines: list[dict] = []
+    needed: dict[int, int] = {}
+    for metric_code, quantity, unit in charges:
+        drafts = calculate_tariff_charge(tariff, metric_code, Decimal(str(quantity)), unit,
+                                         payer_account_id=payer.pk)
+        for draft in drafts:
+            needed[draft.asset_id] = needed.get(draft.asset_id, 0) + draft.amount_base_units
+        lines.append({"metric_code": metric_code,
+                      "base_units": sum(d.amount_base_units for d in drafts),
+                      "asset_id": drafts[0].asset_id if drafts else None})
+    for asset_id in (tariff.active_items.filter(metric__code__in=list(metrics))
+                     .values_list("charged_asset_id", flat=True)):
+        needed.setdefault(asset_id, 0)
+
+    assets = Asset.objects.in_bulk(list(needed))
+    totals = []
+    for asset_id, base_units in needed.items():
+        asset = assets[asset_id]
+        holding = AssetHolding.objects.filter(account=payer, asset=asset).first()
+        have = holding.balance_base_units if holding else 0
+        totals.append({
+            "asset": asset.unit_name, "asset_id": asset.pk, "label": _asset_label(asset),
+            "decimals": asset.decimals, "base_units": base_units,
+            "amount": from_base_units(base_units, asset.decimals),
+            "balance_base_units": have,
+            "balance": from_base_units(have, asset.decimals),
+            "affordable": have >= base_units,
+        })
+    for line in lines:
+        asset = assets.get(line.pop("asset_id"))
+        line["asset"] = asset.unit_name if asset is not None else ""
+        line["decimals"] = asset.decimals if asset is not None else 0
+        line["amount"] = (from_base_units(line["base_units"], asset.decimals)
+                          if asset is not None else Decimal(0))
+    return {"lines": lines, "totals": totals,
+            "affordable": all(total["affordable"] for total in totals)}
+
+
+def check_user_can_act_all(user, tariff: "Tariff", charges) -> None:
+    """Raise InsufficientBalanceError unless the user can pay for ALL of
+    ``charges`` (``[(metric_code, quantity, unit), ...]``) together.
+
+    ``check_user_can_act`` asks about one charge. An action that meters two
+    things in one asset (a forum post: its text and its image) can pass both
+    of those checks and still be short of their sum; this adds them up per
+    asset first, with the same calculator, and refuses in the pool's own
+    sentence for the sum.
+    """
+    from toto.assets.models import Asset
+
+    for total in quote_user(user, tariff, charges)["totals"]:
+        if total["affordable"]:
+            continue
+        asset = Asset.objects.get(pk=total["asset_id"])
+        raise InsufficientBalanceError(
+            asset_name=asset.unit_name,
+            needed_base_units=total["base_units"],
+            have_base_units=total["balance_base_units"],
+            asset_decimals=asset.decimals,
+            detail=_mana_detail(user, asset, total["base_units"], total["balance_base_units"]),
         )
 
 
