@@ -6,7 +6,8 @@ class Command(IngressCommand):
 
     def process(self):
         """Not demonstration data: a channel with its key and its bucket for
-        every community there is, in every ingress mode. A community made
+        every community there is, in the realistic and the full mode alike
+        (the mode ``none`` seeds nothing, here as everywhere). A community made
         later gets its channel on the first opening of its page. Without
         the forum's secret nothing is made, and the command says so."""
         from toto.forum import channels, keys
