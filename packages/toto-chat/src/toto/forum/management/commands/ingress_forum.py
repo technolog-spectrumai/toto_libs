@@ -26,3 +26,17 @@ class Command(IngressCommand):
             made += 0 if had else 1
         self.stdout.write(self.style.SUCCESS(
             f"Forum channels present: {ForumChannel.objects.count()} ({made} made now)"))
+        self._cleanup_workflow()
+
+    def _cleanup_workflow(self):
+        """The "Forum cleanup" workflow, so the Workflows tab shows it from
+        the first deploy and not from the first cleanup. Nothing on a build
+        with no workflow engine."""
+        from django.apps import apps
+
+        if not apps.is_installed("toto.workflows"):
+            return
+        from toto.forum.workflow import ensure_cleanup_workflow
+
+        ensure_cleanup_workflow()
+        self.stdout.write("Forum cleanup workflow present")
