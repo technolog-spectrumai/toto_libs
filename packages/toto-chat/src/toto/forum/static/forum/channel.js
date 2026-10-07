@@ -526,6 +526,18 @@
     });
     if (newer) { newer.addEventListener("click", toBottom); }
 
+    /* The list grows after it was drawn: the theme's font arrives and the
+     * lines wrap anew, a picture gets its size, the box itself is resized.
+     * A reader who was at the bottom stays there; one who is reading
+     * further up is not moved. */
+    if (typeof root.ResizeObserver === "function") {
+      var grown = new root.ResizeObserver(function () { if (pinned) { toBottom(); } });
+      grown.observe(list);
+      grown.observe(scroll);
+    } else if (doc.fonts && doc.fonts.ready && typeof doc.fonts.ready.then === "function") {
+      doc.fonts.ready.then(function () { if (pinned) { toBottom(); } });
+    }
+
     /* --- messages ------------------------------------------------------- */
 
     function textNode(row) {
