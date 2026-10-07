@@ -140,8 +140,9 @@ class MarkedNodesTests(TestCase):
         from django.apps import apps
 
         expected = {
-            # "toto.forum": ["forum_cleanup"] comes back with the forum's
-            # cleanup (its node left with the old forum on 2026-10-07).
+            # Back since stage 69 (2026-10-07), with the simplified forum's
+            # cleanup: the node finishes only records its dispatcher claimed.
+            "toto.forum": ["forum_cleanup"],
             "toto.antivirus": ["antivirus_scan"],
             "toto.vault": ["vault_refresh_remote_bucket",
                            "vault_transfer_files", "vault_zip_files"],
