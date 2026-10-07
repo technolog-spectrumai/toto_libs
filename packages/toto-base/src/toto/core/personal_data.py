@@ -252,16 +252,40 @@ def _events(person) -> list[Table]:
 
 
 def _forum(user) -> list[Table]:
+    """The member's own forum messages, with their text: it is kept sealed
+    under each channel's key and is opened here for its author's copy. A
+    channel whose key cannot be opened gives its rows without the text."""
     if not apps.is_installed("toto.forum"):
         return []
+    from toto.forum import keys, sealing
     from toto.forum.models import ForumMessage
 
+    opened: dict = {}
+
+    def text_of(message):
+        if message.body_sealed is None:
+            return ""
+        if message.channel_id not in opened:
+            try:
+                opened[message.channel_id] = keys.open_key(message.channel)
+            except keys.ChannelKeyUnavailable:
+                opened[message.channel_id] = None
+        key = opened[message.channel_id]
+        if key is None:
+            return ""
+        try:
+            return sealing.open_text(key, message.body_sealed, channel_id=message.channel_id,
+                                     message_id=message.id)
+        except sealing.SealBroken:
+            return ""
+
+    rows = (ForumMessage.objects.filter(sender=user, removed_at__isnull=True)
+            .select_related("channel__community").order_by("created_at"))
     return [Table(
-        "forum_messages", _("The messages you sent in forum rooms. In an encrypted room "
-                            "the text is sealed and is not included."),
-        [{**row_of(m, omit=("sender_avatar_url",)), "room": m.channel.name}
-         for m in ForumMessage.objects.filter(sender=user).select_related("channel")
-         .order_by("created_at")])]
+        "forum_messages", _("The messages you sent in your communities' forum channels."),
+        [{"id": str(m.id), "community": m.channel.community.name,
+          "created_at": plain(m.created_at), "kind": m.kind, "text": text_of(m),
+          "image": bool(m.attachment_id)} for m in rows])]
 
 
 def _sessions(user) -> list[Table]:

@@ -30,10 +30,7 @@ from toto.socialhub.models import Community, MembershipApplication, ReferenceReq
 
 User = get_user_model()
 MEDIA = tempfile.mkdtemp(prefix="erase-leftovers-")
-FORUM = tempfile.mkdtemp(prefix="erase-leftovers-forum-")
-VAULT = dict(FORUM_VAULT_PASSWORD="forum-test-vault-passphrase",
-             FORUM_PASSWORD_KDF={"memory_cost": 8, "iterations": 1, "lanes": 1},
-             FORUM_ALLOW_LOCAL_KEY_STORE=True)
+VAULT = dict(FORUM_VAULT_PASSWORD="forum-test-vault-passphrase")
 
 
 def erase(case, username):
@@ -43,7 +40,7 @@ def erase(case, username):
     return json.loads(out.getvalue().strip().splitlines()[-1])
 
 
-@override_settings(MEDIA_ROOT=MEDIA, FORUM_ATTACHMENT_ROOT=FORUM, **VAULT)
+@override_settings(MEDIA_ROOT=MEDIA, **VAULT)
 class LeftoverCase(TestCase):
     def setUp(self):
         self.root = User.objects.create_superuser("root", "root@example.com", "pw")
@@ -144,79 +141,77 @@ class NameTests(LeftoverCase):
 
 @unittest.skipUnless(apps.is_installed("toto.forum"), "no forum on this host")
 class ForumTests(LeftoverCase):
+    """The simplified forum (2026-10-07): one sealed channel per community,
+    pictures kept by the vault."""
+
+    PNG = b"\x89PNG\r\n\x1a\n" + b"picture-bytes"
+
     def setUp(self):
         from django.core.cache import cache
 
-        from toto.forum import rooms
+        from toto.forum import channels, keys
 
         super().setUp()
-        rooms.vault.clear_cache()
+        keys.forget()
+        keys.vault.clear_cache()
         cache.clear()
+        self.addCleanup(keys.forget)
+        self.addCleanup(keys.vault.clear_cache)
+        self.channel = channels.ensure_channel(Community.objects.create(name="Guild"))
 
-    def room(self, slug, *, encrypted=False):
-        from toto.forum import rooms
-        from toto.forum.models import ForumChannel
+    def send(self, user, *, text="", picture=None):
+        import uuid
 
-        channel = ForumChannel.objects.create(name=slug.title(), slug=slug, created_by=self.bob,
-                                              is_encrypted=encrypted)
-        key = rooms.create_room_key(channel) if encrypted else None
-        return channel, key
+        from toto.forum import posting
 
-    def send(self, channel, key, *, body="", attachment=None, msg_type="chat_message"):
-        from toto.forum import store
+        message, _replay = posting.post_message(
+            user, self.channel, text=text, op=str(uuid.uuid4()),
+            image=(picture, "image/png") if picture else None)
+        return message
 
-        return store.store_message(
-            channel, msg_type=msg_type, body=body, sender=self.ada, sender_name="Ada Lovelace",
-            sender_avatar_url="/media/avatars/ada.png",
-            attachment=ContentFile(attachment, name="att.bin") if attachment else None,
-            attachment_name="att.bin" if attachment else "",
-            attachment_mime="image/png" if attachment else "",
-            attachment_size=len(attachment) if attachment else None, key=key)
-
-    def test_the_text_stays_without_the_name_and_the_attachments_go(self):
+    def test_the_text_stays_without_the_name_and_the_pictures_go(self):
+        from toto.forum import keys, sealing
         from toto.forum.models import ForumMessage
+        from toto.vault.models import VaultFile
 
-        paths = []
-        for slug, encrypted in (("plain", False), ("sealed", True)):
-            channel, key = self.room(slug, encrypted=encrypted)
-            self.send(channel, key, body="Hello all")
-            picture = self.send(channel, key, attachment=b"picture-bytes",
-                                msg_type="image_message")
-            voice = self.send(channel, key, attachment=b"voice-bytes",
-                              msg_type="voice_message")
-            captioned = self.send(channel, key, body="Look at this",
-                                  attachment=b"captioned-bytes", msg_type="image_message")
-            paths += [row.attachment.path for row in (picture, voice, captioned)]
+        self.send(self.ada, text="Hello all")
+        bare = self.send(self.ada, picture=self.PNG)
+        captioned = self.send(self.ada, text="Look at this", picture=self.PNG)
+        paths = [row.attachment.file.path for row in (bare, captioned)]
         for path in paths:
             self.assertTrue(os.path.exists(path), path)
         report = plan(self.ada)
         self.assertEqual((report["beyond"]["forum_messages"],
-                          report["beyond"]["forum_attachments"]), (8, 6))
+                          report["beyond"]["forum_attachments"]), (3, 2))
         erase(self, "ada")
-        rows = ForumMessage.objects.all()
-        # The bare picture and the bare recording are gone, row and bytes; the
-        # captioned one keeps its caption as an ordinary message.
-        self.assertEqual(rows.count(), 4)
+        # The bare picture is a tombstone; the captioned one keeps its
+        # caption as an ordinary message; the bytes are gone from the vault.
+        self.assertIsNotNone(ForumMessage.objects.get(pk=bare.pk).removed_at)
+        rows = ForumMessage.objects.filter(removed_at__isnull=True)
+        self.assertEqual(rows.count(), 2)
+        key = keys.open_key(self.channel)
+        texts = set()
         for row in rows:
-            self.assertEqual((row.sender_id, row.sender_name, row.sender_avatar_url),
-                             (None, "Former member", ""))
-            self.assertFalse(row.attachment)
-            self.assertEqual(row.msg_type, "chat_message")
+            self.assertEqual((row.sender_id, row.sender_name, row.kind),
+                             (None, "Former member", "text"))
+            self.assertIsNone(row.attachment_id)
+            texts.add(sealing.open_text(key, row.body_sealed, channel_id=row.channel_id,
+                                        message_id=row.id))
+        self.assertEqual(texts, {"Hello all", "Look at this"})
+        self.assertEqual(VaultFile.all_objects.filter(bucket=self.channel.bucket).count(), 0)
         for path in paths:
             self.assertFalse(os.path.exists(path), path)
-        self.assertEqual(rows.filter(channel__slug="plain", body="Look at this").count(), 1)
 
     def test_other_peoples_messages_are_untouched(self):
-        from toto.forum import store
         from toto.forum.models import ForumMessage
 
-        channel, _ = self.room("plain")
-        store.store_message(channel, msg_type="chat_message", body="Bob here", sender=self.bob,
-                            sender_name="Bob", sender_avatar_url="/media/avatars/bob.png")
-        self.send(channel, None, body="Ada here")
+        theirs = self.send(self.bob, text="Bob here", picture=self.PNG)
+        self.send(self.ada, text="Ada here")
         erase(self, "ada")
-        bob = ForumMessage.objects.get(body="Bob here")
-        self.assertEqual((bob.sender_name, bob.sender_avatar_url), ("Bob", "/media/avatars/bob.png"))
+        row = ForumMessage.objects.get(pk=theirs.pk)
+        self.assertEqual(row.sender_id, self.bob.pk)
+        self.assertIsNotNone(row.attachment_id)
+        self.assertNotEqual(row.sender_name, "Former member")
 
 
 class ReportTests(LeftoverCase):
