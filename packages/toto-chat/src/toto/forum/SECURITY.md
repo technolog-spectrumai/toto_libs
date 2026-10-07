@@ -26,7 +26,11 @@ write that another site sent is refused by Fetch Metadata
   nobody. Leaving the community closes the channel at the next request:
   there is no member list of the channel's own;
 - to remove another member's message, or close or remove another member's
-  poll: the community's head, or an administrator.
+  poll: the community's head, or an administrator;
+- to open the Settings page (`/forum/settings/`), save its dials or start a
+  cleanup (the mark `administrator`): an administrator of the platform and
+  nobody else. Not staff alone, not a superuser without the Superuser plan,
+  and not a community's head, who moderates one channel and has no dial.
 
 There are no private channels, no channel passwords, no direct messages and
 no second channel: `ForumChannel.community` is a one-to-one, so the database
@@ -110,3 +114,27 @@ Names, messages, questions and options leave the server as JSON strings, or
 inside a `json_script` block, and are written by `static/forum/channel.js`
 as text nodes. Nothing a member wrote is put into a page as markup, and an
 address in a message is not made a link.
+
+## 7. Mana and cleanup
+
+A post is charged per kilobyte (`billing.py`), in the transaction that
+stores it: a refused or failed post is never charged, and a retry of the
+same press never charged twice (the `op`, then a usage event keyed by the
+message). A usage event and a ledger entry hold the metric, the message's id
+and a number of bytes; nothing of the message. The estimate door stores and
+charges nothing.
+
+A cleanup (`cleanup.py`) removes for good everything of a channel made
+before a boundary: messages with their images (the vault's row and bytes),
+polls with their options and answers, tombstones. No copy is kept. It reaches
+a vault file only through a message row that points at it and never lists a
+bucket, so any other file kept in a channel's bucket is not touched. Only an
+administrator starts one by hand, by a POST with a ticked confirmation; the
+nightly one runs only while an administrator has switched retention on. The
+boundary is worked out on the server when the cleanup is claimed, and the
+removing happens on the worker, in a workflow node that finishes only the
+records its dispatcher claimed and that the Workflows API refuses to start
+by hand. Every cleanup leaves a `ForumCleanupRun` (who, when, the boundary,
+the counts) that the admin shows read-only and nobody can delete. The forum
+writes no record on the platform's audit chain, for a cleanup or anything
+else.
