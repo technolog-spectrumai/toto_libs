@@ -9,6 +9,11 @@ app_name = "forum"
 
 urlpatterns = [
     path("", views.channel_list, name="channel_list"),
+    # Before the slug: these three name no community. (A community whose
+    # slug is "settings" would have no address for its channel.)
+    path("settings/", views.settings_page, name="settings"),
+    path("settings/save/", views.settings_save, name="settings_save"),
+    path("settings/cleanup/", views.cleanup_start, name="cleanup_start"),
     path("<slug:slug>/", views.channel_detail, name="channel_detail"),
     path("<slug:slug>/feed/", views.feed, name="feed"),
     path("<slug:slug>/post/", views.post, name="post"),

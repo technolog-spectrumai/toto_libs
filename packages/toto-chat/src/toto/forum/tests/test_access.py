@@ -25,6 +25,8 @@ class MarkTests(ForumCase):
     def test_the_marks_by_name(self):
         expected = {"channel_list": "member", "channel_detail": "member", "feed": "member",
                     "post": "member", "estimate": "member",
+                    "settings": "administrator", "settings_save": "administrator",
+                    "cleanup_start": "administrator",
                     "message_image": "member", "message_remove": "author",
                     "poll_open": "member", "poll_vote": "member", "poll_close": "author",
                     "poll_remove": "author"}

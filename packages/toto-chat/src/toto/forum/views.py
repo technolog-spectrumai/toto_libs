@@ -35,19 +35,23 @@ from __future__ import annotations
 import json
 from functools import wraps
 
+from django import forms
+from django.contrib import messages
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
 
 from toto.quota.api import InArrears, QuotaExceeded
 from toto.quota.charge import InsufficientFunds
 
-from . import access, billing, channels, images, keys, posting, sealing, voting
+from . import access, billing, channels, cleanup, images, keys, posting, sealing, voting
+from .models import ForumSettings
 from .posting import Refusal
 
 MEMBER, AUTHOR, MODERATOR, ADMINISTRATOR = "member", "author", "moderator", "administrator"
@@ -196,18 +200,23 @@ def _key(channel) -> bytes:
 # ---------------------------------------------------------------------------
 
 
+def _settings_url(user):
+    """The Settings page's address for an administrator, else None: what a
+    page reads to draw the link, or not."""
+    return reverse("forum:settings") if access.is_administrator(user) else None
+
+
 @door(MEMBER, method="GET", page=True)
 def channel_list(request):
     """The member's communities, each with the way into its channel."""
     communities = list(access.communities_of(request.user))
-    return render(request, "forum/channel_list.html", {"communities": communities})
+    return render(request, "forum/channel_list.html", {
+        "communities": communities, "forum_settings_url": _settings_url(request.user)})
 
 
 @door(MEMBER, method="GET", page=True)
 def channel_detail(request, channel):
     """The channel's page. Its data travels in a ``json_script`` block."""
-    from .models import ForumSettings
-
     community = channel.community
     slug = community.slug
     nil = "00000000-0000-0000-0000-000000000000"
@@ -240,6 +249,7 @@ def channel_detail(request, channel):
     response = render(request, "forum/channel.html", {
         "community": community, "channel": channel, "forum_config": config,
         "communities": list(access.communities_of(request.user)),
+        "forum_settings_url": _settings_url(request.user),
     })
     response["Cache-Control"] = "no-store"
     return response
@@ -428,3 +438,132 @@ def poll_remove(request, channel, poll_id):
     voting.remove_poll(poll, request.user)
     return {"poll": {"id": str(poll.id), "number": poll.number, "seq": poll.seq,
                      "removed": True}}
+
+
+# ---------------------------------------------------------------------------
+# Settings: the retention age, the refresh interval, and cleanup by hand.
+# For an administrator of the platform only (the mark); a community's head
+# moderates one channel and has no dial here. Each door is a form: POST, then
+# a redirect back to the page with a sentence.
+# ---------------------------------------------------------------------------
+
+
+class SettingsForm(forms.ModelForm):
+    """The three dials, checked by the model's own bounds: the age from 1 to
+    3650 days, the interval from 2 to 120 seconds."""
+
+    class Meta:
+        model = ForumSettings
+        fields = ["retention_enabled", "retention_days", "refresh_seconds"]
+        labels = {
+            "retention_enabled": gettext_lazy("Remove old messages and polls on a schedule"),
+            "retention_days": gettext_lazy("Retention age, in days"),
+            "refresh_seconds": gettext_lazy("Refresh interval, in seconds"),
+        }
+
+
+def _errors(form) -> str:
+    """A form's refusals as one line: each field's name, then what is wrong."""
+    parts = []
+    for name, errors in form.errors.items():
+        label = form.fields[name].label if name in form.fields else ""
+        parts.append(f"{label}: {' '.join(errors)}" if label else " ".join(errors))
+    return " ".join(parts)
+
+
+@door(ADMINISTRATOR, method="GET", page=True)
+def settings_page(request):
+    """The forum's settings, what a cleanup would remove now, and what the
+    last ones did."""
+    from .models import ForumChannel, ForumCleanupRun
+
+    current = ForumSettings.current()
+    response = render(request, "forum/settings.html", {
+        "settings_row": current,
+        "form": SettingsForm(instance=current),
+        "preview": cleanup.preview(current.boundary()),
+        "next_run": cleanup.next_scheduled_run(),
+        "in_flight": cleanup.in_flight(),
+        "channels": list(ForumChannel.objects.select_related("community")
+                         .order_by("community__name")),
+        "runs": list(ForumCleanupRun.objects.select_related("triggered_by_user")[:20]),
+        "min_days": cleanup.MIN_DAYS, "max_days": cleanup.MAX_DAYS,
+    })
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@door(ADMINISTRATOR, page=True)
+def settings_save(request):
+    """Save the three dials. Nothing is saved unless all three are in range."""
+    form = SettingsForm(request.POST, instance=ForumSettings.current())
+    if form.is_valid():
+        saved = form.save(commit=False)
+        saved.updated_by = request.user
+        saved.save()
+        messages.success(request, _("The forum's settings were saved."))
+    else:
+        messages.error(request, _("Nothing was saved. %(errors)s") % {"errors": _errors(form)})
+    return redirect("forum:settings")
+
+
+def _days(value):
+    """An age in whole days within the bounds, or 400."""
+    try:
+        if not isinstance(value, str) or not (value.isascii() and value.isdigit()):
+            raise ValueError
+        days = int(value[:6])
+    except ValueError:
+        days = 0
+    if not cleanup.MIN_DAYS <= days <= cleanup.MAX_DAYS:
+        raise Refusal(_("The age is a whole number of days, from %(least)d to %(most)d.")
+                      % {"least": cleanup.MIN_DAYS, "most": cleanup.MAX_DAYS}, 400)
+    return days
+
+
+@door(ADMINISTRATOR, page=True)
+def cleanup_start(request):
+    """Start a cleanup by hand: of one channel or of all, of what is older
+    than an age or of everything.
+
+    ``scope`` is ``all`` or a community's slug; ``age`` is ``retention`` (the
+    saved age), ``days`` with ``days``, or ``everything``; ``confirm`` must
+    be ticked. The boundary is worked out HERE, from the clock, when the
+    cleanup is claimed: no instant the page showed is trusted. The removing
+    happens on the worker (``dispatch.py``); without one, nothing is claimed
+    and the page says so."""
+    from . import dispatch
+    from .models import ForumChannel
+
+    def back(sentence):
+        messages.error(request, sentence)
+        return redirect("forum:settings")
+
+    if request.POST.get("confirm") != "yes":
+        return back(_("Nothing was removed: tick the box to confirm."))
+    scope = request.POST.get("scope", "")
+    channel = None
+    if scope != "all":
+        channel = (ForumChannel.objects.select_related("community")
+                   .filter(community__slug=scope).first() if scope else None)
+        if channel is None:
+            return back(_("Nothing was removed: choose a channel, or all of them."))
+    age = request.POST.get("age", "")
+    try:
+        if age == "everything":
+            days = None
+        elif age == "retention":
+            days = ForumSettings.current().retention_days
+        elif age == "days":
+            days = _days(request.POST.get("days", ""))
+        else:
+            return back(_("Nothing was removed: choose what to remove."))
+    except Refusal as exc:
+        return back(_("Nothing was removed. %(reason)s") % {"reason": exc})
+    try:
+        dispatch.start_manual(request.user, channel=channel, days=days)
+    except (dispatch.CannotQueue, cleanup.CleanupInProgress) as exc:
+        return back(str(exc))
+    messages.success(request, _("The cleanup was started. This page shows what it removed "
+                                "when it has finished."))
+    return redirect("forum:settings")

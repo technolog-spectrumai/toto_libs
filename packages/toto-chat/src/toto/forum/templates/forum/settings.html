@@ -1,0 +1,133 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% comment %}The forum's Settings page (stage 69), for an administrator of the
+platform: the retention age and its switch, the refresh interval, a cleanup
+started by hand, and what the last cleanups removed. Three plain forms, each
+a POST that comes back here with a sentence. A community's name is text.
+
+It must be unmistakable that a cleanup destroys things, and it must never
+suggest that a copy is kept: there is none.{% endcomment %}
+{% block title %}{% trans "Forum settings" %} | {{ platform.site_name }}{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-3xl space-y-8 px-4 py-10" data-testid="forum-settings">
+  <header>
+    <p class="text-sm"><a class="underline" href="{% url 'forum:channel_list' %}">{% trans "Back to the channels" %}</a></p>
+    <h1 class="mt-1 text-2xl font-bold"><i class="fa-solid fa-sliders" aria-hidden="true"></i> {% trans "Forum settings" %}</h1>
+    <p class="mt-1 text-sm opacity-70">{% trans "For administrators of the platform. A community's head moderates its channel and changes nothing here." %}</p>
+  </header>
+
+  <form method="post" action="{% url 'forum:settings_save' %}" class="space-y-4 border border-current/15 p-4" data-testid="forum-settings-form">
+    {% csrf_token %}
+    <h2 class="font-bold">{% trans "Retention and refresh" %}</h2>
+    <label class="flex items-start gap-2 text-sm">
+      <input type="checkbox" name="retention_enabled" class="mt-1"{% if settings_row.retention_enabled %} checked{% endif %}>
+      <span>
+        <span class="font-semibold">{{ form.retention_enabled.label }}</span>
+        <span class="block text-xs opacity-70">{% trans "While this is off, nothing is removed on a schedule. A cleanup can still be started by hand below." %}</span>
+      </span>
+    </label>
+    <label class="block text-sm">
+      <span class="font-semibold">{{ form.retention_days.label }}</span>
+      <input type="number" name="retention_days" required min="{{ min_days }}" max="{{ max_days }}" step="1"
+             value="{{ settings_row.retention_days }}" class="mt-1 block w-32 border border-current/30 bg-transparent px-2 py-1">
+      <span class="block text-xs opacity-70">{% blocktrans with least=min_days most=max_days %}Messages and polls older than this are permanently removed. From {{ least }} to {{ most }}.{% endblocktrans %}</span>
+    </label>
+    <label class="block text-sm">
+      <span class="font-semibold">{{ form.refresh_seconds.label }}</span>
+      <input type="number" name="refresh_seconds" required min="2" max="120" step="1"
+             value="{{ settings_row.refresh_seconds }}" class="mt-1 block w-32 border border-current/30 bg-transparent px-2 py-1">
+      <span class="block text-xs opacity-70">{% trans "How often an open channel asks for new messages. From 2 to 120." %}</span>
+    </label>
+    <button type="submit" class="border border-current/40 px-3 py-1 text-sm font-semibold hover:underline">{% trans "Save" %}</button>
+  </form>
+
+  <div class="space-y-2 border border-current/15 p-4 text-sm" data-testid="forum-settings-schedule">
+    <h2 class="font-bold">{% trans "Scheduled cleanup" %}</h2>
+    {% if settings_row.retention_enabled %}
+      <p>{% blocktrans with days=settings_row.retention_days %}On. Every night, everything older than {{ days }} days is removed.{% endblocktrans %}</p>
+      {% if next_run %}
+        <p>{% blocktrans with when=next_run|date:"Y-m-d H:i" %}Next run: {{ when }}.{% endblocktrans %}</p>
+      {% else %}
+        <p data-testid="forum-settings-no-schedule">{% trans "This server has no schedule for it, so it will not run by itself." %}</p>
+      {% endif %}
+    {% else %}
+      <p>{% trans "Off. Nothing is removed on a schedule." %}</p>
+    {% endif %}
+  </div>
+
+  <form method="post" action="{% url 'forum:cleanup_start' %}" class="space-y-4 border-2 border-current/40 p-4" data-testid="forum-cleanup-form">
+    {% csrf_token %}
+    <h2 class="font-bold"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> {% trans "Clean up now" %}</h2>
+    <p class="text-sm" role="alert">{% trans "A cleanup removes messages, their images, polls and the answers given in them, for good. No copy is kept and there is no undo. Other files kept in a channel's bucket are not touched." %}</p>
+    <p class="text-sm opacity-80" data-testid="forum-cleanup-preview">{% blocktrans with days=settings_row.retention_days messages=preview.messages images=preview.images polls=preview.polls total=preview.total_messages %}At the saved age ({{ days }} days) a cleanup would now remove {{ messages }} messages, {{ images }} images and {{ polls }} polls. The forum holds {{ total }} messages.{% endblocktrans %}</p>
+    {% if in_flight %}
+      <p class="text-sm font-semibold" data-testid="forum-cleanup-running">{% trans "A cleanup is running. This page shows what it removed when it has finished." %}</p>
+    {% endif %}
+    <label class="block text-sm">
+      <span class="font-semibold">{% trans "Where" %}</span>
+      <select name="scope" class="mt-1 block max-w-full border border-current/30 bg-transparent px-2 py-1">
+        <option value="all">{% trans "All channels" %}</option>
+        {% for channel in channels %}
+          <option value="{{ channel.community.slug }}">{{ channel.community.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <fieldset class="space-y-1 text-sm">
+      <legend class="font-semibold">{% trans "What" %}</legend>
+      <label class="flex items-center gap-2">
+        <input type="radio" name="age" value="retention" checked>
+        <span>{% blocktrans with days=settings_row.retention_days %}Everything older than the saved age ({{ days }} days){% endblocktrans %}</span>
+      </label>
+      <label class="flex flex-wrap items-center gap-2">
+        <input type="radio" name="age" value="days">
+        <span>{% trans "Everything older than this many days:" %}</span>
+        <input type="number" name="days" min="{{ min_days }}" max="{{ max_days }}" step="1"
+               aria-label="{% trans "Days" %}" class="w-24 border border-current/30 bg-transparent px-2 py-1">
+      </label>
+      <label class="flex items-center gap-2">
+        <input type="radio" name="age" value="everything">
+        <span>{% trans "Everything, whatever its age" %}</span>
+      </label>
+    </fieldset>
+    <label class="flex items-start gap-2 text-sm">
+      <input type="checkbox" name="confirm" value="yes" required class="mt-1">
+      <span>{% trans "I understand that this cannot be undone." %}</span>
+    </label>
+    <button type="submit" class="border-2 border-current px-3 py-1 text-sm font-bold hover:underline">{% trans "Remove permanently" %}</button>
+  </form>
+
+  <div class="border border-current/15 p-4" data-testid="forum-cleanup-runs">
+    <h2 class="font-bold">{% trans "Last cleanups" %}</h2>
+    {% if runs %}
+    <div class="mt-2 overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead>
+          <tr class="border-b border-current/20 text-xs uppercase opacity-70">
+            <th scope="col" class="py-1 pr-3">{% trans "Started" %}</th>
+            <th scope="col" class="py-1 pr-3">{% trans "By" %}</th>
+            <th scope="col" class="py-1 pr-3">{% trans "Where" %}</th>
+            <th scope="col" class="py-1 pr-3">{% trans "Made before" %}</th>
+            <th scope="col" class="py-1 pr-3">{% trans "Result" %}</th>
+            <th scope="col" class="py-1">{% trans "Removed" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for run in runs %}
+          <tr class="border-b border-current/10 align-top" data-testid="forum-cleanup-run">
+            <td class="whitespace-nowrap py-1 pr-3">{{ run.started_at|date:"Y-m-d H:i" }}</td>
+            <td class="py-1 pr-3">{{ run.get_triggered_by_display }}{% if run.triggered_by_user %}: {{ run.triggered_by_user.get_username }}{% endif %}</td>
+            <td class="py-1 pr-3">{% if run.channel_name %}{{ run.channel_name }}{% else %}{% trans "All channels" %}{% endif %}</td>
+            <td class="whitespace-nowrap py-1 pr-3">{{ run.boundary|date:"Y-m-d H:i" }}</td>
+            <td class="py-1 pr-3">{{ run.get_status_display }}{% if run.error %}<span class="block text-xs opacity-70">{{ run.error }}</span>{% endif %}</td>
+            <td class="py-1">{% blocktrans with messages=run.messages_deleted images=run.attachments_deleted size=run.bytes_freed|filesizeformat polls=run.polls_deleted %}{{ messages }} messages, {{ images }} images ({{ size }}), {{ polls }} polls{% endblocktrans %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="mt-2 text-sm italic opacity-70">{% trans "No cleanup has run yet." %}</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
