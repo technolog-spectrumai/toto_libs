@@ -3,18 +3,28 @@
 Every view is made by ``door(mark, …)`` and carries the mark as
 ``forum_door``; a test walks the URLconf and fails on a route without one.
 
-    member      signed in, entitled, and may read the community's channel
-                (a member, a senior member, the head; or an administrator)
-    author      member, and the row's author or who moderates the channel
-                (the view asks ``access`` about the row)
-    moderator   member, and the community's head or an administrator
+    member          signed in, entitled, and may read the community's
+                    channel (a member, a senior member, the head; or an
+                    administrator)
+    author          member, and the row's author or who moderates the
+                    channel (the view asks ``access`` about the row)
+    moderator       member, and the community's head or an administrator
+    administrator   signed in, entitled, and an administrator of the
+                    platform: a real superuser on the Superuser plan, never
+                    staff alone, and not a community's head. The Settings
+                    page and its two doors, which name no community
 
 What a door answers before its own work, in this order: 405 for another
 method; signed out, the sign-in page for a page and 403 for a JSON door;
 403 for a write another site sent (Fetch Metadata); 402 for a plan without
-the forum; 404 for a slug that names no community; 403 for a community the
-member does not belong to; 503 when the forum's key cannot be opened. The
-channel is made on the first opening (``channels.ensure_channel``).
+the forum; 403 for who is no administrator, at an administrator's door; 404
+for a slug that names no community; 403 for a community the member does not
+belong to; 503 when the forum's key cannot be opened. The channel is made on
+the first opening (``channels.ensure_channel``).
+
+A post that cannot be charged is refused by the door too, in the ledger's
+own words: 402 when the pool is short (or a fee is in arrears), 429 at the
+day's cap (``billing.afford_post``).
 
 Names, messages and poll texts leave as JSON strings or in a ``json_script``
 block and are put on the page as text nodes, never as markup.
@@ -34,11 +44,18 @@ from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
-from . import access, channels, images, keys, posting, sealing, voting
+from toto.quota.api import InArrears, QuotaExceeded
+from toto.quota.charge import InsufficientFunds
+
+from . import access, billing, channels, images, keys, posting, sealing, voting
 from .posting import Refusal
 
-MEMBER, AUTHOR, MODERATOR = "member", "author", "moderator"
-MARKS = frozenset({MEMBER, AUTHOR, MODERATOR})
+MEMBER, AUTHOR, MODERATOR, ADMINISTRATOR = "member", "author", "moderator", "administrator"
+MARKS = frozenset({MEMBER, AUTHOR, MODERATOR, ADMINISTRATOR})
+
+#: The ledger's own refusals of a charge: each has ``status_code`` (402, or
+#: 429 for a cap) and reads as a sentence.
+UNPAID = (QuotaExceeded, InArrears, InsufficientFunds)
 
 #: The most bytes of a JSON body.
 MAX_BODY = 64 * 1024
@@ -96,6 +113,10 @@ def door(mark, *, method="POST", page=False):
             if not access.entitled(user):
                 return _refuse(request, page,
                                _("The forum is not part of your plan."), 402)
+            if mark == ADMINISTRATOR and not access.is_administrator(user):
+                return _refuse(request, page,
+                               _("Only an administrator of the platform opens the "
+                                 "forum's settings."), 403)
             try:
                 if slug is None:
                     return view(request, **kwargs)
@@ -118,6 +139,8 @@ def door(mark, *, method="POST", page=False):
             except Refusal as exc:
                 return _refuse(request, page, exc, exc.status_code, exc.retry_after)
             except images.ImageRefused as exc:
+                return _refuse(request, page, exc, exc.status_code)
+            except UNPAID as exc:
                 return _refuse(request, page, exc, exc.status_code)
             if isinstance(answer, HttpResponse):
                 return answer
@@ -201,10 +224,16 @@ def channel_detail(request, channel):
             "poll_vote": reverse("forum:poll_vote", args=[slug, nil]),
             "poll_close": reverse("forum:poll_close", args=[slug, nil]),
             "poll_remove": reverse("forum:poll_remove", args=[slug, nil]),
+            # What a post would cost, before it is sent (the door below).
+            "estimate": reverse("forum:estimate", args=[slug]),
             "nil": nil,
         },
         "limits": {"text_bytes": posting.MAX_TEXT_BYTES, "image_bytes": images.MAX_BYTES,
                    "image_types": sorted(images.TYPES), "poll_options": voting.MAX_OPTIONS},
+        # The list price of a kilobyte of text and of image, as decimal
+        # strings ("0" where nothing is priced). The estimate door has the
+        # member's own figure, their discount included.
+        "prices": billing.prices(),
         "refresh_seconds": ForumSettings.current().refresh_seconds,
         "feed": posting.feed(request.user, channel),
     }
@@ -241,6 +270,52 @@ def post(request, channel):
         message, key=_key(channel), user=request.user, slug=channel.community.slug,
         moderator=access.may_moderate(request.user, channel.community))
     return {"message": payload, "replay": replay}, (200 if replay else 201)
+
+
+def _size(data, name) -> int:
+    """A size in bytes from a door's input: a whole number, 0 or more,
+    absent meaning 0. Else 400."""
+    value = data.get(name)
+    if value in (None, ""):
+        return 0
+    refusal = Refusal(_("“%(name)s” must be a whole number.") % {"name": name}, 400)
+    if isinstance(value, bool) or isinstance(value, float):
+        raise refusal
+    if isinstance(value, str):
+        if not (value.isascii() and value.isdigit()) or len(value) > 12:
+            raise refusal
+        value = int(value)
+    if not isinstance(value, int) or value < 0:
+        raise refusal
+    return value
+
+
+@door(MEMBER)
+def estimate(request, channel):
+    """What a post would cost this member, before it is sent.
+
+    ``text_bytes`` and ``image_bytes``, each a whole number of bytes (0 or
+    absent for none), form-encoded or as a JSON object. Answers ``{"amount",
+    "text", "image"}`` as decimal strings, ``"affordable"``, ``"balance"``
+    (a decimal string, or null where nothing is priced) and ``"display"``,
+    the amount as the platform writes it with the pool's name ("" where
+    nothing is priced). Nothing is stored and nothing is charged: it is the
+    charge's own arithmetic (``billing.quote``). A size no post may have is
+    400, in the posting door's words."""
+    if (request.content_type or "").split(";")[0].strip() == "application/json":
+        data = _body(request)
+    else:
+        data = request.POST
+    text_bytes = _size(data, "text_bytes")
+    image_bytes = _size(data, "image_bytes")
+    if text_bytes > posting.MAX_TEXT_BYTES:
+        raise Refusal(_("The text is too long: %(size)d bytes, and the most is %(most)d.")
+                      % {"size": text_bytes, "most": posting.MAX_TEXT_BYTES}, 400)
+    if image_bytes > images.MAX_BYTES:
+        raise Refusal(_("The image is too large. The most is %(size)s MB.")
+                      % {"size": images.MAX_BYTES // (1024 * 1024)}, 400)
+    return billing.quote(request.user, text_bytes=text_bytes,
+                         image_bytes=image_bytes).as_dict()
 
 
 @door(AUTHOR)

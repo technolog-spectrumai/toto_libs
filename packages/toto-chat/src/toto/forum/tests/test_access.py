@@ -24,7 +24,8 @@ class MarkTests(ForumCase):
 
     def test_the_marks_by_name(self):
         expected = {"channel_list": "member", "channel_detail": "member", "feed": "member",
-                    "post": "member", "message_image": "member", "message_remove": "author",
+                    "post": "member", "estimate": "member",
+                    "message_image": "member", "message_remove": "author",
                     "poll_open": "member", "poll_vote": "member", "poll_close": "author",
                     "poll_remove": "author"}
         found = {pattern.name: pattern.callback.forum_door for pattern in urls.urlpatterns}
@@ -112,6 +113,7 @@ class DoorTests(ForumCase):
             ("channel_detail", "GET", self.url("channel_detail"), None),
             ("feed", "GET", self.url("feed"), None),
             ("post", "POST", self.url("post"), "form"),
+            ("estimate", "POST", self.url("estimate"), "sizes"),
             ("message_image", "GET", self.url("message_image", self.message_id), None),
             ("message_remove", "POST", self.url("message_remove", self.message_id), "json"),
             ("poll_open", "POST", self.url("poll_open"), "poll"),
@@ -125,6 +127,8 @@ class DoorTests(ForumCase):
             return client.get(url)
         if kind == "form":
             return client.post(url, {"op": op(), "text": "knock"})
+        if kind == "sizes":
+            return client.post(url, {"text_bytes": 5})
         if kind == "poll":
             return send_json(client, url, {"title": "Q?", "options": "a\nb"})
         if kind == "vote":

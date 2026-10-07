@@ -12,6 +12,7 @@ urlpatterns = [
     path("<slug:slug>/", views.channel_detail, name="channel_detail"),
     path("<slug:slug>/feed/", views.feed, name="feed"),
     path("<slug:slug>/post/", views.post, name="post"),
+    path("<slug:slug>/estimate/", views.estimate, name="estimate"),
     path("<slug:slug>/messages/<uuid:message_id>/remove/", views.message_remove,
          name="message_remove"),
     path("<slug:slug>/messages/<uuid:message_id>/image/", views.message_image,

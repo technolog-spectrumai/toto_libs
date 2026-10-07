@@ -8,7 +8,10 @@ the text and the image's hash, and kept on the row:
     the same op, the same request     the message already stored (a replay);
                                       nothing is stored or charged again
     the same op, another request      409: the op bought one post
-    a fresh op                        the message, its image, and the charge
+    a fresh op                        the caps and the funds are checked
+                                      first (``billing.afford_post``: 429 or
+                                      402, nothing stored); then the
+                                      message, its image, and the charge
                                       (``billing.settle_post``) in ONE
                                       transaction
 
@@ -164,6 +167,10 @@ def post_message(user, channel, *, text, op, image=None):
                       getattr(exc, "retry_after", None)) from None
 
     text_bytes = len(text.encode("utf-8"))
+    image_bytes = len(data) if data is not None else 0
+    # Before anything is stored: could this member be charged for it? A
+    # refusal here (the day's cap, the pool) leaves no row and no image.
+    billing.afford_post(user, text_bytes=text_bytes, image_bytes=image_bytes)
     stored = None
     try:
         with transaction.atomic():
@@ -182,9 +189,11 @@ def post_message(user, channel, *, text, op, image=None):
                 message.attachment_mime = mime
                 message.attachment_size = len(data)
                 message.save(update_fields=["attachment", "attachment_mime", "attachment_size"])
-            # THE SEAM: the charge for this post goes here (billing.py).
+            # THE CHARGE, in the message's own transaction (billing.py): a
+            # post that fails after it is rolled back with it, and a charge
+            # that is refused takes the message with it.
             billing.settle_post(user, message, text_bytes=text_bytes,
-                                image_bytes=len(data) if data is not None else 0)
+                                image_bytes=image_bytes)
     except IntegrityError:
         # Another request stored this op first; this one's rows are undone.
         if stored is not None:
@@ -193,6 +202,14 @@ def post_message(user, channel, *, text, op, image=None):
         if known is None:
             raise
         return known, True
+    except billing.InsufficientFunds:
+        # The pool ran short between the check and the charge (another
+        # request spent it). The message and its row in the vault are undone;
+        # ask the check again, which now refuses in the pool's own sentence.
+        if stored is not None:
+            images.discard(stored)
+        billing.afford_post(user, text_bytes=text_bytes, image_bytes=image_bytes)
+        raise
     except Exception:
         if stored is not None:
             images.discard(stored)
