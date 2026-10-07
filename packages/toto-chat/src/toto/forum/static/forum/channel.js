@@ -29,7 +29,8 @@
  *    held open, no repeating timer.
  *  - What an answer brings is applied to the nodes that are there: a new
  *    message is added in its place, a removed one becomes a quiet line, a
- *    poll's card is filled again with its counts, and everything from before
+ *    poll's card is filled again with its counts (its ring, where Chart.js
+ *    loaded, keeps its canvas and is handed them), and everything from before
  *    a cleanup's edge (`purged_before`) is taken out. History is never
  *    loaded again, and the reader's place is kept unless they are at the
  *    bottom.
@@ -358,6 +359,43 @@
     return parts;
   }
 
+  /* --- a poll's ring --------------------------------------------------- */
+
+  /* The slices of a poll's ring, in the options' order: the hues of the
+   * vault's "files by type" ring and of a company's ownership ring. Ten: as
+   * many as a poll has options at the most. */
+  var SLICES = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6",
+                "#ec4899", "#0ea5e9", "#84cc16", "#f97316", "#14b8a6"];
+
+  /* What a poll's ring is drawn from, {labels, values, colours}, or null
+   * where there is nothing to draw: no count to show yet (it appears when
+   * the poll closes) or no answer at all. An option nobody chose keeps its
+   * place and its colour, with a slice of nothing. */
+  function ringData(row) {
+    if (!row || !row.choices || !row.choices.length || !(Number(row.total) > 0)) { return null; }
+    var labels = [], values = [], colours = [];
+    for (var at = 0; at < row.choices.length; at++) {
+      var ballots = row.choices[at].ballots;
+      if (ballots === null || ballots === undefined) { return null; }
+      labels.push(String(row.choices[at].label));
+      values.push(Number(ballots) || 0);
+      colours.push(SLICES[at % SLICES.length]);
+    }
+    return {labels: labels, values: values, colours: colours};
+  }
+
+  /* A slice's tip: the option, its answers, its share of the answers. */
+  function ringTip(item) {
+    var values = item.chart.data.datasets[item.datasetIndex].data;
+    var total = 0;
+    for (var at = 0; at < values.length; at++) { total += Number(values[at]) || 0; }
+    var value = Number(values[item.dataIndex]) || 0;
+    return item.label + ": " + value + " (" + (total ? Math.round(100 * value / total) : 0) + "%)";
+  }
+
+  api.SLICES = SLICES;
+  api.ringData = ringData;
+  api.ringTip = ringTip;
   api.mintOp = mintOp;
   api.urlFor = urlFor;
   api.utf8Length = utf8Length;
@@ -679,7 +717,8 @@
     /* --- polls ----------------------------------------------------------- */
 
     function fillPoll(card, row) {
-      card.textContent = "";
+      var body = card.querySelector("[data-forum-poll-body]");
+      body.textContent = "";
       card.dataset.seq = String(row.seq);
       card.dataset.open = row.open ? "1" : "";
       var answered = row.my_choice !== null && row.my_choice !== undefined;
@@ -688,20 +727,29 @@
       head.appendChild(el("span", CAPS + " opacity-60", words.poll));
       head.appendChild(el("span", "ml-auto " + CAPS + " " + (row.open ? GOOD : "opacity-50"),
                           row.open ? words.open : words.closed));
-      card.appendChild(head);
-      card.appendChild(el("h3", "mt-1 break-words text-sm font-bold leading-snug [overflow-wrap:anywhere]",
+      body.appendChild(head);
+      body.appendChild(el("h3", "mt-1 break-words text-sm font-bold leading-snug [overflow-wrap:anywhere]",
                           row.title));
       var facts = [row.opener, words.ruleFinal];
       if (row.closes_at) { facts.push(words.closes.replace("{when}", when(row.closes_at))); }
-      card.appendChild(el("p", "mt-1 text-xs leading-snug opacity-60",
+      body.appendChild(el("p", "mt-1 text-xs leading-snug opacity-60",
                           facts.filter(Boolean).join(" · ")));
 
       var options = el("ul", "mt-2 space-y-2");
-      row.choices.forEach(function (choice) {
+      var ringed = ringWanted(row);
+      row.choices.forEach(function (choice, at) {
         var line = el("li", "text-sm");
         line.dataset.choiceId = String(choice.id);
         var top = el("div", "flex items-center gap-2");
         var chosen = answered && row.my_choice === choice.id;
+        if (ringed) {
+          /* The list is the ring's legend: an option wears its slice's colour. */
+          var dot = el("span", "h-2.5 w-2.5 shrink-0 rounded-full");
+          dot.style.backgroundColor = SLICES[at % SLICES.length];
+          dot.dataset.forumSlice = SLICES[at % SLICES.length];
+          dot.setAttribute("aria-hidden", "true");
+          top.appendChild(dot);
+        }
         var label = el("span", "min-w-0 break-words [overflow-wrap:anywhere]");
         label.appendChild(el("span", "font-semibold", choice.label));
         if (choice.text) { label.appendChild(el("span", "ml-1.5 opacity-70", choice.text)); }
@@ -729,14 +777,14 @@
         }
         options.appendChild(line);
       });
-      card.appendChild(options);
+      body.appendChild(options);
 
       var foot = el("p", "mt-2 text-xs opacity-60",
                     row.total === null || row.total === undefined
                       ? words.hiddenCount
                       : words.answersCount.replace("{count}", String(row.total)));
       foot.dataset.forumTotal = row.total === null || row.total === undefined ? "" : String(row.total);
-      card.appendChild(foot);
+      body.appendChild(foot);
 
       /* Results only: the answer is given in the conversation, and this
        * leads who has not answered to the question there. */
@@ -750,7 +798,7 @@
           }
         });
         go.dataset.forumToQuestion = "";
-        card.appendChild(go);
+        body.appendChild(go);
       }
 
       if (row.may_manage) {
@@ -764,8 +812,70 @@
           if (root.confirm && !root.confirm(words.confirmRemove)) { return; }
           sendJson(urlFor(urls.poll_remove, urls.nil, row.id)).then(mine, failed);
         }));
-        card.appendChild(tools);
+        body.appendChild(tools);
       }
+    }
+
+    /* --- a poll's ring -----------------------------------------------------------
+     * The owner, 2026-10-07: "poll results should also have pie chart". It is
+     * the ring of the vault's "files by type" and of a company's ownership:
+     * Chart.js, a doughnut with a 60% hole, beside the bars. It has no legend
+     * of its own: the options' list is the legend, each option wearing its
+     * slice's colour, so the ring writes no word but a slice's tip, and that
+     * on its canvas. Drawn where there is a count to draw (`ringData`) and
+     * Chart.js loaded; without either the bars say everything it would.
+     *
+     * A ring is made while the Polls tab is open and no sooner: one made in a
+     * panel that is not shown has no size to be drawn at, and most readers of
+     * a channel never open the tab. It keeps its canvas and is handed the new
+     * counts, so it does not blink when an answer arrives. */
+    var rings = {};
+
+    function ringWanted(row) {
+      return typeof root.Chart === "function" && ringData(row) !== null;
+    }
+
+    function dropRing(id) {
+      var ring = rings[id];
+      if (!ring) { return; }
+      delete rings[id];
+      ring.chart.destroy();
+      if (ring.box.parentNode) { ring.box.parentNode.removeChild(ring.box); }
+    }
+
+    function drawRing(row) {
+      var card = pollById(row.id);
+      var data = card && ringWanted(row) ? ringData(row) : null;
+      if (!data) { dropRing(row.id); return; }
+      if (openTab !== "polls") { return; }
+      var ring = rings[row.id];
+      if (ring) {
+        ring.chart.data.labels = data.labels;
+        ring.chart.data.datasets[0].data = data.values;
+        ring.chart.data.datasets[0].backgroundColor = data.colours;
+        ring.chart.update();
+        return;
+      }
+      var box = el("div", "relative mx-auto mt-3 h-36 w-36 shrink-0 sm:mt-0");
+      box.dataset.forumRing = "";
+      var canvas = el("canvas");
+      canvas.setAttribute("role", "img");
+      canvas.setAttribute("aria-label", words.ring);
+      box.appendChild(canvas);
+      card.appendChild(box);
+      rings[row.id] = {box: box, chart: new root.Chart(canvas, {
+        type: "doughnut",
+        data: {labels: data.labels,
+               datasets: [{data: data.values, backgroundColor: data.colours, borderWidth: 0}]},
+        options: {responsive: true, maintainAspectRatio: false, cutout: "60%",
+                  plugins: {legend: {display: false}, tooltip: {callbacks: {label: ringTip}}}}
+      })};
+    }
+
+    /* Every poll's ring, as the page holds the polls now: the Polls tab was
+     * opened, and what arrived while it was shut is in them. */
+    function drawRings() {
+      byNumber(state.polls).forEach(drawRing);
     }
 
     function pollById(id) {
@@ -893,10 +1003,15 @@
     function drawPoll(row) {
       var card = pollById(row.id);
       if (!card) {
-        card = el("article", "rounded-xl border p-3 " + LINE + " " + SUNKEN);
+        /* The body is filled again with every answer; the ring beside it
+         * (under it on a narrow screen) is kept. */
+        card = el("article", "rounded-xl border p-3 sm:flex sm:items-center sm:gap-4 " + LINE + " " + SUNKEN);
         card.dataset.pollId = row.id;
         card.dataset.number = String(row.number);
         card.dataset.at = String(Date.parse(row.created_at) || 0);
+        var body = el("div", "min-w-0 flex-1");
+        body.dataset.forumPollBody = "";
+        card.appendChild(body);
         var after = null;
         var cards = pollBox.children;
         for (var i = 0; i < cards.length; i++) {
@@ -905,6 +1020,7 @@
         pollBox.insertBefore(card, after);
       }
       fillPoll(card, row);
+      drawRing(row);
       return drawQuestion(row);
     }
 
@@ -924,6 +1040,7 @@
         else { list.replaceChild(goneNode(node), node); }
       });
       changed.removedPolls.forEach(function (id) {
+        dropRing(id);
         var node = pollById(id);
         if (node) { pollBox.removeChild(node); }
         var asked = questionById(id);
@@ -1251,6 +1368,7 @@
         root.history.replaceState(null, "", place.pathname + (name === "messages" ? "" : "?tab=" + name));
       }
       if (name === "messages" && pinned) { toBottom(); }
+      if (name === "polls") { drawRings(); }
       if (name === "images") { loadImages(true); }
     }
 

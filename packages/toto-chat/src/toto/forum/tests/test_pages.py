@@ -245,7 +245,7 @@ class ChannelPageTests(ForumCase):
         words = re.search(r"<div\b[^>]*data-forum-words[^>]*>", page, re.S).group(0)
         for name in ("remove", "gone", "unreadable", "you", "close", "open", "closed",
                      "closes", "poll", "rule-final", "answers-count", "hidden-count",
-                     "your-answer", "submit", "question", "results", "to-question",
+                     "your-answer", "ring", "submit", "question", "results", "to-question",
                      "image", "image-type", "image-large", "live", "retrying",
                      "sending", "cost", "unaffordable", "failed", "confirm-remove"):
             self.assertRegex(words, rf'data-{name}="[^"]+"', name)
@@ -348,6 +348,22 @@ class ChannelPageTests(ForumCase):
         channel = open(get_template("forum/channel.html").origin.name, encoding="utf-8").read()
         for variant in set(re.findall(r"group-data-\[[^\]]*\](?:/\w+)?:", channel)):
             self.assertEqual(variant, "group-data-[forum-theme=dark]/forum:")
+
+    def test_the_page_loads_the_chart_library_for_the_polls_rings(self):
+        """The owner, 2026-10-07: "poll results should also have pie chart".
+        The ring is Chart.js's, the vault's and the companies' copy: loaded
+        once, deferred, so the page does not wait for it."""
+        page = client_of(self.member).get(self.url("channel_detail")).content.decode()
+        tags = re.findall(r"<script\b[^>]*\bsrc=[^>]*>", page)
+        chart = [tag for tag in tags if "vendor/chartjs/chart.umd.min.js" in tag]
+        self.assertEqual(len(chart), 1, tags)
+        self.assertRegex(chart[0], r"\bdefer\b")
+        own = [tag for tag in tags if "forum/channel.js" in tag]
+        self.assertEqual(len(own), 1, tags)
+        self.assertNotRegex(own[0], r"\b(defer|async)\b")
+        # The other pages of the forum draw no ring and load none.
+        listing = client_of(self.member).get(reverse("forum:channel_list")).content.decode()
+        self.assertNotIn("chartjs", listing)
 
     def test_the_script_writes_text_and_opens_no_socket(self):
         source = open(finders.find("forum/channel.js"), encoding="utf-8").read()

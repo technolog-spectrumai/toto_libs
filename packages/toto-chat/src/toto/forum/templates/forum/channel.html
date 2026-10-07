@@ -151,7 +151,9 @@ the header's usual height, and the script measures the real one.
         </div>
 
         {% comment %}The polls' results, the newest first (the owner,
-        2026-10-07: "polls tab only hold results"), and the button that opens
+        2026-10-07: "polls tab only hold results"; each with its bars and,
+        the same day, "poll results should also have pie chart": a ring
+        beside them, drawn by channel.js), and the button that opens
         the dialog in which a poll is opened ("polls subtab in a channel shall
         have "create poll" button which will open the modal"). A poll is
         answered in the conversation.{% endcomment %}
@@ -278,6 +280,7 @@ the header's usual height, and the script measures the real one.
        data-answers-count="{% trans "Answers: {count}" %}"
        data-hidden-count="{% trans "The count appears when the poll closes." %}"
        data-your-answer="{% trans "your answer" %}"
+       data-ring="{% trans "Pie chart of the answers" %}"
        data-submit="{% trans "Submit" %}"
        data-results="{% trans "Results" %}"
        data-to-question="{% trans "Answer in the conversation" %}"
@@ -297,5 +300,10 @@ the header's usual height, and the script measures the real one.
        data-search-none="{% trans "No message matches." %}"
        data-search-capped="{% trans "There may be more: only the newest messages are searched, and at most fifty are shown." %}"></div>
 </section>
+{% comment %}Chart.js draws a poll's ring in the Polls tab (the owner, 2026-10-07:
+"poll results should also have pie chart"): the vault's and the companies'
+copy, fetched into the image at build. Deferred, so the page does not wait
+for it; channel.js draws no ring without it, and the bars say the same.{% endcomment %}
+<script defer src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 <script src="{% static 'forum/channel.js' %}"></script>
 {% endblock %}

@@ -235,6 +235,35 @@ class FeedStateTests(ScriptCase):
         self.assertEqual(out["none"], [0, 0])
 
 
+class RingTests(ScriptCase):
+    """What a poll's ring is drawn from (the owner, 2026-10-07: "poll results
+    should also have pie chart")."""
+
+    def test_a_ring_is_the_counts_in_the_options_order_each_with_its_colour(self):
+        out = self.run_js("""
+          const row = (total, ballots) => ({total: total,
+            choices: ballots.map((b, i) => ({id: i + 1, label: "o" + i, text: "", ballots: b}))});
+          out.counted = F.ringData(row(4, [3, 0, 1]));
+          out.none = [F.ringData(row(0, [0, 0])), F.ringData(row(null, [null, null])),
+                      F.ringData(row(2, [2, null])), F.ringData(null), F.ringData({total: 3, choices: []}),
+                      F.ringData({total: 3})];
+          out.eleven = F.ringData(row(11, new Array(11).fill(1))).colours;
+          out.slices = [F.SLICES.length, new Set(F.SLICES).size, F.SLICES.every((c) => /^#[0-9a-f]{6}$/.test(c))];
+          const item = (data, at, label) => ({chart: {data: {datasets: [{data: data}]}}, datasetIndex: 0,
+                                              dataIndex: at, label: label});
+          out.tips = [F.ringTip(item([3, 1], 0, "Soup")), F.ringTip(item([3, 1], 1, "<b>Salad</b>")),
+                      F.ringTip(item([1, 1, 1], 2, "c")), F.ringTip(item([0, 0], 0, "Soup"))];
+        """)
+        self.assertEqual(out["counted"], {"labels": ["o0", "o1", "o2"], "values": [3, 0, 1],
+                                          "colours": ["#3b82f6", "#ef4444", "#10b981"]})
+        # No answer, a count that is withheld (wholly or in part), no poll, no option: no ring.
+        self.assertEqual(out["none"], [None] * 6)
+        # Ten colours, each its own: as many as a poll has options at the most.
+        self.assertEqual(out["slices"], [10, 10, True])
+        self.assertEqual(out["eleven"][10], out["eleven"][0])
+        self.assertEqual(out["tips"], ["Soup: 3 (75%)", "<b>Salad</b>: 1 (25%)", "c: 1 (33%)", "Soup: 0 (0%)"])
+
+
 class PollerTests(ScriptCase):
     """``createPoller``: the timer, with a clock the test moves."""
 
@@ -1096,6 +1125,8 @@ class PagePollTests(PageCase):
           out.messages = ids();
           out.sameQuestion = asked("p2").serial === question;
           out.counted = asked("p2").querySelectorAll("[data-forum-bar]").length;
+          mounted.showTab("polls");
+          out.noRing = ["[data-forum-ring]", "[data-forum-slice]", "canvas"].map((q) => box.querySelectorAll(q).length);
         """)
         self.assertEqual(out["before"], [[["0", "0%"], ["0", "0%"]], ["0", "0"], "Answers: 0"])
         self.assertEqual(out["after"], [[["75", "75%"], ["25", "25%"]], ["3", "1"], "Answers: 4"])
@@ -1105,6 +1136,91 @@ class PagePollTests(PageCase):
         # stays), and holds none: the results are the Polls tab's.
         self.assertTrue(out["sameQuestion"])
         self.assertEqual(out["counted"], 0)
+        # Where Chart.js did not load there is no ring and no legend: the
+        # bars say everything.
+        self.assertEqual(out["noRing"], [0, 0, 0])
+
+    #: Chart.js as the page's script uses it, kept so a test can ask what it
+    #: was handed.
+    FAKE_CHART = """
+          const charts = [];
+          globalThis.Chart = class {
+            constructor(canvas, config) {
+              this.canvas = canvas; this.config = config; this.data = config.data;
+              this.updates = 0; this.destroyed = false; charts.push(this);
+            }
+            update() { this.updates += 1; }
+            destroy() { this.destroyed = true; }
+          };
+    """
+
+    def test_a_polls_ring_is_drawn_in_the_polls_tab_and_keeps_its_canvas(self):
+        """The owner, 2026-10-07: "poll results should also have pie chart"."""
+        out = self.run_page(before=self.FAKE_CHART + """
+          const soup = (a, b) => [{id: 1, label: "Soup", text: "", ballots: a},
+                                  {id: 2, label: "<b>Salad</b>", text: "with bread", ballots: b}];
+          config.feed = feedOf(4, [msg(1)], [
+            pollRow(2, {total: 4, choices: soup(3, 1)}),
+            pollRow(3),                                                  // nobody has answered
+            pollRow(4, {visibility: "on_close", results_visible: false, total: null, choices: soup(null, null)})]);
+        """, body="""
+          const ring = (id) => card(id).querySelector("[data-forum-ring]");
+          const dots = (id) => card(id).querySelectorAll("[data-forum-slice]")
+            .map((d) => [d.dataset.forumSlice, d.style.backgroundColor]);
+          // Messages is open: no ring is made yet; the legend's colours are there.
+          out.shut = [charts.length, !!ring("p2"), dots("p2").length];
+          mounted.showTab("polls");
+          out.opened = [charts.length, !!ring("p2"), !!ring("p3"), !!ring("p4")];
+          const chart = charts[0], canvas = ring("p2").querySelector("canvas");
+          out.config = [chart.config.type, chart.config.options.cutout, chart.config.options.plugins.legend.display,
+                        chart.config.options.responsive, chart.config.options.maintainAspectRatio,
+                        chart.data.labels, chart.data.datasets[0].data, chart.data.datasets[0].backgroundColor,
+                        chart.data.datasets[0].borderWidth];
+          out.canvas = [chart.canvas === canvas, canvas.tagName, canvas.getAttribute("role"),
+                        canvas.getAttribute("aria-label")];
+          out.tip = chart.config.options.plugins.tooltip.callbacks.label(
+            {chart: chart, datasetIndex: 0, dataIndex: 0, label: "Soup"});
+          out.legend = [dots("p2"), dots("p3").length, dots("p4").length];
+          out.bars = bars("p2");                                         // the bars stay beside it
+          // An answer arrives: the same canvas, handed the new counts.
+          const body = card("p2").querySelector("[data-forum-poll-body]");
+          queue.push({status: 200, data: feedOf(5, [], [pollRow(2, {seq: 5, total: 5, choices: soup(3, 2)})])});
+          await advance(5000);
+          out.updated = [charts.length, chart.updates, chart.data.datasets[0].data,
+                         ring("p2").querySelector("canvas") === canvas,
+                         card("p2").querySelector("[data-forum-poll-body]") === body, ballots("p2")];
+          // The first answer to the other poll: its ring is made.
+          queue.push({status: 200, data: feedOf(6, [], [pollRow(3, {seq: 6, total: 1, choices: [
+            {id: 1, label: "Soup", text: "", ballots: 1}, {id: 2, label: "Salad", text: "with bread", ballots: 0}]})])});
+          await advance(5000);
+          out.first = [charts.length, !!ring("p3"), charts[1].data.datasets[0].data, dots("p3").length];
+          // What arrives while another tab is open is drawn when Polls is opened again.
+          mounted.showTab("messages");
+          queue.push({status: 200, data: feedOf(7, [], [pollRow(2, {seq: 7, total: 6, choices: soup(4, 2)})])});
+          await advance(5000);
+          out.away = [chart.updates, chart.data.datasets[0].data, ballots("p2")];
+          mounted.showTab("polls");
+          out.back = [chart.data.datasets[0].data, charts.length];
+          // A removed poll takes its ring with its card.
+          queue.push({status: 200, data: feedOf(8, [], [{id: "p2", number: 2, seq: 8, removed: true}])});
+          await advance(5000);
+          out.removed = [chart.destroyed, card("p2"), charts[1].destroyed, polls.children.length];
+        """)
+        self.assertEqual(out["shut"], [0, False, 2])
+        self.assertEqual(out["opened"], [1, True, False, False])     # no answer, or no count to show: no ring
+        # The vault's ring: a doughnut with a 60% hole. No legend of its own:
+        # the options' list is the legend. An option's words are DATA.
+        self.assertEqual(out["config"], ["doughnut", "60%", False, True, False, ["Soup", "<b>Salad</b>"],
+                                         [3, 1], ["#3b82f6", "#ef4444"], 0])
+        self.assertEqual(out["canvas"], [True, "CANVAS", "img", "Pie chart of the answers"])
+        self.assertEqual(out["tip"], "Soup: 3 (75%)")
+        self.assertEqual(out["legend"], [[["#3b82f6", "#3b82f6"], ["#ef4444", "#ef4444"]], 0, 0])
+        self.assertEqual(out["bars"], [["75", "75%"], ["25", "25%"]])
+        self.assertEqual(out["updated"], [1, 1, [3, 2], True, True, ["3", "2"]])
+        self.assertEqual(out["first"], [2, True, [1, 0], 2])
+        self.assertEqual(out["away"], [1, [3, 2], ["4", "2"]])       # the bars follow at once, the ring waits
+        self.assertEqual(out["back"], [[4, 2], 2])
+        self.assertEqual(out["removed"], [True, None, False, 2])
 
     def test_an_answer_is_chosen_and_submitted_in_the_conversation(self):
         """The owner, 2026-10-07: "once you answer you have to press submit
