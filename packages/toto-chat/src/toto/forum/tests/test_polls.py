@@ -1,10 +1,11 @@
 """Polls, with the old forum's voting behaviour (stage 68, 2026-10-07).
 
 The rules these state are the ones the old forum's ``test_polls_tab`` stated
-— one member one answer, the order of the checks, a revision, a final
-answer, the clock, results live or on close, who closes and removes — on
-the new shape: a poll belongs to a community's channel and its question and
-options are sealed.
+— one member one answer, the order of the checks, a final answer, the
+clock, results live or on close, who closes and removes — on the new shape:
+a poll belongs to a community's channel and its question and options are
+sealed. Since 2026-10-07 (the owner) every answer is final, whatever the
+poll was opened as, and a channel holds at most three open polls.
 
     manage.py test toto.forum.tests.test_polls
 """
@@ -61,15 +62,61 @@ class DoorTests(PollCase):
         self.assertEqual(self.open_poll(self.member, closes_at=past).status_code, 400)
         self.assertEqual(ChannelPoll.objects.count(), 0)
 
-    def test_a_member_votes_and_revises(self):
+    def test_a_member_answers_once_and_a_second_answer_is_refused(self):
         poll, (soup, salad, _nothing) = self.make()
         first = self.vote(self.second, poll, soup).json()["poll"]
-        self.assertEqual((first["my_choice"], first["total"]), (soup.pk, 1))
-        second = self.vote(self.second, poll, salad).json()["poll"]
-        self.assertEqual((second["my_choice"], second["total"]), (salad.pk, 1))
+        self.assertEqual((first["my_choice"], first["total"], first["revisability"]),
+                         (soup.pk, 1, "final"))
+        again = self.vote(self.second, poll, salad)
+        self.assertEqual(again.status_code, 409)
+        self.assertTrue(again.json()["error"])
         ballot = PollBallot.objects.get(poll=poll, voter=self.second)
-        self.assertEqual((ballot.choice_id, ballot.revisions), (salad.pk, 1))
-        self.assertIsNotNone(ballot.revised_at)
+        self.assertEqual((ballot.choice_id, ballot.revisions), (soup.pk, 0))
+        self.assertIsNone(ballot.revised_at)
+
+    def test_every_poll_is_final_whatever_was_asked_for(self):
+        """The owner, 2026-10-07: "all answers are final and cannot be
+        changed"."""
+        for asked in (None, "open", "final"):
+            more = {} if asked is None else {"revisability": asked}
+            opened = self.open_poll(self.member, title=f"Asked {asked}?", **more)
+            self.assertEqual(opened.status_code, 201)
+            self.assertEqual(opened.json()["poll"]["revisability"], "final")
+        self.assertEqual(set(ChannelPoll.objects.values_list("revisability", flat=True)),
+                         {Revisability.FINAL})
+
+    def test_a_channel_holds_three_open_polls_and_no_more(self):
+        """The owner, 2026-10-07: "Each forum can have at max 3 open polls"."""
+        self.assertEqual(voting.MAX_OPEN_POLLS, 3)
+        made = [self.open_poll(self.member, title=f"Q{n}?") for n in range(3)]
+        self.assertEqual([r.status_code for r in made], [201, 201, 201])
+        last_seq = ForumChannel.objects.get(pk=self.channel.pk).last_seq
+        refused = self.open_poll(self.head, title="A fourth?")
+        self.assertEqual(refused.status_code, 400)
+        self.assertIn("3", refused.json()["error"])
+        self.assertEqual(ChannelPoll.objects.count(), 3)
+        # A refusal takes no event number: an open page is told of nothing.
+        self.assertEqual(ForumChannel.objects.get(pk=self.channel.pk).last_seq, last_seq)
+        first, second, third = (ChannelPoll.objects.get(pk=r.json()["poll"]["id"]) for r in made)
+        # A closed one makes room ...
+        send_json(client_of(self.member), self.url("poll_close", first.id))
+        self.assertEqual(self.open_poll(self.member, title="After a close?").status_code, 201)
+        self.assertEqual(self.open_poll(self.member, title="Full again?").status_code, 400)
+        # ... so does a removed one ...
+        send_json(client_of(self.member), self.url("poll_remove", second.id))
+        self.assertEqual(self.open_poll(self.member, title="After a removal?").status_code, 201)
+        self.assertEqual(self.open_poll(self.member, title="Full again?").status_code, 400)
+        # ... and one whose time ran out, though nothing closed it.
+        ChannelPoll.objects.filter(pk=third.pk).update(
+            closes_at=timezone.now() - timedelta(minutes=1))
+        self.assertEqual(self.open_poll(self.member, title="After the clock?").status_code, 201)
+        self.assertEqual(self.open_poll(self.member, title="And full?").status_code, 400)
+        # Another community's channel has its own three.
+        channels.ensure_channel(self.other)
+        elsewhere = send_json(client_of(self.outsider),
+                              self.url("poll_open", community=self.other),
+                              {"title": "Elsewhere?", "options": "a\nb"})
+        self.assertEqual(elsewhere.status_code, 201)
 
     def test_what_a_vote_is_refused_for(self):
         poll, (soup, _salad, _nothing) = self.make()
@@ -149,19 +196,37 @@ class AnswerRuleTests(PollCase):
         with self.assertRaises(ValidationError):
             ballot.delete()
 
-    def test_answering_twice_the_same_way_is_not_a_revision(self):
-        poll, (soup, *_rest) = self.make()
+    def test_answering_twice_is_refused_the_same_way_or_another(self):
+        """Every answer is final (the owner, 2026-10-07): a second one
+        changes nothing, not even the poll's place in the feed."""
+        poll, (soup, salad, _nothing) = self.make()
         voting.cast(poll, self.second, soup)
         seq = ChannelPoll.objects.get(pk=poll.pk).seq
-        again = voting.cast(poll, self.second, soup)
-        self.assertEqual(again.revisions, 0)
-        self.assertEqual(PollBallot.objects.count(), 1)
+        for choice in (soup, salad):
+            with self.assertRaises(voting.AlreadyAnswered):
+                voting.cast(poll, self.second, choice)
+        ballot = PollBallot.objects.get(poll=poll, voter=self.second)
+        self.assertEqual((ballot.choice_id, ballot.revisions), (soup.pk, 0))
         self.assertEqual(ChannelPoll.objects.get(pk=poll.pk).seq, seq)
+
+    def test_a_poll_made_changeable_before_the_rule_is_final_too(self):
+        """A row that says "open" (a poll from before 2026-10-07) is not
+        asked: the second answer is refused all the same."""
+        poll, (soup, salad, _nothing) = self.make()
+        ChannelPoll.objects.filter(pk=poll.pk).update(revisability=Revisability.OPEN)
+        poll.refresh_from_db()
+        voting.cast(poll, self.second, soup)
+        with self.assertRaises(voting.AlreadyAnswered):
+            voting.cast(poll, self.second, salad)
+        self.assertEqual(self.vote(self.second, poll, salad).status_code, 409)
+        self.assertEqual(PollBallot.objects.get(poll=poll, voter=self.second).choice_id,
+                         soup.pk)
 
     def test_one_member_one_answer(self):
         poll, (soup, salad, _nothing) = self.make()
         voting.cast(poll, self.second, soup)
-        voting.cast(poll, self.second, salad)
+        with self.assertRaises(voting.AlreadyAnswered):
+            voting.cast(poll, self.second, salad)
         voting.cast(poll, self.head, soup)
         self.assertEqual(PollBallot.objects.filter(poll=poll).count(), 2)
 
@@ -190,7 +255,7 @@ class TallyTests(PollCase):
         self.assertEqual([tally.share(r) for r in tally.results], [0.0, 0.0, 0.0])
 
     def test_the_list_does_not_cost_a_query_per_poll(self):
-        for n in range(4):
+        for n in range(voting.MAX_OPEN_POLLS):
             poll, (soup, *_rest) = self.make(title=f"Q{n}?")
             voting.cast(poll, self.second, soup)
         polls = list(self.channel.polls.all())

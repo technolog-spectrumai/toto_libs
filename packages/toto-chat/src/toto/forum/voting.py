@@ -6,12 +6,13 @@ already:
 * **the order of the checks in :func:`cast`** — is it open, is that a real
   option, are you allowed, have you already answered. That is the order
   somebody disputes afterwards, so it is the order the code asks in.
-* **a revision never re-reads the answerer's standing.** A poll that changed
-  who counts halfway through would make the tally depend on when people last
-  clicked.
 * **one member, one answer**, with no weights.
-* **a final answer is never altered** (``PollBallot.save``), and a poll's
-  count is shown as it grows or only once it has closed, as its opener chose.
+* **an answer is final** (the owner, 2026-10-07: "all answers are final and
+  cannot be changed"): every poll is opened so, :func:`cast` refuses a second
+  answer whatever the poll's row says, and ``PollBallot.save`` never alters
+  one. A poll's count is shown as it grows or only once it has closed, as
+  its opener chose.
+* **at most three open polls a channel** (``MAX_OPEN_POLLS``).
 
 What is new is where the words are kept: a poll's question and every
 option's label and text are sealed under the channel's key (``sealing``,
@@ -36,6 +37,11 @@ from . import access, channels, sealing
 #: The most options one poll may carry. A radio list longer than this is a
 #: survey, and a survey is a different product.
 MAX_OPTIONS = 10
+
+#: A channel holds at most this many polls that still take answers (the
+#: owner, 2026-10-07: "Each forum can have at max 3 open polls"). A closed
+#: poll, one past its closing time and a removed one do not count.
+MAX_OPEN_POLLS = 3
 
 
 class VotingError(Exception):
@@ -155,7 +161,7 @@ def open_title(key, poll) -> str:
 def open_poll(channel, user, key, *, title, options, closes_at=None,
               revisability=None, visibility=None):
     """Create a poll in this channel with its options, sealed."""
-    from .models import ChannelPoll, PollChoice, ResultVisibility, Revisability
+    from .models import ChannelPoll, PollChoice, PollStatus, ResultVisibility, Revisability
     from .posting import display_name
 
     title = str(title or "").strip()[:150]
@@ -171,11 +177,22 @@ def open_poll(channel, user, key, *, title, options, closes_at=None,
     if closes_at is not None and closes_at <= timezone.now():
         raise ValidationError(_("The closing time must be in the future."))
 
+    # The channel's row is locked from here (next_seq), so two openings at
+    # once are counted one after the other.
     number = channels.next_seq(channel)
+    now = timezone.now()
+    still_open = (channel.polls.filter(removed_at__isnull=True, status=PollStatus.OPEN)
+                  .filter(models.Q(closes_at__isnull=True) | models.Q(closes_at__gt=now)).count())
+    if still_open >= MAX_OPEN_POLLS:
+        raise ValidationError(
+            _("This channel already has %(n)d open polls. Close one before opening another.")
+            % {"n": MAX_OPEN_POLLS})
+    # Every answer is final (the owner, 2026-10-07: "all answers are final
+    # and cannot be changed"): whatever was asked for, the poll is made so.
     poll = ChannelPoll(
         channel=channel, number=number, seq=number, closes_at=closes_at, created_by=user,
         opener_name=display_name(user),
-        revisability=revisability or Revisability.OPEN,
+        revisability=Revisability.FINAL,
         visibility=visibility or ResultVisibility.LIVE)
     poll.title_sealed = sealing.seal_bytes(key, title.encode("utf-8"), kind="poll",
                                            channel_id=channel.pk, message_id=poll.id)
@@ -206,7 +223,7 @@ def _touch(poll) -> None:
 @transaction.atomic
 def cast(poll, user, choice):
     """Record one answer, or raise a VotingError whose message is the reason."""
-    from .models import PollBallot, Revisability
+    from .models import PollBallot
 
     if not poll.is_open:
         raise NotOpen(_("This poll is closed. No more answers can be recorded."))
@@ -229,19 +246,10 @@ def cast(poll, user, choice):
         _touch(poll)
         return ballot
 
-    if poll.revisability == Revisability.FINAL:
-        raise AlreadyAnswered(
-            _("You have already answered, and this poll takes one answer."))
-
-    if existing.choice_id == choice.pk:
-        return existing
-
-    existing.choice = choice
-    existing.revised_at = timezone.now()
-    existing.revisions += 1
-    existing.save(update_fields=["choice", "revised_at", "revisions"])
-    _touch(poll)
-    return existing
+    # Final for every poll, one opened before 2026-10-07 with changeable
+    # answers too: the row's ``revisability`` is not asked.
+    raise AlreadyAnswered(
+        _("You have already answered, and this poll takes one answer."))
 
 
 @transaction.atomic
