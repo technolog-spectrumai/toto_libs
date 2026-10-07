@@ -150,8 +150,8 @@ def beat_schedule(
         from celery.schedules import crontab
 
         # Nightly, and harmless until somebody turns retention on: the task
-        # reads ForumRetentionPolicy.enabled first and returns without touching
-        # a row while it is False. Scheduling it from the start means the dial
+        # reads ForumSettings.retention_enabled first and returns without
+        # touching a row while it is False. Scheduling it from the start means the dial
         # is the ONE switch — there is no second, deploy-time flag that can
         # disagree with what the page says.
         schedule["forum-cleanup"] = {
@@ -159,13 +159,7 @@ def beat_schedule(
             "schedule": crontab(hour=forum_cleanup_hour,
                                 minute=forum_cleanup_minute),
         }
-        # Every five minutes: temporary rooms past their expiry. They refuse
-        # reads and sends from the instant they expire (permissions ask the
-        # clock), so this only has to be prompt, not exact.
-        schedule["forum-expire"] = {
-            "task": "toto.forum.tasks.forum_expire",
-            "schedule": crontab(minute="*/5"),
-        }
+        # No "forum-expire" since 2026-10-07: there are no temporary rooms.
 
     # 04:50, behind the tax levy and the forum sweep — three long jobs on one
     # queue should not start together. This removes finished runs and the

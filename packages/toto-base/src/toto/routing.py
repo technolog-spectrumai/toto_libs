@@ -6,11 +6,12 @@ optional apps are skipped exactly as before.
 """
 import importlib
 
-# The library's own websocket apps, in the historical collection order. A host
+# The library's own websocket apps, in the historical collection order. The
+# forum is not among them since 2026-10-07: it opens no socket (its pages ask
+# its feed door over plain HTTP). A host
 # that owns further websocket apps (zenobia carries texlab and sketch) passes an
 # explicit list — see zenobia/zenobia/asgi.py and faros/faros/asgi.py.
 DEFAULT_WEBSOCKET_ROUTING_MODULES = [
-    "toto.forum.routing",
     "toto.editor.routing",
     "toto.sabbia.routing",
 ]

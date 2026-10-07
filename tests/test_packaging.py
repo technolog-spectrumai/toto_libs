@@ -133,8 +133,8 @@ def test_static_and_wasm_are_packaged(all_names, owner):
     static = [n for n in all_names if "/static/" in n]
     assert len(static) >= 5, static
     # The rotor WASM assertions that used to live here went away with the forum app's
-    # MLS encryption; toto-chat now ships no static files.
-    assert not [n for n in all_names if n.startswith("toto/forum/static/")]
+    # MLS encryption. toto-chat ships one script: the channel page's (2026-10-07).
+    assert owner.get("toto/forum/static/forum/channel.js") == "toto-chat"
     assert owner.get("toto/core/static/oya/alpine.js") == "toto-base"
 
 
