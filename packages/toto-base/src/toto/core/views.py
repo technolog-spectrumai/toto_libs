@@ -303,13 +303,6 @@ def dashboard_view(request):
 
     total_items = sum(len(g["items"]) for g in groups)
 
-    if authenticated:
-        # Sections an app fills for this member (toto.core.dashboard): after
-        # the first group of tiles, and not counted among the modules.
-        from .dashboard import sections_for
-
-        groups = groups[:1] + sections_for(request) + groups[1:]
-
     context = {
         "page_title": "Dashboard",
         "groups": groups,

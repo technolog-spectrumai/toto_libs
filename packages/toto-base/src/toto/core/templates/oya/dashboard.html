@@ -78,7 +78,6 @@
           <section
             x-data="{ open: true }"
             @dashboard-toggle.window="open = $event.detail.open"
-            {% if group.key %}data-dashboard-section="{{ group.key }}"{% endif %}
             class="space-y-3">
 
             <button
@@ -102,23 +101,7 @@
               x-transition:leave-start="opacity-100 translate-y-0"
               x-transition:leave-end="opacity-0 -translate-y-1"
               class="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {% comment %}A group of tiles is drawn as cards. A section an
-              app fills for this member (toto.core.dashboard: it has a key)
-              is a list of the member's own things, so it is drawn as
-              compact rows, each row one link that enters the thing itself.
-              Such a section may have nothing to list: one sentence then,
-              with a link.{% endcomment %}
-              {% if group.key %}
-                {% include "oya/_dashboard_rows.html" with items=group.items %}
-              {% else %}
-                {% include "oya/_dashboard_cards.html" with items=group.items %}
-              {% endif %}
-              {% if group.note %}
-                <p class="text-sm opacity-70 md:col-span-2" data-dashboard-note>
-                  {{ group.note }}
-                  {% if group.note_link %}<a class="underline hover:opacity-80" href="{{ group.note_link }}">{{ group.note_label }}</a>{% endif %}
-                </p>
-              {% endif %}
+              {% include "oya/_dashboard_cards.html" with items=group.items %}
             </div>
           </section>
         {% endfor %}
