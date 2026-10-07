@@ -25,6 +25,7 @@ class MarkTests(ForumCase):
     def test_the_marks_by_name(self):
         expected = {"channel_list": "member", "channel_detail": "member", "feed": "member",
                     "post": "member", "estimate": "member",
+                    "search": "member", "image_list": "member",
                     "settings": "administrator", "settings_save": "administrator",
                     "cleanup_start": "administrator",
                     "message_image": "member", "message_remove": "author",
@@ -116,6 +117,8 @@ class DoorTests(ForumCase):
             ("feed", "GET", self.url("feed"), None),
             ("post", "POST", self.url("post"), "form"),
             ("estimate", "POST", self.url("estimate"), "sizes"),
+            ("search", "GET", self.url("search") + "?q=first", None),
+            ("image_list", "GET", self.url("image_list"), None),
             ("message_image", "GET", self.url("message_image", self.message_id), None),
             ("message_remove", "POST", self.url("message_remove", self.message_id), "json"),
             ("poll_open", "POST", self.url("poll_open"), "poll"),

@@ -1,0 +1,19 @@
+{% load i18n %}
+{% comment %}The forum's tab strip (the owner, 2026-10-07: "polls and settings
+have to be TABS"; "the 3rd tab is search"; "4th tab is images"). On a
+channel's page its four tabs change the panel in place (channel.js; the
+address keeps ?tab=) and are plain links where the script has not run;
+Settings, an administrator's, is a page of its own and the last tab; on the
+other pages every tab is a link. The list is the view's (views._tabs), so a
+tab nobody may open is not drawn.{% endcomment %}
+<div role="tablist" aria-label="{% trans "Forum" %}" data-forum-tabs data-testid="forum-tabs"
+     :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+     class="flex shrink-0 flex-wrap items-end gap-x-1 border-b px-2 pt-1">
+  {% for tab in forum_tabs %}
+  <a href="{{ tab.href }}" role="tab" data-testid="forum-tab-{{ tab.key }}"
+     {% if tab.inpage %}data-forum-tab="{{ tab.key }}" aria-controls="forum-panel-{{ tab.key }}"{% endif %}
+     aria-selected="{% if tab.active %}true{% else %}false{% endif %}"
+     class="-mb-px inline-flex items-center gap-1.5 border-b-2 border-transparent px-3 py-2 text-sm font-semibold opacity-60 transition hover:opacity-100 aria-selected:border-current aria-selected:opacity-100">
+    <i class="{{ tab.icon }}" aria-hidden="true"></i>{{ tab.label }}{% if tab.inpage and tab.key == "polls" %}<span class="text-xs opacity-60" data-forum-poll-count>0</span>{% endif %}</a>
+  {% endfor %}
+</div>

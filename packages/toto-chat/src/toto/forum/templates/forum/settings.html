@@ -36,6 +36,8 @@ cleanup's card has the warning colour's border.{% endcomment %}
       </div>
     </header>
 
+    {% include "forum/_tabs.html" %}
+
     <form method="post" action="{% url 'forum:settings_save' %}" data-testid="forum-settings-form"
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
           class="space-y-4 rounded-2xl border p-4 shadow-sm sm:p-5">

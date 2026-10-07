@@ -235,3 +235,102 @@ class FeedTests(ForumCase):
         self.say(self.member, "here")
         self.assertEqual([m["text"] for m in self.feed(self.member).json()["messages"]],
                          ["here"])
+
+
+class SearchTests(ForumCase):
+    """The Search tab's door (the owner, 2026-10-07: "the 3rd tab is search -
+    search through messages in this current forum")."""
+
+    def search(self, user, q):
+        return client_of(user).get(self.url("search"), {"q": q})
+
+    def test_it_finds_by_a_word_and_by_a_sender_whatever_the_case(self):
+        self.say(self.member, "The harbour is frozen")
+        self.say(self.second, "skating tomorrow?")
+        self.say(self.member, "HARBOUR master says no")
+        found = self.search(self.second, "harbour").json()
+        self.assertEqual([m["text"] for m in found["messages"]],
+                         ["HARBOUR master says no", "The harbour is frozen"])     # the newest first
+        self.assertEqual((found["query"], found["scanned"], found["capped"]), ("harbour", 3, False))
+        self.assertEqual(len(self.search(self.member, "mem").json()["messages"]), 2)   # the sender's name
+        self.assertEqual(self.search(self.member, "nothing like it").json()["messages"], [])
+
+    def test_a_removed_message_is_not_found(self):
+        row_id = self.say(self.member, "a secret word").json()["message"]["id"]
+        send_json(client_of(self.member), self.url("message_remove", row_id), {})
+        self.assertEqual(self.search(self.member, "secret").json()["messages"], [])
+
+    def test_only_this_channel_is_searched(self):
+        self.say(self.member, "only in the guild")
+        found = client_of(self.admin).get(self.url("search", community=self.other), {"q": "guild"})
+        self.assertEqual(found.status_code, 200)
+        self.assertEqual(found.json()["messages"], [])
+        # And a member of the Guild alone is not let into the other channel's search.
+        self.assertEqual(client_of(self.member).get(self.url("search", community=self.other),
+                                                    {"q": "guild"}).status_code, 403)
+
+    def test_what_is_refused(self):
+        self.say(self.member, "hello")
+        self.assertEqual(self.search(self.member, "h").status_code, 400)
+        self.assertEqual(self.search(self.member, "").status_code, 400)
+        self.assertEqual(self.search(self.member, "x" * 101).status_code, 400)
+        self.assertEqual(client_of(self.member).post(self.url("search"), {"q": "hello"}).status_code, 405)
+
+    def test_a_search_writes_nothing_and_charges_nothing(self):
+        from toto.forum.models import ForumUsageEvent
+
+        self.say(self.member, "hello there")
+        before = (ForumMessage.objects.count(), ForumUsageEvent.objects.count(),
+                  ForumChannel.objects.get(community=self.guild).last_seq)
+        with mock.patch.object(billing, "settle_post") as settle:
+            self.assertEqual(self.search(self.member, "hello").status_code, 200)
+        self.assertFalse(settle.called)
+        self.assertEqual((ForumMessage.objects.count(), ForumUsageEvent.objects.count(),
+                          ForumChannel.objects.get(community=self.guild).last_seq), before)
+
+    def test_markup_in_a_message_comes_back_as_data(self):
+        self.say(self.member, "<b>bold</b> <script>alert(1)</script>")
+        response = self.search(self.member, "bold")
+        self.assertEqual(response["Content-Type"].split(";")[0], "application/json")
+        self.assertEqual(response.json()["messages"][0]["text"], "<b>bold</b> <script>alert(1)</script>")
+
+    def test_the_hits_are_capped(self):
+        with mock.patch.object(posting, "SEARCH_HITS", 2), mock.patch.object(posting, "POSTS_PER_MINUTE", 100):
+            for index in range(4):
+                self.say(self.member, f"same word {index}")
+            found = self.search(self.member, "same word").json()
+        self.assertEqual(len(found["messages"]), 2)
+        self.assertTrue(found["capped"])
+
+
+class ImageListTests(ForumCase):
+    """The Images tab's door (the owner, 2026-10-07: "4th tab is images -
+    which just list all images added to the forum")."""
+
+    def images(self, user, **query):
+        return client_of(user).get(self.url("image_list"), query)
+
+    def test_it_lists_the_pictures_the_newest_first_and_no_plain_message(self):
+        self.say(self.member, "no picture")
+        first = self.say(self.member, "the harbour", image=upload()).json()["message"]["id"]
+        second = self.say(self.second, "", image=upload()).json()["message"]["id"]
+        listed = self.images(self.member).json()
+        self.assertEqual([m["id"] for m in listed["messages"]], [second, first])
+        self.assertFalse(listed["more"])
+        for message in listed["messages"]:
+            self.assertTrue(message["image"]["url"].endswith("/image/"))
+
+    def test_a_removed_picture_is_gone_from_the_list(self):
+        row_id = self.say(self.member, "x", image=upload()).json()["message"]["id"]
+        send_json(client_of(self.member), self.url("message_remove", row_id), {})
+        self.assertEqual(self.images(self.member).json()["messages"], [])
+
+    def test_it_is_paged(self):
+        ids = [self.say(self.member, f"p{index}", image=upload()).json()["message"]["id"]
+               for index in range(3)]
+        page = self.images(self.member, limit=2).json()
+        self.assertEqual([m["id"] for m in page["messages"]], [ids[2], ids[1]])
+        self.assertTrue(page["more"])
+        rest = self.images(self.member, limit=2, before=page["oldest"]).json()
+        self.assertEqual([m["id"] for m in rest["messages"]], [ids[0]])
+        self.assertFalse(rest["more"])

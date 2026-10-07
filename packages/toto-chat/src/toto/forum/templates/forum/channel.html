@@ -1,5 +1,5 @@
 {% extends "oya/base.html" %}
-{% load i18n static forum_page %}
+{% load i18n static %}
 {% comment %}One community's channel (stage 68; live since stage 70,
 2026-10-07). What the page is handed is DATA: one json_script block, read by
 static/forum/channel.js, which writes every name, message, question and
@@ -8,10 +8,13 @@ changed to the nodes that are there.
 
 The look is the platform's, as every other app's page: the app bar, the
 theme, the header block (back to the Forum, the app's label, the community's
-name, the buttons at the right) and three rounded cards: the member's
-channels, the conversation (the messages, which scroll, with the composer at
-the bottom) and the polls with the form that opens one. On a narrow screen
-the two side cards are folded away behind the header's two buttons.
+name, the buttons at the right: Community and Refresh) and two rounded
+cards: the member's channels, and the channel itself under its TABS (the
+owner, 2026-10-07: "polls and settings have to be TABS"): Messages (which
+scroll, with the composer at the bottom), Polls with the form that opens
+one, Search through this channel's messages, Images, and for an
+administrator Settings, which is a page of its own. On a narrow screen the
+channels' card is folded away behind the header's button.
 
 The section carries data-forum-theme, which the header's switch sets: a node
 the script makes names its light colour and its dark one after it.
@@ -24,8 +27,6 @@ the header's usual height, and the script measures the real one.
 {% block footer %}{% endblock %}
 {% block content %}
 {{ forum_config|json_script:"forum-channel-config" }}
-{% url 'forum:settings' as settings_url %}
-{% forum_administrator user as viewer_is_administrator %}
 <section
   data-forum-channel data-testid="forum-channel" data-forum-theme="light"
   :data-forum-theme="darkMode ? 'dark' : 'light'"
@@ -35,9 +36,9 @@ the header's usual height, and the script measures the real one.
 
   <div class="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4">
 
-    {% comment %}The header block every app's page has. Its buttons: the two
-    that open a folded card on a narrow screen, the community's page, the
-    forum's Settings (an administrator's), Refresh.{% endcomment %}
+    {% comment %}The header block every app's page has. Its buttons: the one
+    that opens the folded channels' card on a narrow screen, the community's
+    page, Refresh. Polls and Settings are tabs, below.{% endcomment %}
     <header class="flex shrink-0 flex-col gap-3 md:flex-row md:items-end md:justify-between" data-testid="forum-header">
       <div class="min-w-0 space-y-2">
         <a href="{% url 'forum:channel_list' %}"
@@ -58,24 +59,16 @@ the header's usual height, and the script measures the real one.
         <button type="button" data-forum-toggle="channels" aria-expanded="false"
                 :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                 class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-85 sm:px-4 sm:text-sm lg:hidden"><i class="fa-solid fa-bars" aria-hidden="true"></i>{% trans "Channels" %}</button>
-        <button type="button" data-forum-toggle="polls" aria-expanded="false"
-                :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-                class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-85 sm:px-4 sm:text-sm lg:hidden"><i class="fa-solid fa-square-poll-vertical" aria-hidden="true"></i>{% trans "Polls" %} <span class="opacity-60" data-forum-poll-count>0</span></button>
         <a href="{% url 'socialhub:community_detail' community.slug %}" data-testid="forum-community-link"
            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
            class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-85 sm:px-4 sm:text-sm"><i class="fa-solid fa-people-group" aria-hidden="true"></i>{% trans "Community" %}</a>
-        {% if settings_url and viewer_is_administrator %}
-        <a href="{{ settings_url }}" data-testid="forum-settings-link"
-           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-85 sm:px-4 sm:text-sm"><i class="fa-solid fa-sliders" aria-hidden="true"></i>{% trans "Settings" %}</a>
-        {% endif %}
         <button type="button" data-forum-refresh aria-label="{% trans "Refresh" %}" title="{% trans "Refresh" %}"
                 :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                 class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-85 sm:px-4 sm:text-sm"><i class="fa-solid fa-rotate" aria-hidden="true"></i><span class="hidden sm:inline">{% trans "Refresh" %}</span></button>
       </div>
     </header>
 
-    <div class="flex min-h-0 flex-1 flex-col gap-4 lg:grid lg:grid-cols-[15rem_minmax(0,1fr)_18rem] lg:grid-rows-[minmax(0,1fr)]">
+    <div class="flex min-h-0 flex-1 flex-col gap-4 lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
 
       {% comment %}Left: the member's channels, one for each community; the
       list the forum's own page draws.{% endcomment %}
@@ -110,7 +103,10 @@ the header's usual height, and the script measures the real one.
       {% comment %}Centre: the conversation. The messages (the only part
       that scrolls), then the composer.{% endcomment %}
       <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)_auto] overflow-hidden rounded-2xl border shadow-sm">
+           class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border shadow-sm" data-testid="forum-main">
+        {% include "forum/_tabs.html" %}
+        <div id="forum-panel-messages" role="tabpanel" data-forum-tabpanel="messages" aria-label="{% trans "Messages" %}"
+             class="{% if forum_tab != 'messages' %}hidden {% endif %}grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto]">
         <div class="relative min-h-0">
           <div data-forum-scroll class="h-full overflow-y-auto overflow-x-hidden px-2 py-3 sm:px-3">
             <div class="pb-2 text-center"><button type="button" data-forum-older
@@ -147,20 +143,13 @@ the header's usual height, and the script measures the real one.
           stops. Empty until the estimate door answers.{% endcomment %}
           <p class="mt-1 hidden text-right text-xs opacity-80" data-forum-estimate data-testid="forum-estimate" aria-live="polite"></p>
         </div>
-      </div>
-
-      {% comment %}Right: the polls, the newest first, and the form that opens
-      one.{% endcomment %}
-      <aside data-forum-panel="polls" aria-label="{% trans "Polls" %}"
-             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-             class="order-first hidden max-h-[40vh] min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border p-4 shadow-sm lg:order-none lg:flex lg:max-h-none">
-        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-             class="flex items-center justify-between gap-2 border-b pb-3">
-          <h2 class="flex min-w-0 items-center gap-2 text-sm font-bold">
-            <i class="fa-solid fa-square-poll-vertical" aria-hidden="true"></i>{% trans "Polls" %}</h2>
-          <span class="shrink-0 text-xs opacity-60" data-forum-poll-count>0</span>
         </div>
-        <div class="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
+
+        {% comment %}The polls, the newest first, and the form that opens one.
+        A tab of the channel since 2026-10-07; a side card before.{% endcomment %}
+        <div id="forum-panel-polls" role="tabpanel" data-forum-tabpanel="polls" aria-label="{% trans "Polls" %}"
+             class="{% if forum_tab != 'polls' %}hidden {% endif %}min-h-0 flex-1 overflow-y-auto p-4">
+          <div class="mx-auto max-w-3xl">
           <div class="space-y-3" data-forum-polls data-testid="forum-polls"></div>
           <p class="py-6 text-center text-xs italic opacity-60" data-forum-polls-empty>{% trans "No polls yet." %}</p>
           <details :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
@@ -199,8 +188,42 @@ the header's usual height, and the script measures the real one.
                       class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">{% trans "Open the poll" %}</button>
             </form>
           </details>
+          </div>
         </div>
-      </aside>
+
+        {% comment %}Search through this channel's messages. The door opens
+        the newest messages one by one (they are sealed), so a search is
+        asked for with the button or Enter, never as the member types.{% endcomment %}
+        <div id="forum-panel-search" role="tabpanel" data-forum-tabpanel="search" aria-label="{% trans "Search" %}"
+             class="{% if forum_tab != 'search' %}hidden {% endif %}flex min-h-0 flex-1 flex-col">
+          <form data-forum-search role="search"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                class="flex shrink-0 items-center gap-2 border-b p-3">
+            <label class="sr-only" for="forum-search-q">{% trans "Search this channel's messages" %}</label>
+            <input id="forum-search-q" type="search" data-forum-search-q maxlength="100" autocomplete="off"
+                   placeholder="{% trans "Search this channel's messages" %}"
+                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark focus:ring-accent-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:ring-accent-light/40'"
+                   class="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2">
+            <button type="submit" data-testid="forum-search-go"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span class="hidden sm:inline">{% trans "Search" %}</span></button>
+          </form>
+          <p class="hidden shrink-0 px-4 pt-3 text-xs opacity-70" role="status" data-forum-search-note data-testid="forum-search-note"></p>
+          <ol data-forum-search-results data-testid="forum-search-results" class="min-h-0 flex-1 overflow-y-auto px-2 py-3 sm:px-3"></ol>
+        </div>
+
+        {% comment %}Every picture posted in this channel, the newest first.
+        Asked for when the tab is opened; a picture is read through the
+        image door, which asks who may see it every time.{% endcomment %}
+        <div id="forum-panel-images" role="tabpanel" data-forum-tabpanel="images" aria-label="{% trans "Images" %}"
+             class="{% if forum_tab != 'images' %}hidden {% endif %}min-h-0 flex-1 overflow-y-auto p-4">
+          <p class="hidden py-12 text-center text-sm italic opacity-60" data-forum-images-empty>{% trans "No picture has been posted here yet." %}</p>
+          <div data-forum-images data-testid="forum-images" class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4"></div>
+          <div class="pt-4 text-center"><button type="button" data-forum-images-older
+               :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+               class="hidden rounded-lg border px-3 py-1 text-xs font-semibold opacity-70 transition hover:opacity-100">{% trans "Older pictures" %}</button></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -232,7 +255,11 @@ the header's usual height, and the script measures the real one.
        data-cost="{% trans "This will cost {amount}." %}"
        data-unaffordable="{% trans "You do not have enough mana for this." %}"
        data-failed="{% trans "The request failed. Try again." %}"
-       data-confirm-remove="{% trans "Remove this for everybody? It cannot be undone." %}"></div>
+       data-confirm-remove="{% trans "Remove this for everybody? It cannot be undone." %}"
+       data-searching="{% trans "Searching…" %}"
+       data-search-found="{% trans "Messages found: {count}" %}"
+       data-search-none="{% trans "No message matches." %}"
+       data-search-capped="{% trans "There may be more: only the newest messages are searched, and at most fifty are shown." %}"></div>
 </section>
 <script src="{% static 'forum/channel.js' %}"></script>
 {% endblock %}

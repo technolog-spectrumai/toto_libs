@@ -830,7 +830,7 @@ class PagePollingTests(PageCase):
         """)
         self.assertEqual(out["rows"], ["the first word"])
         self.assertEqual(out["polls"], 1)
-        self.assertEqual(out["count"], ["1", "1"])
+        self.assertEqual(out["count"], ["1"])
         self.assertEqual(out["waits"], [9000])          # one timer, the Settings' interval
         self.assertEqual(out["asked"], 0)               # the page's own feed came with it
         self.assertEqual(out["feeds"], [f"?after={out['cursor']}"])
@@ -958,7 +958,7 @@ class PageMessagesTests(PageCase):
         self.assertEqual(out["line"], "A message was removed.")
         self.assertEqual(out["text"], -1)
         self.assertEqual(out["afterCleanup"], ["m5"])
-        self.assertEqual((out["polls"], out["pollsEmpty"], out["count"]), (0, False, ["0", "0"]))
+        self.assertEqual((out["polls"], out["pollsEmpty"], out["count"]), (0, False, ["0"]))
         self.assertEqual(out["held"], ["m5"])
         self.assertEqual((out["opened"], out["closed"]), (1, 0))
 
@@ -1390,28 +1390,93 @@ class PageEstimateTests(PageCase):
 
 
 class PageNarrowTests(PageCase):
-    def test_the_two_side_columns_fold_behind_the_headers_buttons(self):
+    def test_the_channels_card_folds_behind_the_headers_button(self):
         out = self.run_page(before="config.feed = feedOf(1, [msg(1)]);", body="""
           const panel = (name) => box.querySelector('[data-forum-panel="' + name + '"]');
           const knob = (name) => box.querySelector('[data-forum-toggle="' + name + '"]');
-          const open = () => ["channels", "polls"].map((name) =>
-            [!panel(name).classList.contains("hidden"), panel(name).classList.contains("flex"),
-             knob(name).getAttribute("aria-expanded")]);
+          const open = () => [!panel("channels").classList.contains("hidden"),
+                              panel("channels").classList.contains("flex"),
+                              knob("channels").getAttribute("aria-expanded")];
           out.start = open();
           knob("channels").click(); out.channels = open();
-          knob("polls").click(); out.polls = open();
-          knob("polls").click(); out.shut = open();
-          // On a wide screen both are columns whatever the buttons did.
-          out.wide = ["channels", "polls"].map((name) => panel(name).classList.contains("lg:flex"));
+          knob("channels").click(); out.shut = open();
+          // Polls are a tab of the channel now: no side card and no button for one.
+          out.noPolls = [panel("polls"), knob("polls")];
+          // On a wide screen the channels are a column whatever the button did.
+          out.wide = panel("channels").classList.contains("lg:flex");
           out.links = panel("channels").all().filter((n) => n.tagName === "A").map((a) => a.attrs.href);
         """)
-        shut = [[False, False, "false"], [False, False, "false"]]
-        self.assertEqual(out["start"], shut)
-        self.assertEqual(out["channels"], [[True, True, "true"], [False, False, "false"]])
-        self.assertEqual(out["polls"], [[False, False, "false"], [True, True, "true"]])
-        self.assertEqual(out["shut"], shut)
-        self.assertEqual(out["wide"], [True, True])
+        self.assertEqual(out["start"], [False, False, "false"])
+        self.assertEqual(out["channels"], [True, True, "true"])
+        self.assertEqual(out["shut"], [False, False, "false"])
+        self.assertEqual(out["noPolls"], [None, None])
+        self.assertTrue(out["wide"])
         self.assertIn(self.url("channel_detail"), out["links"])
+
+    def test_the_tabs_change_the_panel_and_search_and_images_ask_their_doors(self):
+        """The owner, 2026-10-07: "polls and settings have to be TABS", "the
+        3rd tab is search", "4th tab is images"."""
+        out = self.run_page(before="config.feed = feedOf(1, [msg(1)]);", body="""
+          const tab = (name) => box.querySelector('[data-forum-tab="' + name + '"]');
+          const pane = (name) => box.querySelector('[data-forum-tabpanel="' + name + '"]');
+          const NAMES = ["messages", "polls", "search", "images"];
+          const open = () => NAMES.filter((name) => !pane(name).classList.contains("hidden"));
+          const chosen = () => NAMES.filter((name) => tab(name).getAttribute("aria-selected") === "true");
+          out.start = [open(), chosen(), mounted.tab()];
+          const before = calls.length;
+          tab("polls").click();
+          out.polls = [open(), chosen(), mounted.tab(), calls.length - before];
+          tab("search").click();
+          out.search = [open(), chosen()];
+          // A search is asked for with the form, and what is found is drawn as text.
+          queue.push({status: 200, data: {query: "text", capped: true, scanned: 2, messages: [
+            msg(7, {text: "<b>seven</b>"}), msg(3)]}});
+          part("search-q").value = "  text  ";
+          part("search").fire("submit", {preventDefault() {}});
+          await settle();
+          const hit = calls[calls.length - 1];
+          out.asked = [hit.method, hit.url.split("/search/")[1]];
+          const found = part("search-results").children;
+          out.found = [found.length, found[0].querySelector("[data-forum-body]").textContent,
+                       part("search-note").textContent.indexOf("2") >= 0,
+                       part("search-note").classList.contains("hidden")];
+          out.listUntouched = ids();
+          // A refusal is said in the tab.
+          queue.push({status: 400, data: {error: "Type at least 2 characters to search for."}});
+          part("search-q").value = "x";
+          part("search").fire("submit", {preventDefault() {}});
+          await settle();
+          out.refused = [part("search-results").children.length, part("search-note").textContent];
+          // The Images tab asks its door when it is opened, and again for older ones.
+          queue.push({status: 200, data: {more: true, oldest: 4, messages: [
+            msg(9, {kind: "image", image: {url: "/forum/guild/messages/m9/image/", mime: "image/png", size: 5}}),
+            msg(4, {kind: "image", image: {url: "/forum/guild/messages/m4/image/", mime: "image/png", size: 5}})]}});
+          tab("images").click();
+          await settle();
+          const cells = part("images").children;
+          out.images = [open(), calls[calls.length - 1].url.split("/images/")[1], cells.length,
+                        cells[0].attrs.href || cells[0].href,
+                        part("images-older").classList.contains("hidden"),
+                        part("images-empty").classList.contains("hidden")];
+          queue.push({status: 200, data: {more: false, oldest: 2, messages: [
+            msg(2, {kind: "image", image: {url: "/forum/guild/messages/m2/image/", mime: "image/png", size: 5}})]}});
+          part("images-older").click();
+          await settle();
+          out.older = [calls[calls.length - 1].url.split("/images/")[1], part("images").children.length,
+                       part("images-older").classList.contains("hidden")];
+          tab("messages").click();
+          out.back = [open(), chosen()];
+        """)
+        self.assertEqual(out["start"], [["messages"], ["messages"], "messages"])
+        self.assertEqual(out["polls"], [["polls"], ["polls"], "polls", 0], "a tab asks the server nothing")
+        self.assertEqual(out["search"], [["search"], ["search"]])
+        self.assertEqual(out["asked"], ["GET", "?q=text"])
+        self.assertEqual(out["found"], [2, "<b>seven</b>", True, False])
+        self.assertEqual(out["listUntouched"], ["m1"])
+        self.assertEqual(out["refused"], [0, "Type at least 2 characters to search for."])
+        self.assertEqual(out["images"], [["images"], "", 2, "/forum/guild/messages/m9/image/", False, True])
+        self.assertEqual(out["older"], ["?before=4", 3, True])
+        self.assertEqual(out["back"], [["messages"], ["messages"]])
 
 
 class ScriptSourceTests(SimpleTestCase):
@@ -1443,10 +1508,11 @@ class ScriptSourceTests(SimpleTestCase):
         self.assertIn("createTextNode", code)
         # A picture's address is the feed's own: the two places an <img> gets
         # one are a message's image and a sender's avatar.
-        self.assertEqual(re.findall(r"\.src = ([\w.]+);", code), ["row.avatar", "row.image.url"])
+        self.assertEqual(re.findall(r"\.src = ([\w.]+);", code),
+                         ["row.avatar", "row.image.url", "row.image.url"])     # the third: an Images cell
         # A link's address is made by the one rule, and a picture's door is the feed's.
         self.assertEqual(sorted(re.findall(r"\.href = ([\w.]+);", code)),
-                         ["part.href", "row.image.url"])
+                         ["part.href", "row.image.url", "row.image.url"])
 
     def test_every_class_is_written_whole(self):
         """The stylesheet is built from what it can read: no class is glued

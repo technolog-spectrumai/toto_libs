@@ -83,8 +83,11 @@ class ListPageTests(ForumCase):
         for user, shown in ((self.admin, True), (self.head, False), (self.member, False),
                             (self.staff, False)):
             page = client_of(user).get("/forum/").content.decode()
-            self.assertEqual('data-testid="forum-settings-link"' in page,
+            # Settings is a TAB (the owner, 2026-10-07), an administrator's.
+            self.assertEqual('data-testid="forum-tab-settings"' in page,
                              bool(shown and address), user.username)
+            self.assertNotIn('data-testid="forum-settings-link"', page)
+            self.assertIn('data-testid="forum-tab-channels"', page)
 
 
 class ChannelPageTests(ForumCase):
@@ -177,7 +180,10 @@ class ChannelPageTests(ForumCase):
                       header)
         self.assertIn("data-forum-refresh", header)
         self.assertIn('data-forum-toggle="channels"', header)
-        self.assertIn('data-forum-toggle="polls"', header)
+        # Polls and Settings are tabs of the channel, not buttons of the header.
+        self.assertNotIn('data-forum-toggle="polls"', header)
+        self.assertNotIn("forum-settings-link", header)
+        self.assertIn('data-testid="forum-community-link"', header)
         # A community without a head is moderated by the administrators.
         page = client_of(self.outsider).get(
             self.url("channel_detail", community=self.other)).content.decode()
@@ -194,11 +200,39 @@ class ChannelPageTests(ForumCase):
         address = settings_url()
         for user, shown in ((self.admin, True), (self.head, False), (self.member, False)):
             page = client_of(user).get(self.url("channel_detail")).content.decode()
-            header = part(page, "forum-header", "header")
-            self.assertEqual('data-testid="forum-settings-link"' in header,
+            self.assertEqual('data-testid="forum-tab-settings"' in page,
                              bool(shown and address), user.username)
             if shown and address:
-                self.assertIn(f'href="{address}"', header)
+                self.assertIn(f'href="{address}?from=guild"', page)
+
+    def test_the_channel_has_its_tabs_and_the_address_names_the_open_one(self):
+        """The owner, 2026-10-07: "polls and settings have to be TABS", "the
+        3rd tab is search", "4th tab is images"."""
+        client = client_of(self.member)
+        page = client.get(self.url("channel_detail")).content.decode()
+        for key in ("messages", "polls", "search", "images"):
+            self.assertIn(f'data-forum-tab="{key}"', page)
+            self.assertIn(f'data-forum-tabpanel="{key}"', page)
+        self.assertNotIn("<aside", page)                 # no side panel of polls
+
+        def shut(text, key):
+            tag = re.search(rf'<div\b[^>]*data-forum-tabpanel="{key}"[^>]*>', text, re.S).group(0)
+            return "hidden " in re.search(r'class="([^"]*)"', tag).group(1) + " "
+
+        self.assertEqual([shut(page, key) for key in ("messages", "polls", "search", "images")],
+                         [False, True, True, True])
+        for asked, opened in (("polls", "polls"), ("search", "search"), ("images", "images"),
+                              ("settings", "messages"), ("<script>", "messages")):
+            response = client.get(self.url("channel_detail"), {"tab": asked})
+            self.assertEqual(response.context["forum_tab"], opened)
+            text = response.content.decode()
+            self.assertEqual([key for key in ("messages", "polls", "search", "images")
+                              if not shut(text, key)], [opened])
+        # The page is told where its two new doors are.
+        config = json.loads(re.search(r'<script id="forum-channel-config" type="application/json">(.*?)'
+                                      r"</script>", page, re.S).group(1))
+        self.assertEqual(config["urls"]["search"], self.url("search"))
+        self.assertEqual(config["urls"]["images"], self.url("image_list"))
 
     def test_the_page_is_the_windows_height_and_carries_the_scripts_words(self):
         page = client_of(self.member).get(self.url("channel_detail")).content.decode()
@@ -224,7 +258,8 @@ class ChannelPageTests(ForumCase):
                      "data-forum-picked", "data-forum-unpick", "data-forum-send",
                      "data-forum-estimate", "data-forum-polls", "data-forum-polls-empty",
                      "data-forum-poll-form", 'data-forum-panel="channels"',
-                     'data-forum-panel="polls"'):
+                     'data-forum-tabpanel="polls"', "data-forum-search", "data-forum-search-q",
+                     "data-forum-search-results", "data-forum-images", "data-forum-images-older"):
             self.assertIn(hook, page, hook)
         # A picture is chosen with the picture button: the file field itself
         # is hidden and takes the four raster types only.

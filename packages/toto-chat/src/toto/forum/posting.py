@@ -54,6 +54,17 @@ MAX_POLLS = 100
 #: Posts per member per minute, across channels.
 POSTS_PER_MINUTE = 30
 
+#: Search (the channel's Search tab). A channel's content is sealed at rest,
+#: so the database cannot be asked for a word: the newest ``SEARCH_SCAN``
+#: messages are opened one by one. At most ``SEARCH_HITS`` are answered.
+SEARCH_HITS = 50
+SEARCH_SCAN = 2000
+SEARCH_MIN, SEARCH_MAX = 2, 100
+SEARCHES_PER_MINUTE = 20
+
+#: The Images tab: this many pictures a page at the most.
+IMAGES_PAGE = 60
+
 _SALT = "toto.forum.posting"
 
 
@@ -362,3 +373,68 @@ def feed(user, channel, *, after=None, before=None, limit=None) -> dict:
             "polls": voting.polls_to_dicts(polls, key=key, user=user, moderator=moderator),
             "more": more, "oldest": rows[0].number if rows else None,
             "purged_before": purged}
+
+
+def search(user, channel, query) -> dict:
+    """The channel's messages that hold ``query``, the newest first (the
+    Search tab; the owner, 2026-10-07: "the 3rd tab is search - search
+    through messages in this current forum"). The caller has asked
+    ``access.may_read``.
+
+    The words and a sender's name are compared without regard to case. The
+    content is sealed, so each of the newest ``SEARCH_SCAN`` messages is
+    opened to be read; ``capped`` says that there were more messages than
+    that, or more hits than ``SEARCH_HITS``. Nothing is written, nothing is
+    charged, and the query is kept nowhere (no log line, no usage event)."""
+    from toto.core import ratelimit
+
+    query = " ".join(str(query or "").split())
+    if len(query) < SEARCH_MIN:
+        raise Refusal(_("Type at least %(n)d characters to search for.") % {"n": SEARCH_MIN}, 400)
+    if len(query) > SEARCH_MAX:
+        raise Refusal(_("That is too long to search for: at most %(n)d characters.")
+                      % {"n": SEARCH_MAX}, 400)
+    try:
+        ratelimit.check(f"forum:search:{user.pk}", limit=SEARCHES_PER_MINUTE, window=60)
+    except ratelimit.RateLimited as exc:
+        raise Refusal(_("You are searching too fast. Wait a moment."), 429,
+                      getattr(exc, "retry_after", None)) from None
+    needle = query.casefold()
+    key = _key(channel)
+    slug = channel.community.slug
+    moderator = access.may_moderate(user, channel.community)
+    rows = list(channel.messages.filter(removed_at__isnull=True).order_by("-number")[:SEARCH_SCAN + 1])
+    capped, rows = len(rows) > SEARCH_SCAN, rows[:SEARCH_SCAN]
+    avatars = _avatars(rows)
+    hits = []
+    for row in rows:
+        shown = message_to_dict(row, key=key, user=user, slug=slug, moderator=moderator,
+                                avatars=avatars)
+        if needle in f"{shown.get('text') or ''}\n{shown.get('sender') or ''}".casefold():
+            if len(hits) >= SEARCH_HITS:
+                capped = True
+                break
+            hits.append(shown)
+    return {"query": query, "messages": hits, "scanned": len(rows), "capped": capped}
+
+
+def images_page(user, channel, *, before=None, limit=None) -> dict:
+    """The channel's pictures, the newest first (the Images tab; the owner,
+    2026-10-07: "4th tab is images - which just list all images added to the
+    forum"): the messages that carry one, as the feed draws them, a page at a
+    time (``before`` is a message's number). The caller has asked
+    ``access.may_read``; a picture itself is read through the image door,
+    which asks again."""
+    before, limit = _number(before, "before"), min(_limit(limit), IMAGES_PAGE)
+    key = _key(channel)
+    slug = channel.community.slug
+    moderator = access.may_moderate(user, channel.community)
+    rows = channel.messages.filter(removed_at__isnull=True, attachment__isnull=False)
+    if before is not None:
+        rows = rows.filter(number__lt=before)
+    rows = list(rows.order_by("-number")[:limit + 1])
+    more, rows = len(rows) > limit, rows[:limit]
+    avatars = _avatars(rows)
+    return {"messages": [message_to_dict(row, key=key, user=user, slug=slug, moderator=moderator,
+                                         avatars=avatars) for row in rows],
+            "more": more, "oldest": rows[-1].number if rows else None}

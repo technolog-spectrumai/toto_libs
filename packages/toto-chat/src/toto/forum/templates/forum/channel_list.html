@@ -1,5 +1,5 @@
 {% extends "oya/base.html" %}
-{% load i18n forum_page %}
+{% load i18n %}
 {% comment %}The member's communities, one channel each. A channel has no
 name of its own: it is the community's. The names are text. Each tile is one
 link that enters that community's channel. The page sits in the platform's
@@ -8,8 +8,6 @@ frame, as every other app's does: the app bar, the theme, the header block
 right) and rounded cards.{% endcomment %}
 {% block title %}{% trans "Forum" %} | {{ platform.site_name }}{% endblock %}
 {% block content %}
-{% url 'forum:settings' as settings_url %}
-{% forum_administrator user as viewer_is_administrator %}
 <section
   data-testid="forum-channel-list"
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
@@ -33,14 +31,10 @@ right) and rounded cards.{% endcomment %}
         <span :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
               class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
           <i class="fa-solid fa-comments" aria-hidden="true"></i>{{ communities|length }}</span>
-        {% if settings_url and viewer_is_administrator %}
-        <a href="{{ settings_url }}" data-testid="forum-settings-link"
-           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-sliders" aria-hidden="true"></i>{% trans "Settings" %}</a>
-        {% endif %}
       </div>
     </header>
+
+    {% include "forum/_tabs.html" %}
 
     {% if communities %}
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

@@ -1048,7 +1048,131 @@
       });
     }
 
-    /* --- the two side panels on a narrow screen ------------------------------- */
+    /* --- the tabs: Messages, Polls, Search, Images ----------------------------- */
+
+    /* One panel shows at a time. The server draws the one the address asks
+     * for (?tab=polls); a press changes it here, asks the server nothing and
+     * rewrites the address in place, so a reload and a link keep the tab.
+     * Settings is a page of its own: its tab is a plain link. */
+    var tabLinks = section.querySelectorAll("[data-forum-tab]");
+    var tabPanels = section.querySelectorAll("[data-forum-tabpanel]");
+    var openTab = "messages";
+
+    function showTab(name, write) {
+      var known = false;
+      Array.prototype.forEach.call(tabPanels, function (panel) {
+        if (panel.getAttribute("data-forum-tabpanel") === name) { known = true; }
+      });
+      if (!known) { name = "messages"; }
+      Array.prototype.forEach.call(tabPanels, function (panel) {
+        if (panel.getAttribute("data-forum-tabpanel") === name) { panel.classList.remove("hidden"); }
+        else { panel.classList.add("hidden"); }
+      });
+      Array.prototype.forEach.call(tabLinks, function (link) {
+        link.setAttribute("aria-selected", link.getAttribute("data-forum-tab") === name ? "true" : "false");
+      });
+      openTab = name;
+      if (write && root.history && root.history.replaceState && place.pathname) {
+        root.history.replaceState(null, "", place.pathname + (name === "messages" ? "" : "?tab=" + name));
+      }
+      if (name === "messages" && pinned) { toBottom(); }
+      if (name === "images") { loadImages(true); }
+    }
+
+    Array.prototype.forEach.call(tabLinks, function (link) {
+      link.addEventListener("click", function (event) {
+        if (event && event.preventDefault) { event.preventDefault(); }
+        showTab(link.getAttribute("data-forum-tab"), true);
+      });
+    });
+
+    /* --- search through this channel's messages -------------------------------- */
+
+    /* Asked with the button or Enter, never while typing: the door opens the
+     * messages one by one to read them. What is found is drawn as a message
+     * is, as text; nothing of the search is kept here or there. */
+    var searchForm = section.querySelector("[data-forum-search]");
+    var searchBox = section.querySelector("[data-forum-search-q]");
+    var searchList = section.querySelector("[data-forum-search-results]");
+    var searchNote = section.querySelector("[data-forum-search-note]");
+
+    function searchSay(text, bad) {
+      if (!searchNote) { return; }
+      searchNote.textContent = text || "";
+      if (text) { searchNote.classList.remove("hidden"); } else { searchNote.classList.add("hidden"); }
+      tint(searchNote, BAD, !!text && !!bad);
+    }
+
+    if (searchForm && searchBox && searchList && urls.search) {
+      searchForm.addEventListener("submit", function (event) {
+        if (event && event.preventDefault) { event.preventDefault(); }
+        var query = String(searchBox.value || "").trim();
+        if (!query) { return; }
+        searchSay(words.searching);
+        ask(urls.search + "?q=" + encodeURIComponent(query)).then(function (answer) {
+          searchList.textContent = "";
+          if (!answer.ok) { searchSay(answer.data.error || words.failed, true); return; }
+          var found = answer.data.messages || [];
+          found.forEach(function (row) { searchList.appendChild(messageNode(row)); });
+          var said = found.length ? String(words.searchFound).replace("{count}", String(found.length))
+                                  : words.searchNone;
+          searchSay(answer.data.capped ? said + " " + words.searchCapped : said);
+        }, function () { searchSay(words.failed, true); });
+      });
+    }
+
+    /* --- every picture of the channel ------------------------------------------ */
+
+    /* Asked for when the Images tab is opened, the newest first, a page at a
+     * time. A picture's address is the image door's, which asks who may see
+     * it every time; the name under it is text. */
+    var imageGrid = section.querySelector("[data-forum-images]");
+    var imagesEmpty = section.querySelector("[data-forum-images-empty]");
+    var imagesOlder = section.querySelector("[data-forum-images-older]");
+    var imagesOldest = null;
+    var imagesBusy = false;
+
+    function imageCell(row) {
+      var cell = el("a", "block overflow-hidden rounded-lg border transition hover:opacity-90 " + LINE + " " + GROUND);
+      cell.href = row.image.url;
+      cell.target = "_blank";
+      cell.rel = "noopener noreferrer";
+      cell.dataset.messageId = row.id;
+      var image = el("img", "aspect-square w-full object-cover");
+      image.alt = words.image;
+      image.loading = "lazy";
+      image.src = row.image.url;
+      cell.appendChild(image);
+      cell.appendChild(el("span", "block truncate px-2 pt-1 text-xs font-semibold " + NAME, row.sender));
+      cell.appendChild(el("span", "block truncate px-2 pb-1 text-xs opacity-60", when(row.created_at)));
+      return cell;
+    }
+
+    function loadImages(fresh) {
+      if (!imageGrid || !urls.images || imagesBusy) { return; }
+      if (!fresh && imagesOldest === null) { return; }
+      imagesBusy = true;
+      ask(urls.images + (fresh ? "" : "?before=" + imagesOldest)).then(function (answer) {
+        imagesBusy = false;
+        if (!answer.ok) { say(answer.data.error || words.failed, true); return; }
+        if (fresh) { imageGrid.textContent = ""; }
+        var rows = answer.data.messages || [];
+        rows.forEach(function (row) { if (row.image && row.image.url) { imageGrid.appendChild(imageCell(row)); } });
+        imagesOldest = answer.data.oldest === undefined ? null : answer.data.oldest;
+        if (imagesEmpty) {
+          if (imageGrid.children.length) { imagesEmpty.classList.add("hidden"); }
+          else { imagesEmpty.classList.remove("hidden"); }
+        }
+        if (imagesOlder) {
+          if (answer.data.more) { imagesOlder.classList.remove("hidden"); }
+          else { imagesOlder.classList.add("hidden"); }
+        }
+      }, function () { imagesBusy = false; failed(); });
+    }
+
+    if (imagesOlder) { imagesOlder.addEventListener("click", function () { loadImages(false); }); }
+
+    /* --- the channels' card on a narrow screen ---------------------------------- */
 
     Array.prototype.forEach.call(section.querySelectorAll("[data-forum-toggle]"), function (knob) {
       knob.addEventListener("click", function () {
@@ -1099,6 +1223,10 @@
 
     draw(applyFeed(state, config.feed), "first");
     showLive(true);
+    Array.prototype.forEach.call(tabLinks, function (link) {
+      if (link.getAttribute("aria-selected") === "true") { openTab = link.getAttribute("data-forum-tab"); }
+    });
+    if (openTab !== "messages") { showTab(openTab, false); }
 
     section.querySelector("[data-forum-refresh]").addEventListener("click", function () {
       say("");
@@ -1116,7 +1244,8 @@
     doc.addEventListener("visibilitychange", function () { poller.visibility(); });
     poller.start();
 
-    return {state: state, refresh: poller.now, poller: poller, config: config, post: post};
+    return {state: state, refresh: poller.now, poller: poller, config: config, post: post,
+            showTab: showTab, tab: function () { return openTab; }};
   }
 
   api.mount = mount;

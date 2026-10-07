@@ -217,6 +217,49 @@ def _key(channel) -> bytes:
 # ---------------------------------------------------------------------------
 
 
+#: A channel page's tabs, in their order (the owner, 2026-10-07: "polls and
+#: settings have to be TABS", "the 3rd tab is search", "4th tab is images").
+#: Settings, an administrator's, is a page of its own and the last tab.
+CHANNEL_TABS = (
+    ("messages", gettext_lazy("Messages"), "fa-solid fa-comments"),
+    ("polls", gettext_lazy("Polls"), "fa-solid fa-square-poll-vertical"),
+    ("search", gettext_lazy("Search"), "fa-solid fa-magnifying-glass"),
+    ("images", gettext_lazy("Images"), "fa-solid fa-images"),
+)
+
+
+def _tab(request) -> str:
+    """The tab the address asks for (``?tab=polls``), so that a reload and a
+    link keep it; Messages for anything else."""
+    asked = request.GET.get("tab", "")
+    return asked if asked in {key for key, _label, _icon in CHANNEL_TABS} else "messages"
+
+
+def _tabs(user, *, community=None, active="", inpage=False) -> list:
+    """The forum's tab strip (``forum/_tabs.html``). With a community: its
+    channel's four tabs (on the channel's own page they change the panel in
+    place, ``inpage``; elsewhere they are links into it). Without one: the
+    list of channels. Then Settings, for an administrator only."""
+    tabs = []
+    if community is not None:
+        base = reverse("forum:channel_detail", args=[community.slug])
+        for key, label, icon in CHANNEL_TABS:
+            tabs.append({"key": key, "label": label, "icon": icon, "inpage": inpage,
+                         "href": base if key == "messages" else f"{base}?tab={key}",
+                         "active": key == active})
+    else:
+        tabs.append({"key": "channels", "label": _("Channels"), "icon": "fa-solid fa-comments",
+                     "inpage": False, "href": reverse("forum:channel_list"),
+                     "active": active == "channels"})
+    if access.is_administrator(user):
+        href = reverse("forum:settings")
+        if community is not None:
+            href = f"{href}?from={community.slug}"
+        tabs.append({"key": "settings", "label": _("Settings"), "icon": "fa-solid fa-sliders",
+                     "inpage": False, "href": href, "active": active == "settings"})
+    return tabs
+
+
 def _settings_url(user):
     """The Settings page's address for an administrator, else None: what a
     page reads to draw the link, or not."""
@@ -228,7 +271,8 @@ def channel_list(request):
     """The member's communities, each with the way into its channel."""
     communities = list(access.communities_of(request.user))
     return render(request, "forum/channel_list.html", _page(request, {
-        "communities": communities, "forum_settings_url": _settings_url(request.user)}))
+        "communities": communities, "forum_settings_url": _settings_url(request.user),
+        "forum_tabs": _tabs(request.user, active="channels")}))
 
 
 @door(MEMBER, method="GET", page=True)
@@ -253,6 +297,9 @@ def channel_detail(request, channel):
             "poll_remove": reverse("forum:poll_remove", args=[slug, nil]),
             # What a post would cost, before it is sent (the door below).
             "estimate": reverse("forum:estimate", args=[slug]),
+            # The Search tab and the Images tab.
+            "search": reverse("forum:search", args=[slug]),
+            "images": reverse("forum:image_list", args=[slug]),
             "nil": nil,
         },
         "limits": {"text_bytes": posting.MAX_TEXT_BYTES, "image_bytes": images.MAX_BYTES,
@@ -270,6 +317,8 @@ def channel_detail(request, channel):
         "community": community, "channel": channel, "forum_config": config,
         "communities": list(access.communities_of(request.user)),
         "forum_settings_url": _settings_url(request.user),
+        "forum_tab": _tab(request),
+        "forum_tabs": _tabs(request.user, community=community, active=_tab(request), inpage=True),
     }))
     response["Cache-Control"] = "no-store"
     return response
@@ -347,6 +396,21 @@ def estimate(request, channel):
                       % {"size": images.MAX_BYTES // (1024 * 1024)}, 400)
     return billing.quote(request.user, text_bytes=text_bytes,
                          image_bytes=image_bytes).as_dict()
+
+
+@door(MEMBER, method="GET")
+def search(request, channel):
+    """The channel's messages that hold ``?q=``, the newest first:
+    ``{"query", "messages", "scanned", "capped"}``. Free; nothing is kept."""
+    return posting.search(request.user, channel, request.GET.get("q"))
+
+
+@door(MEMBER, method="GET")
+def image_list(request, channel):
+    """The channel's pictures, the newest first, a page at a time
+    (``?before=<number>``): ``{"messages", "more", "oldest"}``."""
+    return posting.images_page(request.user, channel, before=request.GET.get("before"),
+                               limit=request.GET.get("limit"))
 
 
 @door(AUTHOR)
@@ -501,7 +565,16 @@ def settings_page(request):
     from .models import ForumChannel, ForumCleanupRun
 
     current = ForumSettings.current()
+    # Opened from a channel's tab strip (``?from=<slug>``): the strip keeps
+    # that channel's tabs beside Settings. Any other value: the list's strip.
+    origin = None
+    asked = request.GET.get("from", "")
+    if asked:
+        from toto.socialhub.models import Community
+
+        origin = Community.objects.filter(slug=asked).first()
     response = render(request, "forum/settings.html", _page(request, {
+        "forum_tabs": _tabs(request.user, community=origin, active="settings"),
         "settings_row": current,
         "form": SettingsForm(instance=current),
         "preview": cleanup.preview(current.boundary()),
