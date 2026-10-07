@@ -78,6 +78,7 @@
           <section
             x-data="{ open: true }"
             @dashboard-toggle.window="open = $event.detail.open"
+            {% if group.key %}data-dashboard-section="{{ group.key }}"{% endif %}
             class="space-y-3">
 
             <button
@@ -102,6 +103,14 @@
               x-transition:leave-end="opacity-0 -translate-y-1"
               class="grid grid-cols-1 gap-3 md:grid-cols-2">
               {% include "oya/_dashboard_cards.html" with items=group.items %}
+              {% comment %}A section an app fills (toto.core.dashboard) may
+              have nothing to list: one sentence then, with a link.{% endcomment %}
+              {% if group.note %}
+                <p class="text-sm opacity-70 md:col-span-2" data-dashboard-note>
+                  {{ group.note }}
+                  {% if group.note_link %}<a class="underline hover:opacity-80" href="{{ group.note_link }}">{{ group.note_label }}</a>{% endif %}
+                </p>
+              {% endif %}
             </div>
           </section>
         {% endfor %}
