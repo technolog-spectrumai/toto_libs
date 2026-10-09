@@ -1,5 +1,7 @@
 # toto-chat
 
+> **Parked since 2026-10-09.** No host installs `toto.forum`, and the hooks other apps of the suite carried for it were removed from the library: the account erase, the copy of a member's data, the plan entitlement, the prices, the schedule of the nightly cleanup, the panel on a community's page. **Do not wire it into a host as described below without bringing them back first.** `src/toto/forum/PARKED.md` names each hook and the commit that removed it, and says what goes wrong without them. What follows was written for the forum of 2026-10-07, before the poll threads of 2026-10-08.
+
 `toto-chat` is the forum of the **toto** suite: a community chat with one channel per community. It ships a single Django app, `toto.forum` (label `forum`, URL namespace `forum`), and depends on `toto-base` only. Since 2026-10-07 it is the simplified forum: no rooms, no room passwords, no direct messages, no WebSocket. The forum it replaced (rooms over WebSockets, search, exports, voice notes) is in git history; the last commit with it is `aaa37a41`.
 
 ## What it does
