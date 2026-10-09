@@ -86,35 +86,11 @@ class CommunityPlugin(BasePlugin):
         return context
 
 
-@CommunityPlugin.plugin(key="community_forum", title="Forum", order=20)
-class CommunityForumPlugin(CommunityPlugin):
-    """The way into the community's channel (2026-10-07).
-
-    A community has exactly one channel in ``toto.forum``, addressed by the
-    community's own slug, so there is nothing to link by hand: the row
-    ``CommunityForum`` that named a room by its slug is gone. The panel is
-    shown to who may read the channel (``toto.forum.access.may_read``: a
-    member, a senior member or the head on a plan with the forum, or an
-    administrator) and to nobody else, so it never offers a door that would
-    answer 402 or 403.
-
-    `CommunityNewsPost` and its views are still in place: the panel that
-    showed them went, the posts did not.
-    """
-
-    section_icon = "fa-solid fa-comments"
-    template_name = "socialhub/community_plugins/forum.html"
-
-    def is_visible(self, **kwargs) -> bool:
-        # A host without the forum shows no panel about one (2026-10-04).
-        from django.apps import apps
-
-        if not apps.is_installed("toto.forum") or not super().is_visible(**kwargs):
-            return False
-        from toto.forum import access
-
-        user = getattr(kwargs.get("request"), "user", None)
-        return access.may_read(user, self.get_community_from_kwargs(**kwargs))
+# No forum panel since 2026-10-09: the forum is parked, and its hooks in
+# other apps went with it (toto-chat's toto/forum/PARKED.md names the commit
+# that brings this one back). The news panel it had replaced is not back
+# either: `CommunityNewsPost` and its views are still in place, the panel
+# that showed the posts is not. Order 20 is left vacant.
 
 
 @CommunityPlugin.plugin(key="community_calendar", title="Calendar", order=30)
