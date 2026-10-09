@@ -46,10 +46,11 @@ COLOUR_OF: dict[str, str] = {
     "geography.note": "storage",
     # A comment under a community's pin or zone (2026-10-06, stage 64).
     "geography.comment": "storage",
-    # What a forum post keeps (2026-10-07, stage 69): a kilobyte of its text
-    # and a kilobyte of its image, both sealed and held for the channel.
-    "forum.text_kb": "storage",
-    "forum.image_kb": "storage",
+    # No forum code since 2026-10-09: the forum is parked (toto-chat's
+    # toto/forum/PARKED.md), and its two metrics, a kilobyte of a post's text
+    # and one of its image, register only where it is installed. They are
+    # not named in NOT_MANA either, on purpose: a forum installed again
+    # without its colours must fail the audit, not post for nothing.
     # -- compute ------------------------------------------------------------
     "workflows.run": "compute",
     "repo.run": "compute",
@@ -111,12 +112,6 @@ PRICES: dict[str, Decimal] = {
     "ai.request": Decimal("2"),
     "ai.tokens_1k": Decimal("0.5"),
     "antivirus.scan": Decimal("3"),
-    # The forum, per KILOBYTE (2026-10-07, stage 69), both tiny and the image
-    # the dearer: a line of 100 bytes is about 0.0001, the longest message
-    # (8 KB) 0.008; a picture of 1 MB is 2.048 and the largest (10 MB) 20.48,
-    # a fifth of a full pool. toto/forum/billing.py has the arithmetic.
-    "forum.text_kb": Decimal("0.001"),
-    "forum.image_kb": Decimal("0.002"),
     # A search or an address from a pin: a day's refill buys about 200.
     "locations.geocode": Decimal("0.5"),
     # Geography (2026-10-06). A search costs what the parked map's lookup
