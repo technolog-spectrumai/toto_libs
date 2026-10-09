@@ -382,9 +382,10 @@ def _manual_feature_map(request, apps):
         "kanban": apps.is_installed("toto.kanban"),
         "locations": apps.is_installed("toto.locations")
         and getattr(settings, "LOCATIONS_UI_ENABLED", True),
-        # Polls are a room feature now: the chapter belongs to whoever has
-        # the forum, and it links into a room rather than to a separate app.
-        "polls": apps.is_installed("toto.forum"),
+        # No "polls" and no "chat" since 2026-10-09: both chapters described
+        # the forum and linked into it, and the forum is parked (toto-chat's
+        # toto/forum/PARKED.md). No flag and no installed app brings them
+        # back; the chapters left the two manual bodies with these keys.
         "vod": apps.is_installed("toto.vod"),
         # Markdown Play is a host app's page (zenobia's toto.htmlview, which
         # replaced its wiki on 2026-10-02): mounted, so a host without it
@@ -402,7 +403,6 @@ def _manual_feature_map(request, apps):
         # mounted — a host without it documents no button it does not draw.
         # `_manual_features` adds the vault's switch to it.
         "morion": _mounted("morion:open"),
-        "chat": apps.is_installed("toto.forum"),
         # Mounted, not installed — and the distinction is load-bearing here.
         # toto.workflows is the platform's job runner: the antivirus queues
         # scans through it and weather loads through it, so a host may not

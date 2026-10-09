@@ -184,6 +184,39 @@ class ManualFeatureGateTests(TestCase):
             response = self.client.get(reverse("core:manual"), HTTP_ACCEPT_LANGUAGE="en")
             self.assertContains(response, "images open in a preview window")
 
+    def test_no_chapter_of_the_parked_forum(self):
+        # 2026-10-09. Polls and Chat described the forum and linked into it
+        # (`forum:channel_list`), so they are out of the feature map and out
+        # of both bodies, whatever a host installs: a chapter left behind
+        # would reverse a route no host serves and answer 500.
+        from django.contrib.auth.models import AnonymousUser
+        from django.template.loader import get_template
+        from django.test import RequestFactory
+        from toto.core.views import _manual_features
+
+        request = RequestFactory().get("/core/manual/")
+        request.user = AnonymousUser()
+        features = _manual_features(request)
+        self.assertIn("vault", features)
+        for key in ("polls", "chat"):
+            self.assertNotIn(key, features)
+        for name in ("oya/manual/_body_en.html", "oya/manual/_body_pl.html"):
+            with self.subTest(body=name):
+                source = get_template(name).template.source
+                for gone in ("forum:", "features.polls", "features.chat",
+                             'id="polls"', 'id="chat"'):
+                    self.assertNotIn(gone, source)
+        Platform.objects.get_or_create(site_name="Test", defaults={
+            "author": "t", "publication_year": 2026, "active": True})
+        self.client.force_login(User.objects.create_user("reader", password="pw"))
+        for language in ("en", "pl"):
+            with self.subTest(language=language):
+                response = self.client.get(reverse("core:manual"),
+                                           HTTP_ACCEPT_LANGUAGE=language)
+                self.assertEqual(response.status_code, 200)
+                self.assertNotContains(response, 'href="#polls"')
+                self.assertNotContains(response, 'href="#chat"')
+
 
 @override_settings(
     CACHES={

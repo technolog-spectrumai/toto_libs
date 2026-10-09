@@ -18,9 +18,7 @@
     {% if features.events %}<a href="#events" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Zdarzenia</a>{% endif %}
     {% if features.kanban %}<a href="#tasks" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Zadania</a>{% endif %}
     {% if features.locations %}<a href="#locations" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Lokalizacje</a>{% endif %}
-    {% if features.polls %}<a href="#polls" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Ankiety</a>{% endif %}
     {% if features.ireneo %}<a href="#company" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Spółka</a>{% endif %}
-    {% if features.chat %}<a href="#chat" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Czat</a>{% endif %}
     {% if features.workflows %}<a href="#workflows" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Przepływy pracy</a>{% endif %}
     {% if features.anastasia %}<a href="#gears" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Moc obliczeniowa</a>{% endif %}
     {% if features.latex %}<a href="#texlab" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">TeX Lab</a>{% endif %}
@@ -296,28 +294,6 @@
 </section>
 {% endif %}
 
-{% if features.polls %}
-<!-- Ankiety -->
-<section id="polls"
-  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-  class="rounded-2xl border p-5 shadow-sm sm:p-6">
-  <h2 class="flex items-center gap-2 text-lg font-bold">
-    <i class="fa-solid fa-square-poll-vertical"></i>Ankiety</h2>
-  <p class="mt-2 text-sm leading-6 opacity-80">
-    Ankieta zadaje pytanie osobom w pokoju: wybierz odpowiedź i śledź, jak rosną
-    wyniki. Ankiety są częścią
-    <a href="{% url 'forum:channel_list' %}" class="font-semibold underline hover:opacity-80">Forum</a> —
-    otwórz pokój i przejdź do zakładki <span class="font-semibold">Ankiety</span>,
-    gdzie każdy członek może założyć nową. W jednych ankietach można zmienić
-    zdanie, dopóki są otwarte; inne przyjmują jedną odpowiedź i nie pokazują nic
-    aż do zamknięcia. Tak czy inaczej wynik ma charakter
-    <span class="font-semibold">informacyjny</span> — ankieta zapisuje, co ludzie
-    myślą, i o niczym nie rozstrzyga. Formalne decyzje spółki nie zapadają tutaj:
-    powstają w Irenie i są pokazywane, po weryfikacji, na pulpicie Spółki.
-  </p>
-</section>
-{% endif %}
-
 {% if features.ireneo %}
 <!-- Spółka -->
 <section id="company"
@@ -357,21 +333,6 @@
     platformę — jako dane zaimportowane, wprost oznaczone jako
     niezweryfikowane, a dokument, którego kontrola się nie powiodła, jest
     odrzucany.
-  </p>
-</section>
-{% endif %}
-
-{% if features.chat %}
-<!-- Czat -->
-<section id="chat"
-  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-  class="rounded-2xl border p-5 shadow-sm sm:p-6">
-  <h2 class="flex items-center gap-2 text-lg font-bold">
-    <i class="fa-solid fa-comments"></i>Czat</h2>
-  <p class="mt-2 text-sm leading-6 opacity-80">
-    <a href="{% url 'forum:channel_list' %}" class="font-semibold underline hover:opacity-80">Czat</a>
-    podzielony jest na kanały. Dołącz do kanału, aby czytać i pisać wiadomości — nowe wiadomości
-    pojawiają się na żywo, bez przeładowania strony.
   </p>
 </section>
 {% endif %}

@@ -18,9 +18,7 @@
     {% if features.events %}<a href="#events" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Events</a>{% endif %}
     {% if features.kanban %}<a href="#tasks" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Tasks</a>{% endif %}
     {% if features.locations %}<a href="#locations" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Locations</a>{% endif %}
-    {% if features.polls %}<a href="#polls" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Polls</a>{% endif %}
     {% if features.ireneo %}<a href="#company" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Company</a>{% endif %}
-    {% if features.chat %}<a href="#chat" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Chat</a>{% endif %}
     {% if features.workflows %}<a href="#workflows" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Workflows</a>{% endif %}
     {% if features.anastasia %}<a href="#gears" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Compute Gears</a>{% endif %}
     {% if features.latex %}<a href="#texlab" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">TeX Lab</a>{% endif %}
@@ -290,28 +288,6 @@
 </section>
 {% endif %}
 
-{% if features.polls %}
-<!-- Polls -->
-<section id="polls"
-  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-  class="rounded-2xl border p-5 shadow-sm sm:p-6">
-  <h2 class="flex items-center gap-2 text-lg font-bold">
-    <i class="fa-solid fa-square-poll-vertical"></i>Polls</h2>
-  <p class="mt-2 text-sm leading-6 opacity-80">
-    A poll asks the people in a room a question: pick an option, and watch the
-    count come in. Polls live inside the
-    <a href="{% url 'forum:channel_list' %}" class="font-semibold underline hover:opacity-80">Forum</a> —
-    open a room and choose its <span class="font-semibold">Polls</span> tab, where
-    any member can start one. Some polls let you change your mind while they are
-    open; others take one answer each and show nothing until they close. Either
-    way the result is <span class="font-semibold">informational</span> — a poll
-    records what people think, and decides nothing. Formal company decisions are
-    not made here; they are made in Irena and shown, verified, on the Company
-    dashboard.
-  </p>
-</section>
-{% endif %}
-
 {% if features.ireneo %}
 <!-- Company -->
 <section id="company"
@@ -349,21 +325,6 @@
     an unsigned one — including every bundle this platform writes — loads as
     imported data shown plainly as unverified, and a document whose checks fail
     is refused.
-  </p>
-</section>
-{% endif %}
-
-{% if features.chat %}
-<!-- Chat -->
-<section id="chat"
-  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-  class="rounded-2xl border p-5 shadow-sm sm:p-6">
-  <h2 class="flex items-center gap-2 text-lg font-bold">
-    <i class="fa-solid fa-comments"></i>Chat</h2>
-  <p class="mt-2 text-sm leading-6 opacity-80">
-    <a href="{% url 'forum:channel_list' %}" class="font-semibold underline hover:opacity-80">Chat</a>
-    is organised into channels. Join a channel to read and post messages — new messages
-    appear live, without reloading the page.
   </p>
 </section>
 {% endif %}
