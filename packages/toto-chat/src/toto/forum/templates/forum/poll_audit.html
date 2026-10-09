@@ -1,0 +1,22 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Poll action audit" %} | {{ platform.site_name }}{% endblock %}
+{% block content %}
+<section :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'" class="min-h-screen px-4 py-8 sm:px-6">
+  <div class="mx-auto max-w-4xl space-y-5">
+    <a href="{% url 'forum:settings' %}" class="text-sm underline">← {% trans "Forum settings" %}</a>
+    <h1 class="text-3xl font-bold">{% trans "Poll action audit" %}</h1>
+    <p class="text-sm opacity-70">{% trans "The latest 100 create, close, archive and delete actions, with the results saved at each action." %}</p>
+    {% for event in events %}
+    <article class="rounded-2xl border p-4" data-forum-poll-audit>
+      <div class="flex flex-wrap gap-2 text-xs opacity-70"><time datetime="{{ event.row.created_at|date:'c' }}">{{ event.row.created_at|date:"SHORT_DATETIME_FORMAT" }}</time>
+        <span>{{ event.row.channel.community.name }}</span><strong>{{ event.row.action }}</strong>
+        <span>{% if event.row.actor %}{{ event.row.actor.get_username }}{% else %}{% trans "System" %}{% endif %}</span></div>
+      <h2 class="mt-2 text-lg font-bold">{{ event.snapshot.title }}</h2>
+      <p class="mt-1 text-xs opacity-70">{{ event.snapshot.total }} {% trans "votes" %} · {{ event.snapshot.status }}</p>
+      <ul class="mt-2 space-y-1 text-sm">{% for option in event.snapshot.options %}<li>{{ option.label }}{% if option.text %} · {{ option.text }}{% endif %}: <strong>{{ option.votes }}</strong></li>{% endfor %}</ul>
+    </article>
+    {% empty %}<p class="rounded-2xl border p-6 text-sm opacity-70">{% trans "No poll actions have been recorded yet." %}</p>{% endfor %}
+  </div>
+</section>
+{% endblock %}

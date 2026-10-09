@@ -1,26 +1,4 @@
-"""Channel polls: opening one, answering it, counting it.
-
-The rules are the old forum's, unchanged, because each was argued about once
-already:
-
-* **the order of the checks in :func:`cast`** — is it open, is that a real
-  option, are you allowed, have you already answered. That is the order
-  somebody disputes afterwards, so it is the order the code asks in.
-* **one member, one answer**, with no weights.
-* **an answer is final** (the owner, 2026-10-07: "all answers are final and
-  cannot be changed"): every poll is opened so, :func:`cast` refuses a second
-  answer whatever the poll's row says, and ``PollBallot.save`` never alters
-  one. A poll's count is shown as it grows or only once it has closed, as
-  its opener chose.
-* **at most three open polls a channel** (``MAX_OPEN_POLLS``).
-
-What is new is where the words are kept: a poll's question and every
-option's label and text are sealed under the channel's key (``sealing``,
-kinds ``poll`` and ``choice``), so nothing of what a poll asks is readable
-in the database. The ballots are relations (who chose which option) and are
-not sealed. Every change (opened, answered, closed, removed) takes the
-channel's next event number, so the feed tells an open page of it.
-"""
+"""Poll threads, one ballot per member, explicit vote reset and audit."""
 
 from __future__ import annotations
 
@@ -38,10 +16,10 @@ from . import access, channels, sealing
 #: survey, and a survey is a different product.
 MAX_OPTIONS = 10
 
-#: A channel holds at most this many polls that still take answers (the
-#: owner, 2026-10-07: "Each forum can have at max 3 open polls"). A closed
-#: poll, one past its closing time and a removed one do not count.
-MAX_OPEN_POLLS = 3
+#: Each member may create this many threads in each community per UTC day.
+MAX_THREADS_PER_DAY = 3
+MAX_TITLE_CHARS = 256
+MAX_DESCRIPTION_CHARS = 2048
 
 
 class VotingError(Exception):
@@ -157,51 +135,75 @@ def open_title(key, poll) -> str:
         return "[unreadable]"
 
 
+def open_description(key, poll) -> str:
+    if poll.description_sealed is None:
+        return ""
+    try:
+        return sealing.open_bytes(key, poll.description_sealed, kind="poll-description",
+                                  channel_id=poll.channel_id, message_id=poll.id).decode("utf-8")
+    except (sealing.SealBroken, ValueError):
+        return "[unreadable]"
+
+
 @transaction.atomic
-def open_poll(channel, user, key, *, title, options, closes_at=None,
-              revisability=None, visibility=None):
+def open_poll(channel, user, key, *, title, description="", options, closes_at=None,
+              visibility=None):
     """Create a poll in this channel with its options, sealed."""
-    from .models import ChannelPoll, PollChoice, PollStatus, ResultVisibility, Revisability
+    from .models import ChannelPoll, ForumPollAudit, PollChoice, ResultVisibility
+    from . import poll_audit
     from .posting import display_name
 
-    title = str(title or "").strip()[:150]
+    title = str(title or "").strip()
+    description = str(description or "").strip()
     if not title:
         raise ValidationError(_("A poll needs a question."))
+    if len(title) > MAX_TITLE_CHARS:
+        raise ValidationError(_("The title may have at most %(n)d characters.")
+                              % {"n": MAX_TITLE_CHARS})
+    if len(description) > MAX_DESCRIPTION_CHARS:
+        raise ValidationError(_("The description may have at most %(n)d characters.")
+                              % {"n": MAX_DESCRIPTION_CHARS})
     parsed = parse_options(options)
-    if not _storable(title) or not all(_storable(a) and _storable(b) for a, b in parsed):
+    if not _storable(title) or not _storable(description) or not all(
+            _storable(a) and _storable(b) for a, b in parsed):
         raise ValidationError(_("The text holds a character that cannot be stored."))
-    if revisability not in (None, "") and revisability not in Revisability.values:
-        raise ValidationError(_("Choose whether answers may be changed."))
     if visibility not in (None, "") and visibility not in ResultVisibility.values:
         raise ValidationError(_("Choose when the count is shown."))
-    if closes_at is not None and closes_at <= timezone.now():
+    if closes_at is None:
+        raise ValidationError(_("Choose a deadline for voting."))
+    if closes_at <= timezone.now():
         raise ValidationError(_("The closing time must be in the future."))
 
     # The channel's row is locked from here (next_seq), so two openings at
     # once are counted one after the other.
     number = channels.next_seq(channel)
     now = timezone.now()
-    still_open = (channel.polls.filter(removed_at__isnull=True, status=PollStatus.OPEN)
-                  .filter(models.Q(closes_at__isnull=True) | models.Q(closes_at__gt=now)).count())
-    if still_open >= MAX_OPEN_POLLS:
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    made_today = ForumPollAudit.objects.filter(
+        channel=channel, actor=user, action="create",
+        created_at__gte=start_of_day).count()
+    if made_today >= MAX_THREADS_PER_DAY:
         raise ValidationError(
-            _("This channel already has %(n)d open polls. Close one before opening another.")
-            % {"n": MAX_OPEN_POLLS})
-    # Every answer is final (the owner, 2026-10-07: "all answers are final
-    # and cannot be changed"): whatever was asked for, the poll is made so.
+            _("You may create at most %(n)d threads in this community per day.")
+            % {"n": MAX_THREADS_PER_DAY})
     poll = ChannelPoll(
         channel=channel, number=number, seq=number, closes_at=closes_at, created_by=user,
-        opener_name=display_name(user),
-        revisability=Revisability.FINAL,
+        opener_name=display_name(user), last_activity_at=now,
         visibility=visibility or ResultVisibility.LIVE)
     poll.title_sealed = sealing.seal_bytes(key, title.encode("utf-8"), kind="poll",
                                            channel_id=channel.pk, message_id=poll.id)
+    poll.description_sealed = sealing.seal_bytes(
+        key, description.encode("utf-8"), kind="poll-description",
+        channel_id=channel.pk, message_id=poll.id)
     poll.save()
     PollChoice.objects.bulk_create([
         PollChoice(poll=poll, position=index,
                    sealed=_seal_choice(key, poll, index, label, text))
         for index, (label, text) in enumerate(parsed)
     ])
+    from . import poll_storage
+    poll_storage.ensure(poll, user)
+    poll_audit.record(poll, "create", user)
     return poll
 
 
@@ -223,7 +225,12 @@ def _touch(poll) -> None:
 @transaction.atomic
 def cast(poll, user, choice):
     """Record one answer, or raise a VotingError whose message is the reason."""
-    from .models import PollBallot
+    from .models import ChannelPoll, ForumChannel, PollBallot
+
+    ForumChannel.objects.select_for_update().get(pk=poll.channel_id)
+    locked = ChannelPoll.objects.select_for_update().get(pk=poll.pk)
+    poll.status, poll.closes_at, poll.removed_at = (
+        locked.status, locked.closes_at, locked.removed_at)
 
     if not poll.is_open:
         raise NotOpen(_("This poll is closed. No more answers can be recorded."))
@@ -246,21 +253,72 @@ def cast(poll, user, choice):
         _touch(poll)
         return ballot
 
-    # Final for every poll, one opened before 2026-10-07 with changeable
-    # answers too: the row's ``revisability`` is not asked.
     raise AlreadyAnswered(
-        _("You have already answered, and this poll takes one answer."))
+        _("Reset your vote before choosing again."))
 
 
 @transaction.atomic
-def close_poll(poll) -> bool:
-    """Shut it by hand. False if it was closed already."""
-    from .models import PollStatus
+def reset_vote(poll, user) -> bool:
+    """Only an explicit reset removes one's ballot; a fresh cast follows."""
+    from .models import ChannelPoll, ForumChannel, PollBallot
 
+    ForumChannel.objects.select_for_update().get(pk=poll.channel_id)
+    locked = ChannelPoll.objects.select_for_update().get(pk=poll.pk)
+    poll.status, poll.closes_at, poll.removed_at = (
+        locked.status, locked.closes_at, locked.removed_at)
+
+    if not poll.is_open:
+        raise NotOpen(_("This poll is closed. No more answers can be recorded."))
+    ballot = PollBallot.objects.select_for_update().filter(poll=poll, voter=user).first()
+    if ballot is None:
+        return False
+    ballot.delete()
+    _touch(poll)
+    return True
+
+
+@transaction.atomic
+def close_poll(poll, actor=None) -> bool:
+    """Shut it by hand. False if it was closed already."""
+    from .models import ChannelPoll, ForumChannel, PollStatus
+    from . import poll_audit
+
+    ForumChannel.objects.select_for_update().get(pk=poll.channel_id)
+    locked = ChannelPoll.objects.select_for_update().get(pk=poll.pk)
+    poll.status, poll.removed_at = locked.status, locked.removed_at
     if poll.status != PollStatus.OPEN or poll.removed_at is not None:
         return False
     poll.close()
     _touch(poll)
+    poll_audit.record(poll, "close", actor)
+    return True
+
+
+def close_due(poll) -> bool:
+    """Persist a passed deadline when the poll is next touched."""
+    from .models import PollStatus
+
+    if poll.status == PollStatus.OPEN and poll.closes_at and poll.closes_at <= timezone.now():
+        return close_poll(poll)
+    return False
+
+
+@transaction.atomic
+def archive_poll(poll, actor) -> bool:
+    from .models import ChannelPoll, ForumChannel, PollStatus
+    from . import poll_audit
+
+    ForumChannel.objects.select_for_update().get(pk=poll.channel_id)
+    locked = ChannelPoll.objects.select_for_update().get(pk=poll.pk)
+    poll.status, poll.closes_at, poll.removed_at = (
+        locked.status, locked.closes_at, locked.removed_at)
+    close_due(poll)
+    if poll.removed_at is not None or poll.status != PollStatus.CLOSED:
+        raise ValidationError(_("Only a closed thread can be archived."))
+    poll.status = PollStatus.ARCHIVED
+    poll.seq = channels.next_seq(poll.channel)
+    poll.save(update_fields=["status", "seq"])
+    poll_audit.record(poll, "archive", actor)
     return True
 
 
@@ -269,15 +327,28 @@ def remove_poll(poll, user) -> bool:
     """Wipe a poll — its question, its options and its ballots — and leave a
     tombstone. False if it was removed already. The ballots go by a bulk
     delete: a removed poll has no final answers left to protect."""
+    from .models import ChannelPoll, ForumChannel
+
+    ForumChannel.objects.select_for_update().get(pk=poll.channel_id)
+    locked = ChannelPoll.objects.select_for_update().get(pk=poll.pk)
+    poll.removed_at = locked.removed_at
     if poll.removed_at is not None:
         return False
+    from . import poll_audit
+    poll_audit.record(poll, "delete", user)
+    from .cleanup import _remove_messages
+
+    _remove_messages(list(poll.messages.select_related("attachment")))
+    from . import poll_storage
+    poll_storage.empty(poll)
     poll.ballots.all().delete()
     poll.choices.all().delete()
     poll.title_sealed = None
+    poll.description_sealed = None
     poll.removed_at = timezone.now()
     poll.removed_by = user
     poll.seq = channels.next_seq(poll.channel)
-    poll.save(update_fields=["title_sealed", "removed_at", "removed_by", "seq"])
+    poll.save(update_fields=["title_sealed", "description_sealed", "removed_at", "removed_by", "seq"])
     return True
 
 
@@ -313,12 +384,15 @@ def ballot_of(poll, user):
 def polls_to_dicts(polls, *, key, user, moderator=False) -> list:
     """The polls as the page gets them, removed ones as tombstones. Three
     queries for the lot, not three per poll."""
-    from .models import PollBallot, PollChoice
+    from .models import ForumMessage, PollBallot, PollChoice
 
+    for poll in polls:
+        close_due(poll)
     live = [poll for poll in polls if poll.removed_at is None]
     choices: dict = {}
     counts: dict = {}
     mine: dict = {}
+    message_counts: dict = {}
     if live:
         for choice in PollChoice.objects.filter(poll__in=live).select_related("poll"):
             choices.setdefault(choice.poll_id, []).append(choice)
@@ -327,6 +401,9 @@ def polls_to_dicts(polls, *, key, user, moderator=False) -> list:
             counts.setdefault(row["poll_id"], {})[row["choice_id"]] = row["n"]
         mine = dict(PollBallot.objects.filter(poll__in=live, voter=user)
                     .values_list("poll_id", "choice_id"))
+        message_counts = dict(ForumMessage.objects.filter(
+            poll__in=live, removed_at__isnull=True).values("poll_id")
+            .annotate(n=models.Count("id")).values_list("poll_id", "n"))
 
     out = []
     for poll in polls:
@@ -344,13 +421,16 @@ def polls_to_dicts(polls, *, key, user, moderator=False) -> list:
         owner = poll.created_by_id is not None and poll.created_by_id == user.pk
         out.append({
             "id": str(poll.id), "number": poll.number, "seq": poll.seq,
-            "title": open_title(key, poll), "status": poll.status, "open": poll.is_open,
+            "title": open_title(key, poll), "description": open_description(key, poll),
+            "status": poll.effective_status, "open": poll.is_open,
             "closes_at": poll.closes_at.isoformat() if poll.closes_at else None,
-            "revisability": poll.revisability, "visibility": poll.visibility,
-            "created_at": poll.created_at.isoformat(), "opener": poll.opener_name,
+            "visibility": poll.visibility,
+            "created_at": poll.created_at.isoformat(),
+            "last_activity_at": poll.last_activity_at.isoformat(), "opener": poll.opener_name,
             "mine": owner, "may_manage": bool(owner or moderator),
             "choices": rows,
             "total": sum(per_choice.values()) if visible else None,
             "my_choice": mine.get(poll.pk), "results_visible": visible,
+            "comment_count": message_counts.get(poll.pk, 0),
         })
     return out

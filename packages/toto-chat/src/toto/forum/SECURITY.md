@@ -25,8 +25,9 @@ write that another site sent is refused by Fetch Metadata
   administrator (a real superuser on the Superuser plan). Staff alone is
   nobody. Leaving the community closes the channel at the next request:
   there is no member list of the channel's own;
-- to remove another member's message, or close or remove another member's
-  poll: the community's head, or an administrator;
+- to remove another member's reply: the community's head or an administrator;
+- to close or delete a poll: its author or an administrator; to archive a
+  closed poll: an administrator;
 - to open the Settings page (`/forum/settings/`), save its dials or start a
   cleanup (the mark `administrator`): an administrator of the platform and
   nobody else. Not staff alone, not a superuser without the Superuser plan,
@@ -46,9 +47,10 @@ channel fails authentication instead of opening:
 | What | Where | Sealed |
 |---|---|---|
 | a message's text | `forum_forummessage.body_sealed` | yes |
-| a poll's question | `forum_channelpoll.title_sealed` | yes |
+| a poll's title and description | `forum_channelpoll.title_sealed`, `description_sealed` | yes |
 | an option's label and text | `forum_pollchoice.sealed` | yes |
-| an image's bytes | a `vault.VaultFile` in the channel's bucket | yes |
+| an image's bytes | a `vault.VaultFile` in the poll's bucket and directory | yes |
+| a poll action and its result snapshot | `forum_forumpollaudit.results_sealed` | yes |
 | who sent a row, and when | the row | no |
 | the sender's display name on a row | `sender_name`, `opener_name` | no |
 | an image's type and size | `attachment_mime`, `attachment_size` | no |
@@ -101,19 +103,20 @@ end-to-end would need all of those first.
 Told by their first bytes to be a JPEG, PNG, GIF or WebP (`images.sniff`),
 never by the sender's word or the file's name; anything else is refused, so
 a page, an SVG or an Office file is never stored. At most 10 MB. Stored
-sealed through the vault in the channel's own bucket (no owner; the vault's
+sealed through the vault in the poll's own bucket and Images directory (no owner; the vault's
 own doors can give the file's owner or a superuser the ciphertext only).
 Read through one door, which asks `access.may_read` every time and answers
 with the checked type, `X-Content-Type-Options: nosniff` and
 `Cache-Control: private, no-store`. The forum owns exactly the files its
-message rows point at; any other file in that bucket is not the forum's.
+message rows point at. The bucket is removed when its poll is deleted and
+its linked Vault files have been purged.
 
 ## 6. On the page
 
-Names, messages, questions and options leave the server as JSON strings, or
-inside a `json_script` block, and are written by `static/forum/channel.js`
-as text nodes. Nothing a member wrote is put into a page as markup, and an
-address in a message is not made a link.
+Names, replies, questions and options leave the server as escaped template
+text or JSON strings inside a `json_script` block. `static/forum/feed.js`
+and `thread.js` put new reply text into text nodes. Member text is never
+treated as markup.
 
 ## 7. Mana and cleanup
 
@@ -124,11 +127,10 @@ message). A usage event and a ledger entry hold the metric, the message's id
 and a number of bytes; nothing of the message. The estimate door stores and
 charges nothing.
 
-A cleanup (`cleanup.py`) removes for good everything of a channel made
-before a boundary: messages with their images (the vault's row and bytes),
-polls with their options and answers, tombstones. No copy is kept. It reaches
-a vault file only through a message row that points at it and never lists a
-bucket, so any other file kept in a channel's bucket is not touched. Only an
+A cleanup (`cleanup.py`) removes inactive closed or archived threads older
+than a boundary, with every reply and image (the vault's row and bytes),
+option and ballot. A currently open vote remains. It reaches a vault file
+only through a reply row that points at it. Only an
 administrator starts one by hand, by a POST with a ticked confirmation; the
 nightly one runs only while an administrator has switched retention on. The
 boundary is worked out on the server when the cleanup is claimed, and the
@@ -136,5 +138,5 @@ removing happens on the worker, in a workflow node that finishes only the
 records its dispatcher claimed and that the Workflows API refuses to start
 by hand. Every cleanup leaves a `ForumCleanupRun` (who, when, the boundary,
 the counts) that the admin shows read-only and nobody can delete. The forum
-writes no record on the platform's audit chain, for a cleanup or anything
-else.
+stores sealed `ForumPollAudit` result snapshots for poll creation, closing,
+archiving and deletion. Those snapshots survive poll removal.

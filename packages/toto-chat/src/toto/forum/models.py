@@ -9,7 +9,7 @@ community's name, and who may read it is who belongs to the community
 Everything a member wrote is kept sealed under the channel's key
 (``sealing.py``, ``keys.py``): a message's text, a poll's question, an
 option's label and text, an image's bytes (a ``vault.VaultFile`` in the
-channel's bucket). There is no plaintext column to fall back to. What is NOT
+poll's bucket and directory). There is no plaintext column to fall back to. What is NOT
 sealed is said in SECURITY.md: who sent a row and when, the sender's display
 name on the row, an image's type and size, and the ballots.
 
@@ -39,11 +39,6 @@ class ForumChannel(models.Model):
 
     community = models.OneToOneField(
         "socialhub.Community", on_delete=models.CASCADE, related_name="forum_channel")
-    #: The channel's bucket in the vault, where its images are kept sealed
-    #: (``channels.ensure_bucket``). SET_NULL: deleting the vault's side does
-    #: not take the channel; the next image makes a bucket again.
-    bucket = models.ForeignKey(
-        "vault.Bucket", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     #: The channel's event counter (module docstring).
     last_seq = models.PositiveBigIntegerField(default=0)
     #: Everything made before this instant was removed by a cleanup, rows and
@@ -88,8 +83,7 @@ class ForumChannelKey(models.Model):
 
 
 class ForumMessage(models.Model):
-    """One message: text, an image, or an image with text. Never changed
-    once posted; removing it wipes its content and leaves a tombstone."""
+    """One linear reply in a poll thread; removal leaves a tombstone."""
 
     TEXT, IMAGE = "text", "image"
     KINDS = [(TEXT, "text"), (IMAGE, "image")]
@@ -97,6 +91,8 @@ class ForumMessage(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     channel = models.ForeignKey(ForumChannel, on_delete=models.CASCADE,
                                 related_name="messages")
+    poll = models.ForeignKey("ChannelPoll", on_delete=models.CASCADE,
+                             related_name="messages")
     number = models.PositiveBigIntegerField()
     seq = models.PositiveBigIntegerField(db_index=True)
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -110,7 +106,7 @@ class ForumMessage(models.Model):
     body_sealed = models.BinaryField(null=True, blank=True, editable=False)
     #: The UTF-8 length of the text: what the price per KB is counted from.
     text_bytes = models.PositiveIntegerField(default=0)
-    #: The image, sealed, in the channel's bucket. The forum owns exactly the
+    #: The image, sealed, in the poll's bucket. The forum owns exactly the
     #: vault files its rows point at.
     attachment = models.ForeignKey("vault.VaultFile", null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name="+")
@@ -136,7 +132,8 @@ class ForumMessage(models.Model):
                                     condition=~models.Q(op_key=""),
                                     name="forum_message_sender_op"),
         ]
-        indexes = [models.Index(fields=["channel", "seq"])]
+        indexes = [models.Index(fields=["channel", "seq"]),
+                   models.Index(fields=["poll", "number"], name="forum_message_poll_number_idx")]
 
     def __str__(self):
         return f"{self.kind} #{self.number} in channel {self.channel_id}"
@@ -147,9 +144,7 @@ class ForumMessage(models.Model):
 
 
 # ---------------------------------------------------------------------------
-# Polls. The rules are voting.py's and they are the old forum's: one member,
-# one answer; the order of the checks in ``cast``; a revision never re-reads
-# the answerer's standing; a final answer is never altered.
+# Polls. One thread per poll, one ballot per member, explicit reset to revote.
 # ---------------------------------------------------------------------------
 
 
@@ -157,11 +152,7 @@ class PollStatus(models.TextChoices):
     # A poll's state, said of the poll (Polish: "Otwarta", not "Otwórz").
     OPEN = "open", pgettext_lazy("poll status", "Open")
     CLOSED = "closed", pgettext_lazy("poll status", "Closed")
-
-
-class Revisability(models.TextChoices):
-    OPEN = "open", _("Answers may be changed")
-    FINAL = "final", _("One answer, final")
+    ARCHIVED = "archived", pgettext_lazy("poll status", "Archived")
 
 
 class ResultVisibility(models.TextChoices):
@@ -170,21 +161,24 @@ class ResultVisibility(models.TextChoices):
 
 
 class ChannelPoll(models.Model):
-    """One question asked in one channel."""
+    """One community thread, headed by a poll."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     channel = models.ForeignKey(ForumChannel, on_delete=models.CASCADE,
                                 related_name="polls")
+    bucket = models.ForeignKey("vault.Bucket", null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name="+")
+    directory = models.ForeignKey("vault.VaultDirectory", null=True, blank=True,
+                                  on_delete=models.SET_NULL, related_name="+")
     number = models.PositiveBigIntegerField()
     seq = models.PositiveBigIntegerField(db_index=True)
     #: The question, sealed. None once the poll is removed.
     title_sealed = models.BinaryField(null=True, blank=True, editable=False)
+    description_sealed = models.BinaryField(null=True, blank=True, editable=False)
     closes_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=10, choices=PollStatus.choices,
                               default=PollStatus.OPEN)
     closed_at = models.DateTimeField(null=True, blank=True)
-    revisability = models.CharField(max_length=8, choices=Revisability.choices,
-                                    default=Revisability.OPEN)
     visibility = models.CharField(max_length=20, choices=ResultVisibility.choices,
                                   default=ResultVisibility.LIVE)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
@@ -192,6 +186,7 @@ class ChannelPoll(models.Model):
     #: Who opened it, by display name, as a message keeps its sender's.
     opener_name = models.CharField(max_length=150, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
+    last_activity_at = models.DateTimeField(default=timezone.now, db_index=True)
     removed_at = models.DateTimeField(null=True, blank=True)
     removed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
                                    null=True, blank=True, related_name="+")
@@ -228,6 +223,12 @@ class ChannelPoll(models.Model):
     @property
     def results_visible(self) -> bool:
         return self.visibility == ResultVisibility.LIVE or not self.is_open
+
+    @property
+    def effective_status(self) -> str:
+        if self.status == PollStatus.OPEN and not self.is_open:
+            return PollStatus.CLOSED
+        return self.status
 
     def close(self, *, when=None):
         """Shut it by hand. Idempotent: closing a closed poll is not an error."""
@@ -278,18 +279,25 @@ class PollBallot(models.Model):
     def __str__(self):
         return f"ballot of {self.voter_id} in poll {self.poll_id}"
 
-    def save(self, *args, **kwargs):
-        # A final poll's ballot is written once and never edited. The rule
-        # lives on the model rather than only in the service so that a shell,
-        # an admin save or a future caller cannot walk around it.
-        if self.pk is not None and self.poll.revisability == Revisability.FINAL:
-            raise ValidationError(_("A final answer is never altered."))
-        super().save(*args, **kwargs)
 
-    def delete(self, *args, **kwargs):
-        if self.poll.revisability == Revisability.FINAL:
-            raise ValidationError(_("A final answer is never withdrawn."))
-        return super().delete(*args, **kwargs)
+
+class ForumPollAudit(models.Model):
+    """Encrypted result snapshot for a poll action, retained after deletion."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    channel = models.ForeignKey(ForumChannel, on_delete=models.CASCADE,
+                                related_name="poll_audits")
+    poll_id = models.UUIDField(db_index=True)
+    action = models.CharField(max_length=12)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="+")
+    results_sealed = models.BinaryField(editable=False)
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["channel", "actor", "action", "created_at"],
+                                name="forum_audit_daily_idx")]
 
 
 # ---------------------------------------------------------------------------
@@ -311,11 +319,11 @@ class ForumSettings(models.Model):
     retention_enabled = models.BooleanField(default=False)
     retention_days = models.PositiveIntegerField(
         default=365, validators=[MinValueValidator(1), MaxValueValidator(3650)],
-        help_text=_("Messages and polls older than this are permanently removed."))
-    #: How often an open channel page asks for what changed, in seconds.
+        help_text=_("Inactive closed threads older than this are permanently removed."))
+    #: How often an open thread page asks for what changed, in seconds.
     refresh_seconds = models.PositiveSmallIntegerField(
         default=5, validators=[MinValueValidator(2), MaxValueValidator(120)],
-        help_text=_("How often an open channel asks for new messages, in seconds."))
+        help_text=_("How often an open thread asks for new replies, in seconds."))
     #: A post whose text and picture together are smaller than this many
     #: kilobytes costs nothing (the owner, 2026-10-07: "make forum messages
     #: free below threshold (like 300kB) - make this setting param"). 0: no

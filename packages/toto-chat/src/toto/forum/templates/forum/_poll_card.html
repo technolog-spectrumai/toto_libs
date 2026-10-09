@@ -1,0 +1,43 @@
+{% load i18n %}
+<article data-poll-id="{{ poll.id }}" data-poll-seq="{{ poll.seq }}" data-poll-status="{{ poll.status }}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-4 shadow-sm sm:p-5">
+  <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs opacity-70">
+    <a class="font-bold underline-offset-2 hover:underline" href="{% url 'forum:channel_detail' poll.community_slug %}">{{ poll.community_name }}</a>
+    <span aria-hidden="true">·</span><span>{{ poll.opener }}</span>
+    <span aria-hidden="true">·</span><time datetime="{{ poll.created_at }}">{{ poll.created_at|date:"SHORT_DATETIME_FORMAT" }}</time>
+    <span data-poll-status-label class="ml-auto rounded-full border px-2 py-0.5 font-semibold uppercase tracking-wide">
+      {% if poll.status == "open" %}{% trans "Open" %}{% elif poll.status == "closed" %}{% trans "Closed" %}{% else %}{% trans "Archived" %}{% endif %}
+    </span>
+  </div>
+  <h2 class="mt-3 break-words text-lg font-bold leading-snug">
+    <a href="{% url 'forum:thread_detail' poll.community_slug poll.id %}" class="hover:underline">{{ poll.title }}</a>
+  </h2>
+  {% if poll.description %}<p class="mt-2 whitespace-pre-wrap break-words text-sm opacity-85">{% if full %}{{ poll.description }}{% else %}{{ poll.description|truncatechars:240 }}{% endif %}</p>{% endif %}
+  <p class="mt-2 text-xs opacity-65">{% trans "Voting deadline" %}: <time datetime="{{ poll.closes_at }}">{{ poll.closes_at|date:"SHORT_DATETIME_FORMAT" }}</time></p>
+
+  <form data-forum-vote action="{% url 'forum:poll_vote' poll.community_slug poll.id %}" class="mt-4 space-y-2">
+    {% for choice in poll.choices %}
+      <label data-choice-id="{{ choice.id }}" class="block rounded-lg border px-3 py-2 text-sm">
+        <span class="flex items-start gap-2">
+          {% if poll.open and not poll.my_choice %}<input type="radio" name="choice" value="{{ choice.id }}" class="mt-1">{% endif %}
+          <span class="min-w-0 flex-1 break-words"><strong>{{ choice.label }}</strong>{% if choice.text %} · {{ choice.text }}{% endif %}</span>
+          {% if poll.my_choice == choice.id %}<span class="shrink-0 text-xs font-bold">{% trans "Your vote" %}</span>{% endif %}
+        </span>
+        {% if poll.results_visible %}<span class="mt-2 flex items-center gap-2" data-choice-result>
+          <span class="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-current/10"><span data-choice-bar class="block h-full bg-current/50" style="width:{% if poll.total %}{% widthratio choice.ballots poll.total 100 %}{% else %}0{% endif %}%"></span></span>
+          <span data-choice-count class="w-10 text-right text-xs tabular-nums">{{ choice.ballots }}</span>
+        </span>{% endif %}
+      </label>
+    {% endfor %}
+    {% if poll.open and not poll.my_choice %}<button type="submit" class="rounded-lg border px-4 py-2 text-sm font-bold hover:opacity-80">{% trans "Submit vote" %}</button>{% endif %}
+  </form>
+  {% if poll.open and poll.my_choice %}
+    <button type="button" data-forum-reset data-url="{% url 'forum:poll_reset' poll.community_slug poll.id %}" class="mt-3 text-sm font-semibold underline hover:opacity-80">{% trans "Reset my vote" %}</button>
+  {% endif %}
+  <div class="mt-4 flex flex-wrap items-center gap-4 border-t pt-3 text-xs font-semibold">
+    <a href="{% url 'forum:thread_detail' poll.community_slug poll.id %}" class="hover:underline">{{ poll.comment_count }} {% trans "replies" %}</a>
+    {% if poll.results_visible %}<span data-poll-total>{{ poll.total }} {% trans "votes" %}</span>{% else %}<span>{% trans "Results appear after closing" %}</span>{% endif %}
+    {% if not full %}<a class="ml-auto hover:underline" href="{% url 'forum:thread_detail' poll.community_slug poll.id %}">{% trans "Open thread" %} →</a>{% endif %}
+  </div>
+</article>

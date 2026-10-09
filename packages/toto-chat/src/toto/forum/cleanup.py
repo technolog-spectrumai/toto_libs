@@ -1,11 +1,10 @@
-"""Removing what is older than a boundary, permanently (stage 69).
+"""Remove inactive closed poll threads and their replies after retention.
 
 **One rule.** Everything of a channel made before the boundary goes:
 
-* its messages, and with each its image: the row in the vault and the
+* its replies, and with each image: the row in the vault and the
   bytes (``vault.purge.purge_file``: row first, bytes after the commit);
-* its polls, with their options and every answer given in them, open or
-  closed;
+* its closed or archived polls, with their options and ballots;
 * the tombstones of what was removed by hand before.
 
 Nothing is spared, and nothing is kept as a copy. What stays: the channel,
@@ -84,10 +83,14 @@ def boundary_for(days=None, *, now=None):
 def _doomed(cutoff, channel=None):
     """``(messages, polls)`` made before the cutoff, in one channel or all.
     Tombstones are rows like any other; nothing is exempt."""
-    from .models import ChannelPoll, ForumMessage
+    from .models import ChannelPoll, ForumMessage, PollStatus
 
-    messages = ForumMessage.objects.filter(created_at__lt=cutoff)
-    polls = ChannelPoll.objects.filter(created_at__lt=cutoff)
+    # A thread and all its replies share one lifetime. A recent reply keeps
+    # the whole thread; open voting stays until it closes.
+    polls = ChannelPoll.objects.filter(last_activity_at__lt=cutoff).filter(
+        models.Q(status__in=(PollStatus.CLOSED, PollStatus.ARCHIVED)) |
+        models.Q(status=PollStatus.OPEN, closes_at__lte=timezone.now()))
+    messages = ForumMessage.objects.filter(poll__in=polls)
     if channel is not None:
         messages, polls = messages.filter(channel=channel), polls.filter(channel=channel)
     return messages, polls
@@ -224,6 +227,7 @@ def _sweep_channel(run, channel_id, cutoff, out_of_time) -> bool:
     """Remove what one channel holds from before ``cutoff``, a chunk a
     transaction. True when the channel is done; False when time ran out."""
     from .models import ForumChannel, ForumMessage, PollBallot
+    from . import poll_audit, poll_storage, voting
 
     removed_here = False
     while True:
@@ -245,12 +249,15 @@ def _sweep_channel(run, channel_id, cutoff, out_of_time) -> bool:
                 run.blobs_missing += went["missing"]
                 removed_here = True
             else:
-                count = polls.count()
+                doomed_polls = list(polls)
+                count = len(doomed_polls)
                 if count:
                     run.ballots_deleted += PollBallot.objects.filter(poll__in=polls).count()
                     run.polls_deleted += count
-                    # A bulk delete: the options and the answers go by the
-                    # cascade, a final poll's answers among them.
+                    for poll in doomed_polls:
+                        voting.close_due(poll)
+                        poll_audit.record(poll, "delete")
+                        poll_storage.empty(poll)
                     polls.delete()
                     removed_here = True
                 if (removed_here or channel.purged_before is None

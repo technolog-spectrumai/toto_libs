@@ -93,7 +93,7 @@ def may_manage_poll(user, poll) -> bool:
         return False
     if poll.created_by_id is not None and poll.created_by_id == user.pk:
         return True
-    return may_moderate(user, community)
+    return is_administrator(user)
 
 
 def communities_of(user):

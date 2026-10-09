@@ -36,7 +36,7 @@ cleanup's card has the warning colour's border.{% endcomment %}
       </div>
     </header>
 
-    {% include "forum/_tabs.html" %}
+    <a href="{% url 'forum:poll_audit' %}" class="inline-block rounded-lg border px-4 py-2 text-sm font-semibold underline">{% trans "Poll action audit" %}</a>
 
     <form method="post" action="{% url 'forum:settings_save' %}" data-testid="forum-settings-form"
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -67,7 +67,7 @@ cleanup's card has the warning colour's border.{% endcomment %}
                  value="{{ settings_row.retention_days }}"
                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark focus:ring-accent-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:ring-accent-light/40'"
                  class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2">
-          <span class="mt-1 block text-xs opacity-70">{% blocktrans with least=min_days most=max_days %}Messages and polls older than this are permanently removed. From {{ least }} to {{ most }}.{% endblocktrans %}</span>
+          <span class="mt-1 block text-xs opacity-70">{% blocktrans with least=min_days most=max_days %}Inactive closed threads older than this are permanently removed with their replies and images. From {{ least }} to {{ most }} days.{% endblocktrans %}</span>
         </label>
         <label class="block text-sm">
           <span class="mb-1 block font-semibold">{{ form.refresh_seconds.label }}</span>
@@ -75,7 +75,7 @@ cleanup's card has the warning colour's border.{% endcomment %}
                  value="{{ settings_row.refresh_seconds }}"
                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark focus:ring-accent-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:ring-accent-light/40'"
                  class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2">
-          <span class="mt-1 block text-xs opacity-70">{% trans "How often an open channel asks for new messages. From 2 to 120." %}</span>
+          <span class="mt-1 block text-xs opacity-70">{% trans "How often an open thread asks for new replies. From 2 to 120 seconds." %}</span>
         </label>
         <label class="block text-sm">
           <span class="mb-1 block font-semibold">{{ form.free_below_kb.label }}</span>
@@ -98,7 +98,7 @@ cleanup's card has the warning colour's border.{% endcomment %}
       {% csrf_token %}
       <h2 class="flex items-center gap-2 text-lg font-bold">
         <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>{% trans "Clean up now" %}</h2>
-      <p class="text-sm" role="alert">{% trans "A cleanup removes messages, their images, polls and the answers given in them, for good. No copy is kept and there is no undo. Other files kept in a channel's bucket are not touched." %}</p>
+      <p class="text-sm" role="alert">{% trans "Cleanup permanently removes inactive closed or archived threads, their replies, images and votes. Open votes stay. There is no undo." %}</p>
       <p :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
          class="rounded-xl border p-3 text-sm" data-testid="forum-cleanup-preview">{% blocktrans with days=settings_row.retention_days messages=preview.messages images=preview.images polls=preview.polls total=preview.total_messages %}At the saved age ({{ days }} days) a cleanup would now remove {{ messages }} messages, {{ images }} images and {{ polls }} polls. The forum holds {{ total }} messages.{% endblocktrans %}</p>
       {% if in_flight %}
@@ -119,11 +119,11 @@ cleanup's card has the warning colour's border.{% endcomment %}
         <legend class="mb-1 font-semibold">{% trans "What" %}</legend>
         <label class="flex items-center gap-2">
           <input type="radio" name="age" value="retention" checked>
-          <span>{% blocktrans with days=settings_row.retention_days %}Everything older than the saved age ({{ days }} days){% endblocktrans %}</span>
+          <span>{% blocktrans with days=settings_row.retention_days %}Closed threads inactive longer than the saved age ({{ days }} days){% endblocktrans %}</span>
         </label>
         <label class="flex flex-wrap items-center gap-2">
           <input type="radio" name="age" value="days">
-          <span>{% trans "Everything older than this many days:" %}</span>
+          <span>{% trans "Closed threads inactive longer than this many days:" %}</span>
           <input type="number" name="days" min="{{ min_days }}" max="{{ max_days }}" step="1"
                  aria-label="{% trans "Days" %}"
                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark focus:ring-accent-dark/40' : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:ring-accent-light/40'"
@@ -131,7 +131,7 @@ cleanup's card has the warning colour's border.{% endcomment %}
         </label>
         <label class="flex items-center gap-2">
           <input type="radio" name="age" value="everything">
-          <span>{% trans "Everything, whatever its age" %}</span>
+          <span>{% trans "All closed threads, whatever their age" %}</span>
         </label>
       </fieldset>
       <label class="flex items-start gap-2 text-sm">

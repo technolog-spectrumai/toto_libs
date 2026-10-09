@@ -27,7 +27,6 @@ class Migration(migrations.Migration):
                 ('last_seq', models.PositiveBigIntegerField(default=0)),
                 ('purged_before', models.DateTimeField(blank=True, null=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('bucket', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='vault.bucket')),
                 ('community', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='forum_channel', to='socialhub.community')),
             ],
             options={
@@ -41,17 +40,20 @@ class Migration(migrations.Migration):
                 ('number', models.PositiveBigIntegerField()),
                 ('seq', models.PositiveBigIntegerField(db_index=True)),
                 ('title_sealed', models.BinaryField(blank=True, null=True)),
+                ('description_sealed', models.BinaryField(blank=True, null=True)),
                 ('closes_at', models.DateTimeField(blank=True, null=True)),
-                ('status', models.CharField(choices=[('open', 'Open'), ('closed', 'Closed')], default='open', max_length=10)),
+                ('status', models.CharField(choices=[('open', 'Open'), ('closed', 'Closed'), ('archived', 'Archived')], default='open', max_length=10)),
                 ('closed_at', models.DateTimeField(blank=True, null=True)),
-                ('revisability', models.CharField(choices=[('open', 'Answers may be changed'), ('final', 'One answer, final')], default='open', max_length=8)),
                 ('visibility', models.CharField(choices=[('live', 'Everyone sees the count as it grows'), ('on_close', 'The count appears when the poll closes')], default='live', max_length=20)),
                 ('opener_name', models.CharField(blank=True, max_length=150)),
                 ('created_at', models.DateTimeField(default=django.utils.timezone.now)),
+                ('last_activity_at', models.DateTimeField(db_index=True, default=django.utils.timezone.now)),
                 ('removed_at', models.DateTimeField(blank=True, null=True)),
                 ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL)),
                 ('removed_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL)),
                 ('channel', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='polls', to='forum.forumchannel')),
+                ('bucket', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='vault.bucket')),
+                ('directory', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='vault.vaultdirectory')),
             ],
             options={
                 'ordering': ['number'],
@@ -68,6 +70,19 @@ class Migration(migrations.Migration):
                 ('channel', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='channel_key', to='forum.forumchannel')),
                 ('platform_wrapped_key', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='+', to='gervazy.wrappeddatakey')),
             ],
+        ),
+        migrations.CreateModel(
+            name='ForumPollAudit',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('poll_id', models.UUIDField(db_index=True)),
+                ('action', models.CharField(max_length=12)),
+                ('results_sealed', models.BinaryField()),
+                ('created_at', models.DateTimeField(db_index=True, default=django.utils.timezone.now)),
+                ('actor', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL)),
+                ('channel', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='poll_audits', to='forum.forumchannel')),
+            ],
+            options={'ordering': ['-created_at']},
         ),
         migrations.CreateModel(
             name='ForumCleanupRun',
@@ -115,6 +130,7 @@ class Migration(migrations.Migration):
                 ('removed_at', models.DateTimeField(blank=True, null=True)),
                 ('attachment', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='vault.vaultfile')),
                 ('channel', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='messages', to='forum.forumchannel')),
+                ('poll', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='messages', to='forum.channelpoll')),
                 ('removed_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL)),
                 ('sender', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL)),
             ],
@@ -151,8 +167,8 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('retention_enabled', models.BooleanField(default=False)),
-                ('retention_days', models.PositiveIntegerField(default=365, help_text='Messages and polls older than this are permanently removed.', validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(3650)])),
-                ('refresh_seconds', models.PositiveSmallIntegerField(default=5, help_text='How often an open channel asks for new messages, in seconds.', validators=[django.core.validators.MinValueValidator(2), django.core.validators.MaxValueValidator(120)])),
+                ('retention_days', models.PositiveIntegerField(default=365, help_text='Inactive closed threads older than this are permanently removed.', validators=[django.core.validators.MinValueValidator(1), django.core.validators.MaxValueValidator(3650)])),
+                ('refresh_seconds', models.PositiveSmallIntegerField(default=5, help_text='How often an open thread asks for new replies, in seconds.', validators=[django.core.validators.MinValueValidator(2), django.core.validators.MaxValueValidator(120)])),
                 ('free_below_kb', models.PositiveIntegerField(default=300, help_text='A message whose text and picture together are smaller than this costs nothing. 0 charges every message.', validators=[django.core.validators.MaxValueValidator(102400)])),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL)),
@@ -217,6 +233,10 @@ class Migration(migrations.Migration):
             model_name='channelpoll',
             index=models.Index(fields=['channel', 'seq'], name='forum_chann_channel_a95455_idx'),
         ),
+        migrations.AddIndex(
+            model_name='forumpollaudit',
+            index=models.Index(fields=['channel', 'actor', 'action', 'created_at'], name='forum_audit_daily_idx'),
+        ),
         migrations.AddConstraint(
             model_name='channelpoll',
             constraint=models.UniqueConstraint(fields=('channel', 'number'), name='forum_poll_number_per_channel'),
@@ -228,6 +248,10 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name='forummessage',
             index=models.Index(fields=['channel', 'seq'], name='forum_forum_channel_b54c42_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='forummessage',
+            index=models.Index(fields=['poll', 'number'], name='forum_message_poll_number_idx'),
         ),
         migrations.AddConstraint(
             model_name='forummessage',

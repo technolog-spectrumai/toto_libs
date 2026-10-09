@@ -55,8 +55,8 @@ from toto.quota.api import InArrears, QuotaExceeded
 from toto.quota.charge import InsufficientFunds
 from toto.ui import PageProcessor
 
-from . import access, billing, channels, cleanup, images, keys, posting, sealing, voting
-from .models import ForumSettings
+from . import access, billing, channels, cleanup, images, keys, poll_audit, posting, sealing, threads, voting
+from .models import ForumPollAudit, ForumSettings
 from .posting import Refusal
 
 MEMBER, AUTHOR, MODERATOR, ADMINISTRATOR = "member", "author", "moderator", "administrator"
@@ -266,40 +266,63 @@ def _settings_url(user):
     return reverse("forum:settings") if access.is_administrator(user) else None
 
 
+SORT_MODES = (("new", gettext_lazy("New")), ("active", gettext_lazy("Active")),
+              ("unanswered", gettext_lazy("Unanswered")),
+              ("closed", gettext_lazy("Closed")), ("archived", gettext_lazy("Archived")))
+
+
 @door(MEMBER, method="GET", page=True)
 def channel_list(request):
-    """The member's communities, each with the way into its channel."""
+    """A feed of poll threads in the member's communities."""
     communities = list(access.communities_of(request.user))
-    return render(request, "forum/channel_list.html", _page(request, {
+    listing = threads.page(request.user, communities, mode=request.GET.get("sort", "new"),
+                           query=request.GET.get("q", ""), number=request.GET.get("page", 1))
+    return render(request, "forum/feed.html", _page(request, {
         "communities": communities, "forum_settings_url": _settings_url(request.user),
-        "forum_tabs": _tabs(request.user, active="channels")}))
+        "scope": None, "sort_modes": SORT_MODES, **listing}))
 
 
 @door(MEMBER, method="GET", page=True)
 def channel_detail(request, channel):
-    """The channel's page. Its data travels in a ``json_script`` block."""
+    """A community's poll thread feed."""
     community = channel.community
-    slug = community.slug
+    listing = threads.page(request.user, access.communities_of(request.user),
+                           community=community, mode=request.GET.get("sort", "new"),
+                           query=request.GET.get("q", ""), number=request.GET.get("page", 1))
+    response = render(request, "forum/feed.html", _page(request, {
+        "communities": list(access.communities_of(request.user)),
+        "forum_settings_url": _settings_url(request.user), "scope": community,
+        "sort_modes": SORT_MODES,
+        **listing,
+    }))
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@door(MEMBER, method="GET", page=True)
+def thread_detail(request, channel, poll_id):
+    poll = _poll(channel, poll_id)
+    slug = channel.slug
     nil = "00000000-0000-0000-0000-000000000000"
     dials = ForumSettings.current()
     config = {
-        "community": {"name": community.name, "slug": slug},
+        "community": {"name": channel.name, "slug": slug},
         "viewer": {"name": posting.display_name(request.user),
-                   "may_moderate": access.may_moderate(request.user, community)},
+                   "may_moderate": access.may_moderate(request.user, channel.community),
+                   "is_admin": access.is_administrator(request.user)},
         "urls": {
-            "feed": reverse("forum:feed", args=[slug]),
+            "feed": reverse("forum:thread_feed", args=[slug, poll.pk]),
             "post": reverse("forum:post", args=[slug]),
-            "poll_open": reverse("forum:poll_open", args=[slug]),
+            "community": reverse("forum:channel_detail", args=[slug]),
             # Patterns: the page puts a row's id where the nil id is.
             "message_remove": reverse("forum:message_remove", args=[slug, nil]),
-            "poll_vote": reverse("forum:poll_vote", args=[slug, nil]),
-            "poll_close": reverse("forum:poll_close", args=[slug, nil]),
-            "poll_remove": reverse("forum:poll_remove", args=[slug, nil]),
+            "poll_vote": reverse("forum:poll_vote", args=[slug, poll.pk]),
+            "poll_reset": reverse("forum:poll_reset", args=[slug, poll.pk]),
+            "poll_close": reverse("forum:poll_close", args=[slug, poll.pk]),
+            "poll_archive": reverse("forum:poll_archive", args=[slug, poll.pk]),
+            "poll_remove": reverse("forum:poll_remove", args=[slug, poll.pk]),
             # What a post would cost, before it is sent (the door below).
             "estimate": reverse("forum:estimate", args=[slug]),
-            # The Search tab and the Images tab.
-            "search": reverse("forum:search", args=[slug]),
-            "images": reverse("forum:image_list", args=[slug]),
             "nil": nil,
         },
         "limits": {"text_bytes": posting.MAX_TEXT_BYTES, "image_bytes": images.MAX_BYTES,
@@ -311,17 +334,27 @@ def channel_detail(request, channel):
         # together) costs nothing; 0 where every post is charged.
         "prices": {**billing.prices(), "free_below_kb": dials.free_below_kb},
         "refresh_seconds": dials.refresh_seconds,
-        "feed": posting.feed(request.user, channel),
+        "feed": posting.thread_feed(request.user, poll),
     }
-    response = render(request, "forum/channel.html", _page(request, {
-        "community": community, "channel": channel, "forum_config": config,
+    config["feed"]["poll"]["community_name"] = channel.name
+    config["feed"]["poll"]["community_slug"] = slug
+    response = render(request, "forum/thread.html", _page(request, {
+        "community": channel.community, "channel": channel, "poll": config["feed"]["poll"],
+        "replies": config["feed"]["messages"], "older_replies": config["feed"]["more"],
+        "forum_is_admin": access.is_administrator(request.user),
+        "forum_config": config,
         "communities": list(access.communities_of(request.user)),
         "forum_settings_url": _settings_url(request.user),
-        "forum_tab": _tab(request),
-        "forum_tabs": _tabs(request.user, community=community, active=_tab(request), inpage=True),
     }))
     response["Cache-Control"] = "no-store"
     return response
+
+
+@door(MEMBER, method="GET")
+def thread_feed(request, channel, poll_id):
+    poll = _poll(channel, poll_id)
+    return posting.thread_feed(request.user, poll, after=request.GET.get("after"),
+                               before=request.GET.get("before"), limit=request.GET.get("limit"))
 
 
 # ---------------------------------------------------------------------------
@@ -337,13 +370,18 @@ def feed(request, channel):
 
 @door(MEMBER)
 def post(request, channel):
-    """Post text, an image, or both. Form fields ``op`` and ``text``, a file
-    ``image``. 201 with the message; 200 with ``"replay": true`` for a
-    repeated op."""
+    """Post one linear reply in a community thread."""
+    poll_id = request.POST.get("poll")
+    if not poll_id:
+        raise Refusal(_("Choose a thread before posting."), 400)
+    try:
+        poll = _poll(channel, poll_id)
+    except (ValidationError, ValueError):
+        raise Refusal(_("Poll not found."), 404) from None
     upload = request.FILES.get("image")
     image = images.read_upload(upload) if upload is not None else None
     message, replay = posting.post_message(
-        request.user, channel, text=request.POST.get("text", ""),
+        request.user, channel, poll=poll, text=request.POST.get("text", ""),
         op=request.POST.get("op"), image=image)
     payload = posting.message_to_dict(
         message, key=_key(channel), user=request.user, slug=channel.community.slug,
@@ -456,7 +494,7 @@ def _poll_answer(request, channel, poll):
     poll.refresh_from_db()
     return voting.polls_to_dicts(
         [poll], key=_key(channel), user=request.user,
-        moderator=access.may_moderate(request.user, channel.community))[0]
+        moderator=access.is_administrator(request.user))[0]
 
 
 def _closes_at(value):
@@ -476,11 +514,13 @@ def poll_open(request, channel):
     try:
         poll = voting.open_poll(
             channel, request.user, _key(channel), title=data.get("title"),
-            options=data.get("options"), closes_at=_closes_at(data.get("closes_at")),
-            revisability=data.get("revisability"), visibility=data.get("visibility"))
+            description=data.get("description"), options=data.get("options"),
+            closes_at=_closes_at(data.get("closes_at")),
+            visibility=data.get("visibility"))
     except ValidationError as exc:
         raise Refusal(" ".join(exc.messages), 400) from None
-    return {"poll": _poll_answer(request, channel, poll)}, 201
+    return {"poll": _poll_answer(request, channel, poll),
+            "thread_url": reverse("forum:thread_detail", args=[channel.slug, poll.pk])}, 201
 
 
 @door(MEMBER)
@@ -488,6 +528,7 @@ def poll_vote(request, channel, poll_id):
     from .models import PollChoice
 
     poll = _poll(channel, poll_id)
+    voting.close_due(poll)
     data = _body(request)
     raw = data.get("choice")
     choice = None
@@ -506,12 +547,33 @@ def poll_vote(request, channel, poll_id):
     return {"poll": _poll_answer(request, channel, poll)}
 
 
+@door(MEMBER)
+def poll_reset(request, channel, poll_id):
+    poll = _poll(channel, poll_id)
+    voting.close_due(poll)
+    try:
+        voting.reset_vote(poll, request.user)
+    except voting.NotOpen as exc:
+        raise Refusal(exc, 409) from None
+    return {"poll": _poll_answer(request, channel, poll)}
+
+
 @door(AUTHOR)
 def poll_close(request, channel, poll_id):
     poll = _poll(channel, poll_id)
     if not access.may_manage_poll(request.user, poll):
-        raise Refusal(_("Only who opened a poll or the community's head closes it."), 403)
-    voting.close_poll(poll)
+        raise Refusal(_("Only the poll author or an administrator closes it."), 403)
+    voting.close_poll(poll, request.user)
+    return {"poll": _poll_answer(request, channel, poll)}
+
+
+@door(ADMINISTRATOR)
+def poll_archive(request, channel, poll_id):
+    poll = _poll(channel, poll_id)
+    try:
+        voting.archive_poll(poll, request.user)
+    except ValidationError as exc:
+        raise Refusal(" ".join(exc.messages), 409) from None
     return {"poll": _poll_answer(request, channel, poll)}
 
 
@@ -519,7 +581,7 @@ def poll_close(request, channel, poll_id):
 def poll_remove(request, channel, poll_id):
     poll = _poll(channel, poll_id)
     if not access.may_manage_poll(request.user, poll):
-        raise Refusal(_("Only who opened a poll or the community's head removes it."), 403)
+        raise Refusal(_("Only the poll author or an administrator deletes it."), 403)
     voting.remove_poll(poll, request.user)
     return {"poll": {"id": str(poll.id), "number": poll.number, "seq": poll.seq,
                      "removed": True}}
@@ -542,11 +604,24 @@ class SettingsForm(forms.ModelForm):
         model = ForumSettings
         fields = ["retention_enabled", "retention_days", "refresh_seconds", "free_below_kb"]
         labels = {
-            "retention_enabled": gettext_lazy("Remove old messages and polls on a schedule"),
+            "retention_enabled": gettext_lazy("Remove old closed threads on a schedule"),
             "retention_days": gettext_lazy("Retention age, in days"),
             "refresh_seconds": gettext_lazy("Refresh interval, in seconds"),
             "free_below_kb": gettext_lazy("Messages are free below, in kilobytes"),
         }
+
+
+@door(ADMINISTRATOR, method="GET", page=True)
+def poll_audit_page(request):
+    events = []
+    rows = ForumPollAudit.objects.select_related("channel__community", "actor")[:100]
+    for row in rows:
+        try:
+            snapshot = poll_audit.read(row)
+        except keys.ChannelKeyUnavailable:
+            raise Refusal(_("The forum's key is not available on this server."), 503) from None
+        events.append({"row": row, "snapshot": snapshot})
+    return render(request, "forum/poll_audit.html", _page(request, {"events": events}))
 
 
 def _errors(form) -> str:

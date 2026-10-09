@@ -1,0 +1,66 @@
+{% extends "oya/base.html" %}
+{% load i18n static %}
+{% block title %}{{ poll.title }} | {{ platform.site_name }}{% endblock %}
+{% block content %}
+{{ forum_config|json_script:"forum-thread-config" }}
+<section data-forum-thread :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'" class="min-h-screen px-4 py-7 sm:px-6 lg:px-8">
+  <form class="hidden" data-forum-csrf>{% csrf_token %}</form>
+  <div class="mx-auto max-w-7xl space-y-5">
+    <header class="flex flex-wrap items-end justify-between gap-3">
+      <div><a class="text-sm underline hover:opacity-80" href="{% url 'forum:channel_detail' community.slug %}">← {{ community.name }}</a>
+        <h1 class="mt-2 text-2xl font-bold">{% trans "Discussion" %}</h1></div>
+      <a class="rounded-lg border px-3 py-2 text-sm font-bold" href="{% url 'forum:channel_list' %}">{% trans "All communities" %}</a>
+    </header>
+    <div class="grid gap-5 lg:grid-cols-[13rem_minmax(0,1fr)_15rem]">
+      <nav aria-label="{% trans "Communities" %}" class="hidden self-start rounded-2xl border p-3 text-sm lg:block">
+        <a class="block px-2 py-1.5 font-bold hover:underline" href="{% url 'forum:channel_list' %}">{% trans "All communities" %}</a>
+        {% for place in communities %}<a class="block px-2 py-1.5 hover:underline" href="{% url 'forum:channel_detail' place.slug %}">{{ place.name }}</a>{% endfor %}
+      </nav>
+      <main class="min-w-0 space-y-4">
+        {% include "forum/_poll_card.html" with full=True %}
+        <div class="flex flex-wrap gap-2 text-sm">
+          {% if poll.may_manage and poll.open %}<button data-forum-action="close" class="rounded-lg border px-3 py-2 font-semibold">{% trans "Close voting" %}</button>{% endif %}
+          {% if forum_is_admin and poll.status == "closed" %}<button data-forum-action="archive" class="rounded-lg border px-3 py-2 font-semibold">{% trans "Archive thread" %}</button>{% endif %}
+          {% if poll.may_manage %}<button data-forum-action="remove" class="rounded-lg border px-3 py-2 font-semibold">{% trans "Delete thread" %}</button>{% endif %}
+        </div>
+        {% if poll.results_visible %}<div class="mx-auto h-44 w-44"><canvas data-poll-chart role="img" aria-label="{% trans "Pie chart of the answers" %}"></canvas></div>{% endif %}
+        <section aria-labelledby="forum-replies-title" class="rounded-2xl border p-4 sm:p-5">
+          <div class="flex items-center justify-between gap-2"><h2 id="forum-replies-title" class="text-lg font-bold">{% trans "Discussion" %}</h2>
+            <span class="text-xs opacity-65">{% trans "Oldest to newest" %}</span></div>
+          <div class="mt-3 text-center"><button type="button" data-forum-older class="{% if not older_replies %}hidden {% endif %}rounded-lg border px-3 py-1.5 text-xs font-semibold">{% trans "Older replies" %}</button></div>
+          <ol data-forum-replies class="mt-3 space-y-3" aria-live="polite">
+            {% for reply in replies %}
+            <li id="reply-{{ reply.id }}" data-message-id="{{ reply.id }}" data-number="{{ reply.number }}" class="rounded-xl border p-3">
+              <div class="flex flex-wrap items-baseline gap-2 text-xs"><strong>{{ reply.sender }}</strong><time datetime="{{ reply.created_at }}" class="opacity-60">{{ reply.created_at|date:"SHORT_DATETIME_FORMAT" }}</time>
+                {% if reply.may_remove %}<button type="button" data-forum-remove-message="{{ reply.id }}" class="ml-auto underline">{% trans "Remove" %}</button>{% endif %}</div>
+              {% if reply.text %}<p class="mt-1 whitespace-pre-wrap break-words text-sm">{{ reply.text }}</p>{% endif %}
+              {% if reply.image %}<a href="{{ reply.image.url }}" target="_blank" rel="noopener noreferrer"><img src="{{ reply.image.url }}" alt="{% trans "image" %}" loading="lazy" class="mt-2 max-h-64 max-w-full rounded-lg object-contain"></a>{% endif %}
+            </li>
+            {% endfor %}
+          </ol>
+          {% if poll.status != "archived" %}
+          <form data-forum-post class="mt-5 border-t pt-4">
+            <input type="hidden" name="poll" value="{{ poll.id }}">
+            <label for="forum-reply-text" class="block text-sm font-bold">{% trans "Add a reply" %}</label>
+            <textarea id="forum-reply-text" name="text" rows="3" maxlength="8192" class="mt-2 block w-full rounded-xl border bg-transparent p-3 text-sm" placeholder="{% trans "Write a reply" %}"></textarea>
+            <div class="mt-2 flex flex-wrap items-center gap-3"><input type="file" name="image" accept="image/jpeg,image/png,image/gif,image/webp" aria-label="{% trans "Image" %}" class="min-w-0 flex-1 text-xs">
+              <button type="submit" class="rounded-lg border px-4 py-2 text-sm font-bold">{% trans "Post reply" %}</button></div>
+            <p data-forum-estimate class="mt-2 text-xs opacity-70"></p>
+            <p data-forum-status role="status" class="mt-2 hidden text-sm font-semibold"></p>
+          </form>
+          {% endif %}
+        </section>
+      </main>
+      <aside class="hidden self-start rounded-2xl border p-4 text-sm lg:block">
+        <h2 class="font-bold">{{ community.name }}</h2>
+        <p class="mt-2 opacity-70">{% trans "This poll and its replies belong to this community." %}</p>
+        <a class="mt-3 inline-block underline" href="{% url 'socialhub:community_detail' community.slug %}">{% trans "Community page" %}</a>
+        {% if forum_settings_url %}<a class="mt-3 block underline" href="{{ forum_settings_url }}">{% trans "Settings" %}</a>{% endif %}
+      </aside>
+    </div>
+  </div>
+  <div class="hidden" data-forum-words data-gone="{% trans "A message was removed." %}" data-failed="{% trans "The request failed. Try again." %}" data-delete="{% trans "Delete this thread and its replies for everybody?" %}" data-remove="{% trans "Remove this reply for everybody?" %}" data-remove-label="{% trans "Remove" %}" data-votes-label="{% trans "votes" %}" data-image-label="{% trans "image" %}"></div>
+</section>
+<script defer src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+<script src="{% static 'forum/thread.js' %}"></script>
+{% endblock %}

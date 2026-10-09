@@ -9,7 +9,7 @@ the settings are read-only (the settings have their own page).
 from django.contrib import admin
 
 from .models import (ChannelPoll, ForumChannel, ForumCleanupRun, ForumMessage,
-                     ForumSettings, PollBallot)
+                     ForumSettings, ForumPollAudit, PollBallot)
 
 
 class _ReadOnly(admin.ModelAdmin):
@@ -22,7 +22,7 @@ class _ReadOnly(admin.ModelAdmin):
 
 @admin.register(ForumChannel)
 class ForumChannelAdmin(_ReadOnly):
-    list_display = ("community", "bucket", "last_seq", "purged_before", "created_at")
+    list_display = ("community", "last_seq", "purged_before", "created_at")
     search_fields = ("community__name", "community__slug")
 
 
@@ -42,8 +42,18 @@ class ForumMessageAdmin(_ReadOnly):
 class ChannelPollAdmin(_ReadOnly):
     list_display = ("channel", "number", "status", "closes_at", "opener_name",
                     "created_at", "removed_at")
-    list_filter = ("status", "revisability", "visibility")
-    exclude = ("title_sealed",)
+    list_filter = ("status", "visibility")
+    exclude = ("title_sealed", "description_sealed")
+
+
+@admin.register(ForumPollAudit)
+class ForumPollAuditAdmin(_ReadOnly):
+    list_display = ("created_at", "channel", "poll_id", "action", "actor")
+    list_filter = ("action",)
+    exclude = ("results_sealed",)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(PollBallot)

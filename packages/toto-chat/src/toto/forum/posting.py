@@ -108,9 +108,9 @@ def clean_text(value, *, most=MAX_TEXT_BYTES) -> str:
     return text
 
 
-def digest(user, op, text, image_hash) -> str:
+def digest(user, op, text, image_hash, poll_id=None) -> str:
     """The keyed digest that binds an op to one request of one member."""
-    material = json.dumps([user.pk, op, text, image_hash], separators=(",", ":"),
+    material = json.dumps([user.pk, op, text, image_hash, str(poll_id)], separators=(",", ":"),
                           ensure_ascii=True)
     return salted_hmac(_SALT, material, algorithm="sha256").hexdigest()
 
@@ -149,7 +149,7 @@ def display_name(user) -> str:
     return str(name)[:150]
 
 
-def post_message(user, channel, *, text, op, image=None):
+def post_message(user, channel, *, poll, text, op, image=None):
     """Store one message. Returns ``(message, replay)``.
 
     ``image`` is ``(bytes, type)`` as ``images.read_upload`` answers, or
@@ -161,10 +161,14 @@ def post_message(user, channel, *, text, op, image=None):
 
     op = clean_op(op)
     text = clean_text(text)
+    if (poll is None or poll.channel_id != channel.pk or poll.removed_at is not None
+            or poll.status == "archived"):
+        raise Refusal(_("This thread is not available in this community."), 404)
     data, mime = image if image is not None else (None, "")
     if not text and data is None:
         raise Refusal(_("Write something, or choose an image."), 400)
-    request_digest = digest(user, op, text, images.digest(data) if data is not None else "")
+    request_digest = digest(user, op, text, images.digest(data) if data is not None else "",
+                            poll.pk)
 
     known = _known(user, op, request_digest)
     if known is not None:
@@ -186,8 +190,14 @@ def post_message(user, channel, *, text, op, image=None):
     try:
         with transaction.atomic():
             number = channels.next_seq(channel)
+            from .models import ChannelPoll
+
+            locked_poll = ChannelPoll.objects.select_for_update().filter(
+                pk=poll.pk, channel=channel, removed_at__isnull=True).first()
+            if locked_poll is None or locked_poll.status == "archived":
+                raise Refusal(_("This thread is not available in this community."), 404)
             message = ForumMessage(
-                channel=channel, number=number, seq=number, sender=user,
+                channel=channel, poll=locked_poll, number=number, seq=number, sender=user,
                 sender_name=display_name(user),
                 kind=ForumMessage.IMAGE if data is not None else ForumMessage.TEXT,
                 text_bytes=text_bytes, op_key=op, op_digest=request_digest)
@@ -195,7 +205,7 @@ def post_message(user, channel, *, text, op, image=None):
                                                     message_id=message.id)
             message.save()
             if data is not None:
-                stored = images.store(channel, user, message.id, data, mime, key)
+                stored = images.store(locked_poll, user, message.id, data, mime, key)
                 message.attachment = stored
                 message.attachment_mime = mime
                 message.attachment_size = len(data)
@@ -205,6 +215,9 @@ def post_message(user, channel, *, text, op, image=None):
             # that is refused takes the message with it.
             billing.settle_post(user, message, text_bytes=text_bytes,
                                 image_bytes=image_bytes)
+            locked_poll.seq = number
+            locked_poll.last_activity_at = message.created_at
+            locked_poll.save(update_fields=["seq", "last_activity_at"])
     except IntegrityError:
         # Another request stored this op first; this one's rows are undone.
         if stored is not None:
@@ -285,7 +298,8 @@ def message_to_dict(row, *, key, user, slug, moderator=False, avatars=None) -> d
         text, unreadable = "", True
     mine = row.sender_id is not None and row.sender_id == user.pk
     out = {
-        "id": str(row.id), "number": row.number, "seq": row.seq, "kind": row.kind,
+        "id": str(row.id), "poll_id": str(row.poll_id), "number": row.number,
+        "seq": row.seq, "kind": row.kind,
         "sender": row.sender_name, "sender_id": row.sender_id, "mine": mine,
         "avatar": (avatars or {}).get(row.sender_id, ""),
         "created_at": row.created_at.isoformat(), "text": text, "image": None,
@@ -359,7 +373,8 @@ def feed(user, channel, *, after=None, before=None, limit=None) -> dict:
             cursor = rows[-1].seq
         polls = list(channel.polls.filter(seq__gt=after, seq__lte=cursor).order_by("seq")[:MAX_POLLS])
         return {"cursor": cursor, "messages": render(rows),
-                "polls": voting.polls_to_dicts(polls, key=key, user=user, moderator=moderator),
+                "polls": voting.polls_to_dicts(polls, key=key, user=user,
+                                               moderator=access.is_administrator(user)),
                 "more": more, "purged_before": purged}
 
     rows = list(channel.messages.filter(removed_at__isnull=True, seq__lte=cursor)
@@ -370,9 +385,54 @@ def feed(user, channel, *, after=None, before=None, limit=None) -> dict:
                  .order_by("-number")[:MAX_POLLS])
     polls.reverse()
     return {"cursor": cursor, "messages": render(rows),
-            "polls": voting.polls_to_dicts(polls, key=key, user=user, moderator=moderator),
+            "polls": voting.polls_to_dicts(polls, key=key, user=user,
+                                           moderator=access.is_administrator(user)),
             "more": more, "oldest": rows[0].number if rows else None,
             "purged_before": purged}
+
+
+def thread_feed(user, poll, *, after=None, before=None, limit=None) -> dict:
+    """Replies for one poll, newest page initially and channel-seq deltas later."""
+    from . import voting
+    from .models import ForumChannel
+
+    after, before, limit = _number(after, "after"), _number(before, "before"), _limit(limit)
+    channel = poll.channel
+    key = _key(channel)
+    fresh = ForumChannel.objects.only("last_seq", "purged_before").get(pk=channel.pk)
+    cursor = fresh.last_seq
+    rows = poll.messages.filter(seq__lte=cursor)
+    if before is not None:
+        rows = rows.filter(removed_at__isnull=True, number__lt=before)
+    elif after is not None:
+        rows = rows.filter(seq__gt=after)
+    else:
+        rows = rows.filter(removed_at__isnull=True)
+    if after is not None and before is None:
+        selected = list(rows.order_by("seq")[:limit + 1])
+    else:
+        selected = list(rows.order_by("-number")[:limit + 1])
+    more = len(selected) > limit
+    selected = selected[:limit]
+    if after is None or before is not None:
+        selected.reverse()
+    avatars = _avatars(selected)
+    messages = [message_to_dict(row, key=key, user=user, slug=channel.slug,
+                                moderator=access.may_moderate(user, channel.community),
+                                avatars=avatars) for row in selected]
+    payload = {"messages": messages, "more": more,
+               "purged_before": fresh.purged_before.isoformat() if fresh.purged_before else None}
+    if before is not None:
+        payload["oldest"] = selected[0].number if selected else None
+        return payload
+    if after is not None and more:
+        cursor = selected[-1].seq
+    payload["cursor"] = cursor
+    payload["oldest"] = selected[0].number if selected and after is None else None
+    payload["poll"] = voting.polls_to_dicts(
+        [poll], key=key, user=user,
+        moderator=access.is_administrator(user))[0]
+    return payload
 
 
 def search(user, channel, query) -> dict:

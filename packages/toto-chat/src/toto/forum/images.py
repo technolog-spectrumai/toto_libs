@@ -8,7 +8,7 @@ file called ``.png`` is never stored and never served.
 
 **Where it is kept.** Sealed under the channel's key (``sealing``, kind
 ``att``, bound to the channel and the message) and stored through the vault
-as a ``VaultFile`` in the channel's bucket: owner the member who posted,
+as a ``VaultFile`` in the poll's bucket and Images directory: owner the member who posted,
 ``is_encrypted`` set, never public, key ``forum-<message id>``. The forum
 owns exactly the files its message rows point at; any other file in that
 bucket is not the forum's, and no function here reads or removes one.
@@ -25,7 +25,7 @@ import logging
 
 from django.utils.translation import gettext as _
 
-from . import channels, sealing
+from . import poll_storage, sealing
 
 log = logging.getLogger(__name__)
 
@@ -83,8 +83,8 @@ def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def store(channel, user, message_id, data: bytes, mime: str, key: bytes):
-    """Seal ``data`` and keep it in the channel's bucket. Returns the
+def store(poll, user, message_id, data: bytes, mime: str, key: bytes):
+    """Seal ``data`` and keep it in the poll's vault directory. Returns the
     ``VaultFile``. Call inside the transaction that stores the message; the
     caller removes the bytes (``discard``) if that transaction fails."""
     from django.core.files.base import ContentFile
@@ -92,13 +92,14 @@ def store(channel, user, message_id, data: bytes, mime: str, key: bytes):
     from toto.vault.models import VaultFile
     from toto.vault.storage_backends import persist_upload
 
-    bucket = channels.ensure_bucket(channel)
-    sealed = sealing.seal_bytes(key, data, kind="att", channel_id=channel.pk,
+    bucket, directory = poll_storage.ensure(poll, user)
+    sealed = sealing.seal_bytes(key, data, kind="att", channel_id=poll.channel_id,
                                 message_id=message_id)
     name = f"forum-{message_id}.{TYPES[mime]}.sealed"
     vault_file = VaultFile(owner=user, title=name, key=f"forum-{message_id}",
                            file_type="image", is_encrypted=True, is_public=False,
-                           bucket=bucket, notes=NOTE, file_size_bytes=len(sealed))
+                           bucket=bucket, directory=directory, notes=NOTE,
+                           file_size_bytes=len(sealed))
     persist_upload(vault_file, ContentFile(sealed, name=name))
     return vault_file
 
