@@ -130,9 +130,6 @@ class Contribution(models.Model):
     #: The ``op`` of the request that made the row: with the author it is
     #: unique, so two creations sent at once under one ``op`` make one row.
     op_key = models.CharField(max_length=36)
-    #: A discussion's slug where the host runs the forum. Text, never a key:
-    #: geography does not depend on the forum (``discussion``).
-    forum_thread = models.CharField(max_length=200, blank=True, default="")
     hidden_at = models.DateTimeField(null=True, blank=True)
     hidden_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -151,19 +148,6 @@ class Contribution(models.Model):
     @property
     def is_hidden(self) -> bool:
         return self.hidden_at is not None
-
-    def discussion(self):
-        """The forum discussion of this row, or None: always None on a host
-        without ``toto.forum``, and no query is made there."""
-        from django.apps import apps
-
-        if not self.forum_thread or not apps.is_installed("toto.forum"):
-            return None
-        try:
-            room = apps.get_model("forum", "ForumChannel")
-            return room.objects.filter(slug=self.forum_thread).first()
-        except Exception:  # noqa: BLE001 - a missing room is not an error here
-            return None
 
 
 class CommunityPin(Contribution):

@@ -26,10 +26,6 @@ the page's script as JSON with an op; the thread's forms are sent as they are
   {% if kind == "pin" and state.note %}<p class="mt-2 whitespace-pre-line break-words text-sm">{{ state.note }}</p>{% endif %}
   {% if kind == "zone" and state.description %}<p class="mt-2 whitespace-pre-line break-words text-sm">{{ state.description }}</p>{% endif %}
 
-  {% if discussion %}
-  <p class="mt-2 text-sm"><i class="fa-solid fa-comments" aria-hidden="true"></i> {% trans "This has a discussion in the forum." %}</p>
-  {% endif %}
-
   {% if may_edit %}
   {% comment %} The author's change is asked in the page's dialog, and nowhere else: this
      button holds the words it starts from (escaped, as every text here) and

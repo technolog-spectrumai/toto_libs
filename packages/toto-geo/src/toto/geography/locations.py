@@ -386,7 +386,6 @@ def _details(request, kind, slug, uid):
         "author_name": _username(row.author), "may_edit": author,
         "may_moderate": moderator, "may_delete": author or moderator,
         "comments": comments, "verdicts": verdicts,
-        "discussion": row.discussion(),
         "edit_url": reverse(f"geography:{kind}_detail", kwargs=names),
         "comment_url": reverse(f"geography:{kind}_comment_add", kwargs={"uid": row.uid}),
         "comment_edit": f"geography:{kind}_comment_edit",
