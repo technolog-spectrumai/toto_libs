@@ -50,8 +50,11 @@ class HealthApiView(CorsApiView):
 # backs it. The descriptor reports which are installed on THIS server so a client (e.g.
 # Enigma+) only offers apps the backend can actually serve — zenobia has them all, faros
 # (the minimal Tor server) lacks e.g. the knowledge graph (ravioli).
+#
+# No "chat" since 2026-10-09: it reported toto.forum, and the forum is parked
+# (toto-chat's toto/forum/PARKED.md). The key is absent rather than false, so
+# a client that asks for it reads "not served", as for any key it never knew.
 _FEATURE_APPS = {
-    "chat": "toto.forum",
     "vault": "toto.vault",
     "tasks": "toto.kanban",
     "locations": "toto.locations",

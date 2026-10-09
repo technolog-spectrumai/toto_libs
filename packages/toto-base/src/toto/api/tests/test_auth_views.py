@@ -231,13 +231,13 @@ class AppsDescriptorApiTests(TestCase):
         res = self.client.get("/api/apps/")
         self.assertEqual(res.status_code, 200)
         apps = res.json()["apps"]
-        for key in ["chat", "vault", "tasks", "locations", "people", "events", "graph",
+        for key in ["vault", "tasks", "locations", "people", "events", "graph",
                     "aster", "beacon"]:
             self.assertIn(key, apps)
             self.assertIsInstance(apps[key], bool)
-        # The forum is the host's choice (zenobia parked it, 2026-10-04).
-        from django.apps import apps as django_apps
-        self.assertEqual(apps["chat"], django_apps.is_installed("toto.forum"))
+        # No "chat" since 2026-10-09: the forum is parked, and the descriptor
+        # does not name a feature no host may serve.
+        self.assertNotIn("chat", apps)
 
     def test_uninstalled_app_reported_false(self):
         # Simulate a faros-style server without the knowledge graph (ravioli).

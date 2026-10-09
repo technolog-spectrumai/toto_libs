@@ -79,8 +79,8 @@ def ingress_mode(get) -> str:
 
 @dataclass(frozen=True)
 class Features:
-    # Realtime-group features (default to the realtime tier).
-    chat: bool
+    # Realtime-group features (default to the realtime tier). No `chat` since
+    # 2026-10-09: see the note in resolve_features.
     workflows: bool
     weather: bool
     # Editing features (standalone - each enabled on its own; no labs tier).
@@ -187,7 +187,21 @@ def resolve_features(get) -> Features:
     tier_neo4j = flag(get, "BUILD_NEO4J")
 
     # Realtime-group features (default to the realtime tier).
-    chat = flag(get, "BUILD_CHAT", tier_realtime)             # toto.forum — live chat (WebSocket)
+    #
+    # No `chat` here any more. BUILD_CHAT installed toto.forum, and the forum
+    # was parked on 2026-10-09 (toto-chat's toto/forum/PARKED.md) with the
+    # hooks other apps carried for it — above all the erase and data-copy
+    # branches in toto.core. A forum installed without those keeps a leaver's
+    # messages, so NO FLAG MAY INSTALL IT: BUILD_CHAT is not read, the realtime
+    # tier defaults nothing of it, and registry.FEATURE_APPS has no "chat".
+    # A config that still sets the flag resolves exactly as one that does not.
+    #
+    # Note what went with it: chat was one of the three reasons for
+    # needs_channels below, and the realtime tier switched it on by default —
+    # so BUILD_REALTIME=1 alone used to buy the socket layer and no longer
+    # does. sabbia and canasta still do. `realtime` itself is unchanged:
+    # workflows is compulsory and sits in that chain.
+    #
     # COMPULSORY since 8/2026. Workflows is the platform's job runner, and the
     # antivirus — which every content door depends on — queues its scans
     # through it. A flag that can switch off the machinery security rides on is
@@ -404,7 +418,7 @@ def resolve_features(get) -> Features:
     # memory because somebody enabled a PDF export.
     anastasia = flag(get, "BUILD_ANASTASIA")
     # Channels/ASGI back every WebSocket consumer.
-    needs_channels = chat or sabbia or canasta
+    needs_channels = sabbia or canasta
     # Ollama/Qwen service layer — scoped to the features that actually use it.
     vicuna = graph or sabbia_ollama
 
@@ -437,7 +451,7 @@ def resolve_features(get) -> Features:
     # `ocr` is here because reading a scan is one Celery task PER PAGE: a
     # BUILD_OCR=1 image without the realtime layer has no celery package
     # at all, and its submit button could only ever 503.
-    realtime = (chat or workflows or weather or needs_channels or manta
+    realtime = (workflows or weather or needs_channels or manta
                 or jess or dracena or ocr)
     neo4j = graph
 
@@ -488,7 +502,6 @@ def resolve_features(get) -> Features:
     weasyprint = flag(get, "BUILD_WEASYPRINT")
 
     return Features(
-        chat=chat,
         workflows=workflows,
         weather=weather,
         canasta=canasta,

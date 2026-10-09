@@ -86,7 +86,11 @@ FEATURE_APPS = {
         "toto.mandragora",   # Jupyter kernel server — runs workflow lambda nodes
         "toto.workflows",    # DAG workflow engine
     ],
-    "chat": ["toto.forum"],
+    # No "chat" since 2026-10-09: it installed toto.forum, and the forum is
+    # parked (toto-chat's toto/forum/PARKED.md) together with the hooks other
+    # apps carried for it. No key here and no flag in toto.features installs
+    # it; a host that names the app by hand runs it without its erase hook.
+
     # Notifications and the bell (BUILD_NOTIFY) — see NOTIFY_APPS above.
     "notify": NOTIFY_APPS,
     "weather": ["toto.weather"],
@@ -266,7 +270,7 @@ TASK_MODULES = [
 
 
 def has_app(name: str) -> bool:
-    """Capability check: is the given app (e.g. "toto.forum") installed?"""
+    """Capability check: is the given app (e.g. "toto.monit") installed?"""
     from django.apps import apps
 
     return apps.is_installed(name)

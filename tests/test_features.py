@@ -61,7 +61,7 @@ def test_kanban_is_independent_of_every_other_feature():
     # ...and a bare host with kanban off keeps everything else off.
     bare = resolve(BUILD_KANBAN=0)
     assert bare.kanban is False
-    assert bare.chat is False
+    assert bare.weather is False
     assert bare.workflows is True   # compulsory since 8/2026, on every host
 
 
@@ -146,12 +146,12 @@ def test_jess_buys_the_celery_layer_but_not_workflows():
     f = resolve(BUILD_JESS=1)
     assert (f.jess, f.realtime) == (True, True)
     assert f.workflows is True   # compulsory since 8/2026; jess no longer the reason
-    assert f.chat is False
+    assert f.needs_channels is False   # the celery layer, never the socket one
 
 
 def test_jess_is_opt_in_and_no_tier_turns_it_on():
-    # It must not arrive with the realtime tier: a host that asked for chat has not
-    # asked for its EMAIL_BACKEND to be replaced.
+    # It must not arrive with the realtime tier: a host that asked for that tier
+    # has not asked for its EMAIL_BACKEND to be replaced.
     assert resolve().jess is False
     assert resolve(BUILD_REALTIME=1).jess is False
     assert resolve(BUILD_JESS=0).jess is False
@@ -172,6 +172,37 @@ def test_no_flag_resurrects_the_parked_spreadsheet_app():
     # And it buys nothing else either: the flag is not merely unnamed, it is
     # inert, so the resolved build is identical with and without it.
     assert resolve(BUILD_PRIMULA=1) == resolve()
+
+
+def test_no_flag_installs_the_parked_forum():
+    """toto.forum was PARKED on 2026-10-09, with the hooks other apps carried
+    for it (toto-chat's toto/forum/PARKED.md).
+
+    BUILD_CHAT installed it, and the realtime tier switched that flag on by
+    default. Without the erase hook a forum keeps a leaver's messages, so no
+    flag may install it: the field is gone, BUILD_CHAT is inert in every
+    spelling, and the tier defaults nothing of it. Inverted instead of
+    deleted, as for the spreadsheet app above.
+    """
+    assert not hasattr(resolve(), "chat")
+    assert not hasattr(resolve(BUILD_CHAT=1), "chat")
+    assert not hasattr(resolve(BUILD_REALTIME=1), "chat")
+    assert resolve(BUILD_CHAT=1) == resolve()
+    assert resolve(BUILD_CHAT=0) == resolve()
+    assert resolve(BUILD_REALTIME=1, BUILD_CHAT=1) == resolve(BUILD_REALTIME=1)
+    # Chat was one of three reasons for the socket layer, and the tier bought
+    # it by default. Neither the flag nor the tier buys that layer now; the
+    # two features that still open a socket do.
+    assert resolve(BUILD_CHAT=1).needs_channels is False
+    assert resolve(BUILD_REALTIME=1).needs_channels is False
+    assert resolve(BUILD_STUDIO=1).needs_channels is False
+    assert resolve(BUILD_CANASTA=1).needs_channels is True
+    assert resolve(BUILD_SABBIA=1).needs_channels is True
+    # And nothing names an app for it.
+    from toto.registry import FEATURE_APPS
+
+    assert "chat" not in FEATURE_APPS
+    assert all("toto.forum" not in apps for apps in FEATURE_APPS.values())
 
 
 def test_fileservices_forces_workflows():
@@ -298,11 +329,14 @@ def test_the_editor_is_explicit_only():
 # ---------------------------------------------------------------------------
 
 def test_the_realtime_tier_defaults_its_group():
+    # The group is workflows (compulsory anyway) and weather. Chat was its
+    # third member until the forum was parked on 2026-10-09; see
+    # test_no_flag_installs_the_parked_forum.
     tier = resolve(BUILD_REALTIME=1)
-    assert (tier.chat, tier.workflows, tier.weather) == (True, True, True)
+    assert (tier.workflows, tier.weather) == (True, True)
     assert tier.realtime is True
     # A member flag still overrides the tier that offered it as a default.
-    assert resolve(BUILD_REALTIME=1, BUILD_CHAT=0).chat is False
+    assert resolve(BUILD_REALTIME=1, BUILD_WEATHER=0).weather is False
 
 
 def test_realtime_is_derived_not_merely_echoed():
@@ -310,7 +344,7 @@ def test_realtime_is_derived_not_merely_echoed():
     # implies the pip layer, even when the tier flag was never set. This is why
     # zenobia still installs it after the split — it keeps workflows.
     assert resolve().workflows is True                # compulsory; the flag is dead
-    assert resolve(BUILD_CHAT=1).realtime is True
+    assert resolve(BUILD_WEATHER=1).realtime is True
     assert resolve(BUILD_CANASTA=1).realtime is True    # via needs_channels
     # The compulsory job runner sits in the realtime-or chain, so the celery
     # pip layer is now part of EVERY build — the tier cannot be avoided.
@@ -338,9 +372,9 @@ def test_canasta_buys_channels_and_nothing_else():
     # daphne/channels in INSTALLED_APPS while the image ships neither.
     f = resolve(BUILD_CANASTA=1)
     assert (f.canasta, f.needs_channels, f.realtime) == (True, True, True)
-    # It must NOT drag in the realtime tier's own apps: canasta has no chat by
-    # design (the game forbids player-to-player talk), no workflows, no weather.
-    assert (f.chat, f.weather) == (False, False)  # workflows is compulsory now
+    # It must NOT drag in the realtime tier's own app: canasta buys no weather
+    # (workflows is compulsory now, and chat is no feature since 2026-10-09).
+    assert f.weather is False
     assert resolve().canasta is False
 
 
@@ -352,7 +386,7 @@ def test_build_studio_is_still_honoured_as_the_old_tier_name():
     new = resolve(BUILD_REALTIME=1)
     assert old == new
     assert old.realtime is True
-    assert (old.chat, old.workflows, old.weather) == (True, True, True)
+    assert (old.workflows, old.weather) == (True, True)
 
 
 def test_features_studio_property_still_answers():
@@ -365,7 +399,7 @@ def test_features_studio_property_still_answers():
 def test_an_explicit_build_realtime_wins_over_the_old_name():
     # Both present and disagreeing: the new name still decides the TIER INPUT —
     # but the compulsory job runner means the effective layer is on either way.
-    # What the flag still controls is what the tier defaulted: chat/weather.
-    assert resolve(BUILD_STUDIO=1, BUILD_REALTIME=0).chat is False
-    assert resolve(BUILD_STUDIO=0, BUILD_REALTIME=1).chat is True
+    # What the flag still controls is what the tier defaulted: weather.
+    assert resolve(BUILD_STUDIO=1, BUILD_REALTIME=0).weather is False
+    assert resolve(BUILD_STUDIO=0, BUILD_REALTIME=1).weather is True
     assert resolve(BUILD_STUDIO=1, BUILD_REALTIME=0).realtime is True  # compulsory
