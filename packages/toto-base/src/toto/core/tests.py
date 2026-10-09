@@ -141,35 +141,51 @@ class ManualFeatureGateTests(TestCase):
         # 2026-10-06. A host that only stores files promises no Play, no Edit
         # and no picture viewer, whatever is installed; a button it names in
         # VAULT_STORAGE_ONLY_OPENS comes back into the chapter only where an
-        # app draws one (a host's editor behind the vault's buttons).
+        # app draws one. Until 2026-10-09 the app asked about here was the
+        # editor zenobia served (`morion:open`); that host removed it, so a
+        # player stands in for any app that draws a button.
+        from unittest import mock
         from django.apps import apps
         from django.test import RequestFactory
         from django.contrib.auth.models import AnonymousUser
-        from toto.core.views import _manual_features, _mounted
+        from toto.core import views
+        from toto.core.views import _manual_features
 
         if not apps.is_installed("toto.vault"):
             self.skipTest("this host has no vault")
         request = RequestFactory().get("/core/manual/")
         request.user = AnonymousUser()
-        editor = _mounted("morion:open")
         with self.settings(VAULT_STORAGE_ONLY=False):
             features = _manual_features(request)
             self.assertTrue(features["image_viewer"])
             self.assertTrue(features["vault_play"] and features["vault_edit"])
-            self.assertEqual(features["morion"], editor)
         with self.settings(VAULT_STORAGE_ONLY=True, VAULT_STORAGE_ONLY_OPENS=()):
             features = _manual_features(request)
             self.assertFalse(features["image_viewer"])
             self.assertFalse(features["vault_play"] or features["vault_edit"])
-            self.assertFalse(features["morion"])
             self.assertFalse(features["viewers"])
         with self.settings(VAULT_STORAGE_ONLY=True, VAULT_STORAGE_ONLY_OPENS=("play",)):
             features = _manual_features(request)
             self.assertFalse(features["image_viewer"])
             self.assertTrue(features["vault_play"])
             self.assertFalse(features["vault_edit"])
-            self.assertEqual(features["morion"], editor)
-            self.assertGreaterEqual(features["viewers"], editor)
+
+        # The buttons are promised where the host names one AND an app draws
+        # one. The app is put into the map here (a player), so the answer
+        # does not depend on what this host installs.
+        real_map = views._manual_feature_map
+
+        def with_a_player(request, apps):
+            return {**real_map(request, apps), "vod": True}
+
+        with mock.patch.object(views, "_manual_feature_map", with_a_player):
+            with self.settings(VAULT_STORAGE_ONLY=True,
+                               VAULT_STORAGE_ONLY_OPENS=("play",)):
+                self.assertTrue(_manual_features(request)["viewers"])
+            with self.settings(VAULT_STORAGE_ONLY=True, VAULT_STORAGE_ONLY_OPENS=()):
+                self.assertFalse(_manual_features(request)["viewers"])
+            with self.settings(VAULT_STORAGE_ONLY=False):
+                self.assertTrue(_manual_features(request)["viewers"])
 
         Platform.objects.get_or_create(site_name="Test", defaults={
             "author": "t", "publication_year": 2026, "active": True})
@@ -179,7 +195,6 @@ class ManualFeatureGateTests(TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertContains(response, "nothing is opened or edited in the browser")
             self.assertNotContains(response, "images open in a preview window")
-            self.assertNotContains(response, "the editor that runs in your browser")
         with self.settings(VAULT_STORAGE_ONLY=False):
             response = self.client.get(reverse("core:manual"), HTTP_ACCEPT_LANGUAGE="en")
             self.assertContains(response, "images open in a preview window")

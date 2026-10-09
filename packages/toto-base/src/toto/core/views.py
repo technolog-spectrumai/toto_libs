@@ -354,14 +354,13 @@ def _manual_features(request):
         play, edit = storage_only_opens("play"), storage_only_opens("edit")
         pictures = not storage_only()
     features.update(vault_play=play, vault_edit=edit, image_viewer=pictures)
-    features["morion"] = features["morion"] and (play or edit)
     # Whether the storage chapter may promise Play / Edit buttons at all: a
     # host that only stores files installs none of these (or names neither
     # button), and its chapter says a file comes back as a download instead.
     features["viewers"] = (play or edit) and any(
         features[name] for name in (
             "vod", "markdown", "memo", "notarius", "editor", "sketch",
-            "notebooks", "latex", "morion"))
+            "notebooks", "latex"))
     return features
 
 
@@ -398,11 +397,12 @@ def _manual_feature_map(request, apps):
         # of the antivirus desk, which a host without the app does not sell.
         "antivirus": _mounted("antivirus:index"),
         "sketch": apps.is_installed("toto.sketch"),
-        # The editor a host serves behind the vault's own Play and Edit
-        # buttons (zenobia's toto.morion, 2026-10-06): a host app's page, so
-        # mounted — a host without it documents no button it does not draw.
-        # `_manual_features` adds the vault's switch to it.
-        "morion": _mounted("morion:open"),
+        # No "morion" since 2026-10-09 (zenobia's stage 74). The key stood
+        # for the editor one host served behind the vault's own Play and Edit
+        # buttons (zenobia's toto.morion, from 2026-10-06), and asked whether
+        # `morion:open` was mounted. That host removed the editor and no other
+        # had it: no flag and no mounted route brings the line back, and it
+        # left the two manual bodies with this key.
         # Mounted, not installed — and the distinction is load-bearing here.
         # toto.workflows is the platform's job runner: the antivirus queues
         # scans through it and weather loads through it, so a host may not
