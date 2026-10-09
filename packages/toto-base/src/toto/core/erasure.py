@@ -23,8 +23,6 @@ notice promises it is gone:
 * **their membership application and its references** — keyed by address,
   not by account (``socialhub.applications.of_member``); the audit chain
   keeps the admission;
-* **their name and picture on the forum messages they sent**, and the
-  pictures and voice recordings themselves (``toto.forum.erasure``);
 * **their username in the name of their personal bucket and of their prepaid
   ledger account**, both kept for other people's sake
   (``vault.models.forget_personal_buckets``,
@@ -34,6 +32,12 @@ notice promises it is gone:
 renames and deletes that need the account still there and remembers the
 rest; :func:`after_delete` removes the addresses; :func:`after_commit`
 deletes the bytes once the erase is in — row first, bytes second.
+
+NOTHING HERE IS THE FORUM'S since 2026-10-09: the forum is parked and its
+branch of the erase left with it (toto-chat's ``toto/forum/PARKED.md`` names
+the commit). An erase now leaves a forum's rows as they are — a leaver's
+name on their messages, and their pictures — so that app must not be
+installed again without this branch.
 """
 
 from __future__ import annotations
@@ -56,7 +60,6 @@ class Leftovers:
     addresses: list = field(default_factory=list)
     #: Their own point's ``geography.Address`` ids (toto.geography).
     geography_addresses: list = field(default_factory=list)
-    forum_blobs: list = field(default_factory=list)
     counts: dict = field(default_factory=dict)
 
 
@@ -130,17 +133,6 @@ def report(user) -> tuple[dict, list[str]]:
         beyond["applications"] = applications.count()
         beyond["references"] = ReferenceRequest.objects.filter(
             application__in=applications).count()
-    if apps.is_installed("toto.forum"):
-        from toto.forum.erasure import sent_by
-
-        sent = sent_by(user)
-        beyond["forum_messages"] = sent["messages"]
-        beyond["forum_attachments"] = sent["attachments"]
-        if sent["messages"]:
-            notes.append(f"{sent['messages']} forum message(s) they sent keep their text, "
-                         "signed “Former member”, without their name or picture; the "
-                         f"{sent['attachments']} picture(s) and voice recording(s) among "
-                         "them go, bytes and all.")
     if apps.is_installed("toto.vault"):
         from toto.vault.models import personal_buckets_of
 
@@ -182,10 +174,6 @@ def gather(user) -> Leftovers:
 
         left.counts["applications"] = of_member(user).delete()[1].get(
             "socialhub.MembershipApplication", 0)
-    if apps.is_installed("toto.forum"):
-        from toto.forum.erasure import forget_sender
-
-        left.forum_blobs = forget_sender(user)
     if apps.is_installed("toto.vault"):
         from toto.vault.models import forget_personal_buckets
 
@@ -230,7 +218,3 @@ def after_commit(left: Leftovers) -> None:
         except Exception:  # noqa: BLE001
             log.warning("erase: could not drop version bodies %s", sorted(left.version_blobs),
                         exc_info=True)
-    if left.forum_blobs:
-        from toto.forum.erasure import delete_blobs
-
-        delete_blobs(left.forum_blobs)

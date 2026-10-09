@@ -3,10 +3,14 @@
 
 The privacy notice's survey found what an erased member left behind: the
 avatar's file, the bodies of their files' saved versions, their home pin,
-their admitted application and its references, their name and picture on
-forum messages, the pictures and voice recordings they sent, and their
-username in the names of their personal bucket and prepaid ledger account.
-Each test here fails on the erase as it was.
+their admitted application and its references, and their username in the
+names of their personal bucket and prepaid ledger account. Each test here
+fails on the erase as it was.
+
+It found their name and pictures in the forum too. That branch of the erase
+and its tests left on 2026-10-09 with the parked forum (toto-chat's
+``toto/forum/PARKED.md`` names the commit that brings both back);
+``NoForumBranchTests`` holds that nothing of it is left behind.
 
     manage.py test toto.core.tests_erase_leftovers
 """
@@ -30,7 +34,6 @@ from toto.socialhub.models import Community, MembershipApplication, ReferenceReq
 
 User = get_user_model()
 MEDIA = tempfile.mkdtemp(prefix="erase-leftovers-")
-VAULT = dict(FORUM_VAULT_PASSWORD="forum-test-vault-passphrase")
 
 
 def erase(case, username):
@@ -40,7 +43,7 @@ def erase(case, username):
     return json.loads(out.getvalue().strip().splitlines()[-1])
 
 
-@override_settings(MEDIA_ROOT=MEDIA, **VAULT)
+@override_settings(MEDIA_ROOT=MEDIA)
 class LeftoverCase(TestCase):
     def setUp(self):
         self.root = User.objects.create_superuser("root", "root@example.com", "pw")
@@ -139,79 +142,36 @@ class NameTests(LeftoverCase):
         self.assertEqual((account.name, account.user_id), (GONE_HOLDER_NAME, None))
 
 
-@unittest.skipUnless(apps.is_installed("toto.forum"), "no forum on this host")
-class ForumTests(LeftoverCase):
-    """The simplified forum (2026-10-07): one sealed channel per community,
-    pictures kept by the vault."""
+class NoForumBranchTests(LeftoverCase):
+    """The forum is parked (2026-10-09): the erase, its report and the copy
+    of a member's data know nothing of one, whatever a host installs."""
 
-    PNG = b"\x89PNG\r\n\x1a\n" + b"picture-bytes"
-
-    def setUp(self):
-        from django.core.cache import cache
-
-        from toto.forum import channels, keys
-
-        super().setUp()
-        keys.forget()
-        keys.vault.clear_cache()
-        cache.clear()
-        self.addCleanup(keys.forget)
-        self.addCleanup(keys.vault.clear_cache)
-        self.channel = channels.ensure_channel(Community.objects.create(name="Guild"))
-
-    def send(self, user, *, text="", picture=None):
-        import uuid
-
-        from toto.forum import posting
-
-        message, _replay = posting.post_message(
-            user, self.channel, text=text, op=str(uuid.uuid4()),
-            image=(picture, "image/png") if picture else None)
-        return message
-
-    def test_the_text_stays_without_the_name_and_the_pictures_go(self):
-        from toto.forum import keys, sealing
-        from toto.forum.models import ForumMessage
-        from toto.vault.models import VaultFile
-
-        self.send(self.ada, text="Hello all")
-        bare = self.send(self.ada, picture=self.PNG)
-        captioned = self.send(self.ada, text="Look at this", picture=self.PNG)
-        paths = [row.attachment.file.path for row in (bare, captioned)]
-        for path in paths:
-            self.assertTrue(os.path.exists(path), path)
+    def test_the_report_counts_nothing_of_a_forum(self):
         report = plan(self.ada)
-        self.assertEqual((report["beyond"]["forum_messages"],
-                          report["beyond"]["forum_attachments"]), (3, 2))
-        erase(self, "ada")
-        # The bare picture is a tombstone; the captioned one keeps its
-        # caption as an ordinary message; the bytes are gone from the vault.
-        self.assertIsNotNone(ForumMessage.objects.get(pk=bare.pk).removed_at)
-        rows = ForumMessage.objects.filter(removed_at__isnull=True)
-        self.assertEqual(rows.count(), 2)
-        key = keys.open_key(self.channel)
-        texts = set()
-        for row in rows:
-            self.assertEqual((row.sender_id, row.sender_name, row.kind),
-                             (None, "Former member", "text"))
-            self.assertIsNone(row.attachment_id)
-            texts.add(sealing.open_text(key, row.body_sealed, channel_id=row.channel_id,
-                                        message_id=row.id))
-        self.assertEqual(texts, {"Hello all", "Look at this"})
-        self.assertEqual(VaultFile.all_objects.filter(bucket=self.channel.bucket).count(), 0)
-        for path in paths:
-            self.assertFalse(os.path.exists(path), path)
+        self.assertTrue(report["beyond"], "no count at all: the check is vacuous")
+        self.assertFalse([key for key in report["beyond"] if "forum" in key])
+        self.assertFalse([note for note in report["notes"] if "forum" in note.lower()])
 
-    def test_other_peoples_messages_are_untouched(self):
-        from toto.forum.models import ForumMessage
+    def test_the_erase_keeps_no_forum_step(self):
+        import inspect
+        from dataclasses import fields
 
-        theirs = self.send(self.bob, text="Bob here", picture=self.PNG)
-        self.send(self.ada, text="Ada here")
-        erase(self, "ada")
-        row = ForumMessage.objects.get(pk=theirs.pk)
-        self.assertEqual(row.sender_id, self.bob.pk)
-        self.assertIsNotNone(row.attachment_id)
-        self.assertNotEqual(row.sender_name, "Former member")
+        from toto.core import erasure
+
+        names = [f.name for f in fields(erasure.Leftovers)]
+        self.assertIn("avatar", names)
+        self.assertFalse([name for name in names if "forum" in name])
+        self.assertNotIn("toto.forum", inspect.getsource(erasure))
+
+    def test_the_data_copy_has_no_forum_table(self):
+        import inspect
+
+        from toto.core import personal_data
+
+        names = [table.name for table in personal_data.tables_for(self.ada)]
+        self.assertIn("account", names)
+        self.assertFalse([name for name in names if "forum" in name])
+        self.assertNotIn("toto.forum", inspect.getsource(personal_data))
 
 
 class ReportTests(LeftoverCase):

@@ -17,18 +17,15 @@ What "as if they never existed" can and cannot mean here, said plainly:
   from the account (Django's own collector decides; the report lists it).
   Since 2026-10-01 (37c.21, ``toto.core.erasure``) also what the cascade
   left: the profile picture's file, the bodies of their files' saved
-  versions, their home pin and the addresses only they used, their
-  membership application with its references, and the pictures and voice
-  recordings they sent in the forum.
+  versions, their home pin and the addresses only they used, and their
+  membership application with its references.
 * **Kept, detached:** rows other people still need keep their place and lose
   the pointer — a workflow they started, a ledger account (its history is
-  the platform's money trail), a forum room they opened, and — since
-  2026-09-30 — a vault bucket they owned (it may hold other people's files,
-  gateways and clearance keeping; it stays, without an owner, until a
-  superuser gives it one or deletes it in Storage → Management). Their forum
-  messages keep their text, signed "Former member" without their name or
-  picture, and their personal bucket and prepaid ledger account are renamed
-  "… — deleted account": none keeps their username.
+  the platform's money trail), and — since 2026-09-30 — a vault bucket they
+  owned (it may hold other people's files, gateways and clearance keeping;
+  it stays, without an owner, until a superuser gives it one or deletes it
+  in Storage → Management). Their personal bucket and prepaid ledger account
+  are renamed "… — deleted account": neither keeps their username.
 * **Kept, as written:** the audit chain. Each record is sealed by a hash
   over its content and its predecessor's; removing or rewriting one breaks
   verification of every record after it. Their sign-ins, their changes and

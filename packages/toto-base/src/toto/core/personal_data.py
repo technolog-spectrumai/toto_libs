@@ -11,11 +11,16 @@ zip carries: the account and the profile (the avatar too), the communities
 and clearances held, membership applications made with their address, the
 privacy notices accepted, the subscription and its charges, the ledger
 accounts and a statement of every entry on them, events owned, organised and
-invited to (with the answer given), availability, forum messages they sent,
-their sign-in sessions, the audit records whose actor is them and, apart,
-those about them that somebody else wrote (without that side's address and
-browser — :func:`_about_you`) — and their own vault files, the bytes in
-folders by bucket, with an index.
+invited to (with the answer given), availability, their sign-in sessions,
+the audit records whose actor is them and, apart, those about them that
+somebody else wrote (without that side's address and browser —
+:func:`_about_you`) — and their own vault files, the bytes in folders by
+bucket, with an index.
+
+No forum table since 2026-10-09: the forum is parked and its table of the
+member's own messages left with it (toto-chat's ``toto/forum/PARKED.md``
+names the commit). That app must not be installed again without it, or a
+member's copy would leave their messages out.
 
 What never goes in: a password hash, a key, a token, a session key, a sealed
 or encrypted body, a verification code (:data:`SECRET_FIELD`). Vault files
@@ -251,43 +256,6 @@ def _events(person) -> list[Table]:
     ]
 
 
-def _forum(user) -> list[Table]:
-    """The member's own forum messages, with their text: it is kept sealed
-    under each channel's key and is opened here for its author's copy. A
-    channel whose key cannot be opened gives its rows without the text."""
-    if not apps.is_installed("toto.forum"):
-        return []
-    from toto.forum import keys, sealing
-    from toto.forum.models import ForumMessage
-
-    opened: dict = {}
-
-    def text_of(message):
-        if message.body_sealed is None:
-            return ""
-        if message.channel_id not in opened:
-            try:
-                opened[message.channel_id] = keys.open_key(message.channel)
-            except keys.ChannelKeyUnavailable:
-                opened[message.channel_id] = None
-        key = opened[message.channel_id]
-        if key is None:
-            return ""
-        try:
-            return sealing.open_text(key, message.body_sealed, channel_id=message.channel_id,
-                                     message_id=message.id)
-        except sealing.SealBroken:
-            return ""
-
-    rows = (ForumMessage.objects.filter(sender=user, removed_at__isnull=True)
-            .select_related("channel__community").order_by("created_at"))
-    return [Table(
-        "forum_messages", _("The messages you sent in your communities' forum channels."),
-        [{"id": str(m.id), "community": m.channel.community.name,
-          "created_at": plain(m.created_at), "kind": m.kind, "text": text_of(m),
-          "image": bool(m.attachment_id)} for m in rows])]
-
-
 def _sessions(user) -> list[Table]:
     from toto.core.models import UserSession
 
@@ -363,8 +331,7 @@ def tables_for(user) -> list[Table]:
     """Every table of ``user``'s export, the plugins' last."""
     person = _person(user)
     tables = [*_account(user, person), *_socialhub(user, person), *_subscriptions(user),
-              *_ledger(user), *_events(person), *_forum(user), *_sessions(user),
-              *_audit(user, person)]
+              *_ledger(user), *_events(person), *_sessions(user), *_audit(user, person)]
     for plugin in plugins():
         tables.extend(plugin.tables(user))
     return tables
