@@ -134,14 +134,15 @@ Out of the six pinned packages zenobia installs these library apps today
 
 That is 23 library apps with monitoring on. zenobia also carries apps of its
 own as a PEP 420 portion of the same namespace (`zenobia/zenobia/toto/`; its
-settings install `toto.yamabiko`, `toto.operator`, `toto.morion` and, under
-`BUILD_BOURSE`, `toto.bourse`). Those are not part of this library and are
-not described here.
+settings install `toto.yamabiko`, `toto.operator` and, under `BUILD_BOURSE`,
+`toto.bourse`). Those are not part of this library and are not described
+here.
 
 What zenobia is today shapes what is exercised in this library. It is a file
-storage platform: it sets `VAULT_STORAGE_ONLY = True` (and, since 2026-10-06,
-names Play, Edit and New in `VAULT_STORAGE_ONLY_OPENS` for the one editor it
-serves, an app of its own), runs as the identity provider only, installs no
+storage platform: it sets `VAULT_STORAGE_ONLY = True` and names nothing in
+`VAULT_STORAGE_ONLY_OPENS` (from 2026-10-06 to 2026-10-09 it named Play, Edit
+and New there for one editor, Morion, an app of its own that it has
+removed), runs as the identity provider only, installs no
 map, no forum, none of this library's editors, no antivirus and no PDF
 renderer, and opens no WebSocket and holds no request open. The apps and
 packages it does not install are still built, version-bumped and checked by
@@ -1040,6 +1041,15 @@ say which member is offered its button: `is_open_to(user)`, true by default,
 is asked by the listing for the member it is built for, so a plugin whose
 page a plan sells shows no button to a member whose plan lacks it.
 
+Since 2026-10-09 nothing uses these three. No host names a word in
+`VAULT_STORAGE_ONLY_OPENS`, and no plugin, in this library or on a host,
+overrides `is_open_to` or names an ending in `new_file_extensions`: zenobia,
+the one host that did, removed the editor they were built for. They stay as
+the vault's contract with any host app, held by `toto.vault.tests_hardening`
+and `toto.vault.tests_new_file`, which register plugins of their own. A
+storage-only host that names nothing draws no Play, no Edit and no New, and
+`POST /vault/file/new/` answers 404.
+
 ### 6.6 Clearances
 
 A `socialhub.Clearance` is named after what it opens, for example
@@ -1556,6 +1566,19 @@ scoped change, so a larger piece of work is a run of small commits.
 About 310 commits landed between 2026-10-01 and 2026-10-06. The list below
 names the ones that changed what a host sees, by day, with their short
 hashes.
+
+**2026-10-09 — Morion leaves zenobia: the manual's line for it goes**
+
+Morion, the editor zenobia served behind the vault's Play, Edit and New
+buttons from 2026-10-06, was an app of that host and never of this library.
+The host removed it. What this library held for it by name is deleted; the
+plug-in points it used are kept and have no user (6.5).
+
+- `99e475aa` core: the manual's Morion line in both languages, the `morion` key of its
+  feature map (`_mounted("morion:open")`) and the test's use of both.
+- `978d9c87` vault: the notes that named zenobia's editor say what holds now.
+- Kept: `VAULT_STORAGE_ONLY_OPENS`, `is_open_to`, the one-field New
+  (`toto.vault.new_file`) and the `geojson` file type.
 
 **2026-10-09 — the forum parked, and its hooks out of the other apps**
 
