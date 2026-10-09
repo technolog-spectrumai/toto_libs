@@ -18,7 +18,7 @@ clearance is named after what it **opens**, never after who holds it.
 | | Community | Clearance |
 |---|---|---|
 | Examples | `devs`, `testers` | `internal`, `confidential`, `onboarding` |
-| Carries | plan offers, discounts, privileges, news, a page, a forum | who may **read** — through the GROUPS it keeps (vault buckets, map domains; never single items), by `clearance_access` — and how fast its holders' **mana refills** (`regen_security`/`regen_compute`/`regen_storage`, per hour; blank = the pool's own) |
+| Carries | plan offers, discounts, privileges, news, a page | who may **read** — through the GROUPS it keeps (vault buckets, map domains; never single items), by `clearance_access` — and how fast its holders' **mana refills** (`regen_security`/`regen_compute`/`regen_storage`, per hour; blank = the pool's own) |
 | Membership | `Person.communities` | `Person.clearances` |
 | Joined | by application, accepted by a referee | given by a superuser: the Clearances tab, the admin, the console |
 | Shown to members | yes — directory, profiles, API (and the map, on a host that installs `toto.locations`) | never; it has no page |
@@ -413,10 +413,12 @@ socialhub's prefix.
   that they may complain to the President of UODO or go to court, whatever
   the note says (2026-10-01, 37c.21). What the erase takes beyond the
   cascade — the avatar's file, version bodies, on a host with the map the
-  home pin, the application and its references (`applications.of_member`), the forum's
-  pictures and recordings — and the names it takes off what stays is
-  `toto.core.erasure`; the dialog says it, and that the forum texts stay,
-  signed "Former member", and backups until they age out. Django's admin
+  home pin, the application and its references (`applications.of_member`)
+  — and the names it takes off what stays is
+  `toto.core.erasure`; the dialog says it, and that backups stay until they
+  age out. (Until 2026-10-09 both also spoke of the forum's pictures and of
+  its texts signed "Former member": the forum is parked and those hooks are
+  gone.) Django's admin
   deletes no account (`toto.core.admin.ConsoleErasedUserAdmin`): it points
   to the console command instead. Nor does it make one (2026-10-01,
   37c.32): no add page and no button, and the user list names the host's

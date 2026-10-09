@@ -279,9 +279,10 @@ Two patterns recur because of this rule. The first is the lazy façade:
 `toto.quota.levies` let apps in `toto-base` reach prices, time grants and
 levies in `toto-economy` without importing it, and answer "free" or "nothing"
 where it is absent. The second is the slug instead of a foreign key:
-`socialhub.CommunityForum` and `company.CompanyForum` keep the *slug* of a
-forum room, resolved when the page is drawn, because a foreign key string to
-`forum.ForumChannel` would be a hard edge into `toto-chat`.
+`company.CompanyForum` keeps the *slug* of a forum room, resolved when the
+page is drawn, because a foreign key string to `forum.ForumChannel` would be
+a hard edge into `toto-chat`. (`socialhub.CommunityForum` did the same until
+2026-10-07, and geography's `forum_thread` until 2026-10-09.)
 
 ---
 
@@ -338,7 +339,7 @@ helpers, the nightly housekeeping task, and the console commands
 `init_platform`, `ingress_all`, `export_user`, `erase_user` and
 `unlock_signin`. Its `AppConfig.ready()` runs the suite's version check, so
 a mixed installation does not boot. It guards on many optional apps,
-including `toto.audit`, `toto.socialhub`, `toto.vault`, `toto.forum`,
+including `toto.audit`, `toto.socialhub`, `toto.vault`,
 `toto.locations`, `toto.assets` and `toto.subscriptions`. zenobia installs
 it.
 
@@ -349,7 +350,7 @@ It mounts `health/`, `apps/`, `login/`, `logout/`, `me/` and `me/mesh/`
 (`fetch_metadata.py`), bearer tokens that are session keys (`tokens.py`) and
 `TokenAuthMiddleware` for WebSockets. Its models `ApiConnector` (abstract)
 and `Connector` describe outbound integrations whose secrets are kept in
-gervazy. It uses `toto.audit`, `toto.forum` and `toto.vault` when present.
+gervazy. It uses `toto.audit` and `toto.vault` when present.
 zenobia installs it.
 
 **`toto.audit`** is a hash-chained, append-only record of what happened.
@@ -397,16 +398,17 @@ installs it.
 member's own account lives. Models: `Community` (whose seat is text),
 `Clearance`, `CommunityPrivilege`, community news (`CommunityNewsTopic`,
 `CommunityNewsPost`), `MembershipApplication` and `ReferenceRequest`,
-`CommunityForum`, `PendingEmailChange`, `PrivacyNotice` and
+`PendingEmailChange`, `PrivacyNotice` and
 `PrivacyAcceptance`, `DataExport` and `ErasureRequest`. Namespace
 `socialhub` serves communities, profiles in tabs, applications, references
 and the privacy notice; `account_urls.py` serves the account doors
 (password, e-mail change, key store, data export, erasure request,
 sessions). It defines the clearance rule and three plugin registries
 (section 6), and its task `build_data_export` builds *Download my data*. It
-uses `toto.audit`, `toto.assets`, `toto.forum`, `toto.gervazy` and
-`toto.subscriptions` when present; the forum is named on a community page
-only where `toto.forum` is installed. zenobia installs it.
+uses `toto.audit`, `toto.assets`, `toto.gervazy` and
+`toto.subscriptions` when present. (Until 2026-10-09 it also named the forum
+on a community page, in "Your data" and in the erase dialog.) zenobia
+installs it.
 
 Since 2026-10-06 a community page has tabs for plugin sections: a
 `CommunityPlugin` that names a `tab` is drawn on a tab of its own
@@ -665,18 +667,21 @@ are not in this tree. zenobia installs it when `BUILD_MONIT=1`.
 
 ### 5.6 toto-chat
 
-The forum. It depends on `toto-base` and has one app.
+The forum. It depends on `toto-base` and has one app, which is **parked**.
 
-**`toto.forum`** is group chat in rooms with permanent, searchable
-history. Models include `ForumChannel`, `ForumMember`, `ForumMessage`, room
-polls (`RoomPoll`, `PollChoice`, `PollBallot`), `ForumRetentionPolicy`,
-`ForumCleanupRun` and `ForumRoomKey`. It has HTML pages and a JSON API
-under namespace `forum` and a Django Channels consumer in
-`forum/routing.py`; it is the reason a host needs a channel layer. Its
-tasks `forum_cleanup` and `forum_expire` enforce retention and expiry, and
-its cleanup is a dispatch-only workflow node. zenobia parked it on
-2026-10-04 together with its whole WebSocket layer, and unpinned the
-package.
+**`toto.forum`** is one channel for each `socialhub.Community`, with polls
+and a linear thread of replies under each poll. Models include
+`ForumChannel`, `ChannelPoll`, `PollChoice`, `PollBallot`, `ForumMessage`,
+`ForumPollAudit`, `ForumSettings` and `ForumCleanupRun`. Titles, texts and
+pictures are sealed at rest under one key per channel, wrapped by
+`FORUM_VAULT_PASSWORD`; pictures are sealed vault files. Its pages ask a feed
+door by short polling: no socket and no channel layer (the forum of rooms
+over WebSockets that this section used to describe left on 2026-10-04 and is
+in git history). zenobia installed it from 2026-10-07 to 2026-10-09 and
+unpinned the package again. Since then no host installs it and **none may as
+it stands**: the hooks it needs in the other apps (the account erase and the
+data copy above all) were deleted from them. `PARKED.md` in its folder lists
+those commits and what a database that ran it keeps.
 
 ### 5.7 toto-geo
 
@@ -876,7 +881,9 @@ when its value is the string `"1"`.
 What the resolver does beyond reading flags:
 
 - **Tiers are defaults.** `BUILD_REALTIME` (still read under its old name
-  `BUILD_STUDIO`) is the default for `BUILD_CHAT` and `BUILD_WEATHER`;
+  `BUILD_STUDIO`) is the default for `BUILD_WEATHER` (and was for
+  `BUILD_CHAT`, which is not read since 2026-10-09: the forum is parked and
+  no switch installs it);
   `BUILD_NEO4J` is the default for `BUILD_GRAPH`; `BUILD_MEDIA` is the
   default for `BUILD_VOD`. An explicit per-feature flag always wins.
 - **`workflows` is always true.** `BUILD_WORKFLOWS` is no longer read.
@@ -934,7 +941,6 @@ one of them is on. The entries:
 | `gitea` | `toto.gitea.tasks.gitea_sample_storage` | 03:30 daily |
 | `vault_trash` | `toto.vault.tasks.purge_expired_trash` | 03:50 daily |
 | `tax` | `toto.tax.tasks.run_daily_levy` | 04:15 daily |
-| `forum_cleanup` | `toto.forum.tasks.forum_cleanup`, and `forum_expire` every 5 minutes | 04:40 daily |
 | `ocr_cleanup` | `toto.ocr.tasks.ocr_cleanup` | 04:50 daily |
 | `subscriptions` | `toto.subscriptions.tasks.run_billing` | 05:05 daily |
 | `faucets` | `toto.assets.tasks.run_faucet_hour` | minute 7 of every hour |
@@ -996,7 +1002,7 @@ themselves in their base class's `registry`.
 | Registry | Base class | Discovered from | Asked by |
 |---|---|---|---|
 | Profile sections | `socialhub.plugins.profile_plugins.ProfilePlugin` | `<app>/plugins/profile_plugins.py` | The profile page; each plugin names the tab it sits on. |
-| Community sections | `socialhub.plugins.community_plugins.CommunityPlugin` | `<app>/plugins/community_plugins.py` | The community page. The forum section shows only where `toto.forum` is installed. |
+| Community sections | `socialhub.plugins.community_plugins.CommunityPlugin` | `<app>/plugins/community_plugins.py` | The community page. |
 | Clearance targets | `socialhub.plugins.clearance_plugins.ClearanceTargetPlugin` | `<app>/plugins/clearance_plugins.py` | The *New clearance* dialog: which kinds of group a clearance can keep. `toto.vault` registers buckets, `toto.locations` map domains. |
 | Vault play | `vault.plugins.VaultPlayPlugin` | `<app>/plugins/vault_play_plugins.py` | The vault's Play button, by file type. |
 | Vault editors | `vault.plugins.VaultEditorPlugin` | `<app>/plugins/vault_editor_plugins.py` | The vault's Edit button and "New file" menu, by file type. |
@@ -1155,8 +1161,8 @@ record the app has already checked and claimed, so nobody may start it by
 hand with input of their own choosing: the run-creation door refuses any
 workflow that contains one, for staff too. Listing and viewing those
 workflows and their runs is unchanged. The dispatch-only tasks today are
-`antivirus_scan`, `vault_zip_files`, `vault_refresh_remote_bucket`,
-`vault_transfer_files` and `forum_cleanup`.
+`antivirus_scan`, `vault_zip_files`, `vault_refresh_remote_bucket` and
+`vault_transfer_files`. (The parked forum's `forum_cleanup` was a fifth.)
 
 An app that runs its heavy work this way follows one shape: a `dispatch`
 module that checks who may ask and creates the run, a `runner`, a
@@ -1253,9 +1259,10 @@ output, from Django's deletion collector, is the report of what will go,
 and it closes the member's request in the same transaction.
 `toto/core/erasure.py` removes what a row cascade leaves behind: the avatar
 file, the bodies of saved file versions, home pins and unused addresses on
-a host with the map, membership applications keyed by address, the
-member's name and pictures on forum messages, and their username in the
-names of their personal bucket and prepaid ledger account.
+a host with the map, membership applications keyed by address, and their
+username in the names of their personal bucket and prepaid ledger account.
+(Until 2026-10-09 also the member's name and pictures on forum messages: that
+hook left with the parked forum, which must not be installed without it.)
 
 **Housekeeping.** `toto.core.tasks.nightly_housekeeping` runs Django's
 `clearsessions`, deletes sign-in rows whose session is gone and, where
@@ -1455,7 +1462,8 @@ own sake, fresh databases are assumed, and an app is reset to a fresh
 kept because they do something a generated initial cannot: `api`'s
 `0002_data_mesh_group` (a seed row; `init_data` makes the same row),
 `ledger`'s `0002_immutability_triggers`, `kanban`'s
-`0002_seed_consensus_policies` and `forum`'s `0002_cleanup_run_workflow`.
+`0002_seed_consensus_policies`. (`forum` had `0002_cleanup_run_workflow`
+until its migrations were rewritten on 2026-10-07.)
 `locations` has `0004_homes_places_seats` in both of its graphs.
 
 On 2026-10-06 the ordinary steps that had gathered since the reset were
@@ -1547,6 +1555,32 @@ scoped change, so a larger piece of work is a run of small commits.
 About 310 commits landed between 2026-10-01 and 2026-10-06. The list below
 names the ones that changed what a host sees, by day, with their short
 hashes.
+
+**2026-10-09 — the forum parked, and its hooks out of the other apps**
+
+The forum of 2026-10-07 (one channel per community, sealed at rest, polls and
+poll threads, plain HTTP) is parked on zenobia, the one host that installed
+it, and this time the hooks other apps carried for it are deleted, not left
+dormant. `packages/toto-chat/src/toto/forum/PARKED.md` lists each with its
+commit and says why the app must not be installed as it stands.
+
+- `fd5eacad` The library's copy of the forum is level with zenobia's (the
+  poll threads).
+- `ec338df3` socialhub: the community page's Forum panel and the forum
+  sentences of "Your data" and the erase dialog.
+- `bbe3356c` core: the forum branches of the account erase and of the data
+  copy.
+- `e5e401e3` core: the manual's Polls and Chat chapters.
+- `2c52920d` subscriptions: the `forum` entitlement and its plan line.
+- `738a9a88` The `forum_cleanup` beat entry and task module.
+- `ca256ae6` The `chat` build switch: `BUILD_CHAT` is not read, `/api/apps/`
+  has no `chat` key, and `needs_channels` no longer follows the realtime
+  tier.
+- `70424475` mana: the two `forum.*_kb` prices and colours.
+- `9c740c11` monit: the forum cleanup's job source.
+- `01673c7f` geography: the `forum_thread` column (out of its first
+  migration, in place) and `discussion()`.
+- `4e10bc1a` The forum's `PARKED.md`.
 
 **2026-10-06 — migrations folded again**
 
