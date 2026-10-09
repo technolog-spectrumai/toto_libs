@@ -150,15 +150,6 @@ SOURCES: tuple = (
               # every failed push showed on this page with a blank reason —
               # the one column somebody opens the Jobs page to read.
               error_fields=("stderr",)),
-    JobSource(key="forum_cleanup", label=_("Forum cleanups"),
-              app_label="toto.forum", model="forum.ForumCleanupRun",
-              # NO created_at ON THAT MODEL, and the default named one — so
-              # every read of this source raised FieldError, was swallowed by
-              # the caller's guard and logged as "could not read
-              # forum.ForumCleanupRun". The Jobs page has therefore never shown
-              # a forum cleanup. `workflow_node` above already uses "" for the
-              # same reason; this is the same fix, found in a test's log noise.
-              created_field=""),
     # HEAVY JOBS IN A COMPUTE CAPSULE. A declarative row and nothing else:
     # `app_label` is a string for `apps.is_installed` and `model` a string for
     # `apps.get_model`, so toto-ops gains no import edge on toto-anastasia and

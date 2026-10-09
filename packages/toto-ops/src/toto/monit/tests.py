@@ -199,8 +199,9 @@ class JobSourceTests(SimpleTestCase):
     strings so this one never imports it. Nothing checks that promise at import
     time — `_rows_for` swallows a FieldError and logs it — so a source whose
     field names are wrong shows an empty table forever and nobody notices. That
-    is exactly how `forum_cleanup` came to be broken. These tests are the
-    check.
+    is exactly how the forum's cleanup source came to be broken: it named a
+    `created_at` its model never had. (That source left on 2026-10-09 with
+    the parked forum; the lesson stays.) These tests are the check.
     """
 
     def test_every_source_is_declared_once(self):
@@ -216,7 +217,8 @@ class JobSourceTests(SimpleTestCase):
         self.assertEqual(source.app_label, "toto.anastasia")
 
     def test_no_source_names_a_field_its_model_does_not_have(self):
-        """THE TEST THAT WOULD HAVE CAUGHT `forum_cleanup`.
+        """THE TEST THAT WOULD HAVE CAUGHT THE FORUM'S CLEANUP SOURCE (which
+        is gone since 2026-10-09, with the parked forum).
 
         Installed sources only — a source for an app this host does not build
         is not a broken promise, it is an absent one.
