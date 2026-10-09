@@ -91,10 +91,11 @@ def storage_only_opens(kind: str) -> bool:
     it (:mod:`toto.vault.new_file`, stage 62b).
 
     Always, on a host that is not storage only. On one that is, only where
-    ``VAULT_STORAGE_ONLY_OPENS`` names the word (2026-10-06: zenobia names
-    all three, for the one editor it serves). The default, ``()``, opens
-    none, which is ``VAULT_STORAGE_ONLY`` as it was. The setting opens
-    nothing else: the old New menu with its type pills, the empty-file doors
+    ``VAULT_STORAGE_ONLY_OPENS`` names the word. zenobia named all three
+    from 2026-10-06 to 2026-10-09, for the one editor it served; no host
+    names any since. The default, ``()``, opens none, which is
+    ``VAULT_STORAGE_ONLY`` as it was. The setting opens nothing else: the
+    old New menu with its type pills, the empty-file doors
     (``file/create/``, the API's create without content) and the image
     viewer keep reading :func:`storage_only`."""
     if not storage_only():
@@ -682,7 +683,9 @@ class VaultFile(models.Model):
         # A map drawing (2026-10-06): `.geojson`, a GeoJSON FeatureCollection.
         # Text, and JSON: whatever takes 'json' as text takes this too. It has
         # a type of its own so a host's map editor can be the one that plays
-        # and edits it (zenobia: Morion); without one it is a plain file.
+        # and edits it; without one it is a plain file. That is every host
+        # since 2026-10-09: zenobia's Morion, the one such editor, opened
+        # these from 2026-10-06 until that host removed it.
         ('geojson', 'GeoJSON'),
         ('yaml', 'YAML'),
         ('xml', 'XML'),
