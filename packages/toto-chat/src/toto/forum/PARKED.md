@@ -200,11 +200,18 @@ database that is kept:
   now, so a run of it fails with "Unknown predefined task" and removes
   nothing.
 - **The secret and what it opens.** `FORUM_VAULT_PASSWORD` stays in a
-  server's env file until the next fresh deploy; the host's deploy mints
-  none any more. In the database stay the `forum-channels` strongbox with
+  server's env file only until the host's next deploy of any kind: the
+  deploy mints none any more and rewrites the file whole, so the line is
+  dropped. Copy the value out first if that content may ever matter. In the
+  database stay the `forum-channels` strongbox with
   its data key (gervazy) and the inactive account `forum-vault` that owns
   it. Without the secret none of the sealed rows or images can ever be read
   again: there is no escrow.
+- **Two columns of geography**, `geography_communitypin.forum_thread` and
+  `geography_communityzone.forum_thread`, on a database made between
+  2026-10-06 and 2026-10-09 (NOT NULL, with no database default). Geography
+  no longer writes them, so saving a new community pin or zone fails there
+  until both are dropped (`ALTER TABLE ... DROP COLUMN forum_thread`).
 - **Two rows of the rate card**, the prices of `forum.text_kb` and
   `forum.image_kb` that `ingress_mana` seeded, and in the ledger the charges
   made for posts. The ledger is sealed and stays as written.
@@ -216,7 +223,8 @@ database itself refuses to delete what one of them points at: an account
 that posted, voted or opened a poll (`erase_user` fails for it), a community
 that has a channel, a file or a bucket a row names. A kept database is not
 fit to run without the app until the forum's rows are out of the way: take
-a dump, then drop the forum's tables, child before parent.
+a dump, then drop the forum's tables, child before parent, and those two
+columns.
 
 ## Bringing it back
 

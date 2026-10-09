@@ -891,8 +891,9 @@ What the resolver does beyond reading flags:
   `BUILD_FORMICA` turns `graph` on. `BUILD_STEVEN` turns `sabbia` on.
 - **Refusals.** `BUILD_WEATHER` or `BUILD_TRAVELS` with `BUILD_GEO=0`
   raises `FeatureConfigError`.
-- **Derived values.** `needs_channels` is true when `chat`, `sabbia` or
-  `canasta` is on. `realtime` says whether the image needs the Celery
+- **Derived values.** `needs_channels` is true when `sabbia` or
+  `canasta` is on (until 2026-10-09 also `chat`, the parked forum's switch,
+  which the realtime tier turned on by default). `realtime` says whether the image needs the Celery
   layer. `tesseract`, `ffmpeg`, `texlive` and `weasyprint` say which native
   layers the image needs. `notify` is deliberately not part of
   `needs_channels`.
