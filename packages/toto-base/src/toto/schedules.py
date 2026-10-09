@@ -21,9 +21,6 @@ def beat_schedule(
     gitea=False,
     gitea_hour=3,
     gitea_minute=30,
-    forum_cleanup=False,
-    forum_cleanup_hour=4,
-    forum_cleanup_minute=40,
     ocr_cleanup=False,
     ocr_cleanup_hour=4,
     ocr_cleanup_minute=50,
@@ -146,25 +143,16 @@ def beat_schedule(
             "schedule": crontab(hour=gitea_hour, minute=gitea_minute),
         }
 
-    if forum_cleanup:
-        from celery.schedules import crontab
+    # No "forum-cleanup" since 2026-10-09, and no `forum_cleanup` argument:
+    # the forum is parked (toto-chat's toto/forum/PARKED.md), so nothing
+    # schedules its nightly cleanup, which ran at 04:40. A host that still
+    # passes the argument gets a TypeError when its settings load, not a
+    # schedule that quietly lacks the entry.
 
-        # Nightly, and harmless until somebody turns retention on: the task
-        # reads ForumSettings.retention_enabled first and returns without
-        # touching a row while it is False. Scheduling it from the start means the dial
-        # is the ONE switch — there is no second, deploy-time flag that can
-        # disagree with what the page says.
-        schedule["forum-cleanup"] = {
-            "task": "toto.forum.tasks.forum_cleanup",
-            "schedule": crontab(hour=forum_cleanup_hour,
-                                minute=forum_cleanup_minute),
-        }
-        # No "forum-expire" since 2026-10-07: there are no temporary rooms.
-
-    # 04:50, behind the tax levy and the forum sweep — three long jobs on one
-    # queue should not start together. This removes finished runs and the
-    # SCANS THEMSELVES: an OCR upload can be 64 MB, so a host that never swept
-    # would fill its disk with books nobody is reading any more.
+    # 04:50, behind the tax levy — long jobs on one queue should not start
+    # together. This removes finished runs and the SCANS THEMSELVES: an OCR
+    # upload can be 64 MB, so a host that never swept would fill its disk
+    # with books nobody is reading any more.
     if ocr_cleanup:
         from celery.schedules import crontab
 

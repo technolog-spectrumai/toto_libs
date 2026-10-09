@@ -176,11 +176,13 @@ TASK_MODULES = [
     # weather bug exactly — enqueued nightly, answered with KeyError, and the
     # forge's storage never sampled.
     "toto.gitea",
-    # toto.forum's forum_cleanup. A beat entry without a line here is the
-    # exact shape of the weather bug recorded below: enqueued on schedule,
-    # answered with KeyError, silent for months. toto.tests_schedules asserts
-    # the pairing, so forgetting it fails loudly rather than quietly.
-    "toto.forum",
+    # No "toto.forum" since 2026-10-09: the forum is parked (toto-chat's
+    # toto/forum/PARKED.md) and its beat entry left toto/schedules.py in the
+    # same edit, so nothing enqueues `forum_cleanup` and the worker need not
+    # find it. An entry for a parked app is a promise nothing keeps (the
+    # toto.ireneo note below); reviving the app is the moment to add it back,
+    # with the beat entry — toto.tests_schedules asserts the pairing.
+
     # toto.ocr — added in 1.51, when reading a scan became one Celery task PER
     # PAGE plus a nightly sweep. Before that this app genuinely had no tasks and
     # was correctly absent; the README said so, and that sentence is now wrong.

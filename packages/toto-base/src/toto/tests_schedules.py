@@ -73,3 +73,17 @@ class BeatScheduleTests(SimpleTestCase):
                     parts[2], "tasks",
                     f"{task} is not in <app>.tasks, which is the only module "
                     f"autodiscover_tasks imports.")
+
+    def test_nothing_of_the_parked_forum_is_scheduled(self):
+        """The forum is parked since 2026-10-09: its nightly cleanup left the
+        schedule and its label left the worker's list in one edit, so the
+        pairing above holds with neither half."""
+        import inspect
+
+        from toto import schedules
+        from toto.registry import TASK_MODULES
+
+        parameters = inspect.signature(schedules.beat_schedule).parameters
+        self.assertFalse([name for name in parameters if "forum" in name])
+        self.assertFalse([task for task in every_scheduled_task() if "forum" in task])
+        self.assertNotIn("toto.forum", TASK_MODULES)
