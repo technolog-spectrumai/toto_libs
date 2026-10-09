@@ -298,9 +298,13 @@ _DEFAULTS = (
     # subscription is for. Identity, files, communities, events, the wallet
     # and this page stay free — lapsing is still safe, and a lapsed member can
     # still see what they owe and pay it.
-    Entitlement("forum", "Forum", order=28,
-                icon="fa-solid fa-comments",
-                description="One channel for each of your communities, with pictures and polls."),
+    #
+    # NO "forum" since 2026-10-09: the forum is parked (toto-chat's
+    # toto/forum/PARKED.md), and its entry left here and the library's
+    # plans.yaml in the same edit — a plan naming an undeclared key stops the
+    # build (E001). Mind what its absence means: an app the catalogue does not
+    # know is free by default, so a forum installed again without this entry
+    # would be open on every plan. Order 28 is left vacant.
     Entitlement("bourse", "Exchange", order=29,
                 icon="fa-solid fa-chart-line",
                 description="Trade one asset for another."),

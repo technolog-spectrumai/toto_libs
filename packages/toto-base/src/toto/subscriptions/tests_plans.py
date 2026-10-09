@@ -322,16 +322,38 @@ class TheFreeTierIsWhatItClaimsTests(SimpleTestCase):
             free, expected,
             "the free tier changed — if that is deliberate, say so here")
 
-    def test_chat_and_the_exchange_are_not_free(self):
-        """Moved out on 2026-09-06. Asserted separately from the set above so
-        the failure names the feature rather than a diff of ten keys."""
+    def test_the_exchange_is_not_free(self):
+        """Moved out on 2026-09-06, with chat. Asserted separately from the
+        set above so the failure names the feature rather than a diff of ten
+        keys."""
         from toto.subscriptions.catalogue import registry
 
-        for key in ("forum", "bourse"):
-            with self.subTest(feature=key):
-                entitlement = registry.get(key)
-                self.assertIsNotNone(entitlement)
-                self.assertFalse(entitlement.free)
+        entitlement = registry.get("bourse")
+        self.assertIsNotNone(entitlement)
+        self.assertFalse(entitlement.free)
+
+    def test_the_forum_is_not_declared_and_no_plan_names_it(self):
+        """Parked on 2026-10-09: its entry left the catalogue and its line
+        the plan file in one edit, because a plan naming an undeclared key
+        stops the build (E001). The library's own ladder is read too, not
+        only the one this host points at."""
+        from django.test import override_settings
+
+        from toto.subscriptions import plans
+        from toto.subscriptions.catalogue import registry
+
+        self.assertIsNone(registry.get("forum"))
+        self.assertNotIn("forum", {e.feature_key for e in registry.all()})
+
+        def named():
+            return {plan.key for plan in plans.all_plans() if "forum" in plan.features}
+
+        self.assertEqual(named(), set())
+        self.addCleanup(plans.reload)
+        with override_settings(SUBSCRIPTION_PLANS_FILE=str(plans.DEFAULT_PLANS_FILE)):
+            plans.reload()
+            self.assertTrue(plans.all_plans(), "no plan at all: the check is vacuous")
+            self.assertEqual(named(), set())
 
     def test_the_operator_tools_are_declared_and_sold(self):
         """`monit` was undeclared before 2026-09-06, which made it free BY

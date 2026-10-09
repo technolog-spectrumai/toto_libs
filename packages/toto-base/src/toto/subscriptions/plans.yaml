@@ -24,7 +24,7 @@ plans:
       Everything you need to be here: your profile, your files, your
       communities, your calendar and your wallet — and this page, so you can
       always see what you owe and pay it. Costs nothing, and never expires.
-      Chat and the exchange are Professional.
+      The exchange is Professional.
     features: []
 
   - key: standard
@@ -47,8 +47,9 @@ plans:
     #
     # polls is absent from every plan, and from the catalogue. Polls became a
     # Forum feature, the gate reads the entitlement off the URL namespace, and
-    # forum is free — so the row was selling something nobody could be charged
-    # for.
+    # the forum was free then — so the row was selling something nobody could
+    # be charged for. The forum itself is in no plan since 2026-10-09: it is
+    # parked (see `forum` under Professional below).
     features:
       - editor
       - kanban
@@ -95,6 +96,10 @@ plans:
     # (toto/gitea/entitlements.py), so it is a known key only on a host that
     # installs the forge — and a host that does writes its own ladder. Listed
     # here, it would stop every host without the forge (E001).
+    #
+    # `forum` left on 2026-10-09 with the parked forum (toto-chat's
+    # toto/forum/PARKED.md): its catalogue entry went in the same edit, so no
+    # plan may name it — here or in a host's own ladder (E001).
     features:
       - cyprian
       - memo
@@ -104,7 +109,6 @@ plans:
       - kanban
       - locations
       - places
-      - forum
       - bourse
       - aralia
       - mandragora
