@@ -91,6 +91,15 @@
   <script defer src="{% static 'oya/functional_zones.js' %}"></script>
   {% block start_script %}{% endblock %}
   {% if tailwind_css %}
+  {% comment %} The palette for scripts (2026-10-12): pages that colour a canvas
+     (ravioli's Cytoscape graphs, the review flow, the history) read it from
+     tailwind.config, which only the Play CDN script defines. With the built
+     stylesheet that global was missing and the Knowledge Graph page said
+     "tailwind is not defined"; the same colours are handed over here, read
+     only, under the same name. {% endcomment %}
+  <script id="oya-palette">
+    window.tailwind = window.tailwind || {config: {theme: {extend: {colors: {{ theme.theme.colors|default:"{}"|safe }}}}}};
+  </script>
   <link rel="stylesheet" href="{% static 'oya/tailwind.css' %}" />
   <style id="oya-theme">
     :root { --oya-font-sans: '{{ font.name }}', {{ font.style_family|default:"sans-serif" }}; }
