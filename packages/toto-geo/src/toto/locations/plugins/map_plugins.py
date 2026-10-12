@@ -3,6 +3,11 @@ class LocationMapPlugin:
     Registry for map item providers. External apps register callables that
     return lists of location-dict items; toto.locations merges them into the
     map payload without importing from studio.*.
+
+    An item is the shape the map gives its own (``type``, ``name``,
+    ``detail``, ``note``, ``geometry``, ``detail_url``); a Point item may
+    also say ``"marker": "pin"`` (2026-10-12) to be drawn as a generic pin
+    rather than a dot, its ``type`` in the pin's tooltip.
     """
 
     _providers = []

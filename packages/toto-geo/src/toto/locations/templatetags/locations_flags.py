@@ -19,3 +19,13 @@ def may_manage_domains(user) -> bool:
     from toto.locations.access import may_manage_domains as rule
 
     return rule(user)
+
+
+@register.simple_tag(takes_context=True)
+def location_tabs(context):
+    """``{% location_tabs as tabs %}``: the tabs other apps add to the bar
+    (plugins.tab_plugins, 2026-10-12), those this viewer sees."""
+    from toto.locations.plugins.tab_plugins import LocationTabPlugin
+
+    request = context.get("request")
+    return LocationTabPlugin.tabs(request) if request is not None else []

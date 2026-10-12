@@ -171,6 +171,7 @@
 
               <option value="">{% trans "Manual coordinates" %}</option>
 
+              {% if point_groups %}<optgroup label="{% trans "Saved addresses" %}">{% endif %}
               {% for address in address_options %}
                 <option
                   value="{{ address.id }}"
@@ -179,6 +180,16 @@
                   {% if address.selected_start %}selected{% endif %}>
                   {{ address.label }}
                 </option>
+              {% endfor %}
+              {% if point_groups %}</optgroup>{% endif %}
+              {# Points other apps keep (plugins.point_plugins, 2026-10-12), by group. #}
+              {% for group in point_groups %}
+                <optgroup label="{{ group.label }}">
+                  {% for point in group.options %}
+                    <option value="{{ point.id }}" data-lat="{{ point.lat }}" data-lng="{{ point.lng }}"
+                            {% if point.selected_start %}selected{% endif %}>{{ point.label }}</option>
+                  {% endfor %}
+                </optgroup>
               {% endfor %}
             </select>
           </label>
@@ -260,6 +271,7 @@
 
               <option value="">{% trans "Manual coordinates" %}</option>
 
+              {% if point_groups %}<optgroup label="{% trans "Saved addresses" %}">{% endif %}
               {% for address in address_options %}
                 <option
                   value="{{ address.id }}"
@@ -268,6 +280,16 @@
                   {% if address.selected_end %}selected{% endif %}>
                   {{ address.label }}
                 </option>
+              {% endfor %}
+              {% if point_groups %}</optgroup>{% endif %}
+              {# Points other apps keep (plugins.point_plugins, 2026-10-12), by group. #}
+              {% for group in point_groups %}
+                <optgroup label="{{ group.label }}">
+                  {% for point in group.options %}
+                    <option value="{{ point.id }}" data-lat="{{ point.lat }}" data-lng="{{ point.lng }}"
+                            {% if point.selected_end %}selected{% endif %}>{{ point.label }}</option>
+                  {% endfor %}
+                </optgroup>
               {% endfor %}
             </select>
           </label>

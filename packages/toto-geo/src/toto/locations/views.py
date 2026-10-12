@@ -706,6 +706,16 @@ def selected_address_coordinates(address_id, label, user=None):
     if str(address_id).startswith("temporary:"):
         return None
 
+    # A point another app keeps (plugins.point_plugins, 2026-10-12): its own
+    # source says where it is and whether this viewer may see it.
+    from .plugins.point_plugins import LocationPointPlugin
+
+    if LocationPointPlugin.is_point(address_id):
+        point = LocationPointPlugin.resolve(user, address_id)
+        if point is None:
+            raise ValueError(f"{label} point is not available.")
+        return point["lng"], point["lat"]
+
     try:
         address = readable_addresses(user).get(pk=address_id, geometry__isnull=False)
     except (Address.DoesNotExist, ValueError):
@@ -911,6 +921,24 @@ def route_search(request):
         for address in addresses
     ]
     address_labels = {option["id"]: option["label"] for option in address_options}
+    # The points other apps keep (plugins.point_plugins), grouped, beside
+    # the saved addresses; their labels name a route's ends too.
+    from .plugins.point_plugins import LocationPointPlugin
+
+    point_groups = LocationPointPlugin.options(request.user)
+    for group in point_groups:
+        for option in group["options"]:
+            option["selected_start"] = option["id"] == form["start_address"]
+            option["selected_end"] = option["id"] == form["end_address"]
+            address_labels[option["id"]] = option["label"]
+    for side in ("start", "end"):
+        # A picked point the list no longer carries (moved out of view) is
+        # still named by its source.
+        value = form[f"{side}_address"]
+        if value and value not in address_labels and LocationPointPlugin.is_point(value):
+            point = LocationPointPlugin.resolve(request.user, value)
+            if point is not None:
+                address_labels[value] = point["label"]
 
     selected_mode = next(
         (mode for mode in ROUTING_MODE_OPTIONS if mode["value"] == form["mode"]),
@@ -926,6 +954,7 @@ def route_search(request):
     context = {
         "form": form,
         "address_options": address_options,
+        "point_groups": point_groups,
         "mode_options": ROUTING_MODE_OPTIONS,
         "selected_mode": selected_mode,
         "route": route,

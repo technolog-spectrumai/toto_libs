@@ -206,8 +206,10 @@ class MapLayersApiView(MeshGatedApiView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class RouteSearchApiView(CorsApiView):
-    """A route between two points, each given as coordinates or, since
-    2026-09-28, as a typed place (``start_query`` / ``end_query``).
+    """A route between two points, each given as coordinates, since
+    2026-09-28 as a typed place (``start_query`` / ``end_query``), and since
+    2026-10-12 as a point another app keeps (``start_point`` / ``end_point``,
+    plugins.point_plugins).
 
     A typed place is a charged place lookup (toto.locations.geocoding): both
     are checked against the quota and the purse before the first is asked,
@@ -256,7 +258,18 @@ class RouteSearchApiView(CorsApiView):
         try:
             # The coordinates first: a malformed end is refused before the
             # other end's lookup is charged.
+            from toto.locations.plugins.point_plugins import LocationPointPlugin
+
             for side, label in ROUTE_ENDS:
+                # A point another app keeps (``<side>_point``, "prefix:key";
+                # plugins.point_plugins, 2026-10-12), resolved by its source.
+                point_id = data.get(f"{side}_point")
+                if point_id and not names[side]:
+                    point = LocationPointPlugin.resolve(request.user, point_id)
+                    if point is None:
+                        raise ValueError(f"{label} point is not available.")
+                    ends[side] = {"lat": point["lat"], "lng": point["lng"], "label": point["label"]}
+                    continue
                 if not names[side]:
                     ends[side] = {
                         "lat": parse_coordinate(data.get(f"{side}_lat"), f"{label} latitude", -90, 90),

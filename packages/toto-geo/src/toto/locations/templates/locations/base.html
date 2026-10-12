@@ -89,6 +89,15 @@
       <i class="fa-solid fa-cloud-sun fa-fw"></i> {% trans "Weather" %}
     </a>
     {% endif %}
+    {# Tabs other apps add (plugins.tab_plugins, 2026-10-12): a host's page that belongs to the map. #}
+    {% location_tabs as host_tabs %}
+    {% for tab in host_tabs %}
+    <a href="{{ tab.url }}" data-testid="locations-tab-{{ tab.key }}"
+       :class="{% if tab.active %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
+       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
+      <i class="fa-solid {{ tab.icon }} fa-fw"></i> {{ tab.label }}
+    </a>
+    {% endfor %}
   </nav>
 
   {% block locations_content %}{% endblock %}

@@ -1187,6 +1187,17 @@
     return themeColor(palette[type], fallback);
   }
 
+  function pinIcon(type, isDark) {
+    const color = isDark ? themeColor("accent-dark", "#4f5fa1") : themeColor("accent-light", "#2f3d63");
+    return L.divIcon({
+      className: "toto-map-pin",
+      html: `<i class="fa-solid fa-location-pin" style="font-size: 26px; color: ${color}; filter: drop-shadow(0 1px 1px rgba(0,0,0,.45));"></i>`,
+      iconSize: [20, 26],
+      iconAnchor: [10, 26],
+      popupAnchor: [0, -24]
+    });
+  }
+
   function featureStyle(type, isDark) {
     const color = locationTypeColor(type, isDark);
 
@@ -1530,6 +1541,13 @@
       const layer = L.geoJSON(originalGeom, {
         style: featureStyle(type, isDark),
         pointToLayer: function (feature, latlng) {
+          // An item another app adds may ask for a pin (``marker: "pin"``,
+          // plugins.map_plugins, 2026-10-12): one generic marker whatever
+          // its type, the type said by its tooltip and its popup.
+          if (item.marker === "pin") {
+            return L.marker(latlng, { icon: pinIcon(type, isDark), title: `${type}: ${name}` })
+              .bindTooltip(escapeHtml(type), { direction: "top", offset: [0, -24] });
+          }
           return L.circleMarker(latlng, featureStyle(type, isDark));
         }
       }).addTo(map);
@@ -1538,7 +1556,8 @@
         displayGeom: originalGeom,
         zoomGeom: zoomGeom,
         layer: layer,
-        type: type
+        type: type,
+        marker: item.marker || ""
       };
 
       featureLayers.push({
@@ -1587,7 +1606,7 @@
     const bounds = layer.getBounds();
 
     if (bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [36, 36], maxZoom: ["Address", "Visit"].includes(item.type) ? 16 : 13 });
+      map.fitBounds(bounds, { padding: [36, 36], maxZoom: (["Address", "Visit"].includes(item.type) || item.marker === "pin") ? 16 : 13 });
       item.layer.openPopup();
     }
   }
