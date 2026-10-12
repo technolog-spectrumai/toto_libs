@@ -190,7 +190,7 @@ class DoorTests(CompaniesTestCase):
 
     def test_a_community_that_stops_being_a_company_keeps_its_rows_behind_404(self):
         CompanyRecord.objects.create(community=self.acme, id_number="42")
-        self.acme.org_type = "guild"
+        self.acme.org_type = "other"
         self.acme.save()
         self.assert_refused(self.head_user, 404)
         self.assert_refused(self.root_user, 404)

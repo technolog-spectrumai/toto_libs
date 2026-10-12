@@ -1,13 +1,117 @@
 {% load i18n plugin_tags %}
 {% get_current_language as LANGUAGE_CODE %}
 {% get_available_languages as LANGUAGES %}
+{% comment %}THE BAR FOLDS BELOW lg (1024 px; 2026-10-12, the owner: "we need
+   all app bar icons to be able to fold in mobile version into hamburger
+   menu dropdown. what will stay will be: logo, name, mana, and hamburger on
+   the right"). It folded below sm (640 px) until then, so a phone held
+   sideways and a tablet got the whole bar, which needs about 950 px with
+   four links. What stays on the bar at every width: the brand (logo and
+   name; the name is cut with an ellipsis before it pushes anything off), the
+   PINNED widgets (HeaderPlugin.pinned: the mana chip) and the menu button,
+   FIRST, on the left (2026-10-12, second word: "hamburger on the left", "a
+   dropdown, similar to what morion has"). What folds: every other widget, wrapped HERE in a
+   group this template hides (no widget names a breakpoint of its own), and
+   the links, the theme switch and the language select. The menu holds all of
+   it, each widget in its "mobile" variant. One breakpoint, written three
+   times below (the folding widgets, the links, and the button with its
+   menu): change them together. Escape and a click outside the dropdown close the
+   menu; it starts hidden by its own style, so it does not flash open before
+   Alpine runs.{% endcomment %}
 <header x-data="{ navOpen: false }"
+        @keydown.escape.window="navOpen = false"
         :class="darkMode
           ? `bg-appbar-bg-dark text-appbar-text-dark {{ platform.theme.header.dark }}`
           : `bg-appbar-bg-light text-appbar-text-light {{ platform.theme.header.light }}`"
         class="w-full px-4 sm:px-6 py-3">
 
-  <div class="max-w-6xl mx-auto flex justify-between items-center">
+  <div class="max-w-6xl mx-auto flex items-center gap-3">
+    <!-- The menu button, FIRST in the row, so on the left, and its dropdown
+         under it (as Morion's app menu: a panel hung from the button, a
+         backdrop that catches a click outside). Only while the bar is folded. -->
+    <div id="header-menu-box" class="relative shrink-0 lg:hidden">
+      <button type="button" id="header-menu-toggle" @click="navOpen = !navOpen"
+              title="{% trans 'Menu' %}" aria-label="{% trans 'Menu' %}" aria-haspopup="true"
+              aria-controls="header-menu" aria-expanded="false" :aria-expanded="navOpen ? 'true' : 'false'"
+              class="relative z-50 flex items-center gap-2 px-3 py-1 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
+              :class="darkMode
+                ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
+                : 'bg-accent-light text-primary-bg-light border-accent-1'">
+        <i class="fas fa-bars text-base" aria-hidden="true"></i>
+      </button>
+      <div x-show="navOpen" style="display: none" class="fixed inset-0 z-40" @click="navOpen = false"></div>
+      <div id="header-menu" x-show="navOpen" x-transition style="display: none"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+           class="absolute left-0 top-full z-50 mt-2 w-64 max-w-[85vw] max-h-[80vh] overflow-y-auto rounded-xl border p-2 shadow-xl">
+    <div class="flex flex-col gap-1">
+      {% render_header_plugins variant="mobile" %}
+
+      {% if user.is_authenticated %}
+      <!-- Profile (Mobile), as above -->
+      {% url 'account:home' as profile_url %}
+      {% if profile_url %}
+      <a href="{{ profile_url }}" id="header-profile-mobile"
+         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+        <i class="fas fa-user text-base" aria-hidden="true"></i>
+        <span>{% trans "Profile" %}</span>
+      </a>
+      {% endif %}
+      <!-- Logout Button (Mobile): a POST form, as above -->
+      <form action="{% url 'sso:logout' %}" method="post" class="m-0">
+        {% csrf_token %}
+        <button type="submit"
+                class="w-full flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90 cursor-pointer">
+          <i class="fas fa-sign-out-alt text-base"></i>
+          <span>{% trans "Logout" %}</span>
+        </button>
+      </form>
+      {% else %}
+      <!-- Login Button (Mobile) -->
+      <a href="{% url 'sso:login' %}"
+         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+        <i class="fas fa-sign-in-alt text-base"></i>
+        <span>{% trans "Login" %}</span>
+      </a>
+      {% endif %}
+
+      <!-- Dynamic Nav Items (Mobile) -->
+      {% for item in header_nav_items %}
+      <a href="{{ item.url }}"
+         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+        {% if item.icon %}
+          <i class="{{ item.icon }} text-base"></i>
+        {% endif %}
+        <span>{{ item.label }}</span>
+      </a>
+      {% endfor %}
+
+      <!-- Theme Toggle (Mobile): the icon alone, named as above -->
+      <button type="button" @click="darkMode = !darkMode; localStorage.setItem('darkMode', darkMode); location.reload();"
+              data-to-dark="{% trans 'Switch to dark mode' %}"
+              data-to-light="{% trans 'Switch to light mode' %}"
+              title="{% trans 'Switch to dark mode' %}" aria-label="{% trans 'Switch to dark mode' %}"
+              :title="darkMode ? $el.dataset.toLight : $el.dataset.toDark"
+              :aria-label="darkMode ? $el.dataset.toLight : $el.dataset.toDark"
+              class="site-theme-toggle-button flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+        <i :class="darkMode ? 'fas fa-moon' : 'fas fa-sun'" class="text-base" aria-hidden="true"></i>
+      </button>
+
+      <!-- Language Switcher (Mobile): ENG or PL, as above -->
+      <form action="{% url 'set_language' %}" method="post" title="{% trans 'Language' %}">
+        {% csrf_token %}
+        <input name="next" type="hidden" value="{{ request.get_full_path }}">
+        <select name="language" onchange="this.form.submit()"
+                aria-label="{% trans 'Language' %}" title="{% trans 'Language' %}"
+                class="flex items-center px-2 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90 bg-transparent border border-current cursor-pointer w-full">
+          {% for lang in LANGUAGES %}
+          <option value="{{ lang.0 }}" title="{{ lang.1 }}" {% if lang.0 == LANGUAGE_CODE %}selected{% endif %}>{% if lang.0 == "en" %}ENG{% else %}{{ lang.0|upper }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </form>
+    </div>
+      </div>
+    </div>
+
     <!-- Site Name -->
     <!-- The brand is the way home. Logo AND name inside the link: with no
          logo the bar used to offer no route back to the welcome page at
@@ -30,24 +134,28 @@
          variable substitutions inside it, so an illustrative example here is
          a live tag. Two were, briefly, while this note was being written. -->
     <a href="{% url 'core:welcome' %}"
-       class="flex items-center gap-3 hover:opacity-80 transition" id="brand-link">
+       class="flex min-w-0 mr-auto items-center gap-3 hover:opacity-80 transition" id="brand-link">
         {% if brand.logo %}
-          <img src="{{ brand.logo }}" alt="" class="h-8 w-auto"
+          <img src="{{ brand.logo }}" alt="" class="h-8 w-auto shrink-0"
                onerror="this.style.display='none'">
         {% endif %}
-      <h1 class="text-2xl font-bold tracking-tight">
+      <h1 class="truncate text-2xl font-bold tracking-tight">
         {% firstof brand.name platform.site_name %}
       </h1>
     </a>
 
-    <!-- Header plugins. Between the brand and the nav, and NOT inside the
-         desktop group below: that group is hidden on phones, and a widget
-         that must be seen on every page (the mana chip) cannot live behind
-         a hamburger. The auto margin pulls it up against the nav. -->
-    <div class="ml-auto mr-3 flex min-w-0 items-center gap-2">{% render_header_plugins %}</div>
+    <!-- Header widgets, in two groups. The pinned ones stay at every width:
+         a widget that must be seen on every page (the mana chip) cannot live
+         behind the menu button. The others fold with the links. The brand's
+         auto margin pushes all of it to the right. A group with no widget is
+         not drawn, so it takes no gap. -->
+    {% render_header_plugins group="pinned" as pinned_widgets %}
+    {% if pinned_widgets %}<div id="header-pinned" class="flex shrink-0 items-center gap-2">{{ pinned_widgets }}</div>{% endif %}
+    {% render_header_plugins group="folding" as folding_widgets %}
+    {% if folding_widgets %}<div id="header-folding" class="hidden lg:flex shrink-0 items-center gap-2">{{ folding_widgets }}</div>{% endif %}
 
-    <!-- Desktop Nav -->
-    <div class="hidden sm:flex items-center gap-3">
+    <!-- The links of the wide bar -->
+    <div id="header-nav" class="hidden lg:flex shrink-0 items-center gap-3">
 
       {% if user.is_authenticated %}
       <!-- Profile (2026-10-02, stage 50): the member's own profile, whose
@@ -129,83 +237,6 @@
       </form>
     </div>
 
-    <!-- Mobile Menu Toggle -->
-    <button @click="navOpen = !navOpen"
-            class="sm:hidden flex items-center gap-2 px-3 py-1 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
-            :class="darkMode
-              ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
-              : 'bg-accent-light text-primary-bg-light border-accent-1'">
-      <i class="fas fa-bars text-base"></i>
-    </button>
   </div>
 
-  <!-- Mobile Dropdown -->
-  <div x-show="navOpen" x-transition class="sm:hidden mt-3 px-4">
-    <div class="flex flex-col gap-3">
-      {% render_header_plugins variant="mobile" %}
-
-      {% if user.is_authenticated %}
-      <!-- Profile (Mobile), as above -->
-      {% url 'account:home' as profile_url %}
-      {% if profile_url %}
-      <a href="{{ profile_url }}" id="header-profile-mobile"
-         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
-        <i class="fas fa-user text-base" aria-hidden="true"></i>
-        <span>{% trans "Profile" %}</span>
-      </a>
-      {% endif %}
-      <!-- Logout Button (Mobile): a POST form, as above -->
-      <form action="{% url 'sso:logout' %}" method="post" class="m-0">
-        {% csrf_token %}
-        <button type="submit"
-                class="w-full flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90 cursor-pointer">
-          <i class="fas fa-sign-out-alt text-base"></i>
-          <span>{% trans "Logout" %}</span>
-        </button>
-      </form>
-      {% else %}
-      <!-- Login Button (Mobile) -->
-      <a href="{% url 'sso:login' %}"
-         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
-        <i class="fas fa-sign-in-alt text-base"></i>
-        <span>{% trans "Login" %}</span>
-      </a>
-      {% endif %}
-
-      <!-- Dynamic Nav Items (Mobile) -->
-      {% for item in header_nav_items %}
-      <a href="{{ item.url }}"
-         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
-        {% if item.icon %}
-          <i class="{{ item.icon }} text-base"></i>
-        {% endif %}
-        <span>{{ item.label }}</span>
-      </a>
-      {% endfor %}
-
-      <!-- Theme Toggle (Mobile): the icon alone, named as above -->
-      <button type="button" @click="darkMode = !darkMode; localStorage.setItem('darkMode', darkMode); location.reload();"
-              data-to-dark="{% trans 'Switch to dark mode' %}"
-              data-to-light="{% trans 'Switch to light mode' %}"
-              title="{% trans 'Switch to dark mode' %}" aria-label="{% trans 'Switch to dark mode' %}"
-              :title="darkMode ? $el.dataset.toLight : $el.dataset.toDark"
-              :aria-label="darkMode ? $el.dataset.toLight : $el.dataset.toDark"
-              class="site-theme-toggle-button flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
-        <i :class="darkMode ? 'fas fa-moon' : 'fas fa-sun'" class="text-base" aria-hidden="true"></i>
-      </button>
-
-      <!-- Language Switcher (Mobile): ENG or PL, as above -->
-      <form action="{% url 'set_language' %}" method="post" title="{% trans 'Language' %}">
-        {% csrf_token %}
-        <input name="next" type="hidden" value="{{ request.get_full_path }}">
-        <select name="language" onchange="this.form.submit()"
-                aria-label="{% trans 'Language' %}" title="{% trans 'Language' %}"
-                class="flex items-center px-2 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90 bg-transparent border border-current cursor-pointer w-full">
-          {% for lang in LANGUAGES %}
-          <option value="{{ lang.0 }}" title="{{ lang.1 }}" {% if lang.0 == LANGUAGE_CODE %}selected{% endif %}>{% if lang.0 == "en" %}ENG{% else %}{{ lang.0|upper }}{% endif %}</option>
-          {% endfor %}
-        </select>
-      </form>
-    </div>
-  </div>
 </header>

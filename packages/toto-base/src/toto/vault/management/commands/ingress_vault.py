@@ -32,6 +32,7 @@ class Command(IngressCommand):
 
         self._ensure_default_structure(user)
         self._ensure_zip_workflow()
+        self._ensure_cipher_and_transfer_workflows()
 
         if not self.full:
             return
@@ -63,6 +64,28 @@ class Command(IngressCommand):
                 position_y=0,
             )
             self.stdout.write(self.style.SUCCESS("  + workflow: vault-zip"))
+
+    # ── Always-on: the workflows the vault's doors dispatch through ───────────
+
+    def _ensure_cipher_and_transfer_workflows(self):
+        """Encrypt, decrypt and bucket transfer (2026-10-10): each door makes
+        its workflow when first used, so the Workflows page of a fresh host
+        listed the zip alone. Seeded here so an operator sees what the vault
+        runs before anybody has run it."""
+        from django.apps import apps
+        if not apps.is_installed("toto.workflows"):
+            return
+        from toto.vault import workflow as vault_workflow
+        from toto.workflows.models import Workflow
+
+        for slug, ensure in ((vault_workflow.ENCRYPT_WORKFLOW_SLUG, vault_workflow.ensure_encrypt_workflow),
+                             (vault_workflow.DECRYPT_WORKFLOW_SLUG, vault_workflow.ensure_decrypt_workflow),
+                             (vault_workflow.TRANSFER_WORKFLOW_SLUG, vault_workflow.ensure_transfer_workflow),
+                             (vault_workflow.TRASH_WORKFLOW_SLUG, vault_workflow.ensure_trash_workflow)):
+            new = not Workflow.objects.filter(slug=slug).exists()
+            ensure()
+            if new:
+                self.stdout.write(self.style.SUCCESS(f"  + workflow: {slug}"))
 
     # ── Always-on: default bucket + directory tree ────────────────────────────
 

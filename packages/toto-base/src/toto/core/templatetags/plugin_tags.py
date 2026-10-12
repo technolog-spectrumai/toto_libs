@@ -13,11 +13,21 @@ def render_floating_plugins(context):
     return mark_safe("".join(r.html for r in rendered))
 
 
+#: ``group`` of ``render_header_plugins`` to ``HeaderPlugin.render_all(pinned=…)``.
+GROUPS = {"": None, "pinned": True, "folding": False}
+
+
 @register.simple_tag(takes_context=True)
-def render_header_plugins(context, variant="bar"):
-    """The app-bar widgets. ``variant`` is "bar" or "mobile" — the same
-    plugin renders twice, and the template decides how much of itself to
-    show at each width."""
+def render_header_plugins(context, variant="bar", group=""):
+    """The app-bar widgets. ``variant`` is "bar" or "mobile": the same
+    plugin renders twice, once on the bar and once in the menu the bar folds
+    into. ``group`` narrows it (2026-10-12): "pinned" is the widgets that
+    stay on the bar at every width (``HeaderPlugin.pinned``), "folding" the
+    rest, which the header hides below its breakpoint; "" is all of them.
+    Any other word is nothing, so a misspelt group shows as a missing widget
+    and not as every widget twice."""
     request = context.get("request")
-    rendered = HeaderPlugin.render_all(request=request, variant=variant)
+    if group not in GROUPS:
+        return ""
+    rendered = HeaderPlugin.render_all(request=request, variant=variant, pinned=GROUPS[group])
     return mark_safe("".join(r.html for r in rendered))

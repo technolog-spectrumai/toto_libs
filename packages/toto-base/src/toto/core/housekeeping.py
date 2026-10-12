@@ -5,7 +5,7 @@ a person only for as long as it needs it.
 
 Run by ``tasks.nightly_housekeeping`` on the beat (``toto.schedules``,
 ``housekeeping=True``; zenobia switches it on unless ``NIGHTLY_HOUSEKEEPING=0``).
-Three steps, each on its own — one that fails never stops the others:
+Four steps, each on its own — one that fails never stops the others:
 
 1. **Expired sessions** — Django's own ``clearsessions`` takes them out of
    the session store.
@@ -18,6 +18,11 @@ Three steps, each on its own — one that fails never stops the others:
    more than ``SOCIALHUB_EXPIRED_APPLICATION_DAYS`` (30) days ago, deleted
    with the never-used accounts they made — never one whose applicant got
    in, never an account that holds anything (``erase_user``'s walk proves it).
+
+4. **Lapsed invitations** — where the socialhub is installed,
+   ``toto.socialhub.invitations.prune``: invitations whose link expired more
+   than ``SOCIALHUB_EXPIRED_INVITATION_DAYS`` (30) days ago, used or not; the
+   rows only.
 
 **On the chain:** ONE ``PRIVACY.HOUSEKEEPING`` record per run, the system's,
 with counts and nothing else — no address, username or e-mail: a record of
@@ -86,6 +91,12 @@ def run(*, source: str = "beat") -> dict:
             "applications_kept": pruned.get("kept"),
             "expired_days": applications.expired_days(),
         })
+        # 4. Lapsed invitations (2026-10-10): the rows alone, whatever became
+        #    of them; the accounts made with them are members'.
+        from toto.socialhub import invitations
+
+        gone = _step("invitations", invitations.prune, failed) or {}
+        result["invitations_pruned"] = gone.get("pruned")
     result["failed"] = failed
     _record(result, source)
     return result

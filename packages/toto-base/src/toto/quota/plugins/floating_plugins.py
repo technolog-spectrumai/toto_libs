@@ -29,6 +29,12 @@ class GasPumpPlugin(FloatingPlugin):
         user = getattr(request, "user", None)
         if not getattr(user, "is_authenticated", False):
             return False
+        # A host may run without the pump (QUOTA_GAS_PUMP = False,
+        # 2026-10-12): no button in the corner and no "What this costs you".
+        from django.conf import settings
+
+        if not getattr(settings, "QUOTA_GAS_PUMP", True):
+            return False
         from toto.quota.rates import economy_hidden_from
 
         if economy_hidden_from(user):

@@ -1,0 +1,23 @@
+{% extends "discipline/base.html" %}
+{% load i18n %}
+
+{% block discipline_title %}{% trans "Auras" %}{% endblock %}
+{% block discipline_heading %}{% trans "Auras" %}{% endblock %}
+{% block discipline_lede %}
+<p class="text-sm opacity-70">
+  {% trans "An aura regenerates the mana of a community's members, with no sigil needed. A community has one aura or none; several communities may have the same one. Somebody in several communities gets the fastest; the communities above theirs count." %}
+</p>
+{% endblock %}
+
+{% block discipline_content %}
+<p class="text-sm" data-testid="auras-admin-note">
+  {% trans "This list is read here. Auras are made and changed, and given to communities, in the admin panel." %}
+  {% if admin_url %}<a href="{{ admin_url }}" class="font-semibold underline hover:opacity-80" data-testid="auras-admin-link">{% trans "Auras in the admin panel" %}</a>{% endif %}
+  {% if community_admin_url %}· <a href="{{ community_admin_url }}" class="font-semibold underline hover:opacity-80" data-testid="community-auras-admin-link">{% trans "The aura of each community" %}</a>{% endif %}
+</p>
+<div data-testid="auras-table">
+  {% trans "There are no auras yet." as nothing %}
+  {% include "oya/partials/table.html" with columns=columns rows=rows empty_text=nothing %}
+</div>
+{% include "oya/partials/paging_script.html" %}
+{% endblock %}

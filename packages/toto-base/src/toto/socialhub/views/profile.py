@@ -22,8 +22,12 @@ from toto.ui import PageProcessor
 def listed_communities(user):
     """The chips a profile shows ``user``: no clearance for a member (2026-09-28)
     — the directory's rule, so a chip never links to a page that 404s."""
+    # Where communities are private (2026-10-12) a chip is drawn only for a
+    # community whose members the viewer may read: the ones they are in.
+    from toto.socialhub.permissions import communities_shown_to
+
     return Prefetch("communities",
-                    queryset=Community.objects.all().order_by("name"),
+                    queryset=communities_shown_to(user, Community.objects.all()).order_by("name"),
                     to_attr="listed_communities")
 
 

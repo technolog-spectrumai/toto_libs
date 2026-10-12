@@ -374,6 +374,10 @@ class BillingTests(ServiceTestCase):
     def test_the_ledger_never_learns_what_was_looked_up(self):
         """With a price, the ledger's own charge_user is reached with ITS
         signature (autospec) — and with nothing that says where."""
+        from django.apps import apps
+
+        if not apps.is_installed("toto.tariffs"):
+            self.skipTest("this host has no rate card: nothing reaches a ledger")
         with mock.patch("toto.locations.billing.price_for", return_value=object()), \
                 mock.patch("toto.locations.billing.check_funds"), \
                 mock.patch("toto.tariffs.charge.charge_user", autospec=True) as charge_user:

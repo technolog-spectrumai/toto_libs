@@ -47,6 +47,7 @@
       </div>
 
       <nav class="flex flex-wrap gap-2">
+        {% if may_see_members %}
         <button
           type="button"
           @click="showChart = true"
@@ -55,6 +56,7 @@
             : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-sitemap"></i>{% trans "Org Chart" %}</button>
+        {% endif %}
 
         {% if viewer_is_federal_agent %}
         <a
@@ -142,7 +144,7 @@
               : 'border-accent-2 bg-primary-bg-light'"
             class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
             <i class="fa-solid fa-users"></i>
-            {{ community.members.all|length }} member{% if community.members.all|length != 1 %}s{% endif %}
+            <span data-testid="community-member-count">{{ member_count }}</span> member{% if member_count != 1 %}s{% endif %}
           </div>
         </div>
       </div>
@@ -289,11 +291,17 @@
             : 'border-accent-2 bg-sunken-light'"
           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
           <i class="fa-solid fa-id-badge"></i>
-          {{ community.members.all|length }} total
+          {{ member_count }} total
         </div>
       </div>
 
-      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {% if not may_see_members %}
+      <p data-testid="community-members-private"
+         :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+         class="rounded-xl border border-dashed p-6 text-center text-sm opacity-80">
+        <i class="fa-solid fa-lock mr-2" aria-hidden="true"></i>{% trans "Who is in this community is shown to its members." %}</p>
+      {% else %}
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="community-members">
         {% for member in community.members.all %}
           <a
             href="{% url 'socialhub:profile_details' member.slug %}"
@@ -319,6 +327,7 @@
             class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-70 sm:col-span-2 lg:col-span-3">{% trans "No members found." %}</div>
         {% endfor %}
       </div>
+      {% endif %}
     </section>
     {% endif %}
 

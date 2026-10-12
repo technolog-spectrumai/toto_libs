@@ -57,6 +57,7 @@
               <th class="px-4 py-2">{% trans "Type" %}</th>
               <th class="px-4 py-2">{% trans "Established" %}</th>
               <th class="px-4 py-2">{% trans "Head" %}</th>
+              {% for column in directory_columns %}<th class="px-4 py-2" data-testid="directory-column-{{ column.key }}">{{ column.title }}</th>{% endfor %}
               <th class="px-4 py-2">{% trans "Action" %}</th>
             </tr>
           </thead>
@@ -82,6 +83,7 @@
               <td class="px-4 py-2">
                 {{ community.head.display_name|default:"—" }}
               </td>
+              {% for cell in community.directory_cells %}<td class="px-4 py-2">{{ cell.text|default:"—" }}</td>{% endfor %}
 
               <td class="px-4 py-2">
                 <a href="{% url 'socialhub:community_detail' community.slug %}"
@@ -90,7 +92,7 @@
             </tr>
             {% empty %}
             <tr>
-              <td colspan="6" class="px-4 py-4 text-center text-gray-500">{% trans "No communities found." %}</td>
+              <td colspan="{{ directory_colspan|default:6 }}" class="px-4 py-4 text-center text-gray-500">{% trans "No communities found." %}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -121,6 +123,7 @@
           <div class="mt-3 text-sm space-y-1">
             <p><strong>{% trans "Established:" %}</strong> {{ community.established_year|default:"—" }}</p>
             <p><strong>{% trans "Head:" %}</strong> {{ community.head.display_name|default:"—" }}</p>
+            {% for cell in community.directory_cells %}<p><strong>{{ cell.title }}:</strong> {{ cell.text|default:"—" }}</p>{% endfor %}
 
             <a href="{% url 'socialhub:community_detail' community.slug %}"
                class="block mt-2 underline text-link-light dark:text-link-light">{% trans "View Community" %}</a>

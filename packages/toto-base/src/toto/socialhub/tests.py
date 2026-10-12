@@ -410,6 +410,15 @@ class StatuteTests(TestCase):
             site_name="Test",
             defaults={"author": "t", "publication_year": 2026, "active": True})
 
+    def test_the_kinds_are_four(self):
+        """Company, Non-Profit, Educational, Other: no Family and no Guild
+        (2026-10-12)."""
+        self.assertEqual([value for value, _label in Community.ORG_TYPES],
+                         ["company", "non_profit", "educational", "other"])
+        self.assertEqual(Community.EDUCATIONAL, "educational")
+        for gone in ("FAMILY", "GUILD"):
+            self.assertFalse(hasattr(Community, gone), gone)
+
     def test_every_org_type_may_carry_one(self):
         """Not only companies — the field is the community's, whatever it is."""
         for org_type, _label in Community.ORG_TYPES:

@@ -27,6 +27,8 @@ from toto.socialhub.permissions import may_moderate_community
 def door(view):
     @wraps(view)
     def wrapped(request, slug, *args, **kwargs):
+        if not org_chart.positions_enabled():
+            raise Http404("This platform keeps no positions.")
         if request.method != "POST":
             return HttpResponseNotAllowed(["POST"])
         if not request.user.is_authenticated:

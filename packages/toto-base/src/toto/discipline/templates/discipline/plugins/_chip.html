@@ -1,0 +1,33 @@
+{% load i18n %}{% comment %}The mana chip: a bar and the one number, and the way to the Mana page.
+   The bar is the balance against what regeneration fills to (the cap): what
+   remains is cyan (the palette's security colour), what is spent is the grey
+   track. A granted balance above the cap is a full bar. The app bar is dark
+   in both themes, so the track is a white wash in both. Every colour class is
+   written out whole: the stylesheet is built from what it can read here.{% endcomment %}
+{% if variant == "mobile" %}
+<a href="{{ mana_url }}" data-testid="mana-chip-mobile" class="flex flex-col gap-1.5 rounded px-3 py-2"
+   aria-label="{% blocktrans with amount=mana_amount cap=mana_cap %}Mana: {{ amount }} of {{ cap }}. Opens your mana page.{% endblocktrans %}">
+  <span class="flex items-center justify-between gap-2 text-sm font-semibold">
+    <span class="flex items-center gap-2"><i class="fa-solid fa-bolt" :class="darkMode ? 'text-security-dark' : 'text-security-light'" aria-hidden="true"></i>{% trans "Mana" %}</span>
+    <span class="tabular-nums">{{ mana_amount }}<span class="text-xs font-normal opacity-50"> / {{ mana_cap }}</span></span>
+  </span>
+  <span role="meter" aria-valuemin="0" aria-valuemax="{{ mana_cap }}" aria-valuenow="{{ mana_amount }}" aria-label="{% trans 'Mana' %}"
+        class="block h-2 w-full overflow-hidden rounded-full bg-white/25" data-testid="mana-bar-mobile">
+    <span class="block h-full rounded-full" style="width: {{ mana_pct }}%"
+          :class="darkMode ? 'bg-security-dark' : 'bg-security-light'"></span>
+  </span>
+</a>
+{% else %}
+<a href="{{ mana_url }}" id="mana-chip" data-testid="mana-chip" data-pct="{{ mana_pct }}"
+   class="flex items-center gap-1.5 rounded-lg px-1.5 py-1 transition hover:opacity-80"
+   aria-label="{% blocktrans with amount=mana_amount cap=mana_cap %}Mana: {{ amount }} of {{ cap }}. Opens your mana page.{% endblocktrans %}"
+   title="{% blocktrans with amount=mana_amount cap=mana_cap %}Mana: {{ amount }} of {{ cap }}. Opens your mana page.{% endblocktrans %}">
+  <i class="fa-solid fa-bolt hidden text-xs sm:inline" :class="darkMode ? 'text-security-dark' : 'text-security-light'" aria-hidden="true"></i>
+  <span role="meter" aria-valuemin="0" aria-valuemax="{{ mana_cap }}" aria-valuenow="{{ mana_amount }}" aria-label="{% trans 'Mana' %}"
+        class="block h-1.5 w-10 overflow-hidden rounded-full bg-white/25 sm:w-16 lg:w-24" data-testid="mana-bar">
+    <span class="block h-full rounded-full transition-[width] duration-500" style="width: {{ mana_pct }}%" data-testid="mana-bar-fill"
+          :class="darkMode ? 'bg-security-dark' : 'bg-security-light'"></span>
+  </span>
+  <span class="text-xs font-semibold tabular-nums" data-testid="mana-chip-amount">{{ mana_amount }}</span>
+</a>
+{% endif %}

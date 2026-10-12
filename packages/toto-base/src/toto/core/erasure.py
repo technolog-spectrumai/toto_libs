@@ -133,6 +133,9 @@ def report(user) -> tuple[dict, list[str]]:
         beyond["applications"] = applications.count()
         beyond["references"] = ReferenceRequest.objects.filter(
             application__in=applications).count()
+        from toto.socialhub.invitations import of_member as invitations_of
+
+        beyond["invitations"] = invitations_of(user).count()
     if apps.is_installed("toto.vault"):
         from toto.vault.models import personal_buckets_of
 
@@ -152,7 +155,8 @@ def report(user) -> tuple[dict, list[str]]:
                                     "addresses"),
                                    ("their point on the map", "map_points"),
                                    ("their membership application and its references",
-                                    "applications"))
+                                    "applications"),
+                                   ("the invitations that were theirs", "invitations"))
             if beyond.get(key)]
     if gone:
         notes.append("Also erased: " + "; ".join(gone) + ".")
@@ -174,6 +178,9 @@ def gather(user) -> Leftovers:
 
         left.counts["applications"] = of_member(user).delete()[1].get(
             "socialhub.MembershipApplication", 0)
+        from toto.socialhub.invitations import of_member as invitations_of
+
+        left.counts["invitations"] = invitations_of(user).delete()[0]
     if apps.is_installed("toto.vault"):
         from toto.vault.models import forget_personal_buckets
 

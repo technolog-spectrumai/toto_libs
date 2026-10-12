@@ -1,10 +1,11 @@
 """What every container start runs (2026-09-29): `init_platform` →
 `migrate`, then `init_data` → `create_user`, `bootstrap_plans`, the fonts,
-`create_theme`, `create_platform` and the federation. deploy/entrypoint.sh
+`create_platform` and the federation. No theme is seeded since 2026-10-10:
+the colours are toto/core/palette.json, a file. deploy/entrypoint.sh
 calls it on EVERY start, so a second run must change nothing but what it is
 told to (the admin's password), and a missing seed file must fail in words.
 
-Hermetic: the seed data (fonts.json, themes/, img/) is a scratch TOTO_DATA_DIR
+Hermetic: the seed data (fonts.json, img/) is a scratch TOTO_DATA_DIR
 written per test, and media goes to a scratch MEDIA_ROOT."""
 
 import io
@@ -21,7 +22,8 @@ from django.contrib.auth import get_user_model
 from django.core.management import CommandError, call_command
 from django.test import TestCase, override_settings
 
-from toto.core.models import ColorMix, Federation, Font, Platform, Theme
+from toto.core import palette
+from toto.core.models import Federation, Font, Platform
 from toto.people.models import Person
 
 User = get_user_model()
@@ -43,14 +45,9 @@ class SeedCase(TestCase):
         self.media = tempfile.mkdtemp(prefix="seed-media-")
         self.addCleanup(shutil.rmtree, self.data, ignore_errors=True)
         self.addCleanup(shutil.rmtree, self.media, ignore_errors=True)
-        (self.data / "themes").mkdir()
         (self.data / "img").mkdir()
         (self.data / "fonts.json").write_text(json.dumps(
-            {"Orbitron": "https://fonts.example/orbitron.css"}), encoding="utf-8")
-        (self.data / "themes" / "amazing.json").write_text(json.dumps({
-            "name": "Amazing Moon", "font": "Orbitron",
-            "colors": {"accent-1": "#4f5fa1", "accent-2": "#2f3d63", "not-a-field": "x"},
-            "header": {"light": "bg-white"}}), encoding="utf-8")
+            {palette.font_name(): "https://fonts.example/orbitron.css"}), encoding="utf-8")
         (self.data / "img" / "okti.png").write_bytes(PNG)
         overrides = override_settings(TOTO_DATA_DIR=str(self.data), MEDIA_ROOT=self.media,
                                       PLATFORM_LOGO_PATH="no/such/logo.png")
@@ -68,7 +65,7 @@ class SeedCase(TestCase):
 
 
 class FirstStartTests(SeedCase):
-    def test_a_first_start_seeds_the_admin_the_theme_and_an_active_platform(self):
+    def test_a_first_start_seeds_the_admin_the_font_and_an_active_platform(self):
         self.seed()
         admin = User.objects.get(username="admin")
         self.assertTrue(admin.is_superuser and admin.is_staff)
@@ -76,16 +73,19 @@ class FirstStartTests(SeedCase):
         platform = Platform.objects.get(active=True)
         self.assertEqual((platform.site_name, platform.domain, platform.author),
                          ("Zenobia Test", "zen.example.org", "Ops"))
-        self.assertEqual(platform.theme.name, "Amazing Moon")
-        self.assertEqual(platform.theme.font.name, "Orbitron")
+        self.assertEqual(platform.font.name, palette.font_name())
         self.assertEqual(platform.api_owner, admin)
         self.assertEqual(platform.federation.name, "Toto-Federation")
 
-    def test_the_theme_takes_only_the_colours_it_has_fields_for(self):
+    def test_the_colours_are_the_palette_file_s_and_no_theme_file_is_read(self):
+        """The host's data directory holds no themes/ at all here."""
+        from toto.core.serializers import PlatformSerializer
+
+        self.assertFalse((self.data / "themes").exists())
         self.seed()
-        mix = ColorMix.objects.get(name="Amazing Moon")
-        self.assertEqual((mix.accent_1, mix.accent_2), ("#4f5fa1", "#2f3d63"))
-        self.assertEqual(Theme.objects.get(name="Amazing Moon").header, {"light": "bg-white"})
+        theme = PlatformSerializer(Platform.objects.get(active=True)).data["theme"]
+        self.assertEqual(theme["theme"]["colors"], palette.colors())
+        self.assertEqual(theme["header"], palette.header())
 
     def test_without_a_configured_logo_the_platform_wears_the_mascot(self):
         self.seed()
@@ -132,8 +132,23 @@ class RestartTests(SeedCase):
         self.assertEqual(User.objects.filter(username="admin").count(), 1)
         self.assertTrue(User.objects.get(username="admin").check_password("second-pw"))
         self.assertEqual(Platform.objects.count(), 1)
-        self.assertEqual((Theme.objects.count(), Font.objects.count(),
-                          Federation.objects.count()), (1, 1, 1))
+        self.assertEqual((Font.objects.count(), Federation.objects.count()), (1, 1))
+
+    def test_a_font_chosen_in_the_admin_survives_a_restart(self):
+        # create_platform runs at every start and wrote the palette's font
+        # back each time (2026-10-10, found by review before any run): the
+        # admin says the font is chosen on the Platform, so it is given once.
+        self.seed()
+        chosen = Font.objects.create(name="Inter", cdn_link="https://fonts.example/inter.css")
+        Platform.objects.filter(active=True).update(font=chosen)
+        self.seed()
+        self.assertEqual(Platform.objects.get(active=True).font, chosen)
+
+    def test_a_platform_left_without_a_font_gets_the_palette_s_at_the_next_start(self):
+        self.seed()
+        Platform.objects.filter(active=True).update(font=None)
+        self.seed()
+        self.assertEqual(Platform.objects.get(active=True).font.name, palette.font_name())
 
     def test_a_password_changed_on_the_profile_survives_a_restart(self):
         # Stage 51: every start set ADMIN_PASSWORD again, so a rotation made
@@ -176,36 +191,33 @@ class RestartTests(SeedCase):
 
 
 class MissingSeedTests(SeedCase):
-    def test_an_unreadable_theme_stops_before_any_platform_and_says_why(self):
-        (self.data / "themes" / "amazing.json").write_text("{broken", encoding="utf-8")
-        _, err = self.seed()
-        self.assertIn("Invalid JSON in theme file", err)
-        self.assertIn("Theme not found. Initialization aborted.", err)
+    def test_an_unreadable_palette_stops_before_any_platform_and_says_why(self):
+        broken = self.data / "palette.json"
+        broken.write_text("{broken", encoding="utf-8")
+        palette.palette.cache_clear()
+        self.addCleanup(palette.palette.cache_clear)
+        with mock.patch.object(palette, "PALETTE_FILE", broken):
+            _, err = self.seed()
+        self.assertIn("Palette unreadable", err)
+        self.assertIn("Initialization aborted.", err)
         self.assertFalse(Platform.objects.exists())
         self.assertTrue(User.objects.filter(username="admin").exists())
 
-    def test_a_theme_file_missing_its_keys_is_refused(self):
-        (self.data / "themes" / "amazing.json").write_text(json.dumps({"name": "X"}))
-        _, err = self.seed()
-        self.assertIn("Missing required keys", err)
-        self.assertFalse(Platform.objects.exists())
-
     def test_an_unreadable_fonts_file_is_reported(self):
         (self.data / "fonts.json").write_text("{nope", encoding="utf-8")
-        Font.objects.create(name="Orbitron", cdn_link="https://fonts.example/o.css")
+        Font.objects.create(name=palette.font_name(), cdn_link="https://fonts.example/o.css")
         _, err = self.seed()
         self.assertIn("Invalid JSON in fonts file", err)
         self.assertTrue(Platform.objects.filter(active=True).exists())
 
-    @unittest.skip("SUSPECTED BUG toto/core/management/commands/create_theme.py:17-19 - an "
-                   "unknown font raises RuntimeError(None) (the message line after it is "
-                   "dead code), so a fonts.json missing the theme's font crashes init_data "
-                   "- and the container start - with 'RuntimeError: None'.")
-    def test_a_theme_whose_font_is_missing_fails_in_words(self):
+    def test_a_platform_whose_font_is_missing_lands_without_one_and_says_so(self):
+        """It used to crash the container start with `RuntimeError: None`
+        (create_theme raised on an unknown font)."""
         (self.data / "fonts.json").unlink()
         _, err = self.seed()
         self.assertIn("Fonts file not found", err)
-        self.assertIn("Orbitron", err)
+        self.assertIn(f"Font '{palette.font_name()}' not found", err)
+        self.assertIsNone(Platform.objects.get(active=True).font)
 
 
 class CreatePlatformTests(SeedCase):
@@ -224,10 +236,22 @@ class CreatePlatformTests(SeedCase):
             self.run_it("Site", "zen.example.org", "Ops")
         self.assertFalse(Platform.objects.exists())
 
-    def test_a_missing_theme_is_a_warning_not_a_failure(self):
-        _, err = self.run_it("Site", "zen.example.org", "Ops", "--theme_id=9999")
-        self.assertIn("Theme 9999 not found.", err)
-        self.assertIsNone(Platform.objects.get().theme)
+    def test_a_missing_font_is_a_warning_not_a_failure(self):
+        _, err = self.run_it("Site", "zen.example.org", "Ops", "--font=No Such Font")
+        self.assertIn("Font 'No Such Font' not found", err)
+        self.assertIsNone(Platform.objects.get().font)
+
+    def test_without_a_font_named_the_palette_s_is_given(self):
+        font = Font.objects.create(name=palette.font_name(), cdn_link="https://fonts.example/o.css")
+        self.run_it("Site", "zen.example.org", "Ops")
+        self.assertEqual(Platform.objects.get().font, font)
+
+    def test_a_second_run_does_not_take_back_the_font_the_platform_has(self):
+        Font.objects.create(name=palette.font_name(), cdn_link="https://fonts.example/o.css")
+        inter = Font.objects.create(name="Inter", cdn_link="https://fonts.example/i.css")
+        self.run_it("Site", "zen.example.org", "Ops", "--font=Inter")
+        self.run_it("Site", "zen.example.org", "Ops")
+        self.assertEqual(Platform.objects.get().font, inter)
 
     def test_the_same_domain_is_updated_in_place(self):
         self.run_it("Old", "zen.example.org", "Ops")
@@ -329,23 +353,6 @@ class InitPlatformTests(TestCase):
                 call_command("init_platform", "--reset", stdout=io.StringIO())
             self.assertIn("ADMIN_PASSWORD", str(caught.exception))
             self.assertEqual(called.call_args_list, [])
-
-
-class CreateThemeTests(TestCase):
-    def test_colours_that_are_not_json_create_no_theme(self):
-        Font.objects.create(name="Orbitron", cdn_link="https://fonts.example/o.css")
-        out = io.StringIO()
-        call_command("create_theme", "--name", "T", "--font", "Orbitron", "--colors", "{x",
-                     stdout=out)
-        self.assertIn("Invalid JSON for --colors", out.getvalue())
-        self.assertFalse(Theme.objects.exists())
-
-    def test_a_second_theme_of_the_same_name_is_not_made(self):
-        Font.objects.create(name="Orbitron", cdn_link="https://fonts.example/o.css")
-        for _ in range(2):
-            call_command("create_theme", "--name", "T", "--font", "Orbitron",
-                         "--colors", '{"accent-1": "#000000"}', stdout=io.StringIO())
-        self.assertEqual(Theme.objects.filter(name="T").count(), 1)
 
 
 class IngressAllTests(TestCase):

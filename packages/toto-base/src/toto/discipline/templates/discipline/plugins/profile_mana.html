@@ -1,0 +1,44 @@
+{% load i18n %}{% comment %}A person's own mana on their own profile: the bar (what remains is
+   cyan, what is spent the grey track, of the cap), the speed and what it is
+   made of, the sigils held.{% endcomment %}
+<section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm sm:p-6" data-testid="mana-profile">
+  <div class="mb-4 flex items-center justify-between gap-3">
+    <div class="flex items-center gap-3">
+      <i class="{{ profile_plugin_icon }}" :class="darkMode ? 'text-security-dark' : 'text-security-light'"></i>
+      <h2 class="text-lg font-bold">{% trans "Mana" %}</h2>
+    </div>
+    {% if mana_url %}
+    <a href="{{ mana_url }}"
+       :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-primary-bg-dark' : 'border-accent-2 text-text-main-light hover:bg-primary-bg-light'"
+       class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition"
+    ><i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>{% trans "Open mana" %}</a>
+    {% endif %}
+  </div>
+  <div class="flex items-baseline justify-between gap-2">
+    <span class="text-3xl font-bold tabular-nums" data-testid="mana-profile-amount">{{ mana.amount }}</span>
+    <span class="text-sm opacity-60">{% blocktrans with cap=mana.cap %}of {{ cap }}{% endblocktrans %}</span>
+  </div>
+  <div role="meter" aria-valuemin="0" aria-valuemax="{{ mana.cap }}" aria-valuenow="{{ mana.amount }}" aria-label="{% trans 'Mana' %}"
+       :class="darkMode ? 'bg-white/10' : 'bg-black/10'"
+       class="mt-2 h-3 w-full overflow-hidden rounded-full" data-testid="mana-profile-bar">
+    <div style="width: {{ mana.pct }}%" class="h-full rounded-full transition-[width] duration-500"
+         :class="darkMode ? 'bg-security-dark' : 'bg-security-light'"></div>
+  </div>
+  <ul class="mt-4 space-y-1 text-sm">
+    <li class="font-semibold">{% blocktrans with rate=mana_speed.rate|floatformat:"-2" %}{{ rate }} an hour{% endblocktrans %}</li>
+    {% if mana_speed.aura %}
+    <li data-testid="mana-profile-aura"><i class="fa-solid fa-jedi mr-1 opacity-60"></i>{% blocktrans with aura=mana_speed.aura.name community=mana_community.name rate=mana_speed.aura_rate|floatformat:"-2" %}The aura {{ aura }}, through {{ community }}: {{ rate }} an hour.{% endblocktrans %}</li>
+    {% elif mana_speed.aura_rate %}
+    <li><i class="fa-solid fa-jedi mr-1 opacity-60"></i>{% blocktrans with rate=mana_speed.aura_rate|floatformat:"-2" %}The platform's own: {{ rate }} an hour.{% endblocktrans %}</li>
+    {% else %}
+    <li class="opacity-70"><i class="fa-solid fa-jedi mr-1 opacity-60"></i>{% trans "None of your communities has an aura." %}</li>
+    {% endif %}
+    {% for sigil in mana_speed.sigils %}
+    <li class="flex items-center gap-2" data-testid="mana-profile-sigil">
+      {% if sigil.image %}<img src="{{ sigil.image.url }}" alt="" class="h-6 w-6 rounded object-cover">{% else %}<i class="fa-solid fa-stamp opacity-60"></i>{% endif %}
+      <span>{% blocktrans with name=sigil.name rate=sigil.regen_per_hour|floatformat:"-2" %}The sigil {{ name }}: {{ rate }} an hour.{% endblocktrans %}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>

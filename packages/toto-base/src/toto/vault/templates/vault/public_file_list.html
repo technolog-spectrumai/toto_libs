@@ -17,6 +17,7 @@
   const _decryptUrl   = "{% url 'vault:decrypt_file' %}";
   const _moveUrl      = "{% url 'vault:move_file' %}";
   const _renameUrl    = "{% url 'vault:rename_file' %}";
+  const _historyUrlTpl = "{% url 'vault:file_history' 0 %}";
   const _deleteUrl    = "{% url 'vault:delete_file' %}";
   const _bulkTrashUrl = "{% url 'vault:bulk_trash' %}";
   const _bulkMoveUrl  = "{% url 'vault:bulk_move' %}";
@@ -118,6 +119,7 @@
         bulkError: '',
         bulkResults: [],
         moveTargets: [],
+
 
         // rename state
         renameModal: false,
@@ -395,8 +397,11 @@
             // Async encryption (faros/Tor): the server started a 'vault-encrypt'
             // workflow run — poll it with short requests instead of holding one long
             // connection.
-            if (data.ok && data.workflow_run_id) {
-              data = await this.pollCipher(data.workflow_run_id, csrf);
+            // A host that keeps encryption off the request answers with a
+            // plain worker job instead (job_id) for a file under its limit, and
+            // does the same for decryption.
+            if (data.ok && (data.workflow_run_id || data.job_id)) {
+              data = await this.pollCipher(data, csrf);
             }
             if (data.ok) {
               const item = this.items.find(i => i.id === this.cipherFileId);
@@ -426,15 +431,19 @@
 
         // Poll the encrypt workflow run until it finishes. Each request is short,
         // so it survives Tor where a single multi-minute request would not.
-        async pollCipher(runId, csrf) {
-          const url = _encryptStatusUrl + '?run_id=' + encodeURIComponent(runId);
+        async pollCipher(started, csrf, mode) {
+          const url = _encryptStatusUrl + (started.workflow_run_id
+            ? '?run_id=' + encodeURIComponent(started.workflow_run_id)
+            : '?job_id=' + encodeURIComponent(started.job_id));
           for (let i = 0; i < 150; i++) {            // ~5 min ceiling (150 × 2s)
             await new Promise(r => setTimeout(r, 2000));
             const res = await fetch(url, { headers: { 'X-CSRFToken': csrf } });
             const s = await res.json();
             if (s.done) return s;                    // {ok, raw_url} or {ok:false, error}
           }
-          return { ok: false, error: '{{ _("Encryption timed out. Please try again.")|escapejs }}' };
+          return { ok: false, error: (mode || this.cipherMode) === 'encrypt'
+            ? '{{ _("Encryption timed out. Please try again.")|escapejs }}'
+            : '{{ _("Decryption timed out. Please try again.")|escapejs }}' };
         },
 
         openEncDownload(item) {
@@ -497,7 +506,13 @@
               headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
               body: new URLSearchParams({ file_pk: this.removeEncFileId, password: this.removeEncPassword }),
             });
-            const data = await res.json();
+            let data = await res.json();
+            // A host that keeps decryption off the request answers with a
+            // job to follow: wait for the worker's word, or a wrong password
+            // would close the dialog as if it had worked.
+            if (data.ok && (data.workflow_run_id || data.job_id)) {
+              data = await this.pollCipher(data, csrf, 'decrypt');
+            }
             if (data.ok) {
               const item = this.items.find(i => i.id === this.removeEncFileId);
               if (item) { item.encrypted = false; item.url = data.url; }
@@ -692,6 +707,12 @@
           }
           this.items = kept;
           this._bulkDone(data);
+        },
+
+        // The file's history is a page of its own, a table a page at a
+        // time (2026-10-12): the action goes there.
+        openHistory(item) {
+          window.location.href = _historyUrlTpl.replace('/0/', '/' + item.id + '/');
         },
 
         openRename(item) {
@@ -1185,6 +1206,7 @@
             else if (name === 'service') this.openServices(item);
             else if (name === 'move')    this.openMove(item);
             else if (name === 'rename')  this.openRename(item);
+            else if (name === 'history') this.openHistory(item);
           });
         },
 
@@ -2835,6 +2857,12 @@
                     :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
                     class="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-semibold text-left transition">
               <i class="fa-solid fa-pencil w-5 text-center opacity-70"></i>{% trans "Rename" %}
+            </button>
+            <!-- History: the file's timeline, a page of its own -->
+            <button @click="chooseAction('history')" data-testid="file-action-history"
+                    :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
+                    class="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-semibold text-left transition">
+              <i class="fa-solid fa-clock-rotate-left w-5 text-center opacity-70"></i>{% trans "History" %}
             </button>
           </div>
 

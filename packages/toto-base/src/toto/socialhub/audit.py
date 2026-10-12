@@ -16,6 +16,7 @@ membership flow, the Clearances tab, the ingress, a shell:
 | `SOCIALHUB.APPLICATION_<STATUS>` | the application moves: verified, endorsed, invited, rejected |
 | `SOCIALHUB.APPLICATION_RENEWED` | somebody applies again with the address of an application that lapsed before its applicant got in: a new code and a new week, the community chosen now (2026-10-01) |
 | `SOCIALHUB.REFERENCE_REQUESTED` / `_GIVEN` / `_DECLINED` | a reference asked of a member, and their answer (given = the applicant admitted) |
+| `SOCIALHUB.INVITATION_ISSUED` / `_REVOKED` / `_ACCEPTED` | an invitation is issued or revoked by staff, or accepted by the person it lets in (2026-10-10) — by its id and its community, never the address it was made out to |
 | `SOCIALHUB.PROFILE_CHANGED` | a member edits their own profile or time zone on their own profile's tabs (My account until stage 50) — the field NAMES in `fields`, never the values (2026-09-30) |
 | `PRIVACY.NOTICE_ACCEPTED` | an applicant ticks the privacy notice on the membership application — the version and the application, by its id as every application record names it (2026-10-01) |
 | `PRIVACY.EXPORT_REQUESTED` | a member asks for a copy of their data on their profile's Your data tab (2026-10-01) |
@@ -128,6 +129,46 @@ def notice_accepted(application) -> None:
                    description=f"v{application.privacy_version} application {application.pk}",
                    metadata={**_application_facts(application),
                              "version": application.privacy_version})
+
+
+def _invitation_facts(invitation) -> dict:
+    """What an invitation's records say of it: its id and its community,
+    never the address it was made out to (the chain outlives the row, as
+    ``_application_facts`` says of an application)."""
+    community = invitation.community
+    return {"invitation": invitation.pk,
+            "community": community.slug if community is not None else "",
+            "name": community.name if community is not None else "",
+            "email_given": bool(invitation.email)}
+
+
+def _invitation(invitation, action, **kwargs):
+    return _record(action, object_type="socialhub.invitation", object_id=invitation.pk,
+                   description=f"invitation {invitation.pk}", **kwargs)
+
+
+def invitation_issued(invitation, *, request=None) -> None:
+    """Staff issued an invitation (2026-10-10)."""
+    return _invitation(invitation, "invitation_issued", request=request,
+                       metadata={**_invitation_facts(invitation),
+                                 "expires_at": invitation.expires_at.isoformat()})
+
+
+def invitation_revoked(invitation, *, request=None) -> None:
+    return _invitation(invitation, "invitation_revoked", request=request,
+                       metadata=_invitation_facts(invitation))
+
+
+def invitation_accepted(invitation, user, version, *, request=None) -> None:
+    """The person an invitation was for made their account with it: the
+    acceptance of the invitation, and, in the family the application's tick
+    is recorded in, of the privacy notice's version they read on its page."""
+    _invitation(invitation, "invitation_accepted", request=request, actor_user=user,
+                metadata={**_invitation_facts(invitation), "user": user.pk})
+    return _invitation(invitation, "notice_accepted", family="privacy", request=request,
+                       actor_user=user,
+                       metadata={**_invitation_facts(invitation), "version": version,
+                                 "user": user.pk})
 
 
 def _export(export, action, **kwargs):

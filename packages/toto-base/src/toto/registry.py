@@ -230,6 +230,9 @@ TASK_MODULES = [
     "toto.assets",
     # The mana pools' hourly refill. Inert where toto-economy is absent.
     "toto.mana",
+    # Discipline's hourly regeneration (2026-10-11): the one mana, from auras
+    # and sigils. In toto-base; inert where the app is not installed.
+    "toto.discipline",
     # toto.quota's stuck-run sweeper (quota/tasks.py). In toto-base, so it is
     # importable on every host; the beat entry (schedules.beat_schedule
     # sweep=...) is what turns it on.

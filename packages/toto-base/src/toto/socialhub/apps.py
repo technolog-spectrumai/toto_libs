@@ -19,3 +19,7 @@ class SocialHubConfig(AppConfig):
         from . import audit
 
         audit.connect()
+
+        # The platform's way in (2026-10-10): importing it registers the
+        # system check of SOCIALHUB_ENROLLMENT.
+        from . import enrollment  # noqa: F401

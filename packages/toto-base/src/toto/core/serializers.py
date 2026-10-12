@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from toto.core.models import Platform, Font, Theme
+from toto.core import palette
+from toto.core.models import Platform, Font
 
 
 class FontSerializer(serializers.ModelSerializer):
@@ -13,21 +14,13 @@ class FontSerializer(serializers.ModelSerializer):
         ]
 
 
-class ThemeSerializer(serializers.ModelSerializer):
-    font = FontSerializer()
-    class Meta:
-        model = Theme
-        fields = [
-            "id",
-            "name",
-            "theme",
-            "font",
-            "header"
-        ]
-
-
 class PlatformSerializer(serializers.ModelSerializer):
-    theme = ThemeSerializer()
+    #: The shape pages were always handed, when it was a Theme row:
+    #: ``{name, theme: {colors}, header: {light, dark}, font}``. The colours
+    #: and the header's classes are the one palette's (toto/core/palette.py);
+    #: only the font is this platform's own.
+    theme = serializers.SerializerMethodField()
+
     class Meta:
         model = Platform
         fields = [
@@ -39,3 +32,7 @@ class PlatformSerializer(serializers.ModelSerializer):
             "theme",
             "author"
         ]
+
+    def get_theme(self, platform):
+        font = FontSerializer(platform.font).data if platform.font_id else None
+        return {**palette.theme(), "font": font}

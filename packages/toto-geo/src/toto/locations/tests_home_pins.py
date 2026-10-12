@@ -21,8 +21,9 @@ from django.urls import reverse
 
 from toto.core.models import Platform
 from toto.locations import access
-from toto.locations.models import HAS_GIS, Address
-from toto.people.models import LocationSharing, Person
+from toto.locations.models import HAS_GIS, Address, Home
+from toto.locations.models import HomeSharing as LocationSharing
+from toto.people.models import Person
 
 User = get_user_model()
 
@@ -35,8 +36,10 @@ class HomePinCase(TestCase):
         self.home = Address.objects.create(street="Hidden Lane", building="7",
                                            locality_name="Town", latitude=52.2297,
                                            longitude=21.0122)
-        self.ann = Person.objects.create(user=self.ann_user, display_name="Ann",
-                                         address=self.home)
+        # The home and its switch are the map's own row (``Home``) since
+        # 2026-10-04; they were columns of Person.
+        self.ann = Person.objects.create(user=self.ann_user, display_name="Ann")
+        Home.objects.create(person=self.ann, address=self.home)
         self.shop = Address.objects.create(street="Market Square", locality_name="Town",
                                            latitude=52.25, longitude=21.0)
         self.viewer = User.objects.create_user("viewer", password="pw")
@@ -44,7 +47,7 @@ class HomePinCase(TestCase):
         self.root = User.objects.create_superuser("root", "root@example.com", "pw")
 
     def share(self, how):
-        Person.objects.filter(pk=self.ann.pk).update(location_sharing=how)
+        Home.objects.filter(person=self.ann).update(sharing=how)
 
     def readable(self, user):
         return set(access.readable_addresses(user))
@@ -79,11 +82,11 @@ class OneHouseholdTests(HomePinCase):
     def setUp(self):
         super().setUp()
         self.bob_user = User.objects.create_user("bob", password="pw")
-        self.bob = Person.objects.create(user=self.bob_user, display_name="Bob",
-                                         address=self.home)
+        self.bob = Person.objects.create(user=self.bob_user, display_name="Bob")
+        Home.objects.create(person=self.bob, address=self.home)
 
     def bob_shares(self, how):
-        Person.objects.filter(pk=self.bob.pk).update(location_sharing=how)
+        Home.objects.filter(person=self.bob).update(sharing=how)
 
     def test_one_residents_exact_share_shows_it_whatever_the_other_chose(self):
         self.share(LocationSharing.EXACT)
@@ -170,9 +173,9 @@ class TheEventsPickerTests(HomePinCase):
             "title": "At Ann's", "description": "",
             "start_time_0": "2026-11-02", "start_time_1": "10:00",
             "end_time_0": "2026-11-02", "end_time_1": "12:00",
-            "address": self.home.pk, "public": "on"})
+            "address": "", "place": self.home.pk, "public": "on"})
         self.assertEqual(response.status_code, 200)
-        self.assertIn("address", response.context["form"].errors)
+        self.assertIn("place", response.context["form"].errors)
         self.assertFalse(ScheduledEvent.objects.filter(title="At Ann's").exists())
 
     def test_a_readable_place_is_still_taken(self):
@@ -182,29 +185,22 @@ class TheEventsPickerTests(HomePinCase):
             "title": "At the market", "description": "",
             "start_time_0": "2026-11-02", "start_time_1": "10:00",
             "end_time_0": "2026-11-02", "end_time_1": "12:00",
-            "address": self.shop.pk, "public": "on"})
+            "address": "", "place": self.shop.pk, "public": "on"})
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(ScheduledEvent.objects.get(title="At the market").address, self.shop)
+        # The event's place is the map's own row since 2026-10-04, written by
+        # the form's list of registered places (2026-10-12, ``links``).
+        from toto.locations import links
 
-    def test_the_apps_form_data_keeps_it(self):
+        event = ScheduledEvent.objects.get(title="At the market")
+        self.assertEqual(links.event_place(event), self.shop)
+        self.assertEqual(event.address, str(self.shop))
+
+    def test_the_apps_doors_name_no_map_address(self):
+        """The desktop app's event doors lost their addresses with toto-base's
+        geography (2026-10-04): the form data lists none, and an event made
+        there has a place of text."""
         body = self.client.get(reverse("events:api_form_data")).json()
-        shown = {a["id"] for a in body["addresses"]}
-        self.assertIn(self.shop.pk, shown)
-        self.assertNotIn(self.home.pk, shown)
-
-    def test_the_api_puts_no_event_at_it(self):
-        import json
-
-        from toto.events.models import ScheduledEvent
-
-        response = self.client.post(
-            reverse("events:api_list"), json.dumps({
-                "title": "At Ann's", "start_time": "2026-11-02T10:00:00",
-                "end_time": "2026-11-02T12:00:00", "address_id": self.home.pk}),
-            content_type="application/json")
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json(), {"error": "Address not found."})
-        self.assertFalse(ScheduledEvent.objects.filter(title="At Ann's").exists())
+        self.assertNotIn("addresses", body)
 
     def test_the_person_may_still_hold_an_event_at_home(self):
         self.client.force_login(self.ann_user)

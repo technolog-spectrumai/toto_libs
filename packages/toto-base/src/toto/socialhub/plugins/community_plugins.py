@@ -86,6 +86,40 @@ class CommunityPlugin(BasePlugin):
         return context
 
 
+class CommunityListPlugin(BasePlugin):
+    """A column of the community directory (the list page), from an app
+    socialhub does not know (2026-10-11): what each listed community has of
+    that app's, as text. ``cells`` is asked once for the whole page, so a
+    column costs a query, not one a row. Discovered where the page's plugins
+    are (``<app>/plugins/community_plugins.py``)."""
+
+    registry: ClassVar[dict[str, "CommunityListPlugin"]] = {}
+
+    def cells(self, communities, **kwargs) -> dict:
+        """``{community pk: text}`` for these communities; a community left
+        out has an empty cell."""
+        raise NotImplementedError
+
+    @classmethod
+    def columns_for(cls, communities, **kwargs) -> list[dict[str, Any]]:
+        """``[{"key", "title", "cells"}]`` for the plugins that show to this
+        request, in their order. A column that cannot be read is left out:
+        the directory is drawn without it."""
+        import logging
+
+        columns = []
+        for plugin in cls.all():
+            if not plugin.is_visible(**kwargs):
+                continue
+            try:
+                cells = plugin.cells(communities, **kwargs) or {}
+            except Exception:  # noqa: BLE001 - a column never breaks the directory
+                logging.getLogger("toto.socialhub").exception(
+                    "community directory: column %s", plugin.get_key())
+                continue
+            columns.append({"key": plugin.get_key(), "title": plugin.get_title(), "cells": cells})
+        return columns
+
 # No forum panel since 2026-10-09: the forum is parked, and its hooks in
 # other apps went with it (toto-chat's toto/forum/PARKED.md names the commit
 # that brings this one back). The news panel it had replaced is not back
@@ -117,6 +151,24 @@ class CommunityCalendarPlugin(CommunityPlugin):
 
     section_icon = "fa-solid fa-calendar-days"
     template_name = "socialhub/community_plugins/calendar.html"
+
+    def is_enabled(self) -> bool:
+        # The section draws toto.events' rows. A host that does not install
+        # that app has no calendar to show, and the community page must still
+        # open (2026-10-10: Dracena runs the socialhub without events).
+        from django.apps import apps
+
+        return apps.is_installed("toto.events") and super().is_enabled()
+
+    def is_visible(self, **kwargs) -> bool:
+        # The section is the events of the community's people: where
+        # communities are private (2026-10-12) it is its members' to read.
+        from toto.socialhub.permissions import may_see_members
+
+        if not super().is_visible(**kwargs):
+            return False
+        request = kwargs.get("request")
+        return may_see_members(getattr(request, "user", None), kwargs.get("community"))
 
     def get_context(self, **kwargs) -> dict[str, Any]:
         from toto.events.access import visible_events
@@ -160,6 +212,12 @@ class CommunityOrgChartPlugin(CommunityPlugin):
     section_icon = "fa-solid fa-sitemap"
     template_name = "socialhub/community_plugins/org_chart.html"
     tab = "chart"
+
+    def is_enabled(self) -> bool:
+        # No tab on a platform that keeps no positions (org_chart.positions_enabled).
+        from toto.socialhub import org_chart
+
+        return org_chart.positions_enabled() and super().is_enabled()
 
     @staticmethod
     def _viewer(kwargs):

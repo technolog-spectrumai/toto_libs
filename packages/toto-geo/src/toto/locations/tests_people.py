@@ -16,10 +16,11 @@ from django.urls import reverse
 
 from toto.core.models import Platform
 from toto.locations import nearby
-from toto.locations.models import Address
+from toto.locations.models import Address, Home
+from toto.locations.models import HomeSharing as LocationSharing
 from toto.locations.people_access import (may_see_location, place_label,
                                           point_for, shared_people)
-from toto.people.models import LocationSharing, Person
+from toto.people.models import Person
 
 User = get_user_model()
 
@@ -49,9 +50,11 @@ class PeopleTestCase(TestCase):
                 street="Somewhere", locality_name="Town",
                 state_or_province_name="Region",
                 latitude=point[0], longitude=point[1])
-        return Person.objects.create(
-            user=user, display_name=name, address=address,
-            location_sharing=sharing)
+        # The address and the switch are the map's own row since 2026-10-04
+        # (``Home``); they were columns of Person.
+        person = Person.objects.create(user=user, display_name=name)
+        Home.objects.create(person=person, address=address, sharing=sharing)
+        return person
 
     def _other(self, name, point, sharing=LocationSharing.OFF):
         user = User.objects.create_user(name.lower(), password="pw")
@@ -78,8 +81,8 @@ class OptInTests(PeopleTestCase):
     def test_switching_off_removes_you_at_once(self):
         """No grace period, no cache — off means gone on the next page load."""
         ada = self._other("Ada", NEARBY, LocationSharing.EXACT)
-        ada.location_sharing = LocationSharing.OFF
-        ada.save(update_fields=["location_sharing"])
+        Home.objects.filter(person=ada).update(sharing=LocationSharing.OFF)
+        ada = Person.objects.get(pk=ada.pk)
         self.assertNotIn(ada, shared_people(self.viewer_user))
         self.assertFalse(may_see_location(self.viewer_user, ada))
 
@@ -164,11 +167,11 @@ class PrecisionTests(PeopleTestCase):
         """A row geocoded before `0005_address_latlon` has a geometry and NULL
         floats. Reading the floats alone would drop every older address."""
         ada = self._other("Ada", NEARBY, LocationSharing.EXACT)
-        Address.objects.filter(pk=ada.address_id).update(
+        Address.objects.filter(pk=ada.home.address_id).update(
             latitude=None, longitude=None)
-        ada.refresh_from_db()
+        ada = Person.objects.get(pk=ada.pk)
         point = point_for(ada)
-        if getattr(ada.address, "geometry", None) is None:
+        if getattr(ada.home.address, "geometry", None) is None:
             self.skipTest("no geometry column on this build")
         self.assertIsNotNone(point)
 
@@ -280,8 +283,7 @@ class PageTests(PeopleTestCase):
     def test_a_viewer_with_no_centre_is_told_so(self):
         """'We do not know where you are' and 'nobody is near you' look the
         same otherwise, and only one of them is the user's fault."""
-        self.viewer.address = None
-        self.viewer.save(update_fields=["address"])
+        Home.objects.filter(person=self.viewer).update(address=None)
         response = self.client.get(reverse("locations:people"))
         self.assertIsNone(response.context["centre"])
 

@@ -179,6 +179,20 @@ def _socialhub(user, person) -> list[Table]:
                 (row_of(a, omit=("code",)), a.community.name)
                 for a in MembershipApplication.objects.filter(email__iexact=user.email)
                 .select_related("community").order_by("created_at"))]))
+    from toto.socialhub.invitations import of_member as invitations_of
+
+    # The invitations that are the member's (2026-10-10): the one their
+    # account was made with, any made out to their address. The token's hash
+    # is dropped by its name; who issued it is the other side's.
+    invited = [{**row_of(i, omit=("issued_by",)),
+                "community": plain(i.community.name) if i.community_id else ""}
+               for i in invitations_of(user).select_related("community").order_by("created_at")]
+    if invited:
+        tables.append(Table(
+            "invitations",
+            _("The invitations made out to your e-mail address or accepted by your account, "
+              "with the note saying who each was for."),
+            invited))
     if person is not None:
         tables.append(Table(
             "privacy_acceptances", _("The versions of the privacy notice you accepted, and when."),
@@ -289,11 +303,15 @@ def _subjects(user, person) -> list:
     """What else on the chain is the member's, as ``records_about`` takes it:
     their profile, the applications made with their address and the
     references asked for those."""
+    from toto.socialhub.invitations import of_member as invitations_of
     from toto.socialhub.models import MembershipApplication, ReferenceRequest
 
     subjects = []
     if person is not None:
         subjects.append(("people.person", [person.pk]))
+    invited = list(invitations_of(user).values_list("pk", flat=True))
+    if invited:
+        subjects.append(("socialhub.invitation", invited))
     if user.email:
         applications = list(MembershipApplication.objects.filter(email__iexact=user.email)
                             .values_list("pk", flat=True))

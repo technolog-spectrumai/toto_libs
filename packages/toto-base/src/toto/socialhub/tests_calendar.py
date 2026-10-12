@@ -54,3 +54,23 @@ class CommunityCalendarSmoke(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "OpenDay")
         self.assertNotContains(r, "SecretPlanning")
+
+
+class CalendarWithoutEvents(TestCase):
+    """A host without toto.events: no calendar section, and the page opens."""
+
+    def test_the_section_is_off_when_the_events_app_is_not_installed(self):
+        from unittest import mock
+
+        from django.apps import apps
+
+        from toto.socialhub.plugins.community_plugins import CommunityPlugin
+
+        plugin = CommunityPlugin.get("community_calendar")
+        self.assertTrue(plugin.is_enabled())
+        real = apps.is_installed
+        with mock.patch.object(apps, "is_installed",
+                               side_effect=lambda name: name != "toto.events" and real(name)):
+            self.assertFalse(plugin.is_enabled())
+            self.assertIsNone(plugin.render(community=None))
+

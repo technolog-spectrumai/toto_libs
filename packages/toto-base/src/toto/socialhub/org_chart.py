@@ -30,6 +30,18 @@ from django.utils.translation import gettext as _
 
 #: The longest title kept, and the largest order number.
 TITLE_MAX = 120
+
+
+def positions_enabled() -> bool:
+    """Whether this platform keeps positions at all (2026-10-11):
+    ``settings.SOCIALHUB_ORG_POSITIONS``, on unless a host says otherwise. A
+    host that turns them off has no Organisation chart tab and no position
+    doors, and the page's Org Chart button draws what it drew before
+    positions existed: the community's members, hung by who vouched for
+    whom. Rows made earlier stay in the table, unread."""
+    from django.conf import settings
+
+    return bool(getattr(settings, "SOCIALHUB_ORG_POSITIONS", True))
 ORDER_MAX = 9999
 #: The tab's name in the community page's address.
 TAB = "chart"

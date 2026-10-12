@@ -587,19 +587,27 @@ class AddressPickerTests(ClearanceFixture):
 
 
 class OtherDoorsKeepTheirRulesTests(ClearanceFixture):
-    """Addresses are gated on the LOCATIONS doors only: a person's profile, a
-    community and an event show an address by their own rules."""
+    """What a page of another app shows of a kept address. A person's own
+    home is theirs to see whatever keeps it. An event shows the place its
+    organiser typed. A community's seat on the map is drawn for a viewer who
+    may read the address and for nobody else (``links``, 2026-10-12; until
+    2026-10-04 the three were keys on toto-base's own models and each page
+    printed the address by its own rule)."""
 
     def setUp(self):
         self.other_kinds()
 
     def test_your_own_profile_shows_your_kept_address(self):
-        person = Person.objects.create(user=self.stranger, display_name="Stranger",
-                                       slug="stranger", address=self.kept_address)
+        from toto.locations.models import Home
+
+        person = Person.objects.create(user=self.stranger, display_name="Stranger", slug="stranger")
+        Home.objects.create(person=person, address=self.kept_address)
         self.client.force_login(fresh(self.stranger))
         response = self.client.get(reverse("socialhub:profile_details", args=[person.slug]))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["address_shown"], str(self.kept_address))
+        # "Where you live", the owner's own section, names their home.
+        self.assertContains(response, 'id="home-on-the-map"')
+        self.assertContains(response, str(self.kept_address))
 
     def test_an_event_shows_its_kept_venue(self):
         from datetime import timedelta
@@ -617,10 +625,19 @@ class OtherDoorsKeepTheirRulesTests(ClearanceFixture):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, str(self.kept_address))
 
-    def test_a_community_keeps_its_kept_headquarters(self):
-        community = Community.objects.create(name="Harbour", slug="harbour",
-                                             location=self.kept_address)
+    def test_a_communitys_kept_seat_is_drawn_for_who_may_read_it(self):
+        from toto.locations import links
+
+        community = Community.objects.create(name="Harbour", slug="harbour")
+        links.set_community_seat(community, self.kept_address)
         self.client.force_login(self.stranger)
         response = self.client.get(reverse("socialhub:community_detail", args=[community.slug]))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, str(self.kept_address))
+        self.assertNotContains(response, str(self.kept_address))
+        self.assertNotContains(response, 'data-testid="community-seat-address"')
+        self.assertFalse(links.may_read_place(self.stranger, self.kept_address))
+        # The text somebody typed for the seat is the community's own line.
+        community.seat = "By the harbour"
+        community.save(update_fields=["seat"])
+        self.assertContains(self.client.get(
+            reverse("socialhub:community_detail", args=[community.slug])), "By the harbour")

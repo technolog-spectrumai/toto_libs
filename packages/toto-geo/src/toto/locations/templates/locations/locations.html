@@ -818,12 +818,14 @@
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
         <i class="fa-solid fa-location-dot"></i>{% trans "Add address" %}</a>
+      {% if layers_enabled %}
       <button
         type="button"
         @click="importOpen = true"
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
         <i class="fa-solid fa-file-import"></i>{% trans "Import layer" %}</button>
+      {% endif %}
     </div>
 
     <div

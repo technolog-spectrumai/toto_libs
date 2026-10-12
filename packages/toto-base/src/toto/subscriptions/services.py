@@ -810,6 +810,13 @@ def run_billing(*, now=None) -> dict:
         sync_for_admins()
     except Exception:  # noqa: BLE001 - bookkeeping; the billing must still run
         pass
+    from . import autoplan
+
+    if autoplan.enabled():
+        try:
+            counts["assigned"] = autoplan.assign_all()
+        except Exception:  # noqa: BLE001 - the billing must still run
+            counts["assigned"] = -1
 
     queryset = (Subscription.objects
                 .exclude(state=SubscriptionState.CANCELLED)

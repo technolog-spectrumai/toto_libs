@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import domain_views, home_views, views
+from . import domain_views, home_views, seat_views, views
 from .api_views import (
     ZoneListApiView, AddressListCreateApiView, AddressDetailApiView,
     MapDataApiView, MapLayersApiView, RouteSearchApiView,
@@ -22,6 +22,11 @@ urlpatterns = [
     path("route-search/", views.route_search, name="route_search"),
     # Who lives near you. Opt-in: a person is here because they switched it on.
     path("people/", views.people, name="people"),
+    # The zones the viewer may read, as a list (2026-10-12).
+    path("zones/", views.zones, name="zones"),
+    # A GeoJSON file of the vault drawn on the map (2026-10-12).
+    path("geojson/", views.geojson_viewer, name="geojson"),
+    path("geojson/<int:pk>/data/", views.geojson_data, name="geojson_data"),
 
     # Proper detail pages
     path("addresses/<int:pk>/", views.address_detail, name="address_detail"),
@@ -49,6 +54,9 @@ urlpatterns = [
     path("home/set/", home_views.set_my_home, name="set_my_home"),
     path("home/search/", home_views.search_home, name="search_home"),
     path("home/sharing/", home_views.set_home_sharing, name="set_home_sharing"),
+    # A community's seat on the map (2026-10-12): a registered place and a
+    # territory, chosen on the community's page. Keys only: no geometry.
+    path("seat/<slug:slug>/set/", seat_views.set_community_seat, name="set_community_seat"),
 
     # Map domains (2026-09-30): superusers group map items and keep the
     # groups to clearances.
@@ -77,7 +85,7 @@ from django.conf import settings as _settings  # noqa: E402
 
 GIS_FREE = {
     "geocode_search", "geocode_reverse",
-    "set_my_home", "search_home", "set_home_sharing",
+    "set_my_home", "search_home", "set_home_sharing", "set_community_seat",
     "domains", "domain_add", "domain_item_search", "domain_items", "domain_clearances",
     "domain_delete",
 }

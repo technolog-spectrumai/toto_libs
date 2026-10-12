@@ -130,10 +130,12 @@ def economy_operator(user) -> bool:
 
 
 def pricing_enabled() -> bool:
-    """True when this host has a rate card to read or write."""
-    from .charge import billing_enabled
+    """True when this host has a rate card to read or write: the ledger's.
+    A host that charges in Discipline's mana has no rate card; its prices are
+    Discipline's file and its own page shows them (2026-10-11)."""
+    from .charge import TARIFFS, charger
 
-    return billing_enabled()
+    return charger() == TARIFFS
 
 
 def rate_card() -> dict[str, dict]:

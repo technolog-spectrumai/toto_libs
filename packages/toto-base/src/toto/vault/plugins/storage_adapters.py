@@ -30,7 +30,7 @@ from toto.vault.storage_adapters import (
 # This server
 # ---------------------------------------------------------------------------
 
-@StorageAdapter.plugin(key="local", title=gettext_lazy("This Zenobia"), order=10)
+@StorageAdapter.plugin(key="local", title=gettext_lazy("This machine"), order=10)
 class LocalAdapter(StorageAdapter):
     backend = "local"
     icon = "fa-solid fa-server"
@@ -277,6 +277,171 @@ class OvhS3Adapter(_S3Adapter):
     def regions(self):
         extra = getattr(settings, "VAULT_OVH_REGIONS", ()) or ()
         return list(self.REGIONS) + [(code, code) for code in extra]
+
+
+# ---------------------------------------------------------------------------
+# Object storage the operator configured (2026-10-11)
+# ---------------------------------------------------------------------------
+
+def configured_storages() -> list[dict]:
+    """The outside object storages this platform's operator set up
+    (``settings.VAULT_OBJECT_STORAGES``: a list, or a JSON string of one),
+    each a mapping with ``name`` (unique, what the dialog shows), ``location``
+    (where it is, in the operator's words: "Warsaw", "the office NAS"),
+    ``provider`` (``aws``, ``ovh`` or ``s3``), ``region`` (aws, ovh) or
+    ``endpoint_url`` (s3), ``access_key_id`` and ``secret_access_key``. The
+    keys stay in the server's environment: the dialog never asks for them and
+    never shows them. Faults are reported by the system check ``vault.E010``;
+    this returns the entries as they are."""
+    import json
+
+    raw = getattr(settings, "VAULT_OBJECT_STORAGES", None) or []
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw) if raw.strip() else []
+        except ValueError:
+            return []
+    return [dict(entry) for entry in raw if isinstance(entry, dict)]
+
+
+def configured_storage_faults() -> list[str]:
+    """One sentence per fault in ``VAULT_OBJECT_STORAGES``."""
+    faults, names = [], set()
+    for n, entry in enumerate(configured_storages()):
+        name = str(entry.get("name") or "").strip()
+        where = f"VAULT_OBJECT_STORAGES[{n}]" + (f" ({name})" if name else "")
+        if not name:
+            faults.append(f"{where}: name is required")
+        elif name in names:
+            faults.append(f"{where}: the name is used twice")
+        names.add(name)
+        provider = str(entry.get("provider") or "").strip()
+        if provider not in ("aws", "ovh", "s3"):
+            faults.append(f"{where}: provider is aws, ovh or s3")
+        if provider in ("aws", "ovh") and not str(entry.get("region") or "").strip():
+            faults.append(f"{where}: region is required for {provider}")
+        if provider == "s3" and not str(entry.get("endpoint_url") or "").strip():
+            faults.append(f"{where}: endpoint_url is required for s3")
+        for key in ("access_key_id", "secret_access_key"):
+            if not str(entry.get(key) or "").strip():
+                faults.append(f"{where}: {key} is missing")
+    return faults
+
+
+def storage_label(entry: dict) -> str:
+    """What the dialog shows of a storage: its name and where it is, never
+    the company behind it."""
+    location = str(entry.get("location") or "").strip()
+    return f"{entry['name']} — {location}" if location else str(entry["name"])
+
+
+@StorageAdapter.plugin(key="object_storage", title=gettext_lazy("Object storage"), order=15)
+class ConfiguredStorageAdapter(_S3Adapter):
+    """A bucket in one of the object storages the operator configured
+    (``configured_storages``): the dialog offers them by name and location,
+    asks for the bucket's own name at the storage and a prefix, and takes the
+    keys from the configuration. Amazon's and OVH's own kinds stay for a host
+    that offers them instead (``VAULT_BUCKET_KINDS``)."""
+
+    icon = "fa-solid fa-cloud"
+    summary = gettext_lazy("Files are stored in an object storage this platform's operator set up.")
+
+    def is_available(self) -> bool:
+        return super().is_available() and bool(configured_storages())
+
+    def matches(self, bucket) -> bool:
+        return bucket.storage_backend == "s3" and bool((bucket.storage_config or {}).get("storage"))
+
+    # -- the storages ------------------------------------------------------------
+
+    @staticmethod
+    def storage(name: str) -> dict | None:
+        for entry in configured_storages():
+            if str(entry.get("name") or "") == name:
+                return entry
+        return None
+
+    def _provider_of(self, entry):
+        """The StorageProvider preset of the storage's provider, or None for a
+        plain S3 endpoint (the driver then uses ``endpoint_url``)."""
+        if entry.get("provider") not in ("aws", "ovh"):
+            return None
+        self.provider_name = entry["provider"]
+        return _S3Adapter.provider(self)
+
+    def provider(self):
+        return None
+
+    # -- inputs ---------------------------------------------------------------
+
+    def fields(self):
+        return [
+            field("storage", _("Storage"), kind="select",
+                  choices=[(entry["name"], storage_label(entry)) for entry in configured_storages()
+                           if entry.get("name")],
+                  help=_("The object storages this platform's operator set up.")),
+            field("bucket_name", _("Bucket at the storage"), max_length=63,
+                  help=_("The bucket's own name at the storage. It must exist already.")),
+            field("prefix", _("Folder prefix"), required=False, max_length=200,
+                  placeholder="vault/",
+                  help=_("Files go under this path in the bucket. Left blank: vault/.")),
+        ]
+
+    def validate(self, data):
+        errors, config = {}, {}
+        entry = self.storage(_text(data, "storage"))
+        if entry is None:
+            errors["storage"] = [_("Choose a storage from the list.")]
+        for name, clean in (("bucket_name", clean_s3_bucket_name), ("prefix", clean_s3_prefix)):
+            try:
+                config[name] = clean(_text(data, name))
+            except ValidationError as exc:
+                errors.update(exc.message_dict)
+        if errors:
+            raise ValidationError(errors)
+        stored = {"storage": entry["name"], "bucket_name": config["bucket_name"],
+                  "prefix": config["prefix"]}
+        if entry.get("provider") in ("aws", "ovh"):
+            stored["region_name"] = str(entry.get("region") or "").strip()
+            endpoint = self._provider_of(entry).resolve_endpoint_url(region=stored["region_name"])
+        else:
+            stored["endpoint_url"] = str(entry.get("endpoint_url") or "").strip()
+            endpoint = stored["endpoint_url"]
+        if endpoint:
+            outbound_url(endpoint, field_name="storage", label=_("Endpoint"))
+        secret = {"aws_access_key_id": str(entry.get("access_key_id") or "").strip(),
+                  "aws_secret_access_key": str(entry.get("secret_access_key") or "").strip()}
+        return stored, secret
+
+    # -- the driver -------------------------------------------------------------
+
+    def _candidate(self, config):
+        from toto.vault.models import Bucket
+
+        entry = self.storage(config.get("storage", "")) or {}
+        return Bucket(storage_backend="s3", provider=self._provider_of(entry),
+                      storage_config=dict(config))
+
+    def build(self, bucket, config, secret):
+        entry = self.storage(config.get("storage", "")) or {}
+        bucket.provider = self._provider_of(entry)
+        bucket.storage_config = {k: config[k] for k in
+                                 ("storage", "bucket_name", "region_name", "prefix", "endpoint_url")
+                                 if config.get(k)}
+
+    # -- describing -------------------------------------------------------------
+
+    def target(self, bucket) -> str:
+        config = bucket.storage_config or {}
+        entry = self.storage(config.get("storage", "")) or {"name": config.get("storage", "?")}
+        return " · ".join([f"{config.get('bucket_name', '?')}/{config.get('prefix', 'vault/') or ''}",
+                           storage_label(entry)])
+
+    def destroy_plan(self, bucket):
+        plan = super().destroy_plan(bucket)
+        plan["keeps"] = [_("The bucket at the storage itself, and every object this vault did not "
+                           "store in it.")]
+        return plan
 
 
 @StorageAdapter.plugin(key="s3", title=gettext_lazy("S3-compatible"), order=90)

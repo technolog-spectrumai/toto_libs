@@ -1,0 +1,102 @@
+{% extends "discipline/base.html" %}
+{% load i18n %}
+
+{% block discipline_lede %}
+<p class="text-sm opacity-70">
+  {% trans "Some actions spend mana: uploading a file, running a workflow. It refills every hour, from the aura of your community and from any sigil you hold. There is one kind of mana." %}
+</p>
+{% endblock %}
+
+{% block discipline_content %}
+<div class="grid gap-4 lg:grid-cols-3">
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border p-5 shadow-sm" data-testid="mana-balance-card">
+    <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "You have" %}</p>
+    <p class="mt-1 text-4xl font-bold tabular-nums" data-testid="mana-balance">{{ balance|floatformat:"-2" }}</p>
+    <p class="mt-1 text-sm opacity-70">
+      {% blocktrans with cap=speed.cap|floatformat:"-2" %}Regeneration fills it to {{ cap }}.{% endblocktrans %}
+    </p>
+  </div>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border p-5 shadow-sm lg:col-span-2" data-testid="mana-speed-card">
+    <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "It refills" %}</p>
+    <p class="mt-1 text-2xl font-bold tabular-nums">
+      {% blocktrans with rate=speed.rate|floatformat:"-2" %}{{ rate }} an hour{% endblocktrans %}
+    </p>
+    <ul class="mt-3 space-y-1 text-sm">
+      {% if speed.aura %}
+      <li data-testid="mana-aura">
+        <i class="fa-solid fa-jedi mr-1 opacity-60"></i>
+        {% blocktrans with aura=speed.aura.name community=community.name rate=speed.aura_rate|floatformat:"-2" %}The aura {{ aura }}, through {{ community }}: {{ rate }} an hour.{% endblocktrans %}
+      </li>
+      {% elif speed.aura_rate %}
+      <li><i class="fa-solid fa-jedi mr-1 opacity-60"></i>
+        {% blocktrans with rate=speed.aura_rate|floatformat:"-2" %}The platform's own: {{ rate }} an hour.{% endblocktrans %}</li>
+      {% else %}
+      <li class="opacity-70" data-testid="mana-no-aura">
+        <i class="fa-solid fa-jedi mr-1 opacity-60"></i>{% trans "None of your communities has an aura." %}</li>
+      {% endif %}
+      {% for sigil in speed.sigils %}
+      <li class="flex items-center gap-2" data-testid="mana-sigil">
+        {% if sigil.image %}<img src="{{ sigil.image.url }}" alt="" class="h-6 w-6 rounded object-cover">{% else %}<i class="fa-solid fa-stamp opacity-60"></i>{% endif %}
+        <span>{% blocktrans with name=sigil.name rate=sigil.regen_per_hour|floatformat:"-2" %}The sigil {{ name }}: {{ rate }} an hour.{% endblocktrans %}</span>
+      </li>
+      {% empty %}
+      <li class="opacity-70"><i class="fa-solid fa-stamp mr-1 opacity-60"></i>{% trans "You hold no sigil." %}</li>
+      {% endfor %}
+    </ul>
+    {% for sentence in sources %}<p class="mt-3 text-sm opacity-70">{{ sentence }}</p>{% endfor %}
+  </div>
+</div>
+
+{% if prices %}
+<div>
+  <h2 class="mb-2 text-lg font-semibold">{% trans "What things cost" %}</h2>
+  <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="overflow-hidden rounded-xl border shadow-sm">
+    {% for row in prices %}
+    <div :class="darkMode ? 'border-b border-accent-1/30' : 'border-b border-accent-2/30'"
+         class="flex items-center gap-3 px-4 py-2 text-sm last:border-b-0">
+      <span class="min-w-0 flex-1 truncate">{{ row.label }}</span>
+      <span class="shrink-0 tabular-nums">{% blocktrans with price=row.price|floatformat:"-4" unit=row.unit %}{{ price }} mana a {{ unit }}{% endblocktrans %}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if may_grant %}
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-xl border p-5 shadow-sm">
+  <h2 class="text-lg font-semibold">{% trans "Grant mana" %}</h2>
+  <p class="mt-1 text-sm opacity-70">{% trans "It lands whole, above the cap if need be, and is written on the audit trail with your name." %}</p>
+  <form method="post" action="{% url 'discipline:grant' %}" class="mt-3 flex flex-wrap items-end gap-3" data-testid="mana-grant-form">
+    {% csrf_token %}
+    <label class="text-sm">{% trans "Username" %}
+      <input type="text" name="username" required autocomplete="off"
+             :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-white border-accent-2 text-text-main-light'"
+             class="mt-1 block w-48 rounded-lg border px-2 py-1 text-sm"></label>
+    <label class="text-sm">{% trans "Mana" %}
+      <input type="number" name="amount" required min="0.0001" step="any"
+             :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-white border-accent-2 text-text-main-light'"
+             class="mt-1 block w-28 rounded-lg border px-2 py-1 text-right text-sm tabular-nums"></label>
+    <label class="min-w-0 flex-1 text-sm">{% trans "Reason" %}
+      <input type="text" name="reason" maxlength="255"
+             :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-white border-accent-2 text-text-main-light'"
+             class="mt-1 block w-full rounded-lg border px-2 py-1 text-sm"></label>
+    <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="rounded-lg px-5 py-2 text-sm font-bold transition hover:opacity-90">
+      <i class="fa-solid fa-hand-holding-heart mr-1"></i>{% trans "Grant" %}</button>
+  </form>
+</div>
+{% elif is_operator %}
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-xl border p-5 shadow-sm" data-testid="mana-grant-needs-plan">
+  <h2 class="text-lg font-semibold">{% trans "Grant mana" %}</h2>
+  <p class="mt-1 text-sm opacity-70">{% trans "Granting mana needs a superuser on the Superuser plan." %}
+    {% if plans_url %}<a href="{{ plans_url }}" class="font-semibold underline hover:opacity-80">{% trans "Plans" %}</a>{% endif %}</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -117,7 +117,7 @@ def audit_dump() -> str:
                                                        "object_description")), default=str)
 
 
-@override_settings(MEDIA_ROOT=_MEDIA, VAULT_EXTERNAL_BUCKETS=True)
+@override_settings(MEDIA_ROOT=_MEDIA, VAULT_EXTERNAL_BUCKETS=True, VAULT_BUCKET_KINDS=None)
 class Fixture(TestCase):
     @classmethod
     def setUpTestData(cls):

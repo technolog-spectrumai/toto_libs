@@ -137,6 +137,14 @@ class EventDetailView(LoginRequiredMixin, DetailView):
             if person else None
         )
         context["user_is_organizer"] = _is_organizer(self.request.user, self.object)
+        # The event's place on the map (2026-10-12), on a host with the map
+        # and for a viewer who has it and may read that place.
+        from django.apps import apps
+
+        if apps.is_installed("toto.locations"):
+            from toto.locations import links
+
+            context["place_on_map"] = links.place_shown(self.request.user, self.object)
 
         return PageProcessor().decorate(context, self.request)
 
@@ -152,6 +160,7 @@ def event_create(request):
             person = _current_person(request.user)
             event.owner = person
             event.save()
+            form.save_place(event)          # its place on the map, where the host has one
             if person:
                 event.organizers.add(person)
             return redirect("events:event_detail", pk=event.pk)
@@ -161,6 +170,63 @@ def event_create(request):
     return events_render(request, "events/event_form.html", {
         "form": form,
         "title": _("New event"),
+    })
+
+
+# ─── Import from an .ics file ─────────────────────────────────────────────────
+
+@login_required
+def import_ics(request):
+    """Events from an iCalendar file (2026-10-12; ``ics.py`` reads it).
+
+    Each meeting becomes an event of the importer's: they own it and organise
+    it, and it is PRIVATE, because a calendar file is somebody's own diary and
+    a public event is every member's to read. The title, the times, the
+    description and the place (as text) are kept; a repeating meeting comes
+    in once, as its first occurrence. A meeting the importer already has with
+    the same title and start is not made twice, so a file can be imported
+    again."""
+    from django.utils import timezone
+
+    from . import ics
+
+    result = None
+    error = ""
+    if request.method == "POST":
+        uploaded = request.FILES.get("file")
+        if uploaded is None:
+            error = _("Choose an .ics file.")
+        elif uploaded.size > ics.MAX_BYTES:
+            error = _("This file is too large to import.")
+        else:
+            try:
+                parsed = ics.parse(uploaded.read(), timezone.get_current_timezone())
+            except ics.CalendarError as exc:
+                error = {"empty": _("This file is empty."),
+                         "too_large": _("This file is too large to import.")}.get(
+                             exc.code, _("This file is not a calendar (.ics)."))
+            else:
+                person = _current_person(request.user)
+                made = already = 0
+                for meeting in parsed.meetings:
+                    title = (meeting.title or str(_("Untitled")))[:200]
+                    if person is not None and ScheduledEvent.objects.filter(
+                            owner=person, title=title, start_time=meeting.start).exists():
+                        already += 1
+                        continue
+                    event = ScheduledEvent.objects.create(
+                        title=title, description=meeting.description, start_time=meeting.start,
+                        end_time=meeting.end, address=meeting.place[:255], public=False, owner=person)
+                    if person:
+                        event.organizers.add(person)
+                    made += 1
+                result = {"made": made, "already": already, "repeating": parsed.repeating,
+                          "unknown_zones": parsed.unknown_zones,
+                          "left_out": parsed.left_out + parsed.without_time,
+                          "over_the_cap": parsed.over_the_cap}
+    return events_render(request, "events/import_ics.html", {
+        "result": result, "error": error,
+        "max_mb": ics.MAX_BYTES // (1024 * 1024), "max_events": ics.MAX_EVENTS,
     })
 
 
@@ -357,6 +423,14 @@ def invite_respond(request, pk):
             invite.responded_at = now()
             invite.save(update_fields=["status", "responded_at"])
 
+    # Back to where the answer was given (the profile's invitations section,
+    # 2026-10-12), when that is a page of this platform; else the list.
+    from django.utils.http import url_has_allowed_host_and_scheme
+
+    back = request.POST.get("next") or ""
+    if back and url_has_allowed_host_and_scheme(back, allowed_hosts={request.get_host()},
+                                                require_https=request.is_secure()):
+        return redirect(back)
     return redirect("events:my_invites")
 
 

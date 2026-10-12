@@ -30,6 +30,16 @@
               {% block tab_locations %}opacity-60{% endblock %}">
       <i class="fa-solid fa-map-location-dot fa-fw"></i> {% trans "Map" %}
     </a>
+    <a href="{% url 'locations:zones' %}" data-testid="locations-tab-zones"
+       :class="{% if request.resolver_match.url_name == 'zones' or request.resolver_match.url_name == 'zone_detail' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
+       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
+      <i class="fa-solid fa-draw-polygon fa-fw"></i> {% trans "Zones" %}
+    </a>
+    <a href="{% url 'locations:geojson' %}" data-testid="locations-tab-geojson"
+       :class="{% if request.resolver_match.url_name == 'geojson' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
+       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
+      <i class="fa-solid fa-file-code fa-fw"></i> GeoJSON
+    </a>
     <a href="{% url 'locations:route_search' %}"
        :class="{% if request.resolver_match.url_name == 'route_search' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">

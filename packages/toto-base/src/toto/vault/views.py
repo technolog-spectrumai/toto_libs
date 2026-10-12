@@ -489,15 +489,18 @@ def _egress_refusal(file_obj):
     return None
 
 
-def _record_egress(file_obj, quantity_mb=None):
+def _record_egress(file_obj, quantity_mb=None, *, inline=False):
     """One served download, on the owner's meter. After the bytes are
     committed to, never before — a 502 serves nothing and records nothing."""
     from decimal import Decimal as _D
 
     from toto.quota import record_usage
 
+    from . import timeline
     from .models import VaultUsageEvent
 
+    # The file's history: who opened or downloaded it, and when (timeline.py).
+    timeline.read(file_obj, inline=inline)
     mb = (_D(str(file_obj.file_size_bytes or 0)) / _D("1048576")
           if quantity_mb is None else quantity_mb)
     if mb > 0:
@@ -505,9 +508,20 @@ def _record_egress(file_obj, quantity_mb=None):
                      file_obj.owner, unit="MB",
                      source_type="vault.VaultFile",
                      source_id=str(file_obj.pk))
+        # A download costs whoever downloads a little (the owner, 2026-10-12:
+        # "downloading should cost mana but tiny amount"), where the host
+        # prices storage.egress_mb. After the bytes, never before: a read is
+        # not refused for mana, the balance gives what it has. Nobody at the
+        # keyboard (a public link opened signed out, a worker): nobody pays.
+        who = timeline.acting()
+        if who is not None:
+            from toto.quota.charge import charge, price_for
+
+            charge(who, price_for(who, "vault"), "storage.egress_mb", mb, unit="MB",
+                   source_type="vault.VaultFile", source_id=str(file_obj.pk))
 
 
-def _file_response_or_bad_gateway(file_obj):
+def _file_response_or_bad_gateway(file_obj, *, inline=False):
     """Stream a file's bytes, or say plainly why they could not be fetched.
 
     The one shape every download door uses (this view and the peer API): a
@@ -535,7 +549,7 @@ def _file_response_or_bad_gateway(file_obj):
                 "title": file_obj.title, "label": label,
                 "error_type": type(exc).__name__, "error": exc},
             status=502, content_type="text/plain; charset=utf-8")
-    _record_egress(file_obj)
+    _record_egress(file_obj, inline=inline)
     return FileResponse(
         stream,
         as_attachment=True,
@@ -555,7 +569,7 @@ def stream_file(file_obj, *, inline=False, content_type=None):
     way. ``inline`` serves for display rather than download. Nothing here
     checks access — the caller must have.
     """
-    response = _file_response_or_bad_gateway(file_obj)
+    response = _file_response_or_bad_gateway(file_obj, inline=inline)
     if isinstance(response, FileResponse):
         if content_type:
             response["Content-Type"] = content_type
@@ -1141,6 +1155,12 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
         from toto.socialhub.clearance_access import group_hidden
 
         files_hidden = group_hidden(self.request.user, Bucket.objects.filter(pk=bucket.pk))
+        # The last of the bucket's timeline (timeline.py); the whole of it is
+        # the History page's.
+        from . import timeline
+
+        context["history_rows"] = [timeline.row(event) for event in
+                                   timeline.of_bucket(self.request.user, bucket)[:10]]
         bucket_files = (VaultFile.objects.none() if files_hidden
                         else VaultFile.objects.filter(bucket=bucket))
         copy_files_qs = bucket_files.filter(owner=self.request.user).order_by("title")
@@ -1749,25 +1769,9 @@ class EncryptFileView(LoginRequiredMixin, View):
     def _ensure_workflow():
         """Get-or-create the single-node 'vault-encrypt' workflow so encryption works
         even if ingress hasn't (re)seeded it on this deployment (mirrors CreateZipView)."""
-        from toto.workflows.models import Workflow, WorkflowNode
-        wf, created = Workflow.objects.get_or_create(
-            slug="vault-encrypt",
-            defaults={
-                "name": "Encrypt file",
-                "description": "Encrypt a vault file at rest. The password is supplied "
-                               "out-of-band and never stored on the run.",
-            },
-        )
-        if created or not wf.nodes.filter(task_name="vault_encrypt_file").exists():
-            WorkflowNode.objects.create(
-                workflow=wf,
-                node_type=WorkflowNode.PREDEFINED_TASK,
-                label="Encrypt file",
-                task_name="vault_encrypt_file",
-                position_x=0,
-                position_y=0,
-            )
-        return wf
+        from .workflow import ensure_encrypt_workflow
+
+        return ensure_encrypt_workflow()
 
     def post(self, request):
         
@@ -1782,6 +1786,20 @@ class EncryptFileView(LoginRequiredMixin, View):
             return access.remote_lock_response(request, vault_file)
         if vault_file.is_encrypted:
             return JsonResponse({"ok": False, "error": _("File is already encrypted.")}, status=400)
+
+        # A host with a limit (VAULT_ENCRYPT_WORKFLOW_MB) never encrypts in the
+        # request: the worker does, as a workflow run above the limit and a
+        # plain task up to it (cipher_jobs, 2026-10-10). No worker, no fallback.
+        from . import cipher_jobs
+
+        if cipher_jobs.off_request():
+            try:
+                return JsonResponse(cipher_jobs.dispatch(
+                    vault_file, request.user, cipher_jobs.ENCRYPT, password, owner_password))
+            except cipher_jobs.NoWorker as exc:
+                return JsonResponse({"ok": False, "error": str(exc)}, status=503)
+            except cipher_jobs.InsufficientFunds as exc:
+                return JsonResponse({"ok": False, "error": str(exc)}, status=exc.status_code)
 
         # Offload to a 'vault-encrypt' workflow run when the engine is installed
         # (faros + portal): encryption does an S3 download → crypto → re-upload that
@@ -1846,6 +1864,20 @@ class EncryptStatusView(LoginRequiredMixin, View):
 
     def get(self, request):
         run_id = request.GET.get("run_id", "").strip()
+        job_id = request.GET.get("job_id", "").strip()
+        if job_id and not run_id:
+            # A plain worker job (cipher_jobs): its state is in the cache.
+            from . import cipher_jobs
+
+            state = cipher_jobs.status(job_id[:64], request.user)
+            if state is None:
+                return JsonResponse({"ok": False, "error": _("Not found.")}, status=404)
+            if not state["done"]:
+                return JsonResponse({"status": "running", "is_terminal": False, "done": False})
+            if not state.get("ok"):
+                state.setdefault("error", _("Operation failed."))
+            return JsonResponse({"status": "completed" if state.get("ok") else "failed",
+                                 "is_terminal": True, **state})
         if not run_id:
             return JsonResponse({"ok": False, "error": _("Missing run_id.")}, status=400)
         from toto.workflows.models import WorkflowRun
@@ -1861,6 +1893,8 @@ class EncryptStatusView(LoginRequiredMixin, View):
         if run.status == WorkflowRun.COMPLETED:
             payload.update({"ok": True, "raw_url": out.get("raw_url", ""),
                             "vault_file_id": out.get("vault_file_id")})
+            if "url" in out:        # a decrypt run's answer
+                payload["url"] = out["url"]
         elif run.status == WorkflowRun.FAILED:
             payload.update({"ok": False, "error": out.get("error", _("Encryption failed."))})
         return JsonResponse(payload)
@@ -1878,6 +1912,17 @@ class DecryptFileView(LoginRequiredMixin, View):
             return access.remote_lock_response(request, vault_file)
         if not vault_file.is_encrypted:
             return JsonResponse({"ok": False, "error": _("File is not encrypted.")}, status=400)
+        # Off the request on a host with a limit, as encryption is (cipher_jobs).
+        from . import cipher_jobs
+
+        if cipher_jobs.off_request():
+            try:
+                return JsonResponse(cipher_jobs.dispatch(
+                    vault_file, request.user, cipher_jobs.DECRYPT, password, publish=True))
+            except cipher_jobs.NoWorker as exc:
+                return JsonResponse({"ok": False, "error": str(exc)}, status=503)
+            except cipher_jobs.InsufficientFunds as exc:
+                return JsonResponse({"ok": False, "error": str(exc)}, status=exc.status_code)
         try:
             vault_file.decrypt(password=password)
             vault_file.is_public = True
@@ -2484,6 +2529,14 @@ class CreateZipView(LoginRequiredMixin, View):
         )
         if not valid_ids:
             return JsonResponse({"error": _("Select at least one file to archive.")}, status=400)
+        # What zipping costs, by the files' sizes together (compute.py).
+        from . import compute
+
+        mb = compute.of_files(VaultFile.objects.filter(pk__in=valid_ids).only("file_size_bytes"))
+        try:
+            compute.check(request.user, mb)
+        except compute.InsufficientFunds as exc:
+            return JsonResponse({"error": str(exc)}, status=exc.status_code)
 
         payload = {"data": {
             "owner_id": request.user.id,
@@ -2493,6 +2546,7 @@ class CreateZipView(LoginRequiredMixin, View):
             "output_name": output_name,
         }}
         run, queued = self._start_zip_run(payload, request.user)
+        compute.charge(request.user, mb, source_type="workflows.WorkflowRun", source_id=run.pk)
 
         try:
             run_url = reverse("workflows:workflow_run_detail", args=[run.id])

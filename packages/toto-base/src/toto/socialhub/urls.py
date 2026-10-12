@@ -25,6 +25,8 @@ from toto.socialhub.views.clearances import (clearance_add, clearance_delete, cl
                                              clearance_people, clearance_targets, clearances)
 from toto.socialhub.views.privacy import (erasure_request_decline, erasure_requests, privacy_notice,
                                           privacy_notice_edit, privacy_notice_version)
+from toto.socialhub.views.invitations import (invitation_accept, invitation_list,
+                                             invitation_revoke)
 from toto.socialhub.views.application import membership_application_view, application_success_view, \
     verification_success_view, reference_request_view, reference_next, verify_application_view, reference_accept, \
     reference_reject
@@ -88,6 +90,12 @@ urlpatterns = [
     # typed and no application number in a path, which nginx logs and other
     # sites receive as the Referer. Each finds its application in the
     # session of the browser that applied (views/application.py).
+    # The invitation's way in (2026-10-10, enrollment.py): 404 on a platform
+    # that takes applications. The token is the last thing in the path, so a
+    # host's log rule can cut it.
+    path("invitations/", invitation_list, name="invitations"),
+    path("invitations/<int:pk>/revoke/", invitation_revoke, name="invitation_revoke"),
+    path("invite/<str:token>/", invitation_accept, name="invitation_accept"),
     path("apply/membership/", membership_application_view, name="membership_application"),
     path("apply/success/", application_success_view, name="application_success"),
     path("verify/", verify_application_view, name="membership_verification"),

@@ -80,10 +80,10 @@ class CommunityChangeTests(AuditCase):
 
     def test_a_created_record_names_the_parent(self):
         child = Community.objects.create(name="devs-api", slug="devs-api", parent=self.devs,
-                                         org_type=Community.GUILD)
+                                         org_type=Community.NON_PROFIT)
         made = self.records("COMMUNITY_CREATED", object_id=str(child.pk)).get()
         self.assertEqual(made.metadata["parent"], self.devs.pk)
-        self.assertEqual(made.metadata["org_type"], Community.GUILD)
+        self.assertEqual(made.metadata["org_type"], Community.NON_PROFIT)
         self.assertNotIn("is_clearance", made.metadata)
         self.assertEqual(made.object_type, "socialhub.community")
 

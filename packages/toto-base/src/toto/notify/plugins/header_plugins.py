@@ -1,5 +1,8 @@
 """The bell in the app bar (2026-10-04): an icon and the unread count, no
-words — on the desktop bar, and in the phone menu (``variant="mobile"``).
+words — on the bar, and in the menu the bar folds into on a narrow screen
+(``variant="mobile"``). Not pinned: the header folds it with the bar's
+links (``HeaderPlugin.pinned``, 2026-10-12), so its template names no
+breakpoint.
 
 The markup is ``notify/plugins/_bell.html``; what it does is
 ``notify/bell.js``, which reads everything it needs — the three doors'

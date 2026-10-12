@@ -39,6 +39,19 @@ class CommunityListView(ListView):
         context = super().get_context_data(**kwargs)
         context["org_types"] = Community.ORG_TYPES
         context["org_type"] = (self.request.GET.get("org_type") or "").strip()
+        # The columns other apps add to the directory (CommunityListPlugin):
+        # asked once for the page's communities, laid beside each of them.
+        from toto.socialhub.plugins.community_plugins import CommunityListPlugin
+
+        listed = list(context["communities"])
+        columns = CommunityListPlugin.columns_for(listed, request=self.request)
+        for community in listed:
+            community.directory_cells = [
+                {"title": column["title"], "text": column["cells"].get(community.pk, "")}
+                for column in columns]
+        context["communities"] = listed
+        context["directory_columns"] = columns
+        context["directory_colspan"] = 6 + len(columns)
         return PageProcessor().decorate(context, self.request)
 
 
@@ -62,6 +75,12 @@ class CommunityDetailView(DetailView):
             kwargs={"company_slug": community.slug}
         )
         context = PageProcessor().decorate(context, self.request)
+        # Who is in it is its members' to read where communities are private
+        # (2026-10-12); how many is everybody's.
+        from toto.socialhub.permissions import may_see_members
+
+        context["may_see_members"] = may_see_members(self.request.user, community)
+        context["member_count"] = community.members.count()
         context.update(community_tabs(self.request, community))
         context["community_plugin_sections"] = CommunityPlugin.render_tab(
             context["active_community_tab"],
@@ -119,9 +138,14 @@ def community_org_chart_data_by_slug(request, company_slug):
     before, its members hung by who vouched for whom."""
     community = get_object_or_404(Community.objects.all(), slug=company_slug)
 
-    if getattr(request.user, "is_authenticated", False):
-        from toto.socialhub import org_chart
+    from toto.socialhub import org_chart
+    from toto.socialhub.permissions import may_see_members
 
+    # The chart names the members: theirs alone where communities are private.
+    if not may_see_members(request.user, community):
+        return JsonResponse({"error": "Members only."}, status=403)
+
+    if getattr(request.user, "is_authenticated", False) and org_chart.positions_enabled():
         positions = org_chart.nodes_of(community)
         if positions:
             return JsonResponse({"nodes": positions, "kind": "positions"})

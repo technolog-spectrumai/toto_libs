@@ -47,6 +47,16 @@ namespaces = true
 # works from a checkout and VANISHES in the wheel — the failure the packaging
 # suite exists to catch — and here it would take every plan with it.
 "toto.subscriptions" = ["*.yaml", "*.md"]
+# The one colour palette and the Tailwind configuration that compiles it
+# (2026-10-10). Both are read when a host's image is built — from the wheel,
+# in zenobia's — and palette.json again by every page (toto/core/palette.py):
+# left out of the wheel, the build has no colours and no page renders.
+"toto.core" = ["palette.json", "tailwind/*"]
+# The same folder again under its own name: `packages.find` runs with
+# `namespaces = true`, so toto.core.tailwind is discovered as a package in
+# its own right (see the note on static/vendor below) and a glob keyed on
+# toto.core may not reach into it. tests/test_packaging.py holds both files.
+"toto.core.tailwind" = ["*"]
 
 [tool.setuptools.exclude-package-data]
 # Vendor assets are downloaded at deploy time (download_vendor.py). This was

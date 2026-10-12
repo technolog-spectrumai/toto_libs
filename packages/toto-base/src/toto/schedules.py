@@ -32,6 +32,8 @@ def beat_schedule(
     faucets_minute=7,
     mana=False,
     mana_minute=13,
+    discipline=False,
+    discipline_minute=13,
     subscriptions=False,
     subscriptions_hour=5,
     subscriptions_minute=5,
@@ -218,6 +220,17 @@ def beat_schedule(
         schedule["mana-hourly-regen"] = {
             "task": "toto.mana.tasks.regenerate_hour",
             "schedule": crontab(minute=str(mana_minute)),
+        }
+
+    if discipline:
+        from celery.schedules import crontab
+
+        # Discipline's hourly regeneration (toto.discipline): every person's
+        # aura and sigils, up to their cap. Idempotent per person and hour
+        # (the mana event's key), and it never makes up a missed hour.
+        schedule["discipline-hourly-regen"] = {
+            "task": "toto.discipline.tasks.regenerate_hour",
+            "schedule": crontab(minute=str(discipline_minute)),
         }
 
     if faucets:

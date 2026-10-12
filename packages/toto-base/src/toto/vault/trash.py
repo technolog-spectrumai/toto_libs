@@ -314,6 +314,11 @@ def purge_expired(*, now=None, budget: float | None = EXPIRED_BUDGET_SECONDS,
 def _record(action: str, vault_file, *, by, request, door: str, extra=None) -> None:
     from django.apps import apps
 
+    if action == FILE_PURGED:
+        # The file's timeline ends here; its rows stay with the bucket.
+        from . import timeline
+
+        timeline.purged(vault_file, by if getattr(by, "pk", None) else None)
     if request is not None:
         setattr(request, AUDITED_ATTR, True)
     if not apps.is_installed("toto.audit"):

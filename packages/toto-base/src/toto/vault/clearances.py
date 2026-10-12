@@ -46,10 +46,14 @@ def clearances_of(bucket) -> list:
 
 
 def set_clearances(bucket, clearances, *, actor):
-    return clearance_access.set_clearances(bucket, clearances, rows=ROWS, actor=actor,
-                                           action="bucket.clearances_changed",
-                                           app_label="vault", bucket=bucket.pk,
-                                           slug=bucket.slug, name=bucket.name)
+    before, after = clearance_access.set_clearances(
+        bucket, clearances, rows=ROWS, actor=actor, action="bucket.clearances_changed",
+        app_label="vault", bucket=bucket.pk, slug=bucket.slug, name=bucket.name)
+    # On the bucket's timeline too (the names, as the chain has them).
+    from . import timeline
+
+    timeline.clearances_changed(bucket, actor, before, after)
+    return before, after
 
 
 def page_context(user, bucket) -> dict:

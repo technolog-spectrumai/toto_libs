@@ -1,0 +1,49 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% comment %}The page an invitation's link opens (2026-10-10): the one door of
+the invitation's way in that a visitor reaches. A token that is not open
+(unknown, used, revoked, expired) gets one sentence, whichever it was.{% endcomment %}
+{% block title %}{% trans "Invitation" %} | {{ platform.site_name }}{% endblock %}
+{% block content %}
+<section :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+         class="min-h-screen px-4 py-12 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-lg space-y-6">
+    <div class="text-center">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-widest">{{ platform.site_name }}</p>
+      <h1 class="mt-2 text-3xl font-bold">{% if invitation and privacy_notice and not throttled %}{% trans "You are invited" %}{% else %}{% trans "Invitation" %}{% endif %}</h1>
+    </div>
+    {% if throttled %}
+    <p class="text-center text-sm opacity-80" data-testid="invitation-throttled">{% trans "Too many tries from your address. Wait an hour and open the link again." %}</p>
+    {% elif invitation is None %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 text-center shadow-sm" data-testid="invitation-closed">
+      <p class="text-sm">{% trans "This invitation is not open: it was used, revoked or has expired, or the link is not whole. Ask the person who invited you for a new one." %}</p>
+    </div>
+    {% else %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm sm:p-6">
+      {% if privacy_notice %}
+      <p class="mb-4 text-sm opacity-70">
+        {% blocktrans with community=invitation.community.name %}Choose a username and a password. Your account joins {{ community }}.{% endblocktrans %}
+        {% blocktrans with when=invitation.expires_at|date:"Y-m-d H:i T" %}This link works until {{ when }}.{% endblocktrans %}
+      </p>
+      {# The notice accepted on this page (RODO): the version linked is the one the form carries and checks. #}
+      <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+           class="mb-4 space-y-2 rounded-xl border p-4 text-sm" data-testid="invitation-privacy-notice">
+        {% url 'socialhub:privacy_notice_version' privacy_notice.version as notice_url %}
+        <p>{% blocktrans with version=privacy_notice.version %}Before you make your account, read how we handle your data: <a href="{{ notice_url }}" target="_blank" rel="noopener" class="font-semibold underline underline-offset-4">privacy notice, version {{ version }}</a>.{% endblocktrans %}</p>
+      </div>
+      <form method="post" class="space-y-4" data-testid="invitation-accept">
+        {% csrf_token %}
+        {% include "oya/_form_fields.html" with form=form %}
+        <button type="submit" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-base font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-user-plus" aria-hidden="true"></i>{% trans "Make my account" %}</button>
+      </form>
+      {% else %}
+      <p :class="darkMode ? 'border-warn-dark bg-sunken-dark text-warn-dark' : 'border-warn-light bg-sunken-light text-warn-light'"
+         class="rounded-lg border px-4 py-3 text-sm font-medium" data-testid="invitation-no-notice">{% trans "This invitation cannot be used until a privacy notice is published. Ask the person who invited you to tell an administrator." %}</p>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

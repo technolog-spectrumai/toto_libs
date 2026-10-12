@@ -10,6 +10,7 @@
     <i class="fa-solid fa-list"></i>Spis treści</h2>
   <div class="mt-3 flex flex-wrap gap-2 text-sm">
     <a href="#getting-started" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Pierwsze kroki</a>
+    <a href="#signing-in" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Zakładanie konta i logowanie</a>
     {% if features.socialhub %}<a href="#profile" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Profil i społeczności</a>{% endif %}
     {% if features.gervazy %}<a href="#keys" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Moje klucze</a>{% endif %}
     {% if features.vault %}<a href="#storage" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Przechowywanie</a>{% endif %}
@@ -19,7 +20,7 @@
     {% if features.kanban %}<a href="#tasks" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Zadania</a>{% endif %}
     {% if features.locations %}<a href="#locations" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Lokalizacje</a>{% endif %}
     {% if features.ireneo %}<a href="#company" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Spółka</a>{% endif %}
-    {% if features.workflows %}<a href="#workflows" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Przepływy pracy</a>{% endif %}
+    {% if features.workflows_open %}<a href="#workflows" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Przepływy pracy</a>{% endif %}
     {% if features.anastasia %}<a href="#gears" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Moc obliczeniowa</a>{% endif %}
     {% if features.latex %}<a href="#texlab" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">TeX Lab</a>{% endif %}
     {% if features.dracena %}<a href="#python-lab" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Python Lab</a>{% endif %}
@@ -29,6 +30,7 @@
     {% if features.graph %}<a href="#graph" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Graf wiedzy</a>{% endif %}
     {% if features.steven %}<a href="#steven" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Asystent</a>{% endif %}
     {% if features.grafana %}<a href="#monitoring" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Monitorowanie</a>{% endif %}
+    {% if features.team %}<a href="#team" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Dla zespołu platformy</a>{% endif %}
   </div>
 </nav>
 
@@ -40,13 +42,48 @@
     <i class="fa-solid fa-gauge-high"></i>Pierwsze kroki</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
     Po zalogowaniu trafiasz na <a href="{% url 'core:dashboard' %}" class="font-semibold underline hover:opacity-80">Pulpit</a> —
-    siatkę kart, po jednej dla każdego modułu zainstalowanego na tym serwerze. Kliknij kartę,
-    aby otworzyć moduł. Nagłówek u góry każdej strony prowadzi z powrotem do Pulpitu i do Twojego profilu.
+    siatkę kart, po jednej dla każdego modułu, który ta platforma Ci udostępnia, ułożonych w grupy. Każda karta ma przycisk <span class="font-semibold">Otwórz</span>.
+    Nagłówek u góry każdej strony prowadzi {% if features.socialhub %}do Twojego profilu (<span class="font-semibold">Profil</span>), {% endif %}z powrotem na <span class="font-semibold">Pulpit</span> i pozwala się wylogować (<span class="font-semibold">Wyloguj</span>).
   </p>
   <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
-    <li>Moduły są pogrupowane w kategorie; grupy można zwijać i rozwijać.</li>
-    <li>Widoczne są tylko moduły zainstalowane na tym serwerze — ta sama zasada dotyczy tego podręcznika.</li>
-    <li>Ikona słońca lub księżyca w nagłówku przełącza tryb jasny i ciemny.</li>
+    <li>Moduły są pogrupowane w kategorie: kliknij tytuł grupy, aby ją zwinąć lub rozwinąć, albo użyj przycisków <span class="font-semibold">Zwiń wszystkie</span> i <span class="font-semibold">Rozwiń wszystkie</span>.</li>
+    <li>Widoczne są tylko moduły zainstalowane na tym serwerze, i tylko te, które możesz otworzyć — ta sama zasada dotyczy tego podręcznika.</li>
+    <li>Ikona słońca lub księżyca w nagłówku przełącza tryb jasny i ciemny; wybór jest zapamiętywany w tej przeglądarce.</li>
+    <li>Lista <span class="font-semibold">ENG / PL</span> w nagłówku zmienia język całego interfejsu.</li>
+    {% if features.socialhub %}<li>W stopce każdej strony jest link <a href="{% url 'socialhub:privacy_notice' %}" class="font-semibold underline hover:opacity-80">Informacja o prywatności</a>: co platforma o Tobie przechowuje, po co i jak długo.</li>{% endif %}
+    {% if features.socialhub %}<li>Ten podręcznik otwiera przycisk <span class="font-semibold">Podręcznik użytkownika</span> na stronie Twojego profilu.</li>{% endif %}
+  </ul>
+</section>
+
+<!-- Zakładanie konta i logowanie -->
+<section id="signing-in"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-right-to-bracket"></i>Zakładanie konta i logowanie</h2>
+  {% if features.invitations %}
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Nikt nie rejestruje się tu samodzielnie. Ktoś z zespołu platformy wysyła Ci zaproszenie: link, który działa jeden raz,
+    przez {{ numbers.invitation_hours }} godz. Otwórz go, wybierz nazwę użytkownika (<span class="font-semibold">Nazwa użytkownika</span> — będziesz się nią logować), wyświetlaną nazwę (<span class="font-semibold">Wyświetlana nazwa</span>) i hasło (<span class="font-semibold">Hasło</span>),
+    przeczytaj informację o prywatności, zaznacz <span class="font-semibold">Znam treść informacji o prywatności i akceptuję ją.</span> i naciśnij <span class="font-semibold">Załóż moje konto</span>.
+    Zostajesz od razu zalogowany, jako członek społeczności wskazanej w zaproszeniu. Jeśli strona informuje, że zaproszenie nie jest aktywne
+    (zostało wykorzystane, cofnięte albo wygasło), poproś osobę, która Cię zaprosiła, o nowe.
+  </p>
+  {% elif features.applications %}
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Nikt nie rejestruje się tu samodzielnie. Na stronie logowania wybierz <span class="font-semibold">Złóż wniosek o członkostwo</span>: podaj adres e-mail, społeczność, do której
+    chcesz dołączyć, i nazwę użytkownika oraz zaakceptuj informację o prywatności. Przepisz cyfry z pokazanego obrazka, a potem wybierz osobę polecającą (<span class="font-semibold">Polecający</span>)
+    spośród członków społeczności. Gdy polecający zaakceptuje wniosek, Twoje konto zostaje włączone, a Ty dostajesz wiadomość e-mail.
+  </p>
+  {% else %}
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Nikt nie rejestruje się tu samodzielnie: konta zakłada zespół platformy.
+  </p>
+  {% endif %}
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li>Logujesz się nazwą użytkownika i hasłem.</li>
+    <li>Po {{ numbers.delay_after }} nieudanych próbach przed każdą następną trzeba chwilę odczekać; po {{ numbers.lock_after }} nieudanych próbach logowanie tą nazwą z Twojego adresu jest wstrzymywane na {{ numbers.lock_minutes }} min. Nic nie jest blokowane na stałe: odczekaj i spróbuj ponownie.</li>
+    {% if features.password_reset %}<li><span class="font-semibold">Zapomniałeś hasła?</span> na stronie logowania: tam, gdzie platforma ma skonfigurowaną pocztę, wysyła na adres e-mail Twojego konta link, który działa jeden raz, przez {{ numbers.reset_hours }} godz. Jeśli poczty nie ma albo konto nie ma adresu, wiadomość nie przyjdzie: postępuj według wskazówek na stronie albo zwróć się do zespołu platformy. Zapisanie nowego hasła kończy wszystkie sesje Twojego konta: zaloguj się ponownie nowym hasłem.</li>{% endif %}
   </ul>
 </section>
 
@@ -59,25 +96,29 @@
     <i class="fa-solid fa-users"></i>Profil i społeczności (Portal społeczny)</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
     Otwórz <span class="font-semibold">Profil</span> z nagłówka, aby zobaczyć swoją stronę członkowską. Jej zakładki
-    rozdzielają sprawy. <span class="font-semibold">Przegląd</span> to to, co widzą inni członkowie: Twoje dane
-    i społeczności, do których należysz, a to, co ukrywasz przed innymi, jest oznaczone jako ukryte.
-    Twoja strona ma też zakładki, których nie widzi nikt poza Tobą, także administratorzy:
+    rozdzielają sprawy. <span class="font-semibold">Przegląd</span> to to, co widzą inni członkowie: Twoja nazwa, awatar, kilka słów o Tobie i data dołączenia;
+    adres e-mail, telefon i adres tylko wtedy, gdy je włączysz, a to, co ukrywasz przed innymi, jest oznaczone jako ukryte.
+    Twoja strona ma też zakładki, których nie widzi nikt poza Tobą — nawet administratorzy:
     <span class="font-semibold">Edytuj profil</span>,
-    <span class="font-semibold">Konto</span> (adres e-mail, hasło, strefa czasowa i język),
-    <span class="font-semibold">Bezpieczeństwo</span> (gdzie jesteś zalogowany, ostatnie logowania i magazyn kluczy),
-    <span class="font-semibold">Portfel</span> (Twoja mana)
-    oraz <span class="font-semibold">Twoje dane</span> (kopia Twoich danych i prośba o usunięcie konta).
-    <span class="font-semibold">Aktywność</span> zawiera Twoje nadchodzące wydarzenia i prośby czekające na Twoją odpowiedź;
-    na profilu innego członka pokazuje tylko te jego nadchodzące wydarzenia, które możesz zobaczyć, obok zakładek
-    <span class="font-semibold">Przegląd</span> i <span class="font-semibold">Społeczności</span>.
-    <a href="{% url 'socialhub:profile_list' %}" class="font-semibold underline hover:opacity-80">Portal społeczny</a>
-    zawiera listę wszystkich profili członków i społeczności.
+    <span class="font-semibold">Konto</span>,
+    <span class="font-semibold">Bezpieczeństwo</span>{% if features.mana %},
+    <span class="font-semibold">Portfel</span> (Twoja mana){% endif %}
+    oraz <span class="font-semibold">Twoje dane</span>.
+    Zakładka <span class="font-semibold">Activity</span>{% if features.events or features.applications %} zawiera {% if features.events %}Twoje nadchodzące wydarzenia{% endif %}{% if features.events and features.applications %} i {% endif %}{% if features.applications %}prośby o referencje czekające na Twoją odpowiedź{% endif %}.{% else %} też tu jest; na tej platformie pozostaje pusta (pokazuje prośby o referencje, których platforma zapraszająca członków nie używa).{% endif %}
+    Na profilu innego członka widzisz zakładki <span class="font-semibold">Przegląd</span> i <span class="font-semibold">Społeczności</span>{% if features.events %} oraz <span class="font-semibold">Activity</span> z tymi jego nadchodzącymi wydarzeniami, które możesz zobaczyć{% endif %}.
+    <a href="{% url 'socialhub:profile_list' %}" class="font-semibold underline hover:opacity-80">Lista członków</a>
+    pokazuje wszystkich członków, a <a href="{% url 'socialhub:community_list' %}" class="font-semibold underline hover:opacity-80">społeczności</a> mają własną listę.
   </p>
   <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
-    <li><span class="font-semibold">Edytuj profil</span> — wyświetlana nazwa, kilka słów o sobie, awatar i telefon adres wpisany jako tekst oraz to, czy inni członkowie widzą Twój numer telefonu, adres e-mail i adres (każdy ukryty, dopóki go nie włączysz). Adres jest przechowywany tak, jak go wpiszesz: niczego się nie wyszukuje i niczego nie nanosi na mapę.</li>
+    <li><span class="font-semibold">Edytuj profil</span> — wyświetlana nazwa, kilka słów o sobie, awatar (obraz JPEG, PNG, GIF lub WebP do 2 MB) i telefon, adres wpisany jako tekst oraz to, czy inni członkowie widzą Twój numer telefonu, adres e-mail i adres (każdy ukryty, dopóki go nie włączysz; administratorzy zawsze widzą wszystkie trzy). Adres jest przechowywany tak, jak go wpiszesz: niczego się nie wyszukuje i niczego nie nanosi na mapę.</li>
+    <li><span class="font-semibold">Konto</span> — adres e-mail (link potwierdzający trafia na nowy adres, a zmiana następuje, gdy go otworzysz), hasło (zmiana kończy Twoje pozostałe sesje), strefa czasowa i język.</li>
     <li><span class="font-semibold">Język</span> — w zakładce Konto wybierz preferowany język (polski lub angielski). Cały interfejs przełącza się natychmiast, a wybór zostaje zapamiętany.</li>
-    <li><span class="font-semibold">Społeczności</span> — przeglądaj społeczności i składaj wnioski o członkostwo. Wniosek może wymagać kodu weryfikacyjnego oraz referencji od obecnych członków.</li>
-    <li><span class="font-semibold">Referencje</span> — gdy ktoś wskaże Cię jako osobę polecającą, prośba pojawi się w zakładce Aktywność Twojego profilu; tam ją akceptujesz lub odrzucasz.</li>
+    <li><span class="font-semibold">Bezpieczeństwo</span> — <span class="font-semibold">Sesje</span> pokazują, gdzie jesteś zalogowany, z przyciskiem <span class="font-semibold">Koniec</span> przy każdej oprócz bieżącej (oznaczonej „to urządzenie”) i przyciskiem <span class="font-semibold">Wyloguj się wszędzie indziej</span>; <span class="font-semibold">Ostatnie logowania</span> obejmują ostatnie 30 dni, także nieudane próby{% if features.gervazy %}; tu jest też Twój <span class="font-semibold">Magazyn kluczy</span> (zob. Moje klucze){% endif %}.</li>
+    <li><span class="font-semibold">Twoje dane</span> — <span class="font-semibold">Pobierz moje dane</span> przygotowuje kopię tego, co platforma o Tobie przechowuje, jako jeden plik zip{% if features.vault %} w Twoim własnym zasobniku w Przechowywaniu{% endif %}; możesz o nią prosić raz na dobę, a nowa kopia zastępuje poprzednią. <span class="font-semibold">Usuń moje konto</span> składa wniosek: zespół platformy usuwa konto albo odmawia i podaje powód. Do tego czasu konto działa jak dotąd.</li>
+    <li><span class="font-semibold">Społeczności</span> — strona społeczności pokazuje jej członków, a pod przyciskiem <span class="font-semibold">Schemat organizacyjny</span> {% if features.positions %}rysunek tego, kto zajmuje które stanowisko; stanowiska ustala przywódca społeczności albo administrator{% else %}rysunek jej członków, każdego pod członkiem, który za niego poręczył{% endif %}.{% if features.applications %} Do społeczności dołączasz, składając wniosek o członkostwo. Wniosek może wymagać kodu weryfikacyjnego oraz referencji od obecnych członków.{% else %} O tym, kto należy do której społeczności, decyduje zespół platformy.{% endif %}</li>
+    {% if features.applications %}<li><span class="font-semibold">Referencje</span> — gdy ktoś wskaże Cię jako osobę polecającą, prośba pojawi się w zakładce Activity Twojego profilu; tam ją akceptujesz lub odrzucasz.</li>{% endif %}
+    <li><span class="font-semibold">Patron</span> — członek, który za Ciebie poręczył{% if features.invitations %}: tutaj osoba z zespołu, która Cię zaprosiła{% elif features.applications %}: polecający, który zaakceptował Twój wniosek{% endif %}. Widać go na liście członków.</li>
+    <li><span class="font-semibold">Poświadczenia</span> — niektóre {% if features.vault %}zasobniki w Przechowywaniu{% else %}zasoby{% endif %} są chronione poświadczeniem: to, co w nich jest, czytają tylko osoby, którym administrator nadał to poświadczenie. Żaden członek nie widzi, kto ma które poświadczenie (widzą to administratorzy), i żadna strona nie pokazuje Twoich; są w kopii Twoich danych.</li>
   </ul>
 </section>
 {% endif %}
@@ -91,17 +132,27 @@
     <i class="fa-solid fa-id-card"></i>Twój plan
   </h2>
   <p class="mt-3 text-sm leading-6 opacity-80">
-    Plan decyduje, z których aplikacji możesz <span class="font-semibold">korzystać</span>. Bez planu
-    zachowujesz profil, pliki, społeczności i portfel — nic, co stworzysz, nigdy nie trafia za płatną
-    bramkę i nic nie jest usuwane, jeśli przestaniesz płacić. Płatne aplikacje pozostają widoczne i
-    można je czytać; plan odblokowuje tworzenie i zmienianie.
+    Plan decyduje, z których {% if features.plans_cost %}aplikacji{% else %}stron{% endif %} możesz <span class="font-semibold">korzystać</span>. Bez planu
+    zachowujesz profil, pliki{% if features.mana %}, społeczności i portfel{% else %} i społeczności{% endif %} — nic, co stworzysz, nigdy nie trafia za
+    bramkę planu i nic nie jest usuwane, jeśli {% if features.plans_cost %}przestaniesz płacić{% else %}stracisz plan{% endif %}.{% if features.plans_cost %} Płatne aplikacje pozostają widoczne i
+    można je czytać; plan odblokowuje tworzenie i zmienianie.{% endif %}
   </p>
+  {% if features.plans_auto %}
+  <p class="mt-3 text-sm leading-6 opacity-80">
+    <span class="font-semibold">Twoje społeczności wyznaczają górną granicę; w jej ramach wybierasz sam.</span>
+    Gdy po raz pierwszy dołączasz do społeczności, która oferuje wyższy plan, zostajesz na niego przeniesiony; na stronie
+    <a href="{% url 'subscriptions:plans' %}" class="font-semibold underline hover:opacity-80">Plany</a> możesz potem
+    przejść niżej albo wyżej wśród planów oferowanych przez Twoje społeczności, a Twój wybór zostaje. Odejście ze
+    społeczności, której plan masz, przenosi Cię na najlepszy z pozostałych.
+  </p>
+  {% endif %}
   <p class="mt-3 text-sm leading-6 opacity-80">
     <span class="font-semibold">To Twoje społeczności decydują, które plany możesz wybrać.</span> Plan
     jest oferowany przez społeczność, a strona planów pokazuje te, które oferuje co najmniej jedna
     z Twoich społeczności — jeśli brakuje planu, którego się spodziewasz, zapytaj w społeczności, która
     miałaby go oferować. Plan darmowy ma zawsze każdy.
   </p>
+  {% if features.plans_cost %}
   <p class="mt-3 text-sm leading-6 opacity-80">
     <span class="font-semibold">To Twoje społeczności decydują też o cenie.</span> Każda może odjąć procent
     od planu, a jeśli należysz do kilku, automatycznie dostajesz najlepszą zniżkę — nie trzeba jej
@@ -122,6 +173,7 @@
     Zawartość planów opisuje strona
     <a href="{% url 'subscriptions:plans' %}" class="font-semibold underline hover:opacity-80">Plany</a>.
   </p>
+  {% endif %}
 </section>
 {% endif %}
 
@@ -133,10 +185,13 @@
   <h2 class="flex items-center gap-2 text-lg font-bold">
     <i class="fa-solid fa-key"></i>Moje klucze (szyfrowanie)</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
+    Twój <span class="font-semibold">Magazyn kluczy</span> przechowuje Twoje klucze podpisujące i inne sekrety, zaszyfrowane hasłem, które znasz tylko Ty. Tworzysz go raz, w zakładce <span class="font-semibold">Bezpieczeństwo</span> swojego profilu: wpisz dwukrotnie hasło magazynu
+    (co najmniej 6 znaków) i naciśnij <span class="font-semibold">Utwórz mój magazyn kluczy</span>. Hasło nie jest nigdzie zapisywane i nie ma kodu odzyskiwania:
+    jeśli je zapomnisz, nikt — także zespół platformy — nie otworzy tego, co magazyn przechowuje.{% if features.vault %}
+    Magazyn kluczy jest potrzebny, zanim zaszyfrujesz hasłem plik w Przechowywaniu; wyjątkiem jest PDF, zamykany swoim własnym hasłem.
+    Hasło magazynu nie jest hasłem pliku: każdy szyfrowany plik dostaje własne hasło i to ono, a nie hasło magazynu, otwiera go ponownie.{% endif %}
     Strona <a href="{% url 'gervazy:my_keys' %}" class="font-semibold underline hover:opacity-80">Moje klucze</a>
-    (dostępna w zakładce Bezpieczeństwo Twojego profilu) służy do zarządzania kluczami szyfrującymi, które chronią Twoje dane.
-    Pliki w przechowywaniu można nimi szyfrować i odszyfrowywać — bez kluczy serwer przechowuje
-    wyłącznie nieczytelny szyfrogram.
+    (dostępna w zakładce Bezpieczeństwo Twojego profilu) pokazuje Twoje sejfy i klucze podpisujące.
   </p>
 </section>
 {% endif %}
@@ -150,11 +205,11 @@
     <i class="fa-solid fa-vault"></i>Przechowywanie (Vault)</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
     <a href="/vault/" class="font-semibold underline hover:opacity-80">Przechowywanie</a> gromadzi Twoje pliki
-    w drzewie katalogów. Możesz je wgrywać, pobierać, przenosić i usuwać oraz szyfrować swoimi kluczami.
+    w drzewie katalogów. Możesz je wgrywać, pobierać, przenosić i usuwać oraz szyfrować hasłem.
     {% if features.viewers %}Zależnie od typu pliku obok pojawiają się dodatkowe przyciski
     <span class="font-semibold">Odtwórz</span> / <span class="font-semibold">Edytuj</span>:{% else %}Plik jest przechowywany dokładnie tak, jak został wgrany, i wraca jako pobranie,
-    niezależnie od typu; niczego nie otwiera się ani nie edytuje w przeglądarce. Wcześniejsze wersje pliku,
-    kosz i poświadczenia działają tak samo dla każdego pliku.{% endif %}
+    niezależnie od typu; niczego nie otwiera się ani nie edytuje w przeglądarce. Kosz i poświadczenia
+    działają tak samo dla każdego typu pliku.{% endif %}
   </p>
   <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
     {% if features.vod %}<li><span class="font-semibold">Wideo</span> — pliki wideo odtwarzane są bezpośrednio w przeglądarce.</li>{% endif %}
@@ -166,6 +221,46 @@
     {% if features.sketch %}<li><span class="font-semibold">Rysunki</span> — pliki <code>.svg</code> otwierają się w edytorze rysunków: odręcznie, kształty, strzałki i tekst. Plik SVG utworzony gdzie indziej też się otworzy, a to, czego edytor nie rozpoznaje, zostaje zachowane bez zmian.</li>{% endif %}
         {% if features.notebooks %}<li><span class="font-semibold">Notatniki</span> — notatniki <code>.tpy</code> łączą komórki z kodem i ich wyniki; edytuj je i uruchamiaj w edytorze notatników.</li>{% endif %}
     {% if features.latex %}<li><span class="font-semibold">LaTeX</span> — przestrzenie TeX Lab kompilują cały folder plików <code>.tex</code> do PDF, z podglądem wyniku w pokoju.</li>{% endif %}
+  </ul>
+  <h3 class="mt-5 text-sm font-bold">Jak się poruszać</h3>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li>Przechowywanie ma zakładki <span class="font-semibold">Pliki</span>, <span class="font-semibold">Metryki</span>, <span class="font-semibold">Archiwum</span> i <span class="font-semibold">Kosz</span>.</li>
+    <li>W zakładce <span class="font-semibold">Pliki</span> przełączasz widok <span class="font-semibold">Drzewo</span> (zasobniki, foldery i pliki) i <span class="font-semibold">Siatka</span> (same pliki). Filtruj według zasobnika (<span class="font-semibold">Zasobnik</span>), szukaj po nazwie (<code>*</code> i <code>?</code> zastępują dowolne znaki) i sortuj.</li>
+    <li>Pliki leżą w zasobnikach, a w zasobniku w folderach. Każdy członek widzi nazwy wszystkich zasobników i folderów; pliki w nich tylko tak, jak pozwalają zasady opisane niżej.</li>
+    <li>Twój własny zasobnik, o nazwie „Personal — ” i Twojej nazwie użytkownika, powstaje, gdy pierwszy raz naciśniesz <span class="font-semibold">Nowy folder</span>. Foldery możesz tworzyć tylko we własnym zasobniku.</li>
+  </ul>
+  <h3 class="mt-5 text-sm font-bold">Dodawanie pliku</h3>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li>We wspólnym zasobniku naciśnij <span class="font-semibold">Wgraj</span> w wierszu folderu. Otwiera się strona punktu wgrywania: upuść na nią pliki albo kliknij, aby wybrać kilka. Strona podaje maksymalny rozmiar pliku; odrzucony plik jest wymieniony wraz z powodem, a pozostałe i tak trafiają na miejsce.</li>
+    <li>We własnym zasobniku naciśnij <span class="font-semibold">Wgraj</span> w wierszu folderu albo przeciągnij pliki na ten wiersz (w Drzewie). Panel <span class="font-semibold">Wgrywanie plików</span> pokazuje postęp i pozwala anulować.</li>
+    <li>Pliki Microsoft Office nie są przyjmowane: zapisz dokument jako PDF, HTML, Markdown, CSV albo OpenDocument i wgraj tę wersję.</li>
+    {% if features.quota %}<li>Wgrywanie jest liczone w ramach dziennych limitów{% if not features.mana %}. Okrągły przycisk <span class="font-semibold">Ile Cię to kosztuje</span> w rogu strony pokazuje, ile dziś wykorzystałeś{% endif %}; po przekroczeniu limitu wgranie jest odrzucane do następnego dnia.</li>{% endif %}
+    {% if features.discipline %}<li>Wgranie pliku i uruchomienie przepływu pracy zużywają <span class="font-semibold">manę</span>. Pasek i liczba na pasku aplikacji to Twoja mana: cyjanowa część paska to to, co zostało, szara — to, co zużyte, względem pułapu odnawiania. Otwiera on stronę <a href="{% url 'discipline:index' %}" class="font-semibold underline hover:opacity-80">Mana</a>, która pokazuje, jak szybko mana się odnawia (co godzinę, z aury Twojej społeczności i z każdego sygilu, który masz), i ile co kosztuje; jej zakładka <span class="font-semibold">Historia</span> rysuje stan Twojej many z ostatniego dnia, tygodnia lub miesiąca i wymienia każdą jego zmianę, strona po stronie. Pokazuje ją też Twój własny profil. Jest jeden rodzaj many. Gdy jej brakuje, czynność jest odrzucana, a komunikat mówi, kiedy znów jej wystarczy; administrator może przyznać manę.</li>{% endif %}
+  </ul>
+  <h3 class="mt-5 text-sm font-bold">Praca z plikiem</h3>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li><span class="font-semibold">Pobierz</span> zwraca plik jako pobranie.</li>
+    <li>Menu <span class="font-semibold">…</span> przy Twoim pliku zawiera <span class="font-semibold">Przenieś</span> (do innego folderu tego samego zasobnika) i <span class="font-semibold">Zmień nazwę</span>; <span class="font-semibold">Usuń</span> przenosi plik do kosza. <span class="font-semibold">Historia</span>, w tym samym menu, otwiera historię pliku: stronę z tabelą, kto utworzył, edytował, otworzył lub pobrał plik i kiedy, od najnowszych, po dwadzieścia wierszy na stronę. Historię pliku czyta każdy, kto może czytać plik, więc widzi, że go otworzyłeś lub pobrałeś.</li>
+    <li>Zaznacz kilka swoich plików albo naciśnij <span class="font-semibold">Zaznacz moje widoczne pliki</span>, aby przenieść je lub wyrzucić do kosza razem.</li>
+    <li>W zakładce <span class="font-semibold">Archiwum</span> wybierz swój zasobnik, zaznacz pliki i naciśnij <span class="font-semibold">Utwórz .zip</span>: archiwum powstaje w tle i jest zapisywane w wybranym folderze. Zaszyfrowane pliki są pomijane.</li>
+  </ul>
+  <h3 class="mt-5 text-sm font-bold">Kto widzi Twoje pliki</h3>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li>Plik, który wgrywasz, jest prywatny: na liście widzicie go tylko Ty i administratorzy platformy. Po adresie pobrać go może także właściciel zasobnika, w którym leży, oraz osoby, które administrator dopisał do listy jego folderu. Sam nie oznaczysz pliku jako publicznego ani prywatnego: punkt wgrywania może być ustawiony tak, że przyjęte pliki stają się publiczne, a usunięcie szyfrowania czyni plik publicznym (zob. niżej).</li>
+    <li>Plik oznaczony jako publiczny widzi na liście i może pobrać każdy zalogowany członek{% if features.public_links %}, a także każdy, kto ma jego link, bez logowania{% endif %}.</li>
+    <li>W zasobniku chronionym poświadczeniem pliki widzą tylko posiadacze tego poświadczenia i administratorzy, niezależnie od tego, kto je wgrał: bez poświadczenia nie widzisz tam nawet własnych plików.</li>
+    <li>Zakładka <span class="font-semibold">Metryki</span> pokazuje każdemu członkowi liczby i wykresy dla całego Przechowywania oraz nazwy ostatnio wgranych plików z ich zasobnikiem i folderem: także plików prywatnych i plików z zasobników chronionych poświadczeniem. Nie umieszczaj w nazwie pliku tego, czego inni nie powinni przeczytać.</li>
+  </ul>
+  <h3 class="mt-5 text-sm font-bold">Kosz</h3>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li>Usunięty plik czeka w zakładce <span class="font-semibold">Kosz</span> {{ numbers.trash_days }} dni, po czym jest usuwany na zawsze. Do tego czasu <span class="font-semibold">Przywróć</span> odkłada go na miejsce, <span class="font-semibold">Usuń na zawsze</span> usuwa go od razu, a <span class="font-semibold">Opróżnij mój kosz</span> usuwa wszystkie Twoje pliki, które tam czekają.{% if features.external_buckets %} Plik w zasobniku podłączonym z innego serwera nie trafia do kosza: jest usuwany od razu, o czym uprzedza okno usuwania.{% endif %}</li>
+  </ul>
+  <h3 class="mt-5 text-sm font-bold">Szyfrowanie pliku</h3>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li>Naciśnij ikonę kłódki (<span class="font-semibold">Zaszyfruj</span>) przy swoim pliku i podaj hasło{% if features.gervazy %}. Najpierw potrzebny jest magazyn kluczy (zob. Moje klucze), z wyjątkiem pliku PDF, który pyta o hasło użytkownika i, jeśli chcesz, hasło właściciela{% endif %}. Hasło dotyczy tylko tego jednego pliku; nie jest nigdzie zapisywane i nie da się go odzyskać.</li>
+    <li>Okno pozostaje otwarte, dopóki plik jest szyfrowany: zamyka się, gdy to gotowe, albo informuje, dlaczego się nie udało. Przy dużym pliku może to chwilę potrwać. Jeśli okno informuje, że upłynął limit czasu szyfrowania, praca może jeszcze trwać: odśwież stronę, zanim spróbujesz ponownie.</li>
+    <li>Aby pobrać zaszyfrowany plik, naciśnij jego ikonę pobierania i podaj hasło: <span class="font-semibold">Pobierz odszyfrowany</span> zwraca plik, a <span class="font-semibold">Pobierz nieprzetworzone</span> — zaszyfrowane bajty.</li>
+    <li><span class="font-semibold">Usuń szyfrowanie</span> odszyfrowuje plik na stałe i czyni go publicznym: każdy zalogowany członek może go wtedy zobaczyć i pobrać{% if features.public_links %}, podobnie jak każdy, kto ma jego link{% endif %}. Jeśli tego nie chcesz, zaszyfruj go ponownie.</li>
   </ul>
 </section>
 {% endif %}
@@ -290,6 +385,14 @@
     to interaktywna mapa punktów, terytoriów, tras i adresów. Przeglądaj mapę, sprawdzaj miejsca
     i wyszukuj trasy między lokalizacjami.
   </p>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Mapa jest powiązana z resztą platformy. Gdy planujesz wydarzenie, pole <span class="font-semibold">Miejsce na mapie</span>
+    wymienia zarejestrowane miejsca, które możesz czytać, a strona wydarzenia prowadzi do wybranego. Strona społeczności
+    ma sekcję <span class="font-semibold">Na mapie</span>: jej siedzibę na mapie, którą osoba kierująca społecznością albo
+    administrator wybiera z tej samej listy. Na Twoim profilu sekcja <span class="font-semibold">Gdzie mieszkasz</span> ustawia
+    Twój punkt i to, kto go widzi (nikt, przybliżona okolica albo dokładny adres), a sekcja
+    <span class="font-semibold">Na mapie</span> rysuje go każdemu, kto może go zobaczyć. Sekcje te widzą osoby, które mają mapę.
+  </p>
 </section>
 {% endif %}
 
@@ -336,7 +439,7 @@
 </section>
 {% endif %}
 
-{% if features.workflows %}
+{% if features.workflows_open %}
 <!-- Przepływy pracy -->
 <section id="workflows"
   :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -571,5 +674,33 @@
     Karta <span class="font-semibold">Monitorowanie</span> na Pulpicie otwiera Grafanę z metrykami
     i logami serwera. Jest dostępna wyłącznie dla superużytkowników i loguje Cię kontem platformy.
   </p>
+</section>
+{% endif %}
+
+{% if features.team %}
+<!-- Dla zespołu platformy -->
+<section id="team"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-user-shield"></i>Dla zespołu platformy</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Ten rozdział widzą tylko osoby z zespołu i administratorzy (superużytkownicy). To, co oznaczono „administratorzy”, wymaga superużytkownika{% if features.subscriptions %} z planem Superużytkownik{% endif %}.
+  </p>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    {% if features.invitations %}<li><span class="font-semibold">Zaproszenia</span> — w zakładce <a href="{% url 'socialhub:invitations' %}" class="font-semibold underline hover:opacity-80">Zaproszenia</a>, obok zakładek Profile i Społeczności: wybierz społeczność, podaj adres e-mail i notatkę, jeśli chcesz, i naciśnij <span class="font-semibold">Wystaw zaproszenie</span>. Link jest pokazywany jeden raz. Na podany adres jest wysyłany tylko tam, gdzie platforma ma skonfigurowaną pocztę; w przeciwnym razie strona prosi, by przekazać link samodzielnie. Działa jeden raz, przez {{ numbers.invitation_hours }} godz., i przestaje działać, gdy naciśniesz <span class="font-semibold">Cofnij</span> albo gdy Twoje konto przestanie należeć do zespołu. Lista pokazuje każde zaproszenie jako otwarte, przyjęte, cofnięte albo wygasłe{% if numbers.invitation_days %}; wiersz jest usuwany {{ numbers.invitation_days }} dni po wygaśnięciu linku{% endif %}. Zaproszona osoba dostaje Ciebie jako patrona, jeśli masz profil.</li>{% endif %}
+    {% if features.applications %}<li><span class="font-semibold">Wnioski</span> — chętni składają wniosek o członkostwo ze strony logowania. Członek wskazany jako polecający akceptuje go lub odrzuca w zakładce Activity swojego profilu; akceptacja wpuszcza wnioskodawcę.</li>{% endif %}
+    {% if features.socialhub %}<li><span class="font-semibold">Społeczności</span> — {% if features.positions %}stanowiska społeczności ustala jej przywódca albo administrator w zakładce <span class="font-semibold">Schemat organizacyjny</span> (<span class="font-semibold">Dodaj stanowisko</span>, <span class="font-semibold">Zmień</span>, <span class="font-semibold">Usuń</span>). {% endif %}Same społeczności, to, kto do nich należy, i to, kto jest czyim patronem, zmienia administrator w panelu administracyjnym, <code>/admin/</code> (konto z zespołu widzi tam tylko to, do czego dostało uprawnienia).</li>{% endif %}
+    {% if features.socialhub %}<li><span class="font-semibold">Poświadczenia</span> (administratorzy) — w zakładce <span class="font-semibold">Poświadczenia</span> przycisk <span class="font-semibold">Nowe poświadczenie</span> przyjmuje nazwę mówiącą, co ono otwiera, jego posiadaczy{% if features.vault %} i zasobniki, które chroni{% endif %}; na platformie może być najwyżej {{ numbers.max_clearances }} poświadczeń. To, co poświadczenie chroni, czytają tylko jego posiadacze i administratorzy. Nie da się usunąć poświadczenia, które jeszcze coś chroni; posiadaczy zmienia się w panelu administracyjnym. Poświadczenia można oglądać w widoku <span class="font-semibold">Tabela</span> albo <span class="font-semibold">Graf</span>.</li>{% endif %}
+    {% if features.socialhub %}<li><span class="font-semibold">Prywatność</span> (administratorzy) — na stronie informacji o prywatności jest przycisk <span class="font-semibold">Opublikuj nową wersję</span>; wcześniejsze wersje pozostają dostępne. <span class="font-semibold">Wnioski o usunięcie konta</span> (link w zakładce <span class="font-semibold">Twoje dane</span> Twojego profilu oraz na stronie, którą otwiera <span class="font-semibold">Opublikuj nową wersję</span>) to lista członków, którzy poprosili o usunięcie: usuń konto w konsoli poleceniem <code>{{ commands.erase }}</code> albo naciśnij <span class="font-semibold">Odrzuć</span> i wpisz powód, który członek przeczyta.</li>{% endif %}
+    {% if features.vault %}<li><span class="font-semibold">Historia zasobnika</span> — strona zasobnika (jego nazwa w Metrykach Przechowywania) kończy pierwszą część sekcją <span class="font-semibold">Historia</span>: ostatnie zdarzenia zasobnika i jego plików oraz <span class="font-semibold">Cała historia</span>, strona ze wszystkim, według rodzaju, gdy się go wybierze. Czytają ją właściciel zasobnika i superużytkownicy.</li>{% endif %}
+    {% if features.vault %}<li><span class="font-semibold">Przechowywanie</span> (administratorzy) — zakładka <span class="font-semibold">Zarządzanie</span> tworzy, edytuje i usuwa zasobniki{% if features.s3_buckets %} (nowy zasobnik jest przechowywany na tej maszynie albo w jednym z magazynów obiektów, które skonfigurował operator platformy: wybierz go po nazwie i lokalizacji i podaj własną nazwę zasobnika w tym magazynie; zostaje zapisany dopiero po udanym teście połączenia, a o żaden klucz nie pyta){% endif %}; zakładka <span class="font-semibold">Poświadczenia</span> pokazuje, który zasobnik jest chroniony którym poświadczeniem, a poświadczenia zasobnika ustawia się na jego własnej stronie. Administrator widzi każdy plik i kosz każdego członka.</li>{% endif %}
+    {% if features.quota %}<li><span class="font-semibold">Ograniczenia</span>{% if features.mana %} (administratorzy){% endif %} — <a href="{% url 'quota:index' %}" class="font-semibold underline hover:opacity-80">Taryfikowany</a> wymienia to, co jest liczone, a <span class="font-semibold">Użycie</span> pokazuje Twoje własne liczniki. Limit dotyczy jednej osoby i jednego dnia. <span class="font-semibold">Zmień, ile to kosztuje</span> otwiera stronę, na której edytuje się każdy wiersz: limit albo odrzuca to, co go przekracza (<span class="font-semibold">Block</span>), albo tylko liczy (<span class="font-semibold">Track only</span>); pozostawiony pusty oznacza brak limitu.</li>{% endif %}
+    {% if features.discipline %}<li><span class="font-semibold">Mana</span> (administratorzy) — na stronie <a href="{% url 'discipline:index' %}" class="font-semibold underline hover:opacity-80">Mana</a> <span class="font-semibold">Przyznaj manę</span> dopisuje kwotę do konta osoby, z powodem, i trafia ona w całości. <a href="{% url 'discipline:sigils' %}" class="font-semibold underline hover:opacity-80">Sygile</a> i <a href="{% url 'discipline:auras' %}" class="font-semibold underline hover:opacity-80">Aury</a> pokazują, co jest; tworzy się je, zmienia i przypisuje wyłącznie w panelu administracyjnym, w części Discipline. Sygil (nazwa, obrazek, mana na godzinę) przypisuje się, wybierając posiadacza w jego formularzu, a cofa — czyszcząc pole posiadacza: ma jednego posiadacza naraz, a mana, którą wytworzył, zostaje u niego. Aurę (mana na godzinę i pułap) nadaje się społeczności w części Community auras: społeczność ma jedną aurę albo żadnej, a kilka może mieć tę samą. Osoba odnawia manę w tempie najszybszej aury swoich społeczności plus każdego sygilu, który ma, do pułapu aury. To, ile kosztuje czynność, jest w pliku Discipline platformy, nie na stronie.</li>{% endif %}
+    {% if features.workflows %}<li><span class="font-semibold">Przepływy pracy</span> — <a href="{% url 'workflows:workflow_list' %}" class="font-semibold underline hover:opacity-80">lista</a> zadań platformy wykonywanych w tle (pakowanie zaznaczonych plików do zip, szyfrowanie lub odszyfrowanie dużego pliku, kopiowanie między zasobnikami) i ich uruchomień. Strona uruchomienia pokazuje, kto je rozpoczął, każdy krok i jego wynik oraz przycisk <span class="font-semibold">Przerwij uruchomienie</span>, dopóki trwa. Zadanie uruchamiają strony, które go potrzebują; nikt nie uruchamia go ręcznie.</li>{% endif %}
+    {% if features.monit %}<li><span class="font-semibold">Monitoring</span> (administratorzy) — serwer w tej chwili; kontrole ze strony <span class="font-semibold">Database</span> (baza danych, dysk, kopie zapasowe, łańcuch audytu, certyfikat, zaplanowane zadania, poczta); zaplanowane zadania (<span class="font-semibold">Jobs</span>); oraz niedawna historia (<span class="font-semibold">History</span>). Informacja o nieudanej kontroli jest wysyłana na adresy powiadomień platformy.</li>{% endif %}
+    {% if features.audit %}<li><span class="font-semibold">Audyt</span> — <a href="{% url 'audit:index' %}" class="font-semibold underline hover:opacity-80">zapis</a> tego, kto co zrobił: logowania, konta, zaproszenia i członkostwa, poświadczenia, pliki. Filtruj według akcji, aplikacji albo tekstu; <span class="font-semibold">Zweryfikuj łańcuch</span> sprawdza, czy żaden wpis nie został zmieniony.</li>{% endif %}
+    <li><span class="font-semibold">Konta w konsoli</span> — konto zakłada się poleceniem <code>{{ commands.create }}</code>{% if features.socialhub %}; nie ma ono profilu, dopóki jego właściciel raz nie zapisze zakładki <span class="font-semibold">Edytuj profil</span>{% endif %}. Konto usuwa się wyłącznie w konsoli{% if commands.erase %}: <code>{{ commands.erase }}</code>{% endif %}.</li>
+  </ul>
 </section>
 {% endif %}

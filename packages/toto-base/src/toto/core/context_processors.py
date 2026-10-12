@@ -29,4 +29,9 @@ def build_flags(request):
         "BUILD_WEASYPRINT": bool(getattr(settings, "BUILD_WEASYPRINT", False)),
         "GRAFANA_ENABLED": bool(getattr(settings, "GRAFANA_ENABLED", False)),
         "GITEA_ENABLED": bool(getattr(settings, "GITEA_ENABLED", False)),
+        # The platform's way in (toto.socialhub.enrollment): the sign-in page
+        # offers "Apply for membership" only where applications are taken.
+        # Read as toto.socialhub.enrollment.way() reads it.
+        "SOCIALHUB_ENROLLMENT": str(getattr(settings, "SOCIALHUB_ENROLLMENT", "application")
+                                    or "application").strip().lower(),
     }

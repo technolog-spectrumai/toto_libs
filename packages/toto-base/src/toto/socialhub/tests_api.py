@@ -52,7 +52,7 @@ class ProfileDetailApiTests(TestCase):
 class CommunityListApiTests(TestCase):
     def setUp(self):
         login_mesh_member(self)
-        Community.objects.create(name="Guild Alpha", slug="guild-alpha", org_type="guild")
+        Community.objects.create(name="Guild Alpha", slug="guild-alpha", org_type="other")
         Community.objects.create(name="Zeta Corp", slug="zeta-corp", org_type="company")
 
     def test_list_returns_200(self):

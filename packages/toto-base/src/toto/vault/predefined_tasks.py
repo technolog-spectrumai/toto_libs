@@ -70,6 +70,18 @@ def vault_encrypt_file(input_data: dict) -> dict:
     )
 
 
+@register("vault_decrypt_file", dispatch_only=True)
+def vault_decrypt_file(input_data: dict) -> dict:
+    """Node marker for the ``vault-decrypt`` workflow (2026-10-10), the encrypt
+    marker's twin: the run is driven by ``decrypt_workflow_run``, which carries
+    the password as a transient broker argument. The generic executor never
+    reaches this node with a password; reached through it, it fails loudly."""
+    raise RuntimeError(
+        "vault_decrypt_file must be run via the vault decrypt action "
+        "(decrypt_workflow_run), which supplies the password out-of-band."
+    )
+
+
 @register("vault_refresh_remote_bucket", dispatch_only=True)
 def vault_refresh_remote_bucket(input_data: dict) -> dict:
     """Walk a paired host's bucket listing and bring the metadata stubs up to
@@ -118,3 +130,15 @@ def vault_transfer_files(input_data: dict) -> dict:
     return {"data": {"run_id": run_id, "status": run.status,
                      "files_done": run.files_done,
                      "files_skipped": run.files_skipped}}
+
+
+@register("vault_purge_trash")
+def vault_purge_trash(input_data: dict) -> dict:
+    """The one node of the ``vault-trash-purge`` workflow (2026-10-11): what
+    the nightly task does, as a run. Files trashed more than
+    ``VAULT_TRASH_DAYS`` ago are deleted for good (``trash.purge_expired``,
+    idempotent, bounded); the counts are the run's output. No input: it never
+    takes a file, a member or a bucket from whoever starts it."""
+    from .trash import purge_expired
+
+    return {"data": purge_expired()}

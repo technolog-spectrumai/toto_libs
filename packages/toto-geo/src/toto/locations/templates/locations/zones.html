@@ -1,0 +1,36 @@
+{% extends "locations/base.html" %}
+{% load i18n %}
+{% comment %}The Zones tab (2026-10-12; views.zones): the zones the viewer may
+read, by name, each with its territory and a link to its own page with the
+map. Zones are made in the admin panel.{% endcomment %}
+
+{% block locations_title %}{% trans "Zones" %}{% endblock %}
+
+{% block locations_content %}
+<div class="mx-auto max-w-6xl px-4 py-6 sm:px-6" data-testid="locations-zones">
+  <header class="mb-4">
+    <h1 class="text-2xl font-bold">{% trans "Zones" %}</h1>
+    <p class="mt-1 text-sm opacity-75">{% trans "Areas marked on the map. Open one to see it drawn." %}</p>
+  </header>
+  <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="overflow-x-auto rounded-xl border shadow-sm">
+    <table class="w-full text-sm">
+      <thead>
+        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-left">
+          <th class="px-4 py-2">{% trans "Name" %}</th>
+          <th class="px-4 py-2">{% trans "Territory" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for zone in zones %}
+        <tr :class="darkMode ? 'border-accent-1/30' : 'border-accent-2/30'" class="border-b last:border-b-0" data-testid="locations-zone-row">
+          <td class="px-4 py-2"><a href="{{ zone.url }}" class="font-semibold underline-offset-4 hover:underline"><i class="fa-solid fa-draw-polygon mr-2 opacity-60" aria-hidden="true"></i>{{ zone.name }}</a></td>
+          <td class="px-4 py-2">{{ zone.territory|default:"—" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="2" class="px-4 py-10 text-center opacity-50">{% trans "No zones yet." %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

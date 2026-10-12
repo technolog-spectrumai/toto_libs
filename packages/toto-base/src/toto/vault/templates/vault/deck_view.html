@@ -1,0 +1,91 @@
+{% extends "vault/base.html" %}
+{% load i18n static %}
+{% comment %}A .pxml presentation, played (2026-10-12; timeline_views.deck_view):
+the page behind its Play button. The file's text is DATA here (json_script);
+vault/deckview/deckview.js (Morion's deck format and reveal.js) builds the
+slides, every block through the allow-list first; a deck with a formula
+loads KaTeX (vendor/katex) and draws them before it plays. The stage is in the page;
+the Full screen button gives it the whole screen. Arrow keys move once the
+stage is clicked (reveal's own rule for an embedded deck).{% endcomment %}
+
+{% block vault_title %}{{ file.title }}{% endblock %}
+
+{% block vault_content %}
+<article class="space-y-4" data-testid="deck-view">
+  <header class="flex flex-wrap items-center justify-between gap-3">
+    <h2 class="flex min-w-0 items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-person-chalkboard shrink-0 opacity-70" aria-hidden="true"></i>
+      <span class="min-w-0 break-words">{{ file.title }}</span></h2>
+    <span class="flex flex-wrap items-center gap-3 text-sm">
+      {% if not deck_refusal %}
+      <button type="button" id="deck-fullscreen" data-testid="deck-fullscreen"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-expand" aria-hidden="true"></i>{% trans "Full screen" %}</button>
+      {% endif %}
+      <a href="{% url 'vault:public_list' %}?bucket={{ bucket.slug }}{% if file.directory_id %}&dir={{ file.directory_id }}{% endif %}"
+         class="font-semibold underline hover:opacity-80" data-testid="deck-back">{% trans "Back to the files" %}</a>
+      <a href="{{ file.get_public_url }}" class="font-semibold underline hover:opacity-80">{% trans "Download" %}</a>
+    </span>
+  </header>
+
+  {% if deck_refusal == "encrypted" %}
+  <p class="text-sm opacity-75" data-testid="deck-refusal">{% trans "This file is encrypted: decrypt it in Storage to read it here." %}</p>
+  {% elif deck_refusal == "too_large" %}
+  <p class="text-sm opacity-75" data-testid="deck-refusal">{% blocktrans with mb=deck_max_mb %}This presentation is larger than {{ mb }} MB and is not played. Download it to open it.{% endblocktrans %}</p>
+  {% else %}
+  <link rel="stylesheet" href="{% static 'vault/deckview/deckview.css' %}">
+  {{ deck_source|json_script:"deck-source" }}
+  <p id="deck-note" class="hidden text-sm opacity-75" data-testid="deck-refusal"
+     data-empty="{% trans 'This presentation has no slide.' %}"
+     data-failed="{% trans 'This file is not a presentation the player can open.' %}"></p>
+  <div id="deck-player" class="memo-player overflow-hidden rounded-xl border border-current/20" data-testid="deck-player"
+       data-katex-js="{% static 'vendor/katex/katex.min.js' %}" data-katex-css="{% static 'vendor/katex/katex.min.css' %}"
+       style="position: relative; height: 70vh; min-height: 22rem">
+    <div id="deck-stage" class="reveal" tabindex="0" style="width: 100%; height: 100%"></div>
+  </div>
+  <script src="{% static 'vault/deckview/deckview.js' %}"></script>
+  <script>
+  (function () {
+    var player = document.getElementById("deck-player");
+    var stage = document.getElementById("deck-stage");
+    var note = document.getElementById("deck-note");
+    function say(code) {
+      note.textContent = note.dataset[code] || note.dataset.failed;
+      note.classList.remove("hidden");
+      player.classList.add("hidden");
+      var full = document.getElementById("deck-fullscreen");
+      if (full) { full.classList.add("hidden"); }
+    }
+    function dark() {
+      try { return localStorage.getItem("darkMode") === "true"; } catch (e) { return false; }
+    }
+    var opened;
+    try {
+      opened = window.TotoDeck.open(JSON.parse(document.getElementById("deck-source").textContent));
+    } catch (e) { say("failed"); return; }
+    if (opened.refusal) { say(opened.refusal === "empty" ? "empty" : "failed"); return; }
+    function start() {
+      window.TotoDeck.play(stage, opened.deck, dark()).then(function () { stage.focus(); },
+                                                           function () { say("failed"); });
+    }
+    if (window.TotoDeck.hasFormulas(opened.deck)) {
+      // KaTeX, only for a deck with a formula; without it (a host that did
+      // not fetch it) the formulas stay as their source and the deck plays.
+      var css = document.createElement("link");
+      css.rel = "stylesheet"; css.href = player.dataset.katexCss;
+      document.head.appendChild(css);
+      var script = document.createElement("script");
+      script.src = player.dataset.katexJs;
+      script.onload = function () { if (window.katex) { window.TotoDeck.drawFormulas(opened.deck, window.katex); } start(); };
+      script.onerror = start;
+      document.head.appendChild(script);
+    } else { start(); }
+    document.getElementById("deck-fullscreen").addEventListener("click", function () {
+      if (player.requestFullscreen) { player.requestFullscreen().then(function () { stage.focus(); }, function () {}); }
+    });
+  })();
+  </script>
+  {% endif %}
+</article>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% block discipline_title %}{% trans "Mana" %}{% endblock %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+{{ block.super }}
+<style>[x-cloak]{display:none!important}</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-6xl space-y-6">
+
+    <header class="space-y-2">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">{% trans "Discipline" %}</p>
+      <h1 class="flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-bolt"></i>{% block discipline_heading %}{% trans "Mana" %}{% endblock %}
+      </h1>
+      {% block discipline_lede %}{% endblock %}
+    </header>
+
+    {% comment %}Mana and its History are everybody's; the lists of sigils and
+       auras a superuser's (they are changed in the admin panel).{% endcomment %}
+    <nav class="flex flex-wrap gap-1" aria-label="{% trans 'Discipline navigation' %}">
+      <a href="{% url 'discipline:index' %}" data-testid="discipline-tab-mana"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
+                {% if active_tab == 'mana' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+         {% if active_tab == 'mana' %}aria-current="page"{% endif %}>
+        <i class="fa-solid fa-bolt"></i>{% trans "Mana" %}</a>
+      <a href="{% url 'discipline:history' %}" data-testid="discipline-tab-history"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
+                {% if active_tab == 'history' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+         {% if active_tab == 'history' %}aria-current="page"{% endif %}>
+        <i class="fa-solid fa-chart-line"></i>{% trans "History" %}</a>
+      {% if is_operator %}
+      <a href="{% url 'discipline:sigils' %}" data-testid="discipline-tab-sigils"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
+                {% if active_tab == 'sigils' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+         {% if active_tab == 'sigils' %}aria-current="page"{% endif %}>
+        <i class="fa-solid fa-stamp"></i>{% trans "Sigils" %}</a>
+      <a href="{% url 'discipline:auras' %}" data-testid="discipline-tab-auras"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
+                {% if active_tab == 'auras' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+         {% if active_tab == 'auras' %}aria-current="page"{% endif %}>
+        <i class="fa-solid fa-jedi"></i>{% trans "Auras" %}</a>
+      {% endif %}
+    </nav>
+
+    {% block discipline_content %}{% endblock %}
+  </div>
+</section>
+{% endblock %}

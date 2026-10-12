@@ -1290,8 +1290,9 @@ class NavigationTests(TestCase):
 class LockedPageChromeTests(TestCase):
     """The 402 page renders as a platform page.
 
-    ``locked.html`` extends ``oya/base.html``, and the palette on this platform
-    is a Platform record rather than a stylesheet — so a bare ``render`` here
+    ``locked.html`` extends ``oya/base.html``, whose font and platform chrome
+    (and, without a built stylesheet, the palette) come from the page context
+    — so a bare ``render`` here
     produced an unstyled refusal on the one page whose whole job is to persuade
     somebody to subscribe. The gate is middleware, so it cannot reach
     ``views._render`` without importing a module that imports it back.

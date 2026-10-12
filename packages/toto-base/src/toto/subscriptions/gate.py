@@ -219,8 +219,10 @@ class SubscriptionGateMiddleware:
     def _decorate(context: dict, request) -> dict:
         """The platform's page context, and never at the cost of the refusal.
 
-        ``locked.html`` extends ``oya/base.html``, whose palette comes from the
-        Platform record rather than a stylesheet — so rendering this bare gave
+        ``locked.html`` extends ``oya/base.html``, whose font and platform
+        chrome (and, without a built stylesheet, the palette of
+        ``toto/core/palette.json``) reach it only through the page context —
+        so rendering this bare gave
         an unstyled 402 on the one page whose job is to persuade somebody to
         subscribe. Imported here rather than reusing ``views._render`` because
         this is middleware and that module imports back into this one.

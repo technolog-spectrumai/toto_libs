@@ -326,6 +326,27 @@ class FileDetailApiView(CorsApiView):
         return JsonResponse({}, status=204)
 
 
+def _queued_cipher(request, vf, op, password):
+    """On a host that keeps encryption off the request (``cipher_jobs``,
+    2026-10-10): queue it for the worker and answer 202 with what to poll
+    (``vault:encrypt_status`` with ``job_id`` or ``run_id``), or 503 when no
+    worker listens. ``None`` on a host without the limit: the door does it."""
+    from django.urls import reverse
+
+    from . import cipher_jobs
+
+    if not cipher_jobs.off_request():
+        return None
+    try:
+        queued = cipher_jobs.dispatch(vf, request.user, op, password)
+    except cipher_jobs.NoWorker as exc:
+        return JsonResponse({"error": str(exc)}, status=503)
+    except cipher_jobs.InsufficientFunds as exc:
+        return JsonResponse({"error": str(exc)}, status=exc.status_code)
+    queued["status_url"] = reverse("vault:encrypt_status")
+    return JsonResponse(queued, status=202)
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class FileEncryptApiView(CorsApiView):
     def post(self, request, key):
@@ -345,6 +366,9 @@ class FileEncryptApiView(CorsApiView):
             return JsonResponse({"error": _("Password required.")}, status=400)
         if vf.is_encrypted:
             return JsonResponse({"error": _("File is already encrypted.")}, status=400)
+        queued = _queued_cipher(request, vf, "encrypt", password)
+        if queued is not None:
+            return queued
         try:
             vf.encrypt(password=password)
             vf.is_public = False
@@ -373,6 +397,9 @@ class FileDecryptApiView(CorsApiView):
             return JsonResponse({"error": _("Password required.")}, status=400)
         if not vf.is_encrypted:
             return JsonResponse({"error": _("File is not encrypted.")}, status=400)
+        queued = _queued_cipher(request, vf, "decrypt", password)
+        if queued is not None:
+            return queued
         try:
             vf.decrypt(password=password)
         except Exception as e:

@@ -329,10 +329,15 @@ are text.
 | `toto.mail` | yes | no |
 
 **`toto.core`** is the first app to load and the platform itself. Its models
-are `Platform` (the one row that names this deployment), `Federation`, the
-theme (`Theme`, `ColorMix`, `Font`), `UserSession` and `KnownSignIn` (a
+are `Platform` (the one row that names this deployment, with its `Font`),
+`Federation`, `UserSession` and `KnownSignIn` (a
 member's sign-ins), `NoticeDelivery` (how account mails fared) and
-`BootstrapMarker`. It owns the base templates and the app bar, the dashboard,
+`BootstrapMarker`. The colours are not a model: there is one palette,
+`toto/core/palette.json`, read through `toto/core/palette.py` and compiled
+into each host's stylesheet when its image is built
+(`toto/core/tailwind/tailwind.config.js`, 2026-10-10). A colour changes by a
+commit to that file and a rebuild of the hosts; no host carries a theme file
+and the admin has no theme page. It owns the base templates and the app bar, the dashboard,
 the sign-in form and its lockout (`signin_lockout.py`), the client address
 rule (`client_ip.py`), the middleware listed in section 6, the plugin base
 classes, the account notices, the personal-data export and the erasure

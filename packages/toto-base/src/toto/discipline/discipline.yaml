@@ -1,0 +1,20 @@
+# The library's default numbers for Discipline. A host states its own in the
+# file settings.DISCIPLINE_FILE names; this one is read where none is named.
+version: 1
+
+# What regeneration fills a balance to where the person's aura states no cap
+# of its own (or they have no aura). A grant lands above it.
+cap: 100
+
+# What a new account starts with.
+signup: 20
+
+# Mana an hour for a person with no aura (a sigil still adds to it).
+default_regen_per_hour: 0
+
+# What an action costs, per unit of its metric (toto.quota's registry). A
+# metric that is not listed costs nothing.
+prices:
+  storage.request: 0.5
+  storage.transfer_mb: 0.1
+  workflows.run: 1

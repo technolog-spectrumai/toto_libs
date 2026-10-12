@@ -1,0 +1,66 @@
+{% extends "vault/base.html" %}
+{% load i18n static %}
+{% comment %}A CSV file or a .uson sheet as a grid, read only (2026-10-12;
+timeline_views.sheet_view): the page behind their Play button. The file's
+text is DATA here (json_script); vault/sheetview/sheetview.js (Morion's sheet
+format and Univer) draws it. Nothing is written back: the page has no save.{% endcomment %}
+
+{% block vault_title %}{{ file.title }}{% endblock %}
+
+{% block vault_content %}
+<article class="space-y-4" data-testid="sheet-view">
+  <header class="flex flex-wrap items-center justify-between gap-3">
+    <h2 class="flex min-w-0 items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-table-cells shrink-0 opacity-70" aria-hidden="true"></i>
+      <span class="min-w-0 break-words">{{ file.title }}</span>
+      <span class="shrink-0 rounded-full border border-current/30 px-2 py-0.5 text-xs font-semibold opacity-70">{% trans "Read only" %}</span></h2>
+    <span class="flex flex-wrap items-center gap-3 text-sm">
+      <a href="{% url 'vault:public_list' %}?bucket={{ bucket.slug }}{% if file.directory_id %}&dir={{ file.directory_id }}{% endif %}"
+         class="font-semibold underline hover:opacity-80" data-testid="sheet-back">{% trans "Back to the files" %}</a>
+      <a href="{{ file.get_public_url }}" class="font-semibold underline hover:opacity-80">{% trans "Download" %}</a>
+    </span>
+  </header>
+
+  {% if sheet_refusal == "encrypted" %}
+  <p class="text-sm opacity-75" data-testid="sheet-refusal">{% trans "This file is encrypted: decrypt it in Storage to read it here." %}</p>
+  {% elif sheet_refusal == "too_large" %}
+  <p class="text-sm opacity-75" data-testid="sheet-refusal">{% blocktrans with mb=sheet_max_mb %}This table is larger than {{ mb }} MB and is not drawn. Download it to read it.{% endblocktrans %}</p>
+  {% else %}
+  <link rel="stylesheet" href="{% static 'vault/sheetview/sheetview.css' %}">
+  {{ sheet_source|json_script:"sheet-source" }}
+  <p id="sheet-note" class="hidden text-sm opacity-75" data-testid="sheet-refusal"
+     data-empty="{% trans 'This file is empty.' %}"
+     data-cut="{% trans 'The table is larger than the viewer shows: its last rows or columns are left out. Download the file for all of it.' %}"
+     data-failed="{% trans 'This file is not a table the viewer can draw.' %}"></p>
+  <div id="sheet-grid" data-testid="sheet-grid" data-kind="{{ sheet_kind }}" data-name="{{ file.title }}"
+       :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+       class="overflow-hidden rounded-xl border" style="height: 75vh; min-height: 24rem"></div>
+  <script src="{% static 'vault/sheetview/sheetview.js' %}"></script>
+  <script>
+  (function () {
+    var grid = document.getElementById("sheet-grid");
+    var note = document.getElementById("sheet-note");
+    function say(code, keepGrid) {
+      note.textContent = note.dataset[code] || note.dataset.failed;
+      note.classList.remove("hidden");
+      if (!keepGrid) { grid.classList.add("hidden"); }
+    }
+    function dark() {
+      try { return localStorage.getItem("darkMode") === "true"; } catch (e) { return false; }
+    }
+    try {
+      var opened = window.TotoSheet.open(grid.dataset.kind, grid.dataset.name,
+                                         JSON.parse(document.getElementById("sheet-source").textContent));
+      if (opened.refusal) { say(opened.refusal === "empty" ? "empty" : "failed"); return; }
+      // The grid is laid out from its box: wait until the page has given it one.
+      requestAnimationFrame(function () {
+        try { window.TotoSheet.mount(grid, opened.workbook, dark()); }
+        catch (e) { say("failed"); return; }
+        if (opened.rowsLeftOut || opened.columnsLeftOut) { say("cut", true); }
+      });
+    } catch (e) { say("failed"); }
+  })();
+  </script>
+  {% endif %}
+</article>
+{% endblock %}

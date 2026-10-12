@@ -54,7 +54,14 @@ class BellTests(TestCase):
             self.assertIn("fa-bell", button)
             self.assertIn('title="Notifications"', button)
             self.assertIn('aria-label="Notifications"', button)
-        self.assertIn('class="relative hidden sm:block" data-notify-bell data-variant="bar"', html)
+        # The bar's bell names no breakpoint: the header folds it, in the
+        # group it hides below lg with the bar's links (2026-10-12).
+        self.assertIn('class="relative" data-notify-bell data-variant="bar"', html)
+        self.assertNotIn("hidden sm:block", html)
+        folding = html.index('id="header-folding" class="hidden lg:flex')
+        self.assertLess(folding, html.index('data-variant="bar"'))
+        self.assertLess(html.index('data-variant="bar"'), html.index('id="header-nav"'))
+        self.assertLess(html.index('id="header-menu"'), html.index('data-variant="mobile"'))
 
     def test_no_count_is_shown_at_zero_and_the_name_is_translated(self):
         html = self.header(language="pl")

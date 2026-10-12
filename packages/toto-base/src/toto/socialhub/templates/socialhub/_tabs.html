@@ -4,7 +4,8 @@ superuser on the Superuser plan (2026-10-01, 37c.32) — Clearances. Included
 with active_tab = profiles | communities | clearances. Clearances are hidden
 from members everywhere (a clearance decides who reads and how fast mana
 refills, never what anybody buys), so the tab is chrome shown only to whom its
-doors open (may_manage_clearances); the views re-check.{% endcomment %}
+doors open (may_manage_clearances); the views re-check. Invitations
+(2026-10-10) shows to staff on a platform that invites (may_invite).{% endcomment %}
 <nav class="flex flex-wrap gap-2" aria-label="{% trans 'People and communities' %}">
   {% url 'socialhub:profile_list' as profiles_url %}
   {% url 'socialhub:community_list' as communities_url %}
@@ -33,5 +34,15 @@ doors open (may_manage_clearances); the views re-check.{% endcomment %}
      {% endif %}
      class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
     <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>{% trans "Clearances" %}</a>
+  {% endif %}
+  {% if user|may_invite %}{% url 'socialhub:invitations' as invitations_url %}
+  <a href="{{ invitations_url }}" data-testid="tab-invitations"
+     {% if active_tab == 'invitations' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}
+     class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+    <i class="fa-solid fa-envelope-open-text" aria-hidden="true"></i>{% trans "Invitations" %}</a>
   {% endif %}
 </nav>

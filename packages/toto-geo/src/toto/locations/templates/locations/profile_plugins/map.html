@@ -1,0 +1,24 @@
+{% load i18n %}
+{% comment %}Where the person lives, on a map on their profile (2026-10-12;
+plugins/profile_plugins.py, HomeMapProfilePlugin): the pin of somebody who
+shares their exact address, the area of somebody who shares an approximate
+one, and one's own pin on one's own profile. Drawn for a viewer who has the
+map and may see it (people_access), and for nobody else.{% endcomment %}
+<section id="home-map-section" data-testid="profile-home-map"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <div class="flex items-center justify-between gap-3">
+    <h2 class="flex items-center gap-2 text-lg font-bold">
+      <i class="{{ profile_plugin_icon }}" aria-hidden="true"></i>{{ profile_plugin_title }}</h2>
+    <a href="{{ people_map_url }}"
+       :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
+       class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition">
+      <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>{% trans "The People map" %}</a>
+  </div>
+  <p class="mt-2 text-sm">
+    <i class="fa-solid fa-location-dot mr-1 opacity-60" aria-hidden="true"></i>{{ home_label }}
+    {% if home_approximate %}<span class="ml-2 text-xs opacity-60">{% trans "Approximate area" %}</span>{% endif %}
+    {% if home_is_own %}<span class="ml-2 text-xs opacity-60">{% trans "Your own pin: others see what you share above." %}</span>{% endif %}
+  </p>
+  {% include "locations/_place_map.html" with map_id=home_map_id point=home_point approximate=home_approximate label=home_label %}
+</section>

@@ -63,7 +63,7 @@ def sealed(bucket):
     return bucket
 
 
-@override_settings(MEDIA_ROOT=_MEDIA, VAULT_EXTERNAL_BUCKETS=True)
+@override_settings(MEDIA_ROOT=_MEDIA, VAULT_EXTERNAL_BUCKETS=True, VAULT_BUCKET_KINDS=None)
 class ManageFixture(TestCase):
     @classmethod
     def setUpTestData(cls):

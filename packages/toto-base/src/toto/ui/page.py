@@ -3,6 +3,7 @@ from django.http import Http404
 from django.templatetags.static import static
 from django.urls import NoReverseMatch, reverse
 
+from toto.core import palette
 from toto.core.models import Platform
 from toto.core.serializers import PlatformSerializer
 
@@ -11,7 +12,7 @@ from toto.core.serializers import PlatformSerializer
 #: 37c.20). With USE_EXTERNAL_FONTS off, oya/base.html draws an @font-face
 #: from here instead of linking the font's stylesheet: every seeded font is a
 #: Google Fonts link, and Google then learns each visitor's address and
-#: browser before any page has said a word. Orbitron is the seeded theme's
+#: browser before any page has said a word. Orbitron is the palette's font
 #: ("Amazing Moon"): the very file Google served (fonts.gstatic.com v35, the
 #: latin subset — Orbitron has no other — one variable font for 400 to 900),
 #: beside its SIL Open Font License. A font with no entry falls back to its
@@ -66,7 +67,9 @@ class PageProcessor:
         }
 
         if self.config is None:
-            context.update({**base, "platform": None, "font": {}, "theme": {},
+            # No platform row, and still the palette: it is a file.
+            context.update({**base, "platform": None, "font": {},
+                            "theme": {**palette.theme(), "font": None},
                             "local_font": None, "logo": None, "federation": None,
                             "brand": self._brand(None, None)})
             return context

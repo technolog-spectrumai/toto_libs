@@ -1,0 +1,88 @@
+{% extends "vault/base.html" %}
+{% load i18n static %}
+{% comment %}A Markdown file, rendered (2026-10-12; timeline_views.markdown_view):
+the page behind the Play button of a .md file. The file's text is DATA here
+(json_script); vault/mdview/mdview.js, Morion's renderer, turns it into
+markup through its allow-list, and only that output is put on the page.
+Mermaid is loaded only when the note has a diagram, KaTeX only when it
+has a formula.{% endcomment %}
+
+{% block vault_title %}{{ file.title }}{% endblock %}
+
+{% block vault_content %}
+<link rel="stylesheet" href="{% static 'vault/mdview/markdown.css' %}">
+<article class="space-y-4" data-testid="markdown-view">
+  <header class="flex flex-wrap items-center justify-between gap-3">
+    <h2 class="flex min-w-0 items-center gap-2 text-lg font-bold">
+      <i class="fa-brands fa-markdown shrink-0 opacity-70" aria-hidden="true"></i>
+      <span class="min-w-0 break-words">{{ file.title }}</span></h2>
+    <span class="flex flex-wrap items-center gap-3 text-sm">
+      <a href="{% url 'vault:public_list' %}?bucket={{ bucket.slug }}{% if file.directory_id %}&dir={{ file.directory_id }}{% endif %}"
+         class="font-semibold underline hover:opacity-80" data-testid="markdown-back">{% trans "Back to the files" %}</a>
+      <a href="{{ file.get_public_url }}" class="font-semibold underline hover:opacity-80">{% trans "Download" %}</a>
+    </span>
+  </header>
+
+  {% if markdown_refusal == "encrypted" %}
+  <p class="text-sm opacity-75" data-testid="markdown-refusal">{% trans "This file is encrypted: decrypt it in Storage to read it here." %}</p>
+  {% elif markdown_refusal == "too_large" %}
+  <p class="text-sm opacity-75" data-testid="markdown-refusal">{% blocktrans with kb=markdown_max_kb %}This note is larger than {{ kb }} KB and is not rendered. Download it to read it.{% endblocktrans %}</p>
+  {% else %}
+  {{ markdown_source|json_script:"markdown-source" }}
+  <p id="markdown-note" class="hidden text-sm opacity-75" data-testid="markdown-refusal"
+     data-empty="{% trans 'This note is empty.' %}"
+     data-too_large="{% blocktrans with kb=markdown_max_kb %}This note is larger than {{ kb }} KB and is not rendered. Download it to read it.{% endblocktrans %}"
+     data-too_complex="{% trans 'This note is nested too deeply to render.' %}"
+     data-failed="{% trans 'This note could not be rendered.' %}"></p>
+  <div :class="darkMode ? 'dark border-accent-1' : 'border-accent-2'"
+       class="rounded-2xl border shadow-sm">
+    <div id="markdown-body" class="md-body" data-testid="md-body"
+         data-mermaid-src="{% static 'vendor/mermaid/mermaid.min.js' %}"
+         data-katex-js="{% static 'vendor/katex/katex.min.js' %}" data-katex-css="{% static 'vendor/katex/katex.min.css' %}"></div>
+  </div>
+  <script src="{% static 'vault/mdview/mdview.js' %}"></script>
+  <script>
+  (function () {
+    var body = document.getElementById("markdown-body");
+    var note = document.getElementById("markdown-note");
+    function say(code) {
+      note.textContent = note.dataset[code] || note.dataset.failed;
+      note.classList.remove("hidden");
+      body.parentElement.classList.add("hidden");
+    }
+    function dark() {
+      try { return localStorage.getItem("darkMode") === "true"; } catch (e) { return false; }
+    }
+    var made;
+    try {
+      made = window.TotoMarkdown.render(JSON.parse(document.getElementById("markdown-source").textContent));
+    } catch (e) { say("failed"); return; }
+    if (made.refusal) { say(made.refusal); return; }
+    // The allow-list's own output: every tag and attribute in it was written
+    // by scrubFragment, not echoed from the note.
+    body.innerHTML = made.html;
+    function load(src, done) {
+      var script = document.createElement("script");
+      script.src = src;
+      script.onload = done;
+      // Not on this host: the source stays on the page.
+      document.head.appendChild(script);
+    }
+    if (made.mermaid) {
+      load(body.dataset.mermaidSrc, function () {
+        if (window.mermaid) { window.TotoMarkdown.drawDiagrams(body, dark(), window.mermaid); }
+      });
+    }
+    if (made.math) {
+      var css = document.createElement("link");
+      css.rel = "stylesheet"; css.href = body.dataset.katexCss;
+      document.head.appendChild(css);
+      load(body.dataset.katexJs, function () {
+        if (window.katex) { window.TotoMarkdown.drawFormulas(body, window.katex); }
+      });
+    }
+  })();
+  </script>
+  {% endif %}
+</article>
+{% endblock %}

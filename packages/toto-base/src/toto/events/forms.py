@@ -67,7 +67,24 @@ class ScheduledEventForm(forms.ModelForm):
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         # The place is text the organiser types (2026-10-04); it was a list
-        # of the map addresses the creator may read.
+        # of the map addresses the creator may read. On a host with the map
+        # (toto.locations) that list is back beside the text (2026-10-12),
+        # for an organiser who has the map: "Place on the map", the
+        # registered places they may read, kept as the map's own row
+        # (locations.EventPlace) by ``save_place``.
+        self.has_place = False
+        from django.apps import apps
+
+        if apps.is_installed("toto.locations"):
+            from toto.locations import links
+
+            if links.map_open_to(user):
+                self.fields["place"] = links.place_field(user, self.instance)
+                self.has_place = True
+                names = list(self.fields)
+                names.remove("place")
+                names.insert(names.index("address") + 1, "place")
+                self.order_fields(names)
         for name, field in self.fields.items():
             if name in SPLIT_FIELDS:
                 for w in field.widget.widgets:
@@ -79,3 +96,24 @@ class ScheduledEventForm(forms.ModelForm):
             else:
                 field.widget.attrs.setdefault("class", FIELD_CLASS)
                 field.widget.attrs.setdefault("x-bind:class", FIELD_THEME_CLASS)
+
+    def clean(self):
+        cleaned = super().clean()
+        # A place chosen from the map names the event's place where the
+        # organiser typed none: every page that shows the text shows it.
+        place = cleaned.get("place") if self.has_place else None
+        if place is not None and not (cleaned.get("address") or "").strip():
+            cleaned["address"] = str(place)[:255]
+            self.instance.address = cleaned["address"]
+        return cleaned
+
+    def save_place(self, event) -> None:
+        """Tie the saved event to the place chosen from the map, or untie
+        it. Nothing on a host without the map, or for an organiser without
+        it: their form had no such list."""
+        if not self.has_place:
+            return
+        from toto.locations import links
+
+        links.set_event_place(event, self.cleaned_data.get("place"))
+

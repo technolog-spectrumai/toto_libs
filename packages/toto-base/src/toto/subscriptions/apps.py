@@ -25,3 +25,9 @@ class SubscriptionsConfig(AppConfig):
 
         plans.reload()
         plans.load()
+
+        # Automatic assignment to the best eligible plan, where the host
+        # turned it on (SUBSCRIPTION_AUTO_ASSIGN): autoplan.py.
+        from . import autoplan
+
+        autoplan.connect()

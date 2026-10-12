@@ -1,0 +1,22 @@
+{% extends "discipline/base.html" %}
+{% load i18n %}
+
+{% block discipline_title %}{% trans "Sigils" %}{% endblock %}
+{% block discipline_heading %}{% trans "Sigils" %}{% endblock %}
+{% block discipline_lede %}
+<p class="text-sm opacity-70">
+  {% trans "A sigil generates mana for whoever holds it, on top of their community's aura. It has one holder at a time. Revoking it stops it; the mana it generated stays where it is." %}
+</p>
+{% endblock %}
+
+{% block discipline_content %}
+<p class="text-sm" data-testid="sigils-admin-note">
+  {% trans "This list is read here. Sigils are made, assigned and revoked in the admin panel." %}
+  {% if admin_url %}<a href="{{ admin_url }}" class="font-semibold underline hover:opacity-80" data-testid="sigils-admin-link">{% trans "Open the admin panel" %}</a>{% endif %}
+</p>
+<div data-testid="sigils-table">
+  {% trans "There are no sigils yet." as nothing %}
+  {% include "oya/partials/table.html" with columns=columns rows=rows empty_text=nothing %}
+</div>
+{% include "oya/partials/paging_script.html" %}
+{% endblock %}

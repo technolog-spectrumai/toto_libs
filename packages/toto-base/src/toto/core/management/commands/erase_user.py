@@ -108,6 +108,10 @@ def plan(user) -> dict:
                      "site administration.")
     beyond, more = erasure.report(user)
     notes.extend(more)
+    # An invitation they accepted is deleted with them (erasure.gather), not
+    # kept without them: it is counted under beyond, not as detached.
+    if beyond.get("invitations"):
+        detached.pop("socialhub.Invitation.accepted_user", None)
     notes.append("The audit chain keeps their records, by username, and records this erasure: "
                  "a sealed record cannot be removed without breaking every later one.")
     notes.append("Backups taken before now still hold them until they age out.")

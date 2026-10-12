@@ -15,6 +15,7 @@ the vault's own adapters are in ``plugins/storage_adapters.py``:
 | ``local`` | local | this server's own storage |
 | ``aws_s3`` | s3 | an Amazon S3 bucket (preset ``aws``) |
 | ``ovh_s3`` | s3 | an OVH Object Storage bucket (preset ``ovh``; the region picks the endpoint) |
+| ``object_storage`` | s3 | a bucket in an object storage the operator configured (``VAULT_OBJECT_STORAGES``: name, location, provider, region or endpoint, keys; the dialog shows name and location only; 2026-10-11) |
 | ``zenobia_remote`` | remote_toto | a bucket shared by another Zenobia, connected with its pairing code |
 | ``s3`` | s3 | any other S3 bucket made before Management (describe/test/delete only, never offered by Create) |
 
@@ -271,12 +272,22 @@ class StorageAdapter(BasePlugin):
     # -- per adapter ----------------------------------------------------------
 
     def is_available(self) -> bool:
-        """Remote kinds exist only where the host allows external buckets."""
+        """Remote kinds exist only where the host allows external buckets,
+        and, where the host names the kinds it offers
+        (``settings.VAULT_BUCKET_KINDS``, adapter keys; 2026-10-11), only
+        those: a host may take S3 buckets and still not pair with other
+        platforms (``("local", "aws_s3", "ovh_s3")``). This server's own
+        storage is always there."""
         if not self.is_remote:
             return True
+        from django.conf import settings
+
         from .models import external_buckets_allowed
 
-        return external_buckets_allowed()
+        if not external_buckets_allowed():
+            return False
+        kinds = getattr(settings, "VAULT_BUCKET_KINDS", None)
+        return kinds is None or self.get_key() in tuple(kinds)
 
     def matches(self, bucket) -> bool:
         return (bucket.storage_backend or "local") == self.backend

@@ -15,7 +15,7 @@ from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
 
-from . import plans as plans_registry
+from . import autoplan, plans as plans_registry
 from . import services
 from .models import Subscription, default_plan, plan_for
 
@@ -72,6 +72,8 @@ def plans(request):
         # None when nothing on this host is priced. The template says which,
         # because "free" and "we do not bill here" are different statements.
         "priced": any(row["priced"] for row in rows),
+        # The communities set the ceiling (autoplan): the page says so.
+        "plans_auto": autoplan.enabled(),
     })
 
 

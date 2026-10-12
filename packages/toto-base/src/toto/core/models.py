@@ -2,9 +2,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-from colorfield.fields import ColorField
 from django.contrib.auth import get_user_model
-from django_jsonform.models.fields import JSONField
 from toto.core.domain import DomainEntity
 
 User = get_user_model()
@@ -38,128 +36,11 @@ class Font(models.Model):
     def __str__(self):
         return f"{self.name} ({self.style_family})"
 
-_THEME_EXTRA = {
-    "type": "object",
-    "properties": {
-        "light": {"type": "string"},
-        "dark": {"type": "string"}
-    },
-    "required": ["light", "dark"],
-    "additionalProperties": False
-}
-
-
-class ColorMix(models.Model):
-    name = models.CharField(
-        max_length=64,
-        unique=True,
-        help_text="Name of the color mix"
-    )
-
-    # Light mode colors
-    primary_bg_light = ColorField(default="#FFFFFF")
-    header_bg_light = ColorField(default="#FFFFFF")
-    appbar_bg_light = ColorField(default="#FFFFFF")
-    appbar_text_light = ColorField(default="#000000")
-    footer_bg_light = ColorField(default="#FFFFFF")
-    footer_text_light = ColorField(default="#000000")
-    bubble_bg_light = ColorField(default="#FFFFFF")
-    text_main_light = ColorField(default="#000000")
-    accent_light = ColorField(default="#FF4081")
-    warn_light = ColorField(default="#FFC107")
-
-    # NEW
-    success_light = ColorField(default="#4CAF50")   # green
-    sunken_light = ColorField(default="#F5F5F5")    # subtle grey
-    link_light = ColorField(default="#1E88E5")      # blue
-    # The security mana pool (2026-09-25): cyan, its own token so the bar can
-    # never inherit the accent hue a theme happens to pick. `caution` was in
-    # every theme file but never on this model, so the classes it produced
-    # rendered colourless; now it is a field like the others.
-    security_light = ColorField(default="#00ACC1")  # cyan
-    caution_light = ColorField(default="#A07800")   # amber
-
-    # Dark mode colors
-    primary_bg_dark = ColorField(default="#121212")
-    header_bg_dark = ColorField(default="#1F1F1F")
-    appbar_bg_dark = ColorField(default="#1F1F1F")
-    appbar_text_dark = ColorField(default="#FFFFFF")
-    footer_bg_dark = ColorField(default="#1F1F1F")
-    footer_text_dark = ColorField(default="#FFFFFF")
-    bubble_bg_dark = ColorField(default="#2C2C2C")
-    text_main_dark = ColorField(default="#FFFFFF")
-    accent_dark = ColorField(default="#FF4081")
-    warn_dark = ColorField(default="#FF5722")
-
-    # NEW
-    success_dark = ColorField(default="#66BB6A")    # lighter green for dark mode
-    sunken_dark = ColorField(default="#1A1A1A")     # deeper grey
-    link_dark = ColorField(default="#64B5F6")       # lighter blue
-    security_dark = ColorField(default="#26C6DA")   # lighter cyan for dark mode
-    caution_dark = ColorField(default="#F0A820")    # lighter amber
-
-    # Accent colors
-    accent_1 = ColorField(default="#03A9F4")
-    accent_2 = ColorField(default="#4CAF50")
-
-    def __str__(self):
-        return self.name
-
-
-
-class Theme(models.Model):
-
-    name = models.CharField(
-        max_length=64,
-        unique=True,
-        help_text="Name of the theme"
-    )
-
-    color_mix = models.ForeignKey(
-        ColorMix,
-        on_delete=models.CASCADE,
-        related_name="themes",
-        help_text="Color palette used for this theme"
-    )
-
-    font = models.ForeignKey(
-        Font,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="themes",
-        help_text="Font applied to this theme"
-    )
-
-    header = JSONField(
-        schema=_THEME_EXTRA,
-        default=dict,
-        help_text="Tailwind classes for header element (light/dark mode)"
-    )
-
-    footer = JSONField(
-        schema=_THEME_EXTRA,
-        default=dict,
-        help_text="Tailwind classes for footer element (light/dark mode)"
-    )
-
-    def __str__(self):
-        return self.name
-
-    @property
-    def theme(self):
-        colors = {}
-
-        # Loop through all fields in ColorMix
-        for field in self.color_mix._meta.get_fields():
-            if hasattr(self.color_mix, field.name):
-                value = getattr(self.color_mix, field.name)
-
-                # Only include ColorField values (hex colors)
-                if isinstance(value, str) and value.startswith("#"):
-                    colors[field.name.replace("_", "-")] = value
-
-        return {"colors": colors}
+# No ColorMix and no Theme since 2026-10-10. The colours were a row a host
+# seeded from its own copy of a theme file at every start; there is one
+# palette now, palette.json beside this module (toto/core/palette.py), read
+# when the image is built. What stays in the database is the font, which has
+# a stylesheet link of its own: Platform.font.
 
 
 class Federation(DomainEntity):
@@ -185,13 +66,13 @@ class Platform(models.Model):
     publication_year = models.IntegerField()
     active = models.BooleanField(default=True)
 
-    theme = models.ForeignKey(
-        Theme,
+    font = models.ForeignKey(
+        Font,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="platform_themes",
-        help_text="Theme applied to this platform",
+        related_name="platforms",
+        help_text="Font this platform's pages are set in",
     )
     rate_limit_window = models.IntegerField(
         default=60,

@@ -2,11 +2,9 @@ from django.contrib import admin
 from django.contrib.admin.utils import unquote
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin
-from django.utils.html import format_html
-from django.utils.translation import gettext_lazy as _
 
 from toto.core.base_admin import TotoModelAdmin
-from .models import Platform, Font, Theme, ColorMix, Federation
+from .models import Platform, Font, Federation
 
 
 @admin.register(Font)
@@ -17,70 +15,9 @@ class FontAdmin(TotoModelAdmin):
     ordering = ('name',)
 
 
-@admin.register(ColorMix)
-class ColorMixAdmin(TotoModelAdmin):
-    list_display = ('name', 'preview_light', 'preview_dark')
-    readonly_fields = ('preview_light', 'preview_dark')
-
-    fieldsets = (
-        (None, {'fields': ('name',)}),
-        ('Light Mode Colors', {
-            'fields': (
-                'primary_bg_light', 'text_main_light',
-                'header_bg_light', 'bubble_bg_light',
-                'appbar_bg_light', 'appbar_text_light',
-                'footer_bg_light', 'footer_text_light',
-                'accent_light', 'warn_light',
-                'success_light', 'sunken_light', 'link_light',
-                'preview_light',
-            )
-        }),
-        ('Dark Mode Colors', {
-            'fields': (
-                'primary_bg_dark', 'text_main_dark',
-                'header_bg_dark', 'bubble_bg_dark',
-                'appbar_bg_dark', 'appbar_text_dark',
-                'footer_bg_dark', 'footer_text_dark',
-                'accent_dark', 'warn_dark',
-                'success_dark', 'sunken_dark', 'link_dark',
-                'preview_dark',
-            )
-        }),
-        ('Accent Colors', {'fields': ('accent_1', 'accent_2')}),
-    )
-
-    def preview_light(self, obj):
-        return self._render_preview(
-            obj.primary_bg_light, obj.bubble_bg_light,
-            obj.text_main_light, obj.accent_light,
-            obj.footer_bg_light, obj.footer_text_light, "Light",
-        )
-    preview_light.short_description = _("Light Preview")
-
-    def preview_dark(self, obj):
-        return self._render_preview(
-            obj.primary_bg_dark, obj.bubble_bg_dark,
-            obj.text_main_dark, obj.accent_dark,
-            obj.footer_bg_dark, obj.footer_text_dark, "Dark",
-        )
-    preview_dark.short_description = _("Dark Preview")
-
-    def _render_preview(self, bg, bubble, text, accent, footer_bg, footer_text, label):
-        return format_html(
-            '''<div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <div style="background-color:{bg};color:{text};padding:8px;border-radius:4px;width:120px;text-align:center;">{label} BG</div>
-                <div style="background-color:{bubble};color:{text};padding:8px;border-radius:4px;width:120px;text-align:center;">Bubble</div>
-                <div style="background-color:{accent};color:{text};padding:8px;border-radius:4px;width:120px;text-align:center;">Accent {label}</div>
-            </div>''',
-            bg=bg, bubble=bubble, text=text, accent=accent, label=label,
-        )
-
-
-@admin.register(Theme)
-class ThemeAdmin(TotoModelAdmin):
-    list_display = ('name', 'font')
-    search_fields = ('name', 'font__name')
-    ordering = ('name',)
+# No ColorMix and no Theme admin since 2026-10-10: the colours are one file,
+# toto/core/palette.json, compiled into the stylesheet when the image is
+# built. A platform's font is still chosen here, on the Platform.
 
 
 @admin.register(Federation)
@@ -101,15 +38,11 @@ class FederationAdmin(TotoModelAdmin):
 class PlatformAdmin(TotoModelAdmin):
     list_display = (
         'site_name', 'domain', 'publication_year', 'active',
-        'get_theme_name', 'rate_limit_window', 'rate_limit_max_requests',
+        'font', 'rate_limit_window', 'rate_limit_max_requests',
     )
-    search_fields = ('site_name', 'domain', 'theme__name')
-    list_filter = ('active', 'publication_year', 'theme')
+    search_fields = ('site_name', 'domain', 'font__name')
+    list_filter = ('active', 'publication_year', 'font')
     ordering = ['publication_year']
-
-    def get_theme_name(self, obj):
-        return obj.theme.name if obj.theme else '-'
-    get_theme_name.short_description = 'Theme'
 
 
 def erase_command(username: str) -> str:

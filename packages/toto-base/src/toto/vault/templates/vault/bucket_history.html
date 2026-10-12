@@ -1,0 +1,60 @@
+{% extends "vault/base.html" %}
+{% load i18n %}
+{% comment %}A bucket's timeline (2026-10-12; timeline_views.bucket_history):
+   what happened to the bucket and to its files, newest first, a page of
+   fifty, by kind when one is chosen. Its owner's and superusers' to read;
+   nothing here is changed.{% endcomment %}
+
+{% block vault_title %}{% blocktrans with name=bucket.name %}History of {{ name }}{% endblocktrans %}{% endblock %}
+
+{% block vault_content %}
+<article class="space-y-6" data-testid="bucket-history">
+  <header class="space-y-1">
+    <h2 class="flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-clock-rotate-left opacity-70" aria-hidden="true"></i>{% blocktrans with name=bucket.name %}History of {{ name }}{% endblocktrans %}</h2>
+    <p class="max-w-prose text-sm opacity-70">{% trans "What happened to this bucket and to its files, and who did it: files created, edited, opened and downloaded, renames, moves, encryption, the trash, copies and clearances." %}</p>
+    <p class="text-sm"><a href="{% url 'vault:bucket_metrics' bucket.slug %}" class="font-semibold underline hover:opacity-80">{% trans "Back to the bucket" %}</a></p>
+  </header>
+
+  <form method="get" class="flex flex-wrap items-center gap-2 text-sm">
+    <label class="flex items-center gap-2">
+      <span class="opacity-70">{% trans "Show" %}</span>
+      <select name="kind" @change="$el.form.submit()" autocomplete="off" data-testid="bucket-history-kind"
+              :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+              class="rounded-lg border px-2 py-1 text-sm">
+        <option value="">{% trans "Everything" %}</option>
+        {% for key, label in kinds %}<option value="{{ key }}"{% if key == kind %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <noscript><button type="submit" class="rounded-lg border px-3 py-1 text-sm font-semibold">{% trans "Show" %}</button></noscript>
+    <span class="opacity-60">{% blocktrans count counter=total %}{{ counter }} row{% plural %}{{ counter }} rows{% endblocktrans %}</span>
+  </form>
+
+  <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="overflow-x-auto rounded-xl border shadow-sm">
+    <table class="w-full text-sm">
+      <thead>
+        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-left">
+          <th class="px-4 py-2">{% trans "When" %}</th>
+          <th class="px-4 py-2">{% trans "File" %}</th>
+          <th class="px-4 py-2">{% trans "What" %}</th>
+          <th class="px-4 py-2">{% trans "Who" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr :class="darkMode ? 'border-accent-1/30' : 'border-accent-2/30'" class="border-b last:border-b-0" data-testid="bucket-history-row" data-kind="{{ row.kind }}">
+          <td class="whitespace-nowrap px-4 py-2 tabular-nums opacity-70">{{ row.when }}</td>
+          <td class="px-4 py-2">{{ row.file|default:"—" }}</td>
+          <td class="px-4 py-2"><i class="{{ row.icon }} mr-2 opacity-60" aria-hidden="true"></i>{{ row.what }}</td>
+          <td class="px-4 py-2">{{ row.who|default:"—" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" class="px-4 py-10 text-center opacity-50">{% trans "Nothing has happened here yet." %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% include "oya/partials/_server_pagination.html" %}
+</article>
+{% endblock %}

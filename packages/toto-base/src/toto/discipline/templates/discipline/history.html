@@ -1,0 +1,54 @@
+{% extends "discipline/base.html" %}
+{% load i18n static %}
+
+{% block start_script %}
+{{ block.super }}
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+{% include "oya/partials/dim.html" %}
+{% endblock %}
+
+{% block discipline_title %}{% trans "Mana history" %}{% endblock %}
+{% block discipline_heading %}{% trans "Mana history" %}{% endblock %}
+{% block discipline_lede %}
+<p class="text-sm opacity-70">{% trans "What you had, over time, and every change to it. The line steps where an action spent mana, an hour regenerated it or an administrator granted it." %}</p>
+{% endblock %}
+
+{% block discipline_content %}
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-xl border p-5 shadow-sm" data-testid="mana-history">
+  <form method="get" class="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <p class="text-sm"><span class="opacity-60">{% trans "Now" %}</span>
+      <span class="ml-1 text-lg font-bold tabular-nums">{{ balance|floatformat:"-2" }}</span></p>
+    <label class="flex items-center gap-2 text-sm">
+      <span class="opacity-70">{% trans "Show" %}</span>
+      <select name="range" @change="$el.form.submit()" @pageshow.window="$el.value = '{{ range }}'"
+              autocomplete="off" data-testid="mana-history-range"
+              :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+              class="rounded-lg border px-2 py-1 text-sm">
+        {% for key, label in ranges %}<option value="{{ key }}"{% if key == range %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+  </form>
+  <div class="h-64 sm:h-80">
+    {% include "oya/partials/chart.html" with chart_id="mana_history" data=chart_json %}
+  </div>
+</div>
+
+<div data-testid="mana-changes">
+  <h2 class="mb-2 text-lg font-semibold">{% trans "Every change" %}</h2>
+  <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="overflow-hidden rounded-xl border shadow-sm">
+    {% for event in events %}
+    <div :class="darkMode ? 'border-b border-accent-1/30' : 'border-b border-accent-2/30'"
+         class="flex items-center gap-3 px-4 py-2 text-sm last:border-b-0" data-testid="mana-event">
+      <span class="w-36 shrink-0 text-xs opacity-60">{{ event.created_at|date:"Y-m-d H:i" }}</span>
+      <span class="min-w-0 flex-1 truncate">{{ event.get_kind_display }}{% if event.metric_code %} · {{ event.metric_code }}{% endif %}{% if event.reason %} · {{ event.reason }}{% endif %}</span>
+      <span class="w-20 shrink-0 text-right font-semibold tabular-nums">{% if event.delta > 0 %}+{% endif %}{{ event.delta|floatformat:"-4" }}</span>
+      <span class="w-20 shrink-0 text-right tabular-nums opacity-60">{{ event.balance_after|floatformat:"-2" }}</span>
+    </div>
+    {% empty %}
+    <div class="px-4 py-8 text-center text-sm opacity-50">{% trans "Nothing has changed your mana yet." %}</div>
+    {% endfor %}
+  </div>
+  {% if is_paginated %}<div class="mt-4" data-testid="mana-changes-pager">{% include "oya/partials/_server_pagination.html" %}</div>{% endif %}
+</div>
+{% endblock %}

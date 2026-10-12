@@ -124,9 +124,14 @@ def snapshot(bucket) -> dict:
 
 def audit(action, bucket, actor, *, success=True, object_id=None, **metadata):
     """One record on the chain (``VAULT.BUCKET.<ACTION>``); never breaks the
-    act it describes."""
+    act it describes. What happened to the bucket also goes on its timeline
+    (``timeline.bucket_event``), whether or not a chain is installed."""
     from django.apps import apps
 
+    if success:
+        from . import timeline
+
+        timeline.bucket_event(action, bucket, actor, metadata)
     if not apps.is_installed("toto.audit"):
         return None
     from toto.audit.services import SYSTEM, record

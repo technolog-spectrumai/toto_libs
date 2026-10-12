@@ -37,6 +37,16 @@ class _Second(HeaderPlugin):
         return '<span id="second"></span>'
 
 
+class _Stays(HeaderPlugin):
+    """A widget that stays on the bar when the bar folds (2026-10-12)."""
+
+    order = 3
+    pinned = True
+
+    def render_html(self, **kwargs):
+        return '<span id="stays"></span>'
+
+
 class HeaderPluginTests(TestCase):
     def setUp(self):
         self._saved = dict(HeaderPlugin.registry)
@@ -83,3 +93,73 @@ class HeaderPluginTests(TestCase):
         html = Template('{% load plugin_tags %}{% render_header_plugins %}').render(
             Context({"request": self.request(self.user)}))
         self.assertEqual(html, "")
+
+
+class PinnedGroupTests(TestCase):
+    """``pinned`` splits the registry in two for the header (2026-10-12): the
+    widgets that stay on the bar at every width, and the ones the header
+    folds into its menu. A widget is unpinned unless it says otherwise."""
+
+    def setUp(self):
+        self._saved = dict(HeaderPlugin.registry)
+        HeaderPlugin.registry.clear()
+        for plugin in (_Chip, _Second, _Stays):
+            HeaderPlugin.register(plugin)
+        self.request = RequestFactory().get("/")
+        self.request.user = get_user_model().objects.create_user("ada", password="x")
+
+    def tearDown(self):
+        HeaderPlugin.registry.clear()
+        HeaderPlugin.registry.update(self._saved)
+
+    def keys(self, **kwargs):
+        return [r.key for r in HeaderPlugin.render_all(request=self.request, **kwargs)]
+
+    def test_a_widget_folds_unless_it_says_it_stays(self):
+        self.assertIs(HeaderPlugin.pinned, False)
+        self.assertIs(_Chip.pinned, False)
+        self.assertIs(_Stays.pinned, True)
+
+    def test_render_all_narrows_to_one_side(self):
+        self.assertEqual(self.keys(), ["_Second", "_Stays", "_Chip"])
+        self.assertEqual(self.keys(pinned=None), ["_Second", "_Stays", "_Chip"])
+        self.assertEqual(self.keys(pinned=True), ["_Stays"])
+        self.assertEqual(self.keys(pinned=False), ["_Second", "_Chip"])
+        # ``pinned`` is the registry's own argument: no widget is handed it.
+        seen = {}
+
+        class _Asks(HeaderPlugin):
+            order = 9
+
+            def render_html(self, **kwargs):
+                seen.update(kwargs)
+                return ""
+
+        HeaderPlugin.register(_Asks)
+        HeaderPlugin.render_all(request=self.request, variant="mobile", pinned=False)
+        self.assertEqual(sorted(seen), ["request", "variant"])
+
+    def test_the_tag_draws_a_group(self):
+        def drawn(arguments):
+            return Template("{% load plugin_tags %}{% render_header_plugins " + arguments + " %}").render(
+                Context({"request": self.request}))
+
+        self.assertEqual(drawn('group="pinned"'), '<span id="stays"></span>')
+        self.assertEqual(drawn('group="folding"'),
+                         '<span id="second"></span><span id="chip" data-variant="bar"></span>')
+        self.assertEqual(drawn('variant="mobile" group="folding"'),
+                         '<span id="second"></span><span id="chip" data-variant="mobile"></span>')
+        # Every widget when no group is named, as before.
+        self.assertEqual(drawn('variant="mobile"').count("<span"), 3)
+        # A word that is no group draws nothing, rather than everything twice.
+        self.assertEqual(drawn('group="pined"'), "")
+
+    def test_the_tag_can_be_kept_in_a_variable_and_tested_for_emptiness(self):
+        template = Template(
+            "{% load plugin_tags %}{% render_header_plugins group=\"pinned\" as stays %}"
+            "{% if stays %}[{{ stays }}]{% else %}none{% endif %}")
+        self.assertEqual(template.render(Context({"request": self.request})),
+                         '[<span id="stays"></span>]')
+        HeaderPlugin.registry.clear()
+        self.assertEqual(template.render(Context({"request": self.request})), "none")
+

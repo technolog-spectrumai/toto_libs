@@ -1407,6 +1407,52 @@ class VaultQuotaPolicy(AbstractQuotaPolicy):
         verbose_name_plural = "Vault quota policies"
 
 
+class VaultEvent(models.Model):
+    """One thing that happened to a file or to a bucket: the timeline
+    (2026-10-12, ``timeline.py``).
+
+    A file's history is read from it as four kinds (created, edited, opened,
+    downloaded: who and when); a bucket's holds the rest too.
+
+    A record of its own, because nothing else is one: the audit chain names a
+    file by its key here and its number there, and is the team's to read;
+    a notification is its owner's, folded and gone after a month; saved
+    versions are pruned. Written from the model's own ``file_changed`` signal
+    (so every writer is covered) and from the bucket's own doors.
+
+    A row outlives its file and whoever did it: ``file`` and ``actor`` are
+    set to null, and the title and the name as they were are kept beside
+    them (the name is blanked when the account is erased). It goes with its
+    bucket. It never holds an address or a browser."""
+
+    bucket = models.ForeignKey(Bucket, on_delete=models.CASCADE, related_name="events")
+    file = models.ForeignKey("VaultFile", on_delete=models.SET_NULL, null=True, blank=True,
+                             related_name="events")
+    #: The file's number, kept when the row is gone: its history stays one.
+    file_number = models.PositiveBigIntegerField(null=True, blank=True)
+    file_title = models.CharField(max_length=255, blank=True, default="")
+    kind = models.CharField(max_length=32)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                              blank=True, related_name="vault_events")
+    #: Who did it, as they were called then; empty for the platform itself.
+    actor_name = models.CharField(max_length=150, blank=True, default="")
+    #: What changed, in words a sentence is made of: {"from", "to"} for a
+    #: rename or a move, {"count", "bucket"} for a copy, {"before", "after"}
+    #: for clearances. Names only, never content.
+    details = models.JSONField(default=dict, blank=True)
+    at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-at", "-pk"]
+        indexes = [
+            models.Index(fields=["bucket", "-at"], name="vault_event_bucket"),
+            models.Index(fields=["file_number", "-at"], name="vault_event_file"),
+        ]
+
+    def __str__(self):
+        return f"{self.kind} {self.file_title or self.bucket_id} ({self.at:%Y-%m-%d %H:%M})"
+
+
 # Imported last so the peering and mirror models are part of this app's
 # migration state. See each module's docstring for the doctrines they carry.
 from .peering import (  # noqa: E402,F401

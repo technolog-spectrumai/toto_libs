@@ -133,6 +133,30 @@
       {% endif %}
     </section>
 
+    {% comment %}The bucket's timeline (2026-10-12): the last ten things that
+       happened to it and to its files; the History page has them all.{% endcomment %}
+    <section id="history" data-testid="bucket-history-last"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-xl border p-5 shadow-sm">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-clock-rotate-left opacity-70" aria-hidden="true"></i>{% trans "History" %}</h2>
+        <a href="{% url 'vault:bucket_history' bucket.slug %}" data-testid="bucket-history-link"
+           class="text-sm font-semibold underline hover:opacity-80">{% trans "The whole history" %}</a>
+      </div>
+      <ul class="mt-3 space-y-1 text-sm">
+        {% for row in history_rows %}
+        <li class="flex flex-wrap items-baseline gap-x-3">
+          <span class="w-32 shrink-0 tabular-nums opacity-60">{{ row.when }}</span>
+          <span class="min-w-0 flex-1"><i class="{{ row.icon }} mr-2 opacity-60" aria-hidden="true"></i>{% if row.file %}<span class="font-semibold">{{ row.file }}</span>: {% endif %}{{ row.what }}</span>
+          <span class="opacity-70">{{ row.who|default:"—" }}</span>
+        </li>
+        {% empty %}
+        <li class="opacity-60">{% trans "Nothing has happened here yet." %}</li>
+        {% endfor %}
+      </ul>
+    </section>
+
     {% comment %}Antivirus health — only when the app exists on this host. The
        report is None otherwise (the façade's contract), so placidia and
        aurelian render this page exactly as before. "Current" everywhere here:

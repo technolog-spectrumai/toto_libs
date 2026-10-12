@@ -8,33 +8,38 @@ from django.conf import settings
 from django.contrib.auth.models import User
 
 from toto.conf import data_dir
-from toto.core.models import Platform, Theme
+from toto.core import palette
+from toto.core.models import Font, Platform
 
 
 class Command(BaseCommand):
-    help = "Create or update a Platform with theme, logo, and metadata"
+    help = "Create or update a Platform with font, logo, and metadata"
 
     def add_arguments(self, parser):
         parser.add_argument("site_name", type=str)
         parser.add_argument("domain", type=str)
         parser.add_argument("author", type=str)
         parser.add_argument("--active", type=bool, default=True)
-        parser.add_argument("--theme_id", type=int)
+        parser.add_argument("--font", type=str, default=None,
+                            help="Name of the Font row (default: the palette's font)")
 
     def handle(self, *args, **options):
         site_name = options["site_name"]
         domain = options["domain"]
         author = options["author"]
         active = options["active"]
-        theme_id = options.get("theme_id")
+        font_name = options.get("font") or palette.font_name()
         publication_year = datetime.now().year
 
-        theme = None
-        if theme_id:
-            try:
-                theme = Theme.objects.get(id=theme_id)
-            except Theme.DoesNotExist:
-                self.stderr.write(self.style.WARNING(f"Theme {theme_id} not found."))
+        # The colours are the palette file's, nothing to pick here; the font
+        # is a row, seeded from the host's fonts.json before this runs. It is
+        # given ONCE, below: this command runs at every container start, and
+        # a font chosen on the Platform in the admin must outlive a restart.
+        font = Font.objects.filter(name=font_name).first()
+        if font is None:
+            self.stderr.write(self.style.WARNING(
+                f"Font '{font_name}' not found: the platform falls back to "
+                "the browser's sans-serif."))
 
         admin_username = os.environ.get("ADMIN_USERNAME", "admin")
         try:
@@ -48,12 +53,20 @@ class Command(BaseCommand):
                 "site_name": site_name,
                 "publication_year": publication_year,
                 "active": active,
-                "theme": theme,
                 "author": author,
                 "api_url": "http://127.0.0.1:8000/core/sync/",
                 "api_owner": owner,
             },
         )
+
+        # Not among the defaults above, which update_or_create writes onto
+        # an existing row every time: a platform that has no font takes this
+        # one, and one that has a font keeps it. (As a Theme row the font
+        # survived a start too: the command that made themes never touched an
+        # existing one.)
+        if font is not None and platform.font_id is None:
+            platform.font = font
+            platform.save(update_fields=["font"])
 
         logo_path = os.path.abspath(
             os.path.join(settings.BASE_DIR, settings.PLATFORM_LOGO_PATH)

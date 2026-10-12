@@ -3,6 +3,7 @@ from toto.core.models import Platform
 from django.shortcuts import render, redirect, get_object_or_404
 from toto.people.models import Person
 from toto.socialhub import applications
+from toto.socialhub.enrollment import application_only
 from toto.socialhub.models import (Community, MembershipApplication,
                                    ReferenceRequest, generate_code)
 from toto.ui import PageProcessor
@@ -141,6 +142,7 @@ def _send_endorsement_mail(subject, body, *, to, community):
     msg.send(fail_silently=True)
 
 
+@application_only
 def membership_application_view(request):
     processor = PageProcessor()
     form = MembershipApplicationForm(request.POST or None)
@@ -212,6 +214,7 @@ def membership_application_view(request):
     return render(request, "socialhub/membership_application.html", processor.decorate(context, request))
 
 
+@application_only
 def application_success_view(request):
     processor = PageProcessor()
     # The verification code is never emailed: the verification page shows it
@@ -225,6 +228,7 @@ def application_success_view(request):
     return render(request, "socialhub/application_success.html", processor.decorate(context, request))
 
 
+@application_only
 def verify_application_view(request):
     processor = PageProcessor()
     form = CodeVerificationForm(request.POST or None)
@@ -291,6 +295,7 @@ def verify_application_view(request):
     return render(request,"socialhub/membership_verification.html", processor.decorate(context, request))
 
 
+@application_only
 def verification_success_view(request):
     processor = PageProcessor()
     context = {"page_title": "Verification Complete"}
@@ -298,6 +303,7 @@ def verification_success_view(request):
     return render(request, "socialhub/verification_success.html", processor.decorate(context, request))
 
 
+@application_only
 def reference_request_view(request):
     processor = PageProcessor()
     # Only the browser that applied and verified the code (2026-10-01): the
@@ -342,6 +348,7 @@ def reference_request_view(request):
     return render(request, "socialhub/reference_request.html", processor.decorate(context, request))
 
 
+@application_only
 def reference_next(request):
     processor = PageProcessor()
     # The verifying browser's too (2026-10-01).
@@ -364,6 +371,7 @@ def _references_on_own_profile(user):
     return own_page_url(user, "activity", "references")
 
 
+@application_only
 @require_POST
 @login_required
 def reference_accept(request, ref_id):
@@ -423,6 +431,7 @@ def reference_accept(request, ref_id):
 
 
 
+@application_only
 @require_POST
 @login_required
 def reference_reject(request, ref_id):

@@ -65,6 +65,11 @@ class Command(IngressCommand):
         self.stdout.write(
             f"subscriptions: '{default.key}' offered to {len(communities)} "
             f"community/ies ({created} new)")
+        from toto.subscriptions import autoplan
+
+        if autoplan.enabled():
+            self.stdout.write(f"subscriptions: {autoplan.assign_all()} account(s) put on their "
+                              "best plan (automatic assignment)")
 
         if not self.full:
             return

@@ -130,7 +130,7 @@ def welcome_view(request):
     return render(request, _get_template("home.html"), processor.decorate(context, request))
 
 
-def _plan_allows(user, link) -> bool:
+def _plan_allows(user, link, feature: str = "") -> bool:
     """Whether this user's plan grants the app a tile opens.
 
     Cosmetic, like the visibility arms below — the subscription gate
@@ -145,16 +145,22 @@ def _plan_allows(user, link) -> bool:
     or any error keeps every tile, because hiding functionality by accident
     is a silent outage.
     """
-    if not link or ":" not in link:
-        return True
     from django.apps import apps as django_apps
 
     if not django_apps.is_installed("toto.subscriptions"):
         return True
+    # A tile may name the feature it needs (2026-10-11, ``"feature"``), for a
+    # page whose own app is free but which a host keeps behind a plan — a
+    # team's desk gated by a Team plan — beside its link's namespace.
+    keys = [feature] if feature else []
+    if link and ":" in link:
+        keys.append(link.split(":", 1)[0])
+    if not keys:
+        return True
     try:
         from toto.subscriptions.gate import is_entitled
 
-        return is_entitled(user, link.split(":", 1)[0])
+        return all(is_entitled(user, key) for key in keys)
     except Exception:  # noqa: BLE001 - a dashboard must render whatever breaks
         return True
 
@@ -223,7 +229,7 @@ def _resolve_dashboard_item(item, user):
         if not (user.is_superuser
                 or user.groups.filter(name=wanted).exists()):
             return None
-    if not _plan_allows(user, item.get("link")):
+    if not _plan_allows(user, item.get("link"), item.get("feature", "")):
         return None
     link = item.get("link")
     if link and ":" in link:
@@ -354,6 +360,18 @@ def _manual_features(request):
         play, edit = storage_only_opens("play"), storage_only_opens("edit")
         pictures = not storage_only()
     features.update(vault_play=play, vault_edit=edit, image_viewer=pictures)
+    # Buckets connected from another server (2026-10-10): a file there never
+    # reaches the trash, and the storage chapter says so where a host allows them.
+    features["external_buckets"] = features["s3_buckets"] = False
+    if features["vault"]:
+        from toto.vault.share_views import peering_allowed  # noqa: PLC0415
+        from toto.vault.storage_adapters import StorageAdapter  # noqa: PLC0415
+
+        features["external_buckets"] = bool(peering_allowed())
+        # The kinds of bucket the team can make beside this machine's own
+        # (2026-10-11): the team's chapter names them where a host offers any.
+        features["s3_buckets"] = any(
+            getattr(adapter, "backend", "") == "s3" for adapter in StorageAdapter.creatable_adapters())
     # Whether the storage chapter may promise Play / Edit buttons at all: a
     # host that only stores files installs none of these (or names neither
     # button), and its chapter says a file comes back as a download instead.
@@ -361,7 +379,94 @@ def _manual_features(request):
         features[name] for name in (
             "vod", "markdown", "memo", "notarius", "editor", "sketch",
             "notebooks", "latex"))
+    # Who is reading (2026-10-10): the team's chapter is drawn for staff and
+    # superusers only, and a chapter a host keeps for its team
+    # (settings.MANUAL_TEAM_CHAPTERS, by feature key; e.g. "workflows" where
+    # the runner's pages are staff-only) is not shown to a member, who would
+    # be sent to a page that refuses them.
+    user = getattr(request, "user", None)
+    team = bool(getattr(user, "is_authenticated", False)
+                and (user.is_staff or user.is_superuser))
+    features["team"] = team
+    features["superuser"] = bool(team and user.is_superuser)
+    reserved = tuple(getattr(settings, "MANUAL_TEAM_CHAPTERS", ()) or ())
+    # The member's own Workflows chapter ("build and run pipelines") is for a
+    # host that hands its members the runner's pages; where they are the
+    # team's, the team's chapter says what they show.
+    features["workflows_open"] = features["workflows"] and "workflows" not in reserved
+    if not team:
+        for key in reserved:
+            if key in features:
+                features[key] = False
     return features
+
+
+def _public_route(url_name: str) -> bool:
+    """Whether a visitor who is not signed in reaches ``url_name`` on this
+    host. A host that is private by default says so in a middleware with a
+    ``PUBLIC_ROUTES`` list (zenobia's and Dracena's
+    ``LoginRequiredEverywhereMiddleware``); a host with no such list leaves
+    the answer to the view."""
+    import sys  # noqa: PLC0415
+    from importlib import import_module  # noqa: PLC0415
+
+    for path in getattr(settings, "MIDDLEWARE", ()):
+        module_name = path.rpartition(".")[0]
+        try:
+            module = sys.modules.get(module_name) or import_module(module_name)
+        except Exception:  # noqa: BLE001 - a middleware that does not import is not ours to judge
+            continue
+        routes = getattr(module, "PUBLIC_ROUTES", None)
+        if routes is not None:
+            return url_name in routes
+    return True
+
+
+def _manual_numbers() -> dict:
+    """The numbers the manual states, read where the code reads them, so the
+    page never says 30 days on a host that keeps 7."""
+    from django.apps import apps  # noqa: PLC0415
+
+    numbers = {
+        "delay_after": int(getattr(settings, "LOGIN_DELAY_AFTER", 5)),
+        "lock_after": int(getattr(settings, "LOGIN_LOCK_AFTER", 10)),
+        "lock_minutes": int(getattr(settings, "LOGIN_LOCK_MINUTES", 15)),
+        "reset_hours": max(1, int(getattr(settings, "PASSWORD_RESET_TIMEOUT", 259200)) // 3600),
+    }
+    if apps.is_installed("toto.vault"):
+        from toto.vault.models import trash_days  # noqa: PLC0415
+
+        numbers["trash_days"] = trash_days()
+    if apps.is_installed("toto.socialhub"):
+        from toto.socialhub import invitations  # noqa: PLC0415
+        from toto.socialhub.models import MAX_CLEARANCES  # noqa: PLC0415
+
+        numbers.update(invitation_hours=invitations.hours(),
+                       invitation_days=invitations.expired_days(),
+                       max_clearances=MAX_CLEARANCES)
+    return numbers
+
+
+def _manual_commands() -> dict:
+    """The console commands the team's chapter names, as this host runs them."""
+    from django.apps import apps  # noqa: PLC0415
+
+    from toto.core.admin import create_command  # noqa: PLC0415
+
+    commands = {"create": create_command("NAME")}
+    if apps.is_installed("toto.socialhub"):
+        from toto.socialhub.erasure import command_for  # noqa: PLC0415
+
+        commands["erase"] = command_for("NAME")
+    return commands
+
+
+def _enrollment() -> str:
+    """The way in as ``toto.socialhub.enrollment.way()`` reads it; an invalid
+    value (a system check error there) reads as the default here."""
+    value = str(getattr(settings, "SOCIALHUB_ENROLLMENT", "application") or "application")
+    value = value.strip().lower()
+    return value if value in ("application", "invitation") else "application"
 
 
 def _manual_feature_map(request, apps):
@@ -375,8 +480,33 @@ def _manual_feature_map(request, apps):
         # not merely installed: that chapter links mana:index.
         "mana": _mounted("mana:index"),
         "subscriptions": apps.is_installed("toto.subscriptions"),
+        # Plans that cost something: a rate card is installed to price them
+        # (toto.tariffs); without one every plan is free (2026-10-11).
+        "plans_cost": apps.is_installed("toto.subscriptions") and apps.is_installed("toto.tariffs"),
+        # Plans assigned by the platform, the best each person's communities
+        # offer, instead of chosen (toto.subscriptions.autoplan).
+        "plans_auto": apps.is_installed("toto.subscriptions")
+        and bool(getattr(settings, "SUBSCRIPTION_AUTO_ASSIGN", False)),
         "gervazy": apps.is_installed("toto.gervazy"),
         "socialhub": apps.is_installed("toto.socialhub"),
+        # The platform's way in (toto.socialhub.enrollment): the chapter on
+        # getting an account describes the one this host has.
+        "invitations": apps.is_installed("toto.socialhub") and _enrollment() == "invitation",
+        "applications": apps.is_installed("toto.socialhub") and _enrollment() == "application",
+        # The forgotten-password pages, where a host mounts them.
+        "password_reset": _mounted("sso:password_reset"),
+        # Positions in a community's organisation chart, where a host keeps them.
+        "positions": apps.is_installed("toto.socialhub")
+        and bool(getattr(settings, "SOCIALHUB_ORG_POSITIONS", True)),
+        # A file marked public: every signed-in member's, or also a visitor's
+        # with its link, as the host's gate has it.
+        "public_links": apps.is_installed("toto.vault") and _public_route("vault:public_file"),
+        # The operator's pages, where mounted (the team's chapter).
+        "quota": _mounted("quota:index"),
+        # Discipline's one mana, where a host mounts its pages (2026-10-11).
+        "discipline": _mounted("discipline:index"),
+        "audit": _mounted("audit:index"),
+        "monit": _mounted("monit:overview"),
         "events": apps.is_installed("toto.events"),
         "kanban": apps.is_installed("toto.kanban"),
         "locations": apps.is_installed("toto.locations")
@@ -463,6 +593,8 @@ def manual_view(request):
     context = {
         "page_title": "User Manual",
         "features": _manual_features(request),
+        "numbers": _manual_numbers(),
+        "commands": _manual_commands(),
         "manual_body_template": body_template,
     }
     return render(request, _get_template("manual.html"), processor.decorate(context, request))

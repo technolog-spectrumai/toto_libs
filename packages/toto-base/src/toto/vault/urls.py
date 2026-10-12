@@ -7,6 +7,7 @@ from . import clearance_tab
 from . import manage_views
 from . import new_file
 from . import share_views
+from . import timeline_views
 from . import trash_views
 from django.views.generic import RedirectView
 from .api_views import (
@@ -114,6 +115,13 @@ urlpatterns = [
     # The Archive tab: the same tree as Files, carrying the zip actions.
     path("archive/", remote_views.ArchiveView.as_view(), name="archive"),
     path("metrics/<slug:bucket_slug>/", BucketMetricsView.as_view(), name="bucket_metrics"),
+    # The timeline (2026-10-12): a bucket's page of what happened to it and
+    # to its files; a file's rows for the History dialog of the file list.
+    path("metrics/<slug:bucket_slug>/history/", timeline_views.bucket_history, name="bucket_history"),
+    path("file/<int:pk>/history/", timeline_views.file_history, name="file_history"),
+    path("file/<int:pk>/markdown/", timeline_views.markdown_view, name="markdown_view"),
+    path("file/<int:pk>/sheet/", timeline_views.sheet_view, name="sheet_view"),
+    path("file/<int:pk>/deck/", timeline_views.deck_view, name="deck_view"),
     path("copy/<slug:source_slug>/", CopyFilesToBucketView.as_view(), name="copy_files"),
     path("copy/<slug:source_slug>/ajax/", BucketCopyAjaxView.as_view(), name="copy_files_ajax"),
     path("file/encrypt/", EncryptFileView.as_view(), name="encrypt_file"),

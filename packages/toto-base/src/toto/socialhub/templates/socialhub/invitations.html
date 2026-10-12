@@ -1,0 +1,73 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% comment %}The Invitations tab (2026-10-10): the way in of a platform that
+invites (enrollment.py). Staff issue a link here, see it once, and see what
+became of each one.{% endcomment %}
+{% block title %}{% trans "Invitations" %} – {{ platform.site_name }}{% endblock %}
+{% block content %}
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+     class="min-h-screen px-4 py-10 transition-colors duration-300">
+  <div class="mx-auto max-w-6xl space-y-6">
+    <header class="space-y-4">
+      <div>
+        <h1 class="text-2xl font-extrabold">{% trans "Invitations" %}</h1>
+        <p class="mt-1 max-w-prose text-sm opacity-70">{% blocktrans %}Nobody registers themselves here. An account is made with a link issued on this page, which works once, for {{ hours }} hours: whoever opens it chooses a username and a password and joins the community it names.{% endblocktrans %}</p>
+      </div>
+      {% include "socialhub/_tabs.html" with active_tab="invitations" %}
+    </header>
+
+    {% if link %}
+    <section :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+             class="rounded-2xl border p-5 shadow-sm sm:p-6">
+      <h2 class="mb-2 flex items-center gap-2 text-lg font-bold"><i class="fa-solid fa-link" aria-hidden="true"></i>{% trans "The link, shown once" %}</h2>
+      <p class="break-all font-mono text-sm" data-testid="invitation-link">{{ link }}</p>
+      {% if mailed is True %}<p class="mt-2 text-xs opacity-70" data-testid="invitation-mailed">{% trans "It was also mailed to the address given." %}</p>
+      {% elif mailed is False %}<p class="mt-2 text-xs opacity-70" data-testid="invitation-not-mailed">{% trans "The mail could not be sent; hand the link over yourself." %}</p>{% endif %}
+    </section>
+    {% endif %}
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-2xl border p-5 shadow-sm sm:p-6">
+      <h2 class="mb-2 flex items-center gap-2 text-lg font-bold"><i class="fa-solid fa-plus" aria-hidden="true"></i>{% trans "Invite somebody" %}</h2>
+      <form method="post" class="space-y-4" data-testid="invitation-issue">
+        {% csrf_token %}
+        {% include "oya/_form_fields.html" with form=form %}
+        <button type="submit" :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>{% trans "Issue the invitation" %}</button>
+      </form>
+    </section>
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-2xl border p-5 shadow-sm sm:p-6">
+      <h2 class="mb-2 flex items-center gap-2 text-lg font-bold"><i class="fa-solid fa-list" aria-hidden="true"></i>{% trans "Issued" %}</h2>
+      {% if rows %}
+      <ul class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+        {% for row in rows %}
+        <li class="flex flex-wrap items-center justify-between gap-2 py-2 text-sm" data-testid="invitation-row">
+          <span>
+            <span class="font-semibold">{% if row.email %}{{ row.email }}{% else %}{% trans "(no address)" %}{% endif %}</span>
+            {% if row.community %}<span class="opacity-70">· {{ row.community.name }}</span>{% endif %}
+            {% if row.note %}<span class="opacity-70">· {{ row.note }}</span>{% endif %}
+            <span class="block text-xs opacity-70">{{ row.created_at|date:"Y-m-d H:i" }} · {% trans "by" %} {{ row.issued_by.username|default:"—" }} · {% trans "until" %} {{ row.expires_at|date:"Y-m-d H:i T" }}{% if row.accepted_user %} · {% trans "accepted by" %} {{ row.accepted_user.username }}{% endif %}</span>
+          </span>
+          <span class="flex items-center gap-2">
+            <span :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-full px-2 py-0.5 text-xs">{% if row.state == "open" %}{% trans "open" context "invitation" %}{% elif row.state == "accepted" %}{% trans "accepted" context "invitation" %}{% elif row.state == "revoked" %}{% trans "revoked" context "invitation" %}{% else %}{% trans "expired" context "invitation" %}{% endif %}</span>
+            {% if row.is_open %}
+            <form method="post" action="{% url 'socialhub:invitation_revoke' row.pk %}">
+              {% csrf_token %}
+              <button type="submit" :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+                      class="rounded-lg border px-2 py-1 text-xs font-semibold">{% trans "Revoke" %}</button>
+            </form>
+            {% endif %}
+          </span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="text-sm opacity-70">{% trans "None issued yet." %}</p>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

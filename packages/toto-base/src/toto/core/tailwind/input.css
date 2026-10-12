@@ -1,0 +1,5 @@
+/* What the Play CDN script compiled in the browser (oya/tailwind.js,
+   Tailwind 3.4.17): the three layers, nothing of our own. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

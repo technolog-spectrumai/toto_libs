@@ -33,9 +33,10 @@
   {% endif %}
 
   {% comment %} Tailwind (2026-10-01, 37c.15). Built when the image is: the
-     stylesheet holds every class the installed apps name, and the theme's
-     colours and font reach it as CSS variables (--oya-<token>: R G B,
-     templatetags/oya_tailwind.py); it is linked at the END of <head>, where
+     stylesheet holds every class the installed apps name, with the one
+     palette's colours compiled in (toto/core/palette.json, 2026-10-10);
+     only the font reaches it as a CSS variable (--oya-font-sans,
+     templatetags/oya_tailwind.py). It is linked at the END of <head>, where
      the Play CDN script put the <style> it compiled, so it wins over the
      head's other stylesheets as it did. A checkout without the build has no
      oya/tailwind.css and keeps the Play CDN script, compiling in the
@@ -92,7 +93,7 @@
   {% if tailwind_css %}
   <link rel="stylesheet" href="{% static 'oya/tailwind.css' %}" />
   <style id="oya-theme">
-    :root { {% theme_color_vars theme.theme.colors %} --oya-font-sans: '{{ font.name }}', {{ font.style_family|default:"sans-serif" }}; }
+    :root { --oya-font-sans: '{{ font.name }}', {{ font.style_family|default:"sans-serif" }}; }
   </style>
   {% endif %}
 </head>
@@ -155,8 +156,8 @@
   {% block footer %}
   <footer
         :class="darkMode
-      ? `bg-footer-bg-dark text-footer-text-dark {{ platform.theme.footer.dark }}`
-      : `bg-footer-bg-light text-footer-text-light {{ platform.theme.footer.light }}`"
+      ? `bg-footer-bg-dark text-footer-text-dark`
+      : `bg-footer-bg-light text-footer-text-light`"
     class="py-4 mt-8 text-center shadow-lg">
     {% comment %}firstof, not |default:platform.site_name — a filter ARGUMENT that does not resolve raises, and
        the 402 page renders this footer with no platform in the context at all.{% endcomment %}

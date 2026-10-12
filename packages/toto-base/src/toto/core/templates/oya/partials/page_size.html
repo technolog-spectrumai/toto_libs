@@ -3,6 +3,7 @@
 
   <!-- Items per page dropdown -->
   <select
+    autocomplete="off" :value="perPage"
     @change="setPerPage($event.target.value)"
     class="border rounded px-2 py-1 transition-colors duration-300"
     :class="darkMode

@@ -54,36 +54,6 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(self.style.WARNING(f"Font already exists: {name}"))
 
-    def create_theme_from_file(self, file_path):
-        if not os.path.isfile(file_path):
-            if self.stderr:
-                self.stderr.write(f"Theme file not found: {file_path}")
-            return
-
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                theme = json.load(f)
-        except json.JSONDecodeError as e:
-            if self.stderr:
-                self.stderr.write(f"Invalid JSON in theme file: {e}")
-            return
-
-        if not all(k in theme for k in ['name', 'font', 'colors']):
-            if self.stderr:
-                self.stderr.write("Missing required keys in theme file")
-            return
-
-        if self.stdout:
-            self.stdout.write(f"Creating theme: {theme['name']}")
-
-        call_command(
-            "create_theme",
-            "--name", theme["name"],
-            "--font", theme["font"],
-            "--colors", json.dumps(theme["colors"]),
-            "--header", json.dumps(theme.get("header", {}))
-        )
-
     def run(self, admin_password):
         site_name = os.environ.get("PLATFORM_NAME", "Toto Platform")
         domain = os.environ.get("PLATFORM_DOMAIN", "localhost")
@@ -131,13 +101,16 @@ class Command(BaseCommand):
         self.create_fonts()
         self.stdout.write(self.style.SUCCESS("Fonts created."))
 
-        self.stdout.write(self.style.NOTICE("Creating fonts and theme..."))
-        THEMES_DIR = str(data_dir(os.path.join(os.path.dirname(__file__), '../../../../../data')) / 'themes')
-        self.create_theme_from_file(os.path.join(THEMES_DIR, "amazing.json"))
-        self.stdout.write(self.style.SUCCESS("Fonts and theme created."))
-        theme = self.get_theme("Amazing Moon")
-        if theme is None:
-            self.stderr.write(self.style.ERROR("Theme not found. Initialization aborted."))
+        # The colours are one file in toto-base (toto/core/palette.json),
+        # compiled into the stylesheet when the image is built: nothing of
+        # them is seeded. A palette that does not read stops here, in words,
+        # before any platform: every page would fail on it.
+        from toto.core import palette  # noqa: PLC0415
+
+        try:
+            font_name = palette.font_name()
+        except palette.PaletteError as exc:
+            self.stderr.write(self.style.ERROR(f"Palette unreadable: {exc}. Initialization aborted."))
             return
 
         create_platform_args = [
@@ -145,11 +118,12 @@ class Command(BaseCommand):
             domain,
             author,
             "--active=True",
-            f"--theme_id={theme.id}",
+            f"--font={font_name}",
         ]
 
         self.stdout.write(self.style.NOTICE("Creating platform..."))
-        call_command("create_platform", *create_platform_args)
+        call_command("create_platform", *create_platform_args,
+                     stdout=self.stdout, stderr=self.stderr)
         self.stdout.write(self.style.SUCCESS("Platform created."))
 
         if getattr(settings, "FEDERATION_ENABLED", True):
@@ -248,14 +222,6 @@ class Command(BaseCommand):
             },
         )
         self.stdout.write(self.style.SUCCESS(f"Person profile created for '{admin_username}'."))
-
-    def get_theme(self, name):
-        """Fetches the latest Theme ID to be used in platform creation"""
-        from toto.core.models import Theme  # Import locally to avoid circular imports
-        try:
-            return Theme.objects.get(name=name)
-        except Theme.DoesNotExist:
-            return None
 
     def get_font(self, name):
         """Fetches a Font object by name"""

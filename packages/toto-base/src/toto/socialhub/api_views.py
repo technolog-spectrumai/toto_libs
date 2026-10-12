@@ -86,10 +86,13 @@ class CommunityDetailApiView(MeshGatedApiView):
         except Community.DoesNotExist:
             return JsonResponse({"error": "Community not found."}, status=404)
         data = _community_to_dict(community)
+        from toto.socialhub.permissions import may_see_members
+
+        # Names for who may read them (2026-10-12, private communities).
         data["members"] = [
             {"id": p.id, "slug": p.slug, "name": p.full_name}
             for p in community.senior_members.all()[:50]
-        ]
+        ] if may_see_members(request.user, community) else []
         try:
             latest_news = community.news_posts.order_by("-created_at").first()
             data["latest_news_title"] = latest_news.title if latest_news else None
@@ -105,6 +108,10 @@ class CommunityOrgChartApiView(MeshGatedApiView):
             community = Community.objects.all().get(slug=slug)
         except Community.DoesNotExist:
             return JsonResponse({"error": "Community not found."}, status=404)
+        from toto.socialhub.permissions import may_see_members
+
+        if not may_see_members(request.user, community):
+            return JsonResponse({"error": "Members only."}, status=403)
         members = Person.objects.filter(communities=community).select_related("patron")
         # Each member's e-mail address and phone only where they show them
         # (2026-10-01, 37c.25); every node carried both to any caller. Not

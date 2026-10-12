@@ -243,6 +243,13 @@ def _remote_adapter():
     return StorageAdapter.for_key(REMOTE_KIND)
 
 
+def peering_allowed() -> bool:
+    """Whether this host shares buckets with, and connects buckets from,
+    another platform: where it allows external buckets AND offers that kind
+    (``settings.VAULT_BUCKET_KINDS``; a host may take S3 buckets only)."""
+    return external_buckets_allowed() and _remote_adapter() is not None
+
+
 def connect_refusal() -> str:
     """Why this server cannot connect another Zenobia's bucket, or ""."""
     if _remote_adapter() is None:
@@ -256,7 +263,7 @@ def connect_refusal() -> str:
 
 def share_refusal(bucket) -> str:
     """Why this bucket cannot be shared, or ""."""
-    if not external_buckets_allowed():
+    if not peering_allowed():
         return _("Sharing with another Zenobia is disabled on this server.")
     if bucket.storage_backend == StorageBackend.REMOTE_TOTO:
         return _("A bucket connected from another Zenobia cannot be shared onwards: share it "
@@ -270,7 +277,7 @@ def page_config(request) -> dict:
     """The share and connect modals' settings, for ``json_script``. Nothing
     secret: addresses, names, links and sentences."""
     adapter = _remote_adapter()
-    remote_ok = external_buckets_allowed()
+    remote_ok = peering_allowed()
     hosts = [{"value": v, "label": str(l)[:LABEL_MAX]} for v, l in federated_host_choices()] \
         if remote_ok else []
     user = getattr(request, "user", None)

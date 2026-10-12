@@ -1,0 +1,74 @@
+{% load i18n %}
+{% comment %}A person's own invitations to events, on their own profile's
+Overview (2026-10-12; plugins/profile_plugins.py): the ones waiting for an
+answer, each with Accept and Decline, and the answered ones of events to
+come. Drawn for the profile's owner alone.{% endcomment %}
+<section id="event-invitations" data-testid="profile-event-invitations"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <div class="mb-4 flex items-center justify-between gap-3">
+    <h2 class="flex items-center gap-2 text-lg font-bold">
+      <i class="{{ profile_plugin_icon }}" aria-hidden="true"></i>{{ profile_plugin_title }}
+      {% if pending_count %}<span :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'"
+            class="rounded-full px-2.5 py-0.5 text-xs font-semibold" data-testid="profile-event-invitations-count">{{ pending_count }}</span>{% endif %}
+    </h2>
+    {% if invites_url %}
+    <a href="{{ invites_url }}"
+       :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-primary-bg-dark' : 'border-accent-2 text-text-main-light hover:bg-primary-bg-light'"
+       class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition"
+    ><i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>{% trans "All invitations" %}</a>
+    {% endif %}
+  </div>
+
+  {% if pending_invites %}
+  <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Awaiting response" %}</p>
+  <ul class="space-y-3">
+    {% for invite in pending_invites %}
+    <li class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" data-testid="profile-event-invitation">
+      <div class="min-w-0">
+        <a href="{% url 'events:event_detail' invite.event.pk %}" class="font-semibold underline-offset-4 hover:underline break-words">{{ invite.event.title }}</a>
+        <p class="text-xs opacity-65">
+          <i class="fa-solid fa-clock mr-1"></i>{{ invite.event.start_time|date:"Y-m-d H:i" }}{% if invite.event.address %}
+          <span class="ml-2"><i class="fa-solid fa-location-dot mr-1"></i>{{ invite.event.address }}</span>{% endif %}{% if invite.event.owner %}
+          <span class="ml-2"><i class="fa-solid fa-user mr-1"></i>{{ invite.event.owner.display_name }}</span>{% endif %}
+        </p>
+      </div>
+      <div class="flex shrink-0 gap-2">
+        <form method="post" action="{% url 'events:invite_respond' invite.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="accept">
+          <input type="hidden" name="next" value="{{ invites_next }}">
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-check"></i>{% trans "Accept" %}</button>
+        </form>
+        <form method="post" action="{% url 'events:invite_respond' invite.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="decline">
+          <input type="hidden" name="next" value="{{ invites_next }}">
+          <button type="submit" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                  class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-xmark"></i>{% trans "Decline" %}</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="text-sm opacity-60" data-testid="profile-event-invitations-none">{% trans "No invitation is waiting for your answer." %}</p>
+  {% endif %}
+
+  {% if answered_invites %}
+  <p class="mb-2 mt-5 text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Already answered" %}</p>
+  <ul class="space-y-2">
+    {% for invite in answered_invites %}
+    <li class="flex items-center justify-between gap-3 text-sm" data-testid="profile-event-answered">
+      <span class="min-w-0 truncate"><a href="{% url 'events:event_detail' invite.event.pk %}" class="font-semibold underline-offset-4 hover:underline">{{ invite.event.title }}</a>
+        <span class="ml-2 text-xs opacity-60">{{ invite.event.start_time|date:"Y-m-d H:i" }}</span></span>
+      <span class="shrink-0 text-xs font-semibold opacity-75">{% if invite.status == "accepted" %}<i class="fa-solid fa-check mr-1"></i>{% trans "Accepted" %}{% else %}<i class="fa-solid fa-xmark mr-1"></i>{% trans "Declined" %}{% endif %}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>

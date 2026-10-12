@@ -1,6 +1,6 @@
 from django.test import TestCase, override_settings
 from django.urls import reverse
-from .models import Platform, Font, Theme, ColorMix
+from .models import Platform, Font
 from django.contrib.auth.models import User
 from datetime import datetime
 from toto.gervazy.models import EncryptedSecret
@@ -17,7 +17,6 @@ from django.core.cache import cache
 )
 class ViewSmokeTests(TestCase):
     def setUp(self):
-        # Create supporting objects for Theme
         cache.clear()
         font = Font.objects.create(
             name="Test Font",
@@ -25,25 +24,13 @@ class ViewSmokeTests(TestCase):
             style_family="sans-serif"
         )
 
-        color_mix = ColorMix.objects.create(
-            name="Default Mix"
-        )
-
-        theme = Theme.objects.create(
-            name="Default Theme",
-            color_mix=color_mix,
-            font=font,
-            header={"light": "bg-white", "dark": "bg-black"},
-            footer={"light": "bg-gray-100", "dark": "bg-gray-900"}
-        )
-
-        # Create platform with theme
+        # The platform with its font; the colours are the palette file's.
         self.config = Platform.objects.create(
             domain="example.com",
             site_name="Blue Journal",
             publication_year=datetime.now().year,
             active=True,
-            theme=theme,
+            font=font,
         )
 
         # Create user for authenticated views

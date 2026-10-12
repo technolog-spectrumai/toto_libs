@@ -14,7 +14,8 @@ class ImageStrategy(FileStrategy):
 
         keyring = file_instance.owner.user_strongboxes.first()
         if not keyring:
-            raise ValueError("No UserVault associated with user.")
+            raise ValueError("You have no key store yet. Create one on your profile, in the "
+                             "Security tab, then try again.")
 
 
         with open(input_path, 'rb') as f:
@@ -46,7 +47,8 @@ class ImageStrategy(FileStrategy):
 
         keyring = file_instance.owner.user_strongboxes.first()
         if not keyring:
-            raise ValueError("No UserVault associated with user.")
+            raise ValueError("You have no key store yet. Create one on your profile, in the "
+                             "Security tab, then try again.")
 
 
         with open(input_path, 'rb') as f:

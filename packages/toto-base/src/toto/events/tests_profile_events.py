@@ -129,7 +129,10 @@ class PeopleOfTheEventTests(ProfileEventsCase):
 
 class TabTests(ProfileEventsCase):
     """The section is on the profile's Activity tab (2026-10-02, stage 50),
-    the member's own and a visitor's alike; the Overview names no event."""
+    the member's own and a visitor's alike; the Overview names no event to a
+    visitor. The member's own Overview names the events they are invited to,
+    in the invitations section that is theirs alone (2026-10-12,
+    ``tests_profile_invitations``)."""
 
     def test_the_events_are_on_the_activity_tab_alone(self):
         self.assertEqual(ProfilePlugin.get("upcoming_events").get_tab(), "activity")
@@ -138,7 +141,11 @@ class TabTests(ProfileEventsCase):
                 self.client.force_login(viewer)
                 overview = self.client.get(
                     reverse("socialhub:profile_details", args=[self.guest.slug])).content.decode()
-                self.assertNotIn(FAIR, overview)
+                if viewer == self.guest_user:
+                    self.assertIn('id="event-invitations"', overview)
+                else:
+                    self.assertNotIn(FAIR, overview)
+                    self.assertNotIn('id="event-invitations"', overview)
                 self.assertNotIn('id="upcoming-events"', overview)
                 html = self.page(viewer)
                 self.assertIn(FAIR, html)

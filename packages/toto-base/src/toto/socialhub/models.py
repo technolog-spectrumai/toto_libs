@@ -36,17 +36,19 @@ REGEN_POOLS = ("security", "compute", "storage")
 
 
 class Community(DomainEntity):
-    GUILD = "guild"
     COMPANY = "company"
     NON_PROFIT = "non_profit"
-    FAMILY = "family"
+    EDUCATIONAL = "educational"
     OTHER = "other"
 
+    # No "Family" and no "Guild" since 2026-10-12 (the owner: "remove family
+    # type of community from social hub and guild community type"); a
+    # community that was either is Other (migration 0004). "Educational"
+    # came the same day ("add educational community type").
     ORG_TYPES = [
-        (GUILD, "Guild"),
         (COMPANY, "Company"),
         (NON_PROFIT, "Non-Profit"),
-        (FAMILY, "Family"),
+        (EDUCATIONAL, "Educational"),
         (OTHER, "Other"),
     ]
 
@@ -486,49 +488,95 @@ class ReferenceRequest(models.Model):
         if status_changed_to_accepted:
             application = self.application
 
-            # 1. Activate the user — looked up by their application email (the login
-            #    username is chosen separately, so we must not match on username here):
-            #    since 2026-10-01 in any case, and the account still waiting rather
-            #    than a member's with the same address (applications.applicant_account).
+            # The account this acceptance lets in — looked up by their
+            # application email (the login username is chosen separately, so
+            # we must not match on username here): since 2026-10-01 in any
+            # case, and the account still waiting rather than a member's with
+            # the same address (applications.applicant_account).
             from toto.socialhub.applications import applicant_account
+            from toto.socialhub.enrollment import admit
 
             user = applicant_account(application)
             if user:
-                user.is_active = True
-                user.save(update_fields=["is_active"])
+                # What being let in means is one function, the invitation's
+                # too (enrollment.admit, 2026-10-10): the account active, a
+                # Person, the community, the referrer as the patron unless one
+                # is set — historically NOTHING wrote Person.patron, and
+                # password recovery (sso_core.recovery) had to fall back to
+                # this table for every account — and the privacy notice
+                # accepted on the application carried to the person.
+                admit(user, application.community, patron=self.referrer,
+                      privacy_version=application.privacy_version,
+                      privacy_accepted_at=application.privacy_accepted_at)
 
-            # 2. Create Person if missing
-            if user:
-                member, created = Person.objects.get_or_create(
-                    user=user,
-                    defaults={
-                        "display_name": user.username,
-                        "email": user.email,
-                    }
-                )
 
-                # 3. Add them to the community they applied to
-                member.communities.add(application.community)
+def _token_hash(token: str) -> str:
+    import hashlib
 
-                # 4. The referrer becomes the patron, unless one is already
-                #    set. Historically NOTHING wrote Person.patron — the
-                #    person who actually vouched lived only on this row — so
-                #    password recovery (sso_core.recovery) had to fall back to
-                #    this table for every account. Writing it here closes that
-                #    gap going forward; existing rows stay as they are and the
-                #    fallback keeps covering them.
-                if member.patron_id is None and self.referrer.pk != member.pk:
-                    member.patron = self.referrer
-                member.save()
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
-                # 5. The privacy notice accepted on the application goes with
-                #    the person (2026-10-01): the application is housekeeping's
-                #    to prune, the acceptance has to outlive it.
-                if application.privacy_version:
-                    PrivacyAcceptance.objects.get_or_create(
-                        person=member, version=application.privacy_version,
-                        defaults={"accepted_at": application.privacy_accepted_at
-                                  or timezone.now()})
+
+class Invitation(models.Model):
+    """A single-use link into a community (2026-10-10): the way in of a
+    platform whose ``SOCIALHUB_ENROLLMENT`` is ``"invitation"``
+    (``enrollment.py``, ``invitations.py``).
+
+    The token travels in the link only; the row keeps its hash. Accepting it
+    makes the account and admits it (``enrollment.admit``) in one
+    transaction, and spends the row."""
+
+    token_hash = models.CharField(max_length=64, unique=True)
+    email = models.EmailField(_("e-mail address"), blank=True, default="",
+                              help_text=_("When given, the account made with this link gets this "
+                                          "address and the link is mailed there."))
+    # SET_NULL, so removing a community does not take the record of who was
+    # invited with it; an invitation without one can no longer be accepted.
+    community = models.ForeignKey(Community, on_delete=models.SET_NULL, null=True,
+                                  related_name="invitations", verbose_name=_("community"),
+                                  help_text=_("The community the new member joins."))
+    note = models.CharField(_("note"), max_length=200, blank=True, default="",
+                            help_text=_("Who this is for, for the list; the invitation's page "
+                                        "does not show it."))
+    issued_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True,
+                                  related_name="+")
+    created_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    accepted_user = models.ForeignKey(User, on_delete=models.SET_NULL,
+                                      null=True, blank=True, related_name="+")
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"invitation {self.pk}"
+
+    @classmethod
+    def open_for(cls, token: str):
+        """The row ``token`` names while it is still open, else None."""
+        if not token or len(token) > 200:
+            return None
+        row = cls.objects.select_related("community").filter(
+            token_hash=_token_hash(token)).first()
+        if row is None or not row.is_open:
+            return None
+        return row
+
+    @property
+    def is_open(self) -> bool:
+        return (self.accepted_at is None and self.revoked_at is None
+                and self.community_id is not None and self.expires_at > timezone.now())
+
+    @property
+    def state(self) -> str:
+        if self.accepted_at:
+            return "accepted"
+        if self.revoked_at:
+            return "revoked"
+        if self.expires_at <= timezone.now() or self.community_id is None:
+            return "expired"
+        return "open"
 
 
 class PendingEmailChange(models.Model):

@@ -450,7 +450,10 @@ def locations_all(request):
         .select_related("bucket")
         .order_by("-uploaded_at")[:300]
     )
-    map_layers = [
+    # A host may run the map without layers (LOCATIONS_LAYERS = False,
+    # 2026-10-12): none is handed to the page, and the page draws no Layers
+    # box and no Import layer button.
+    map_layers = [] if not layers_enabled() else [
         map_layer_payload(layer)
         for layer in readable_layers(request.user, MapLayer.objects.filter(is_active=True))
         .prefetch_related("polygons")
@@ -474,6 +477,7 @@ def locations_all(request):
         "locations_json": json.dumps(locations),
         "map_layers": map_layers,
         "map_layers_json": json.dumps(map_layers),
+        "layers_enabled": layers_enabled(),
         "vault_files": vault_files,
         "vault_files_json": json.dumps(vault_files),
         # The map's web search is a charged place lookup; a host that makes
@@ -1156,6 +1160,8 @@ def api_import_layer(request):
 
     # A layer is shared: every member sees it on the map. Importing one is a
     # staff act (2026-09-25).
+    if not layers_enabled():
+        raise Http404("This host runs the map without layers.")
     if not may_import_layer(request.user):
         return JsonResponse({"error": _("Only staff may import map layers.")}, status=403)
 
@@ -1436,6 +1442,95 @@ def metadata_convert(request):
 RADIUS_CHOICES_KM = (1, 2, 5, 10, 25, 50, 100)
 
 DEFAULT_RADIUS_KM = 10
+
+
+def layers_enabled() -> bool:
+    """Whether this host's map has layers (``LOCATIONS_LAYERS``; yes unless
+    the host says no)."""
+    return bool(getattr(settings, "LOCATIONS_LAYERS", True))
+
+
+#: The largest file the GeoJSON tab draws, and what a GeoJSON document may be.
+GEOJSON_MAX_BYTES = 5 * 1024 * 1024
+GEOJSON_TYPES = {"FeatureCollection", "Feature", "GeometryCollection", "Point", "MultiPoint",
+                 "LineString", "MultiLineString", "Polygon", "MultiPolygon"}
+
+
+def _geojson_files(user):
+    """The vault files ``user`` may read whose name says JSON or GeoJSON."""
+    from django.db.models import Q
+
+    from toto.vault.filetree import accessible_files
+
+    return (accessible_files(user)
+            .filter(Q(title__iendswith=".geojson") | Q(title__iendswith=".json"))
+            .select_related("bucket").order_by("-uploaded_at"))
+
+
+@login_required
+def geojson_viewer(request):
+    """The GeoJSON tab (2026-10-12): any GeoJSON file of the vault that the
+    viewer may read, drawn on the map. Nothing is imported or kept: the file
+    is read when it is chosen and drawn in the browser."""
+    files = [{"id": f.pk, "title": f.title, "bucket": f.bucket.name if f.bucket else "",
+              "encrypted": bool(f.is_encrypted)}
+             for f in _geojson_files(request.user)[:300]]
+    # ``?file=<pk>`` (the vault's Play button): that file chosen and drawn
+    # when the page opens, if it is one of the viewer's own list.
+    chosen = request.GET.get("file", "")
+    chosen = int(chosen) if chosen.isdigit() and any(f["id"] == int(chosen) for f in files) else 0
+    return render(request, "locations/geojson.html", PageProcessor().decorate({
+        "geojson_files": files,
+        "geojson_chosen": chosen,
+        "geojson_data_url": reverse("locations:geojson_data", args=[0]),
+        "geojson_max_mb": GEOJSON_MAX_BYTES // (1024 * 1024),
+    }, request))
+
+
+@login_required
+def geojson_data(request, pk):
+    """One vault file as GeoJSON, for the tab's map. The vault decides who
+    may read it (a file somebody may not read is as missing as no file); an
+    encrypted file, a large one and one that is not GeoJSON are refused with
+    a sentence."""
+    from toto.vault.access import may_read
+    from toto.vault.models import VaultFile
+
+    vault_file = VaultFile.objects.filter(pk=pk).first()
+    if vault_file is None or not may_read(request.user, vault_file):
+        return JsonResponse({"error": _("Vault file not found.")}, status=404)
+    if vault_file.is_encrypted:
+        return JsonResponse({"error": _("This file is encrypted: decrypt it in Storage to see it on the map.")}, status=422)
+    if (vault_file.file.size or 0) > GEOJSON_MAX_BYTES:
+        return JsonResponse({"error": _("This file is too large to draw.")}, status=413)
+    try:
+        vault_file.file.open("rb")
+        try:
+            data = json.loads(vault_file.file.read().decode("utf-8"))
+        finally:
+            vault_file.file.close()
+    except Exception:  # noqa: BLE001 - unreadable bytes, another encoding, not JSON
+        return JsonResponse({"error": _("This file is not GeoJSON.")}, status=400)
+    if not isinstance(data, dict) or data.get("type") not in GEOJSON_TYPES:
+        return JsonResponse({"error": _("This file is not GeoJSON.")}, status=400)
+    response = JsonResponse({"title": vault_file.title, "geojson": data})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@login_required
+def zones(request):
+    """The Zones tab (2026-10-12): the zones the viewer may read, by name,
+    each with the territory it is inside and the way to its own page."""
+    from .access import readable_territories, readable_zones
+
+    territories = dict(readable_territories(request.user).values_list("pk", "name"))
+    rows = [{"name": zone.name or f"Zone {zone.pk}",
+             "territory": territories.get(zone.territory_id, ""),
+             "url": reverse("locations:zone_detail", args=[zone.pk])}
+            for zone in readable_zones(request.user).order_by("name", "pk")]
+    return render(request, "locations/zones.html",
+                  PageProcessor().decorate({"zones": rows}, request))
 
 
 @login_required

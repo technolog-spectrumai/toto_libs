@@ -13,6 +13,7 @@ from .views import (
     EventDetailView,
     event_availability_api,
     event_create,
+    import_ics,
     event_plan,
     invite_respond,
     my_invites,
@@ -32,6 +33,7 @@ urlpatterns = [
 
     path('calendar/', EventCalendarView.as_view(), name='event_list'),
     path('event/create/', event_create, name='event_create'),
+    path('import/', import_ics, name='import_ics'),
     path('event/<uuid:pk>/', EventDetailView.as_view(), name='event_detail'),
     path('event/<uuid:pk>/plan/', event_plan, name='event_plan'),
     path('invite/<uuid:pk>/respond/', invite_respond, name='invite_respond'),

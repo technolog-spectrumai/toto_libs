@@ -242,14 +242,29 @@ class HeaderPlugin(BasePlugin):
     static links, and `FloatingPlugin` renders into a fixed corner. A widget
     that must be seen on every page at every width (the mana chip) needs to
     sit beside the brand, so this registry mirrors `FloatingPlugin` and
-    `{% render_header_plugins %}` renders it there, once for the desktop bar
-    and once (``variant="mobile"``) inside the dropdown.
+    `{% render_header_plugins %}` renders it there, once for the bar and once
+    (``variant="mobile"``) inside the menu the bar folds into.
+
+    **What stays when the bar folds** (2026-10-12; the owner: "we need all
+    app bar icons to be able to fold in mobile version into hamburger menu
+    dropdown. what will stay will be: logo, name, mana, and hamburger on the
+    right"). Below the bar's breakpoint (`oya/header.html`: Tailwind's `lg`)
+    the bar keeps the brand, the widgets that say ``pinned = True`` and the
+    menu button; every other widget is folded by the HEADER, which wraps the
+    unpinned ones in a group it hides, so a widget writes no breakpoint of
+    its own and a new one folds without being told to. The mana chips are
+    pinned. In the menu every widget renders its ``"mobile"`` variant, a
+    pinned one too (the chip's fuller row).
 
     Registered by explicit import from an app's ``ready()``, exactly like the
     gas pump (`toto.quota.apps`) — nothing here is auto-discovered.
     """
 
     registry: ClassVar[dict[str, "HeaderPlugin"]] = {}
+
+    #: Stays on the bar at every width. False: folded into the menu below
+    #: the bar's breakpoint, as every link of the bar is.
+    pinned: ClassVar[bool] = False
 
     def render(self, **kwargs) -> RenderedHeaderPlugin | None:
         if not self.is_visible(**kwargs):
@@ -261,9 +276,14 @@ class HeaderPlugin(BasePlugin):
         )
 
     @classmethod
-    def render_all(cls, **kwargs) -> list[RenderedHeaderPlugin]:
+    def render_all(cls, pinned: bool | None = None, **kwargs) -> list[RenderedHeaderPlugin]:
+        """Every visible widget, in order. ``pinned`` narrows it to the
+        widgets that stay on the bar (True) or to the ones that fold (False);
+        None is all of them."""
         rendered = []
         for plugin in cls.all():
+            if pinned is not None and bool(getattr(plugin, "pinned", False)) != bool(pinned):
+                continue
             result = plugin.render(**kwargs)
             if result is not None:
                 rendered.append(result)

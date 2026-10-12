@@ -11,7 +11,7 @@ from django.conf import settings
 
 
 def data_dir(legacy_default) -> Path:
-    """Directory holding shared seed/branding data (fonts.json, themes/, img/).
+    """Directory holding shared seed/branding data (fonts.json, img/).
 
     Returns the TOTO_DATA_DIR setting when defined, else ``legacy_default``
     (each call site passes its pre-split path expression unchanged).

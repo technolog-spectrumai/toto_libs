@@ -16,7 +16,7 @@ from django.contrib.staticfiles import finders
 from django.template.loader import render_to_string
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 
-from toto.core.models import ColorMix, Font, Platform, Theme
+from toto.core.models import Font, Platform
 from toto.ui.page import LOCAL_FONTS, PageProcessor, local_font
 
 #: The seeded link (zenobia/data/fonts.json).
@@ -60,11 +60,9 @@ class BaseTemplateFontTests(TestCase):
     def setUp(self):
         self.font = Font.objects.create(name="Orbitron", cdn_link=GOOGLE,
                                         style_family="sans-serif")
-        self.theme = Theme.objects.create(
-            name="Amazing Moon", color_mix=ColorMix.objects.create(name="Mix"),
+        self.platform = Platform.objects.create(
+            site_name="Zenobia", author="Tests", publication_year=2026, active=True,
             font=self.font)
-        Platform.objects.create(site_name="Zenobia", author="Tests",
-                                publication_year=2026, active=True, theme=self.theme)
         self.request = RequestFactory().get("/")
         self.request.user = AnonymousUser()
 
@@ -100,8 +98,8 @@ class BaseTemplateFontTests(TestCase):
         self.assertNotIn("@font-face", html)
 
     @override_settings(USE_EXTERNAL_FONTS=False)
-    def test_a_theme_without_a_font_is_no_error(self):
-        Theme.objects.filter(pk=self.theme.pk).update(font=None)
+    def test_a_platform_without_a_font_is_no_error(self):
+        Platform.objects.filter(pk=self.platform.pk).update(font=None)
         context, html = self.page()
         self.assertIsNone(context["local_font"])
         self.assertNotIn("@font-face", html)

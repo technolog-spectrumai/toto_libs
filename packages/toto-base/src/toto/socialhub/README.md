@@ -573,6 +573,45 @@ the socialhub is where a person first hands the platform their data.
   acceptances; the referrer's reference panel on their profile shows
   "Privacy notice vN accepted", linked to that version.
 
+## The way in: an application or an invitation
+
+Nobody registers themselves, and each platform chooses how people get an
+account (`enrollment.py`, 2026-10-10):
+
+| `settings.SOCIALHUB_ENROLLMENT` | The way | Its doors |
+|---|---|---|
+| `"application"` (the default) | The patron's: a person applies to a community, proves they are a person, names a member as their referrer; the referrer admits them | `apply/membership/`, `verify/`, `reference/…` (`views/application.py`) |
+| `"invitation"` | The team's: staff issue a single-use link for a community on the Invitations tab, shown once and mailed when an address was named; whoever opens it within `SOCIALHUB_INVITATION_HOURS` (72) chooses a username and a password | `invitations/`, `invitations/<pk>/revoke/`, `invite/<token>/` (`views/invitations.py`, `invitations.py`) |
+
+**The end is the same either way, and it is one function,
+`enrollment.admit`:** the account active, a `Person`, a member of the
+community, the member who vouched (the referrer, the inviter) as the patron,
+and the version of the privacy notice they accepted carried to the person.
+Both forms carry the notice's version and refuse without the tick. An
+inviter with no profile (a staff account made at the console) leaves the
+person without a patron; a link stops working when the account that issued
+it is no longer active staff, and stays the platform's when that account is
+gone altogether.
+
+The other way's doors answer 404 on a platform, and the sign-in page offers
+"Apply for membership" only where applications are taken. Any other value of
+the setting is a system check error (`socialhub.E001`). An account made at
+the console is open to both.
+
+An invitation's token is in the link only (the row keeps its SHA-256); the
+audit records name an invitation by its id and its community, never the
+address it was made out to (`SOCIALHUB.INVITATION_ISSUED`, `_REVOKED`,
+`_ACCEPTED`, and `PRIVACY.NOTICE_ACCEPTED`). A member's invitations are in
+their data copy and go with their account; the nightly housekeeping deletes
+every invitation `SOCIALHUB_EXPIRED_INVITATION_DAYS` (30) days after its
+link expired. A host that invites lists `socialhub:invitation_accept` among
+its public routes, cuts the token from its access log
+(`…/socialhub/invite/<token>/`) and names `PathSecretsLogFilter` on
+`django.security.csrf` as on `django.request`: a CSRF refusal names the
+path too. The link is mailed only where mail delivery is set up
+(`core.email_config.email_delivery_configured`); elsewhere the page says to
+hand it over.
+
 ## Applications that lapse
 
 An application is good for a week (`applications.LIFETIME_DAYS`): the code

@@ -27,7 +27,7 @@ from unittest import mock
 
 from django.urls import reverse
 
-from toto.core.models import ColorMix, Platform, Theme
+from toto.core import palette
 from toto.locations.models import Address
 from toto.locations.tests_map_pages import PageTestCase
 
@@ -141,12 +141,8 @@ class ThemeColourTests(ScriptDataCase):
     """The map's kinds and the route modes in the theme's colours, with the
     built stylesheet as without it."""
 
-    def setUp(self):
-        super().setUp()
-        mix = ColorMix.objects.create(name="Probe", link_light="#123456",
-                                      success_light="#654321", accent_light="#abcdef")
-        Platform.objects.filter(active=True).update(
-            theme=Theme.objects.create(name="Probe", color_mix=mix))
+    #: The one palette's (toto/core/palette.json): there is no row to probe.
+    PALETTE = palette.colors()
 
     def colours(self, url, built):
         with mock.patch(BUILT, return_value=built):
@@ -162,14 +158,14 @@ class ThemeColourTests(ScriptDataCase):
         for built in (True, False):
             with self.subTest(built=built):
                 colours = self.colours(reverse("locations:locations_all"), built)
-                self.assertEqual((colours["link-light"], colours["success-light"],
-                                  colours["accent-light"]), ("#123456", "#654321", "#abcdef"))
+                self.assertEqual(colours, self.PALETTE)
+                self.assertRegex(colours["link-light"], r"^#[0-9a-f]{6}$")
 
     def test_the_route_search_has_the_theme_colours_built_or_not(self):
         for built in (True, False):
             with self.subTest(built=built):
                 colours = self.colours(reverse("locations:route_search"), built)
-                self.assertEqual(colours["link-light"], "#123456")
+                self.assertEqual(colours["link-light"], self.PALETTE["link-light"])
 
 
 def popup_arguments(code):

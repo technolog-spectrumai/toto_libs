@@ -19,3 +19,14 @@ def may_manage_clearances(user) -> bool:
     from toto.socialhub.views.clearances import may_manage
 
     return may_manage(user)
+
+
+@register.filter
+def may_invite(user) -> bool:
+    """``{% if user|may_invite %}``: the Invitations tab shows to whom its
+    doors open: staff, on a platform whose way in is the invitation
+    (``invitations.may_issue``)."""
+    from toto.socialhub.invitations import may_issue
+
+    return may_issue(user)
+

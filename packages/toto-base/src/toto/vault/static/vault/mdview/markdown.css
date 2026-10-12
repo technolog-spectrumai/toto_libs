@@ -1,0 +1,197 @@
+/* How a rendered note looks: GitHub's README, in the app's light or dark.
+ *
+ * The allow-list (scrubFragment.ts) writes bare tags and a handful of known
+ * class tokens — no author's class or style survives it — so everything is
+ * styled from here, by tag, under `.md-body`. Nothing in a note can restyle
+ * the app, and this sheet cannot reach outside the note.
+ */
+
+.md-body {
+  --md-link: #0969da;
+  --md-rule: rgba(31, 35, 40, 0.15);
+  --md-muted: rgba(31, 35, 40, 0.65);
+  --md-code-bg: rgba(129, 139, 152, 0.12);
+  --md-block-bg: rgba(129, 139, 152, 0.1);
+  --md-error-bg: #ffebe9;
+  --md-error: #d1242f;
+
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 1.5rem 2rem 4rem;
+  font-size: 16px;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+}
+
+.dark .md-body {
+  --md-link: #4493f8;
+  --md-rule: rgba(211, 215, 224, 0.18);
+  --md-muted: rgba(211, 215, 224, 0.65);
+  --md-code-bg: rgba(101, 108, 118, 0.25);
+  --md-block-bg: rgba(101, 108, 118, 0.15);
+  --md-error-bg: #490202;
+  --md-error: #ff8182;
+}
+
+.md-body > :first-child { margin-top: 0; }
+.md-body > :last-child { margin-bottom: 0; }
+
+.md-body p,
+.md-body blockquote,
+.md-body ul,
+.md-body ol,
+.md-body dl,
+.md-body table,
+.md-body pre,
+.md-body details,
+.md-body .md-mermaid,
+.md-body div.md-math {
+  margin: 0 0 1rem;
+}
+
+/* headings, with the permalink that appears on hover */
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4,
+.md-body h5,
+.md-body h6 {
+  margin: 1.5rem 0 1rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.md-body h1 { font-size: 2em; padding-bottom: 0.3em; border-bottom: 1px solid var(--md-rule); }
+.md-body h2 { font-size: 1.5em; padding-bottom: 0.3em; border-bottom: 1px solid var(--md-rule); }
+.md-body h3 { font-size: 1.25em; }
+.md-body h4 { font-size: 1em; }
+.md-body h5 { font-size: 0.875em; }
+.md-body h6 { font-size: 0.85em; color: var(--md-muted); }
+.md-body .headerlink {
+  margin-left: 0.35em;
+  font-weight: 400;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.md-body :is(h1, h2, h3, h4, h5, h6):hover .headerlink,
+.md-body .headerlink:focus-visible {
+  opacity: 0.6;
+}
+
+.md-body a { color: var(--md-link); text-decoration: none; }
+.md-body a:hover { text-decoration: underline; }
+/* An image from another website: a link, never loaded. */
+.md-body a.md-external-image::before { content: "\1F5BC\FE0E\00A0"; }
+
+.md-body strong, .md-body b { font-weight: 600; }
+.md-body hr { height: 0.25em; margin: 1.5rem 0; border: 0; background: var(--md-rule); }
+.md-body mark { padding: 0 0.15em; border-radius: 2px; background: rgba(255, 223, 93, 0.45); color: inherit; }
+.md-body small { font-size: 0.85em; }
+.md-body sub, .md-body sup { font-size: 0.75em; line-height: 0; }
+.md-body img { max-width: 100%; height: auto; }
+
+.md-body blockquote {
+  padding: 0 1em;
+  border-left: 0.25em solid var(--md-rule);
+  color: var(--md-muted);
+}
+.md-body blockquote > :last-child { margin-bottom: 0; }
+
+/* lists */
+.md-body ul, .md-body ol { padding-left: 2em; }
+.md-body ul { list-style: disc; }
+.md-body ol { list-style: decimal; }
+.md-body ul ul { list-style: circle; }
+.md-body ul ul ul { list-style: square; }
+.md-body li > ul, .md-body li > ol { margin-bottom: 0; }
+.md-body li + li { margin-top: 0.25em; }
+.md-body li > p { margin: 1rem 0 0; }
+.md-body li > p:first-child { margin-top: 0; }
+.md-body .contains-task-list { padding-left: 1.6em; }
+.md-body .task-list-item { list-style: none; }
+.md-body .task-list-item input { margin: 0 0.4em 0.2em -1.4em; vertical-align: middle; }
+.md-body dt { margin-top: 1rem; font-weight: 600; font-style: italic; }
+.md-body dd { margin: 0 0 1rem; padding: 0 1rem; }
+.md-body .toc ul { list-style: none; padding-left: 1.25em; }
+.md-body .toc > ul { padding-left: 0; }
+
+/* code */
+.md-body code, .md-body tt, .md-body samp, .md-body kbd, .md-body pre {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+.md-body code, .md-body tt, .md-body samp {
+  padding: 0.2em 0.4em;
+  border-radius: 6px;
+  background: var(--md-code-bg);
+  font-size: 85%;
+  white-space: break-spaces;
+}
+.md-body pre {
+  padding: 1rem;
+  border-radius: 6px;
+  background: var(--md-block-bg);
+  font-size: 85%;
+  line-height: 1.45;
+  overflow: auto;
+}
+.md-body pre code {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 100%;
+  white-space: pre;
+}
+.md-body kbd {
+  padding: 0.2em 0.4em;
+  border: 1px solid var(--md-rule);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  font-size: 11px;
+  vertical-align: middle;
+}
+
+/* tables */
+.md-body table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  border-collapse: collapse;
+  overflow: auto;
+}
+.md-body th, .md-body td { padding: 6px 13px; border: 1px solid var(--md-rule); }
+.md-body th { font-weight: 600; }
+.md-body tr:nth-child(2n) td { background: var(--md-block-bg); }
+.md-body .md-align-left { text-align: left; }
+.md-body .md-align-center { text-align: center; }
+.md-body .md-align-right { text-align: right; }
+.md-body .md-align-justify { text-align: justify; }
+
+.md-body details > summary { cursor: pointer; }
+.md-body details[open] > summary { margin-bottom: 0.5rem; }
+
+/* footnotes */
+.md-body .footnote { font-size: 0.85em; color: var(--md-muted); }
+.md-body .footnote-ref { padding: 0 0.1em; }
+.md-body .footnote-backref { margin-left: 0.25em; }
+
+/* diagrams: the source is shown until, and unless, Mermaid draws it */
+.md-body .md-mermaid-svg { display: flex; justify-content: center; overflow: auto; }
+.md-body .md-mermaid-svg svg { max-width: 100%; height: auto; }
+
+/* formulas: the source in monospace until KaTeX draws it */
+.md-body .md-math:not(.md-math-drawn) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 85%;
+}
+.md-body .md-math-display { display: block; overflow-x: auto; text-align: center; }
+.md-body .md-math-error {
+  display: inline-block;
+  margin-left: 0.5em;
+  padding: 0.1em 0.4em;
+  border-radius: 6px;
+  background: var(--md-error-bg);
+  color: var(--md-error);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  vertical-align: middle;
+}

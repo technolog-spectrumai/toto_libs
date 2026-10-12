@@ -34,14 +34,25 @@ def check_subscription_plans(app_configs, **kwargs):
                 for problem in problems]
 
     findings = []
+    from django.apps import apps
+
+    from .catalogue import served_feature_keys
+
     granted = {key for plan in plans.all_plans() for key in plan.features}
-    # An all_features plan grants everything — but one only superusers can
-    # hold (admin_only) leaves a feature nobody else can buy, which is still
-    # worth the warning.
-    sold_whole = any(p.all_features and not p.admin_only for p in plans.all_plans())
+    # An all_features plan grants everything, the plan for admins included
+    # (2026-10-11): a feature only superusers hold — monitoring on a host
+    # whose members never see it — is a product choice, not a mistake.
+    sold_whole = any(p.all_features for p in plans.all_plans())
+    served = served_feature_keys()
 
     for entitlement in registry.all():
         if entitlement.free or entitlement.feature_key in granted or sold_whole:
+            continue
+        # A feature of an app this host does not install sells nothing and
+        # gates nothing: no plan need grant it (2026-10-11). A host's own key
+        # (one no app carries) is its own to grant.
+        key = entitlement.feature_key
+        if not (apps.is_installed(f"toto.{key}") or key in served):
             continue
         findings.append(Warning(
             f"{entitlement.feature_key!r} is declared paid but no plan grants "

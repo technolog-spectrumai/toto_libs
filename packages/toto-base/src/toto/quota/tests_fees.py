@@ -656,8 +656,14 @@ class MeteredHelpTests(TestCase):
         self.assertIn("[x-cloak]", self._get().content.decode())
 
 
+@override_settings(QUOTA_GAS_PUMP=True)
 class GasPumpTests(TestCase):
-    """The pump appears exactly where there is something to explain."""
+    """The pump appears exactly where there is something to explain (on a
+    host that has not switched it off: QUOTA_GAS_PUMP)."""
+
+    def test_a_host_may_run_without_it(self):
+        with override_settings(QUOTA_GAS_PUMP=False):
+            self.assertFalse(self._plugin().visible_for_request(self._request("vault")))
 
     @classmethod
     def setUpTestData(cls):

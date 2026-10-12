@@ -10,6 +10,7 @@
     <i class="fa-solid fa-list"></i>Contents</h2>
   <div class="mt-3 flex flex-wrap gap-2 text-sm">
     <a href="#getting-started" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Getting started</a>
+    <a href="#signing-in" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Getting an account and signing in</a>
     {% if features.socialhub %}<a href="#profile" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Profile &amp; communities</a>{% endif %}
     {% if features.gervazy %}<a href="#keys" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">My Keys</a>{% endif %}
     {% if features.vault %}<a href="#storage" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Storage</a>{% endif %}
@@ -19,7 +20,7 @@
     {% if features.kanban %}<a href="#tasks" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Tasks</a>{% endif %}
     {% if features.locations %}<a href="#locations" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Locations</a>{% endif %}
     {% if features.ireneo %}<a href="#company" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Company</a>{% endif %}
-    {% if features.workflows %}<a href="#workflows" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Workflows</a>{% endif %}
+    {% if features.workflows_open %}<a href="#workflows" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Workflows</a>{% endif %}
     {% if features.anastasia %}<a href="#gears" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Compute Gears</a>{% endif %}
     {% if features.latex %}<a href="#texlab" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">TeX Lab</a>{% endif %}
     {% if features.dracena %}<a href="#python-lab" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Python Lab</a>{% endif %}
@@ -29,6 +30,7 @@
     {% if features.graph %}<a href="#graph" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Knowledge Graph</a>{% endif %}
     {% if features.steven %}<a href="#steven" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Assistant</a>{% endif %}
     {% if features.grafana %}<a href="#monitoring" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Monitoring</a>{% endif %}
+    {% if features.team %}<a href="#team" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">For the platform's team</a>{% endif %}
   </div>
 </nav>
 
@@ -40,13 +42,48 @@
     <i class="fa-solid fa-gauge-high"></i>Getting started</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
     After signing in you land on the <a href="{% url 'core:dashboard' %}" class="font-semibold underline hover:opacity-80">Dashboard</a> —
-    a grid of cards, one per module installed on this server. Click a card to open the module.
-    The header at the top of every page takes you back to the Dashboard and to your profile.
+    a grid of cards, one per module this platform offers you, in groups. Each card has an <span class="font-semibold">Open</span> button.
+    The header at the top of every page takes you {% if features.socialhub %}to your <span class="font-semibold">Profile</span>, {% endif %}back to the <span class="font-semibold">Dashboard</span> and signs you out (<span class="font-semibold">Logout</span>).
   </p>
   <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
-    <li>Modules are grouped into categories; you can collapse or expand the groups.</li>
-    <li>Only modules installed on this server appear — the same rule applies to this manual.</li>
-    <li>The sun or moon icon in the header switches between light and dark mode.</li>
+    <li>Modules are grouped into categories: click a group's title to collapse or expand it, or use <span class="font-semibold">Collapse all</span> and <span class="font-semibold">Expand all</span>.</li>
+    <li>Only modules installed on this server appear, and only the ones you may open — the same rule applies to this manual.</li>
+    <li>The sun or moon icon in the header switches between light and dark mode; the choice is kept in this browser.</li>
+    <li>The <span class="font-semibold">ENG / PL</span> select in the header changes the language of the whole interface.</li>
+    {% if features.socialhub %}<li>The footer of every page links the <a href="{% url 'socialhub:privacy_notice' %}" class="font-semibold underline hover:opacity-80">Privacy notice</a>: what the platform keeps about you, why and for how long.</li>{% endif %}
+    {% if features.socialhub %}<li>This manual opens from the <span class="font-semibold">User Manual</span> button on your own profile page.</li>{% endif %}
+  </ul>
+</section>
+
+<!-- Getting an account and signing in -->
+<section id="signing-in"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-right-to-bracket"></i>Getting an account and signing in</h2>
+  {% if features.invitations %}
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Nobody registers here by themselves. Somebody from the platform's team sends you an invitation: a link that works once,
+    for {{ numbers.invitation_hours }} hours. Open it, choose a <span class="font-semibold">Username</span> (you will sign in with it), a <span class="font-semibold">Display name</span> and a <span class="font-semibold">Password</span>,
+    read the privacy notice, tick <span class="font-semibold">I have read the privacy notice and accept it.</span> and press <span class="font-semibold">Make my account</span>.
+    You are signed in at once, as a member of the community the invitation names. If the page says the invitation is not open
+    (it was used, revoked or has expired), ask the person who invited you for a new one.
+  </p>
+  {% elif features.applications %}
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Nobody registers here by themselves. On the sign-in page choose <span class="font-semibold">Apply for membership</span>: give your e-mail address, the community you
+    want to join and a username, and accept the privacy notice. Type the digits from the picture you are shown, then choose a <span class="font-semibold">Referrer</span>
+    among the community's members. When your referrer accepts, your account is switched on and you are told by e-mail.
+  </p>
+  {% else %}
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Nobody registers here by themselves: accounts are made by the platform's team.
+  </p>
+  {% endif %}
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li>Sign in with your username and your password.</li>
+    <li>After {{ numbers.delay_after }} wrong tries each next try has to wait a little; after {{ numbers.lock_after }}, signing in with that name from your address is paused for {{ numbers.lock_minutes }} minutes. Nothing is locked for good: wait, then try again.</li>
+    {% if features.password_reset %}<li><span class="font-semibold">Forgot password?</span> on the sign-in page: where the platform has mail delivery set up, it mails a link to your account's e-mail address; the link works once, for {{ numbers.reset_hours }} hours. Where it has not, or when your account has no address, no mail comes: follow what the page says, or ask the platform's team. Saving the new password ends every sign-in of your account: sign in again with the new one.</li>{% endif %}
   </ul>
 </section>
 
@@ -59,25 +96,29 @@
     <i class="fa-solid fa-users"></i>Profile &amp; communities (SocialHub)</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
     Open <span class="font-semibold">Profile</span> from the header to see your member page. Its tabs keep each
-    part apart. <span class="font-semibold">Overview</span> is what other members see: your details and the
-    communities you belong to, with what you hide from others marked as hidden.
+    part apart. <span class="font-semibold">Overview</span> is what other members see: your name, your avatar, a few words about you and the date you joined (“Member since”);
+    your e-mail address, phone and address only if you switched them on, and what you hide from others is marked as hidden.
     Your own page also has tabs that nobody else sees, administrators included:
     <span class="font-semibold">Edit profile</span>,
-    <span class="font-semibold">Account</span> (your e-mail address, password, time zone and language),
-    <span class="font-semibold">Security</span> (where you are signed in, your recent sign-ins and your key store),
-    <span class="font-semibold">Wallet</span> (your mana)
-    and <span class="font-semibold">Your data</span> (a copy of your data, and a request to erase your account).
-    <span class="font-semibold">Activity</span> holds your upcoming events and the requests waiting for your answer;
-    on another member's profile it shows only those of their upcoming events you may see, beside
-    <span class="font-semibold">Overview</span> and <span class="font-semibold">Communities</span>.
-    The <a href="{% url 'socialhub:profile_list' %}" class="font-semibold underline hover:opacity-80">SocialHub</a>
-    lists all member profiles and communities.
+    <span class="font-semibold">Account</span>,
+    <span class="font-semibold">Security</span>{% if features.mana %},
+    <span class="font-semibold">Wallet</span> (your mana){% endif %}
+    and <span class="font-semibold">Your data</span>.
+    <span class="font-semibold">Activity</span>{% if features.events or features.applications %} holds {% if features.events %}your upcoming events{% endif %}{% if features.events and features.applications %} and {% endif %}{% if features.applications %}the reference requests waiting for your answer{% endif %}.{% else %} is there too; on this platform it stays empty (it lists reference requests, which a platform that invites its members does not use).{% endif %}
+    On another member's profile you see <span class="font-semibold">Overview</span> and <span class="font-semibold">Communities</span>{% if features.events %}, and <span class="font-semibold">Activity</span> with those of their upcoming events that you may see{% endif %}.
+    The <a href="{% url 'socialhub:profile_list' %}" class="font-semibold underline hover:opacity-80">member list</a>
+    shows every member, and the <a href="{% url 'socialhub:community_list' %}" class="font-semibold underline hover:opacity-80">communities</a> have a list of their own.
   </p>
   <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
-    <li><span class="font-semibold">Edit profile</span> — your display name, a few words about you, your avatar and phone, your address as text, and whether other members see your phone number, your e-mail address and your address (each hidden until you switch it on). The address is kept as you type it: nothing is looked up and nothing is put on a map.</li>
+    <li><span class="font-semibold">Edit profile</span> — your display name, a few words about you, your avatar (a JPEG, PNG, GIF or WebP picture of up to 2 MB) and phone, your address as text, and whether other members see your phone number, your e-mail address and your address (each hidden until you switch it on; administrators always see all three). The address is kept as you type it: nothing is looked up and nothing is put on a map.</li>
+    <li><span class="font-semibold">Account</span> — your e-mail address (a confirmation link goes to the new address, and the change is made when you open it), your password (changing it ends your other sign-ins), your time zone and your language.</li>
     <li><span class="font-semibold">Language</span> — on the Account tab, pick your preferred language (Polish or English). The whole interface switches immediately and the choice is remembered.</li>
-    <li><span class="font-semibold">Communities</span> — browse communities and apply for membership. An application may require a verification code and references from existing members.</li>
-    <li><span class="font-semibold">References</span> — when someone names you as a reference, the request appears on the Activity tab of your profile; accept or reject it there.</li>
+    <li><span class="font-semibold">Security</span> — <span class="font-semibold">Sessions</span> lists where you are signed in, with <span class="font-semibold">End</span> on every one but the one you are using (marked “this device”) and <span class="font-semibold">Sign out everywhere else</span>; <span class="font-semibold">Recent sign-ins</span> shows the last 30 days, failed tries included{% if features.gervazy %}; your <span class="font-semibold">Key store</span> is here too (see My Keys){% endif %}.</li>
+    <li><span class="font-semibold">Your data</span> — <span class="font-semibold">Download my data</span> prepares a copy of what the platform holds about you, as one zip file{% if features.vault %} in your own bucket in the Storage{% endif %}; you can ask once a day, and a new copy replaces the earlier one. <span class="font-semibold">Erase my account</span> files a request: the platform's team erases the account, or declines and says why. Until then your account works as before.</li>
+    <li><span class="font-semibold">Communities</span> — a community's page shows its members and, behind <span class="font-semibold">Org Chart</span>, {% if features.positions %}a drawing of who holds which position; the positions are set by the community's head or an administrator{% else %}a drawing of its members, each under the member who vouched for them{% endif %}.{% if features.applications %} You join a community by applying for membership. An application may require a verification code and references from existing members.{% else %} The platform's team decides who belongs to which community.{% endif %}</li>
+    {% if features.applications %}<li><span class="font-semibold">References</span> — when someone names you as a reference, the request appears on the Activity tab of your profile; accept or reject it there.</li>{% endif %}
+    <li><span class="font-semibold">Patron</span> — the member who vouched for you{% if features.invitations %}: here, the member of the team who invited you{% elif features.applications %}: the referrer who accepted your application{% endif %}. The member list shows it.</li>
+    <li><span class="font-semibold">Clearances</span> — some {% if features.vault %}buckets in the Storage{% else %}things{% endif %} are kept by a clearance: only the people an administrator gave that clearance read what is in them. No member sees who holds a clearance (administrators do), and no page lists yours; the copy of your data does.</li>
   </ul>
 </section>
 {% endif %}
@@ -91,17 +132,27 @@
     <i class="fa-solid fa-id-card"></i>Your plan
   </h2>
   <p class="mt-3 text-sm leading-6 opacity-80">
-    A plan decides which apps you can <span class="font-semibold">use</span>. Without one you keep your
-    profile, your files, your communities and your wallet — nothing you have made is ever behind a plan,
-    and nothing is deleted if you stop paying. Paid apps stay visible and readable; what a plan unlocks
-    is the ability to create and change things in them.
+    A plan decides which {% if features.plans_cost %}apps{% else %}pages{% endif %} you can <span class="font-semibold">use</span>. Without one you keep your
+    profile, your files{% if features.mana %}, your communities and your wallet{% else %} and your communities{% endif %} — nothing you have made is ever behind a plan,
+    and nothing is deleted if you {% if features.plans_cost %}stop paying{% else %}lose a plan{% endif %}.{% if features.plans_cost %} Paid apps stay visible and readable; what a plan unlocks
+    is the ability to create and change things in them.{% endif %}
   </p>
+  {% if features.plans_auto %}
+  <p class="mt-3 text-sm leading-6 opacity-80">
+    <span class="font-semibold">Your communities set the ceiling; you choose within it.</span>
+    When you first join a community that offers a higher plan you are put on it; on the
+    <a href="{% url 'subscriptions:plans' %}" class="font-semibold underline hover:opacity-80">Plans</a> page you
+    may then step down or up among the plans your communities offer, and your choice stands. Leaving a
+    community whose plan you hold puts you on the best of what is left.
+  </p>
+  {% endif %}
   <p class="mt-3 text-sm leading-6 opacity-80">
     <span class="font-semibold">Your communities decide which plans you can choose.</span> A plan is
     offered through a community, and the plans page shows you the ones at least one of your communities
     offers — so if a tier you expected is missing, the community that would offer it is the place to
     ask. Everyone always has the free plan.
   </p>
+  {% if features.plans_cost %}
   <p class="mt-3 text-sm leading-6 opacity-80">
     <span class="font-semibold">Your communities also decide what you pay.</span> Each one may take a
     percentage off a plan, and if you belong to several you automatically get the best of them — there
@@ -120,6 +171,7 @@
     See <a href="{% url 'subscriptions:plans' %}" class="font-semibold underline hover:opacity-80">Plans</a>
     for what each one includes.
   </p>
+  {% endif %}
 </section>
 {% endif %}
 
@@ -131,10 +183,13 @@
   <h2 class="flex items-center gap-2 text-lg font-bold">
     <i class="fa-solid fa-key"></i>My Keys (encryption)</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
+    Your <span class="font-semibold">Key store</span> keeps your signing keys and other secrets, encrypted under a passphrase only you know. You make it once, on the <span class="font-semibold">Security</span> tab of your profile: type a passphrase twice
+    (at least 6 characters) and press <span class="font-semibold">Create my key store</span>. The passphrase is stored nowhere and there is no recovery code:
+    if you forget it, nobody — the platform's team included — can open what the store holds.{% if features.vault %}
+    You need a key store before you can encrypt a file in the Storage with a password; a PDF is the exception, it is locked with a password of its own.
+    The passphrase is not a file's password: every file you encrypt gets a password of its own, and that password, not the passphrase, opens the file again.{% endif %}
     The <a href="{% url 'gervazy:my_keys' %}" class="font-semibold underline hover:opacity-80">My Keys</a> page
-    (linked from the Security tab of your profile) manages the encryption keys that protect your data at rest.
-    Files in the storage can be encrypted and decrypted with these keys — without them the
-    server stores only unreadable ciphertext.
+    (linked from the Security tab of your profile) lists your strongboxes and signing keys.
   </p>
 </section>
 {% endif %}
@@ -148,11 +203,11 @@
     <i class="fa-solid fa-vault"></i>Storage (Vault)</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
     The <a href="/vault/" class="font-semibold underline hover:opacity-80">Storage</a> keeps your files
-    in a folder tree. Upload, download, move and delete files, and encrypt them with your keys.
+    in a folder tree. Upload, download, move and delete files, and encrypt them with a password.
     {% if features.viewers %}Depending on the file type, extra <span class="font-semibold">Play</span> / <span class="font-semibold">Edit</span>
     buttons appear next to a file:{% else %}A file is kept exactly as you uploaded it and comes back as a download,
-    whatever its type; nothing is opened or edited in the browser. Earlier versions of a file,
-    the trash and clearances work the same for every file.{% endif %}
+    whatever its type; nothing is opened or edited in the browser. The trash and clearances
+    work the same for every file type.{% endif %}
   </p>
   <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
     {% if features.vod %}<li><span class="font-semibold">Video</span> — video files play directly in the browser.</li>{% endif %}
@@ -164,6 +219,46 @@
     {% if features.sketch %}<li><span class="font-semibold">Drawings</span> — <code>.svg</code> files open in the drawing board: freehand, shapes, arrows and text. An SVG made anywhere else opens too, and whatever the editor does not recognise is kept exactly as it was.</li>{% endif %}
         {% if features.notebooks %}<li><span class="font-semibold">Notebooks</span> — <code>.tpy</code> notebooks combine code cells with their outputs; edit and run them from the notebook editor.</li>{% endif %}
     {% if features.latex %}<li><span class="font-semibold">LaTeX</span> — TeX Lab workspaces compile a whole folder of <code>.tex</code> files to PDF, with the result previewed in the room.</li>{% endif %}
+  </ul>
+  <h3 class="mt-5 text-sm font-bold">Finding your way</h3>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li>The Storage has the tabs <span class="font-semibold">Files</span>, <span class="font-semibold">Metrics</span>, <span class="font-semibold">Archive</span> and <span class="font-semibold">Trash</span>.</li>
+    <li>On <span class="font-semibold">Files</span>, switch between <span class="font-semibold">Tree</span> (buckets, folders and files) and <span class="font-semibold">Grid</span> (files only). Filter by <span class="font-semibold">Bucket</span>, search by name (<code>*</code> and <code>?</code> stand for any characters) and sort.</li>
+    <li>Files live in buckets, and in folders inside a bucket. Every member sees the names of all buckets and folders; the files in them only as the rules below allow.</li>
+    <li>A bucket of your own, called “Personal — ” and your username, is made the first time you press <span class="font-semibold">New folder</span>. You can make folders only in a bucket of your own.</li>
+  </ul>
+  <h3 class="mt-5 text-sm font-bold">Putting a file in</h3>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li>In a shared bucket, press <span class="font-semibold">Upload</span> on a folder's row. The upload point's page opens: drop files on it, or click to choose several. The page says the largest file it takes; a file it refuses is listed with the reason, and the others still land.</li>
+    <li>In your own bucket, press <span class="font-semibold">Upload</span> on a folder's row, or drag files onto the row (in the Tree). The <span class="font-semibold">Uploads</span> panel shows the progress and lets you cancel.</li>
+    <li>Microsoft Office files are not accepted: save the document as PDF, HTML, Markdown, CSV or OpenDocument and upload that.</li>
+    {% if features.quota %}<li>Uploads are counted against daily limits{% if not features.mana %}. The round button <span class="font-semibold">What this costs you</span> in the corner of the page shows what you have used today{% endif %}; over a limit, an upload is refused until the next day.</li>{% endif %}
+    {% if features.discipline %}<li>Uploading a file and running a workflow spend <span class="font-semibold">mana</span>. The bar and the number in the app bar are your mana: the cyan part of the bar is what remains, the grey part what is spent, against what regeneration fills to. It opens the <a href="{% url 'discipline:index' %}" class="font-semibold underline hover:opacity-80">Mana</a> page, which shows how fast it refills (every hour, from the aura of your community and from any sigil you hold), and what things cost; its <span class="font-semibold">History</span> tab draws your balance over the last day, week or month and lists every change to it, a page at a time. Your own profile shows it too. There is one kind of mana. When it is short the action is refused, with a line that says when there will be enough again; an administrator can grant mana.</li>{% endif %}
+  </ul>
+  <h3 class="mt-5 text-sm font-bold">Working with a file</h3>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li><span class="font-semibold">Download</span> hands the file back as a download.</li>
+    <li>The <span class="font-semibold">…</span> menu on a file of yours has <span class="font-semibold">Move</span> (to another folder of the same bucket) and <span class="font-semibold">Rename</span>; <span class="font-semibold">Delete</span> moves the file to the trash. <span class="font-semibold">History</span>, in the same menu, opens the file's history: a page with a table of who created, edited, opened or downloaded the file, and when, newest first, twenty rows a page. Whoever may read the file reads its history, so they see that you opened or downloaded it.</li>
+    <li>Tick several of your files, or press <span class="font-semibold">Select my shown files</span>, to move them or put them in the trash together.</li>
+    <li>On the <span class="font-semibold">Archive</span> tab, choose a bucket of yours, tick files and press <span class="font-semibold">Create .zip</span>: the archive is made in the background and saved into the folder you chose. Encrypted files are left out.</li>
+  </ul>
+  <h3 class="mt-5 text-sm font-bold">Who sees your files</h3>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li>A file you upload is private: only you and the platform's administrators see it listed. By its address it can also be downloaded by the owner of the bucket it lies in and by the people an administrator put on its folder's list. You cannot mark a file public or private yourself: an upload point can be set to make what it takes public, and removing a file's encryption makes it public (see below).</li>
+    <li>A file marked public is listed and can be downloaded by every signed-in member{% if features.public_links %}, and by anyone who has its link, without signing in{% endif %}.</li>
+    <li>In a bucket kept by a clearance, only the holders of that clearance and the administrators see the files, whoever uploaded them: without the clearance you do not see even your own files there.</li>
+    <li>The <span class="font-semibold">Metrics</span> tab shows every member counts and charts for the whole Storage, and the names of the most recent uploads with their bucket and folder: private files and files in buckets kept by a clearance included. Do not put into a file's name what others must not read.</li>
+  </ul>
+  <h3 class="mt-5 text-sm font-bold">The trash</h3>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li>A deleted file waits in the <span class="font-semibold">Trash</span> for {{ numbers.trash_days }} days, then it is removed for good. Until then <span class="font-semibold">Restore</span> puts it back, <span class="font-semibold">Delete for good</span> removes it at once, and <span class="font-semibold">Empty my trash</span> removes everything of yours that waits there.{% if features.external_buckets %} A file in a bucket connected from another server never goes to the trash: it is deleted at once, and the dialog says so.{% endif %}</li>
+  </ul>
+  <h3 class="mt-5 text-sm font-bold">Encrypting a file</h3>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li>Press the lock icon (<span class="font-semibold">Encrypt</span>) on a file of yours and give a password{% if features.gervazy %}. You need a key store first (see My Keys), except for a PDF, which asks for a user password and, if you want one, an owner password{% endif %}. The password belongs to that one file; it is stored nowhere and cannot be recovered.</li>
+    <li>The dialog stays open while the file is being encrypted: it closes when that is done, or says why it failed. A large file can take a while. If the dialog says the encryption timed out, the work may still be finishing: reload the page before you try again.</li>
+    <li>To get an encrypted file, press its download icon and give the password: <span class="font-semibold">Download decrypted</span> hands you the file, <span class="font-semibold">Download raw</span> the encrypted bytes.</li>
+    <li><span class="font-semibold">Remove encryption</span> decrypts the file for good and makes it public: every signed-in member can then see and download it{% if features.public_links %}, and so can anyone with its link{% endif %}. Encrypt it again if that is not what you want.</li>
   </ul>
 </section>
 {% endif %}
@@ -284,6 +379,14 @@
     is an interactive map of points, territories, routes and addresses. Browse the map,
     inspect places, and search for routes between locations.
   </p>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    The map is tied to the rest of the platform. When you schedule an event, <span class="font-semibold">Place on the map</span>
+    lists the registered places you may read, and the event's page links to the one you chose. A community's page
+    has <span class="font-semibold">On the map</span>: its seat on a map, which the community's head or an administrator
+    picks from the same list. On your profile, <span class="font-semibold">Where you live</span> sets your own pin and who
+    sees it (nobody, an approximate area, or the exact address), and <span class="font-semibold">On the map</span> draws
+    it for whoever may see it. These sections are drawn for people who have the map.
+  </p>
 </section>
 {% endif %}
 
@@ -328,7 +431,7 @@
 </section>
 {% endif %}
 
-{% if features.workflows %}
+{% if features.workflows_open %}
 <!-- Workflows -->
 <section id="workflows"
   :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -560,5 +663,33 @@
     the server's metrics and logs. It is available to superusers only and signs you in with
     your platform account.
   </p>
+</section>
+{% endif %}
+
+{% if features.team %}
+<!-- For the platform's team -->
+<section id="team"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-user-shield"></i>For the platform's team</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    This chapter is shown to staff and administrators (superusers) only. What is marked “administrators” needs a superuser{% if features.subscriptions %} on the Superuser plan{% endif %}.
+  </p>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    {% if features.invitations %}<li><span class="font-semibold">Invitations</span> — on the <a href="{% url 'socialhub:invitations' %}" class="font-semibold underline hover:opacity-80">Invitations</a> tab, beside Profiles and Communities: choose the community, give an e-mail address and a note if you want, and press <span class="font-semibold">Issue the invitation</span>. The link is shown once. It is mailed to the address only where the platform has mail delivery set up; otherwise the page tells you to hand the link over yourself. It works once, for {{ numbers.invitation_hours }} hours, and stops working when you press <span class="font-semibold">Revoke</span> or when your own account is no longer staff. The list shows each invitation as open, accepted, revoked or expired{% if numbers.invitation_days %}; a row is removed {{ numbers.invitation_days }} days after its link expired{% endif %}. The person you invite gets you as their patron, if you have a profile.</li>{% endif %}
+    {% if features.applications %}<li><span class="font-semibold">Applications</span> — people apply from the sign-in page. The member they name as referrer accepts or rejects on the Activity tab of their own profile; accepting lets the applicant in.</li>{% endif %}
+    {% if features.socialhub %}<li><span class="font-semibold">Communities</span> — {% if features.positions %}a community's head or an administrator sets its positions on the <span class="font-semibold">Organisation chart</span> tab (<span class="font-semibold">Add position</span>, <span class="font-semibold">Change</span>, <span class="font-semibold">Remove</span>). {% endif %}The communities themselves, who belongs to them and who is whose patron are changed by an administrator in the admin site, <code>/admin/</code> (a staff account sees there only what it was given permission for).</li>{% endif %}
+    {% if features.socialhub %}<li><span class="font-semibold">Clearances</span> (administrators) — on the <span class="font-semibold">Clearances</span> tab, <span class="font-semibold">New clearance</span> takes a name that says what it opens, its holders{% if features.vault %} and the buckets it keeps{% endif %}; a platform has at most {{ numbers.max_clearances }} clearances. What a clearance keeps is read only by its holders and by administrators. A clearance that still keeps something cannot be deleted; its holders are changed in the admin site. Look at them as a <span class="font-semibold">Table</span> or a <span class="font-semibold">Graph</span>.</li>{% endif %}
+    {% if features.socialhub %}<li><span class="font-semibold">Privacy</span> (administrators) — the privacy notice's page has <span class="font-semibold">Publish a new version</span>; earlier versions stay readable. <span class="font-semibold">Erasure requests</span> (a link on the <span class="font-semibold">Your data</span> tab of your own profile, and on the page <span class="font-semibold">Publish a new version</span> opens) lists the members who asked to be erased: erase at the console with <code>{{ commands.erase }}</code>, or press <span class="font-semibold">Decline</span> and write the reason the member will read.</li>{% endif %}
+    {% if features.vault %}<li><span class="font-semibold">A bucket's history</span> — a bucket's own page (its name in Storage’s Metrics) ends its first part with <span class="font-semibold">History</span>: the last things that happened to the bucket and its files, and <span class="font-semibold">The whole history</span>, a page of everything, by kind when one is chosen. Its owner and superusers read it.</li>{% endif %}
+    {% if features.vault %}<li><span class="font-semibold">Storage</span> (administrators) — the <span class="font-semibold">Management</span> tab makes, edits and deletes buckets{% if features.s3_buckets %} (a new bucket is kept on this machine, or in one of the object storages the platform's operator set up: choose it by name and location and give the bucket's own name there; it is saved only after the connection test passes, and no key is asked for){% endif %}; the <span class="font-semibold">Clearances</span> tab shows which bucket is kept by which clearance, and a bucket's clearances are set on its own page. An administrator sees every file and everybody's trash.</li>{% endif %}
+    {% if features.quota %}<li><span class="font-semibold">Limits</span>{% if features.mana %} (administrators){% endif %} — <a href="{% url 'quota:index' %}" class="font-semibold underline hover:opacity-80">Metered</a> lists what is counted and <span class="font-semibold">Usage</span> shows your own counters. A limit is per person, per day. <span class="font-semibold">Change what these cost</span> opens the desk, where each row is edited: a limit either refuses what goes over it (<span class="font-semibold">Block</span>) or only counts (<span class="font-semibold">Track only</span>); left empty, there is no limit.</li>{% endif %}
+    {% if features.discipline %}<li><span class="font-semibold">Mana</span> (administrators) — on the <a href="{% url 'discipline:index' %}" class="font-semibold underline hover:opacity-80">Mana</a> page, <span class="font-semibold">Grant mana</span> puts an amount on a person's account, with a reason, and it lands whole. <a href="{% url 'discipline:sigils' %}" class="font-semibold underline hover:opacity-80">Sigils</a> and <a href="{% url 'discipline:auras' %}" class="font-semibold underline hover:opacity-80">Auras</a> list what there is; they are made, changed and assigned in the admin panel alone, under Discipline. A sigil (a name, a picture, mana an hour) is assigned by choosing its holder on its form and revoked by clearing the holder: it has one holder at a time, and the mana it generated stays with them. An aura (mana an hour and a cap) is given to a community under Community auras: a community has one aura or none, and several may share one. A person regenerates at the fastest aura of their communities plus every sigil they hold, up to the aura's cap. What an action costs is in the platform's Discipline file, not on a page.</li>{% endif %}
+    {% if features.workflows %}<li><span class="font-semibold">Workflows</span> — the <a href="{% url 'workflows:workflow_list' %}" class="font-semibold underline hover:opacity-80">list</a> of the platform's background jobs (zipping a selection, encrypting or decrypting a large file, copying between buckets) and their runs. A run's page shows who started it, each step and its outcome, and <span class="font-semibold">Kill run</span> while it is still running. The pages that need a job start it; nobody starts one by hand.</li>{% endif %}
+    {% if features.monit %}<li><span class="font-semibold">Monitoring</span> (administrators) — the server right now; the checks of the <span class="font-semibold">Database</span> page (the database, the disk, the backups, the audit chain, the certificate, the scheduled tasks, mail); the scheduled <span class="font-semibold">Jobs</span>; and the recent <span class="font-semibold">History</span>. A check that fails is mailed to the platform's alert addresses.</li>{% endif %}
+    {% if features.audit %}<li><span class="font-semibold">Audit</span> — the <a href="{% url 'audit:index' %}" class="font-semibold underline hover:opacity-80">record</a> of who did what: sign-ins, accounts, invitations and memberships, clearances, files. Filter by action, by app or by text; <span class="font-semibold">Verify the chain</span> checks that no record was changed.</li>{% endif %}
+    <li><span class="font-semibold">Accounts at the console</span> — an account is made with <code>{{ commands.create }}</code>{% if features.socialhub %}; it has no profile until its owner saves <span class="font-semibold">Edit profile</span> once{% endif %}. An account is erased at the console only{% if commands.erase %}: <code>{{ commands.erase }}</code>{% endif %}.</li>
+  </ul>
 </section>
 {% endif %}

@@ -1,9 +1,10 @@
 """Tailwind built ahead of time, or the Play CDN where it was not (37c.15).
 
 A host that builds ``oya/tailwind.css`` (zenobia's Dockerfile) gets a page
-that links it and hands the theme to it as CSS variables; a checkout without
-it keeps the 409 KB script that compiles in the browser
-(templatetags/oya_tailwind.py).
+that links it; the colours are compiled into it from the one palette
+(2026-10-10, tests_palette.py), so the page writes only the font as a CSS
+variable. A checkout without it keeps the 409 KB script that compiles in the
+browser (templatetags/oya_tailwind.py).
 """
 
 from unittest import mock
@@ -20,22 +21,11 @@ FONT = {"name": "Orbitron", "style_family": "sans-serif"}
 
 
 class ColourTests(SimpleTestCase):
-    def test_hex_becomes_channels(self):
-        self.assertEqual(oya_tailwind.rgb_channels("#FF4081"), "255 64 129")
-        self.assertEqual(oya_tailwind.rgb_channels("#f52"), "255 85 34")
-        self.assertEqual(oya_tailwind.rgb_channels("#11223380"), "17 34 51")
-
-    def test_anything_else_is_none(self):
-        for value in ("red", "#12345", "rgb(1 2 3)", "#ff4081; } body { x", None, 3):
-            with self.subTest(value=value):
-                self.assertIsNone(oya_tailwind.rgb_channels(value))
-
-    def test_the_variables_take_only_tokens_and_hex(self):
-        out = oya_tailwind.theme_color_vars({
-            "accent-light": "#FF4081", "bad name": "#000000",
-            "x;}body{": "#000000", "warn-dark": "url(evil)"})
-        self.assertEqual(out, "--oya-accent-light: 255 64 129;")
-        self.assertEqual(oya_tailwind.theme_color_vars(""), "")
+    def test_the_page_writes_no_colour_variables(self):
+        """They were `--oya-<token>: R G B`, from a database row, on every
+        page; the stylesheet has the colours compiled in now."""
+        self.assertFalse(hasattr(oya_tailwind, "theme_color_vars"))
+        self.assertFalse(hasattr(oya_tailwind, "rgb_channels"))
 
 
 class PageTests(SimpleTestCase):
@@ -69,8 +59,9 @@ class PageTests(SimpleTestCase):
         self.assertLess(head.index("{% if not tailwind_css %}"), script)
         built = head[head.index("{% if tailwind_css %}"):]
         self.assertIn("{% static 'oya/tailwind.css' %}", built)
-        self.assertIn("{% theme_color_vars theme.theme.colors %}", built)
-        self.assertIn("--oya-font-sans:", built)
+        self.assertNotIn("theme_color_vars", source)
+        self.assertIn(":root { --oya-font-sans:", built)
+        self.assertEqual(built.count("--oya-"), 1)
         self.assertNotIn("tailwind.js", built)
         # The inline config only where the script reads it.
         config = source.index("tailwind.config = {")

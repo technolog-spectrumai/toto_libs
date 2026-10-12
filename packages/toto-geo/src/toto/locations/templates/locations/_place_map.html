@@ -1,0 +1,38 @@
+{% load static %}
+{% comment %}One place on a small map, to look at (2026-10-12): the section
+of a community's page and of a profile draw it (plugins/). ``map_id`` names
+the box, ``point`` is (latitude, longitude), ``approximate`` draws an area
+of about a kilometre in place of the pin (a person who shares their home as
+an approximate area), ``label`` is the pin's tooltip. Leaflet, the pin and
+the tile layer are the Locations app's own (static vendor/leaflet,
+oya/pin.js, _tiles.html: OpenStreetMap's tiles, dark with the page).{% endcomment %}
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}">
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
+<script src="{% static 'oya/pin.js' %}"></script>
+{% include "locations/_tiles.html" %}
+<div id="{{ map_id }}" data-testid="place-map" data-lat="{{ point.0|stringformat:'.6f' }}" data-lon="{{ point.1|stringformat:'.6f' }}"
+     data-approximate="{{ approximate|yesno:'1,0' }}" data-label="{{ label }}"
+     :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+     class="mt-3 rounded-xl border" style="height: 280px"></div>
+<script>
+(function () {
+  var box = document.getElementById("{{ map_id|escapejs }}");
+  function build() {
+    if (!box || box.dataset.built || !window.L) { return; }
+    box.dataset.built = "1";
+    var at = [parseFloat(box.dataset.lat), parseFloat(box.dataset.lon)];
+    var coarse = box.dataset.approximate === "1";
+    var map = L.map(box, {scrollWheelZoom: false}).setView(at, coarse ? 12 : 14);
+    window.totoTileLayer(map);
+    var shape = coarse
+      ? L.circle(at, {radius: 1100, weight: 1, fillOpacity: 0.15}).addTo(map)
+      : L.marker(at, {icon: classicPin()}).addTo(map);
+    if (box.dataset.label) { shape.bindTooltip(box.dataset.label); }
+    // A box that was hidden when the page loaded (a tab, a folded section)
+    // has no size yet: measure again when it is looked at.
+    setTimeout(function () { map.invalidateSize(); }, 200);
+  }
+  if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", build); }
+  else { build(); }
+})();
+</script>

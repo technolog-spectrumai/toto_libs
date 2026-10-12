@@ -68,6 +68,19 @@
     <i class="fa-solid fa-droplet"></i>{% trans "Mana" %}</a>
   {% endif %}{% endif %}
 
+  {% comment %}Discipline's one mana (2026-10-11), on a host that has it and
+     not the ledger's three pools: the same word, its own page.{% endcomment %}
+  {% if "toto.discipline"|app_installed and not "toto.mana"|app_installed %}{% url 'discipline:index' as discipline_url %}{% if discipline_url %}
+  <a href="{{ discipline_url }}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'mana' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-bolt"></i>{% trans "Mana" %}</a>
+  {% endif %}{% endif %}
+
   {% comment %}REGENERATION (2026-09-28): how fast each of the member's pools
      refills and which clearance sets it — beside Mana, for every member, on the
      same guard.{% endcomment %}
@@ -164,29 +177,31 @@
   {% endif %}{% endif %}
 
   {% if not user|economy_hidden %}
-  {% comment %}The divider, and the reason this is one strip and not two: to the
-     left are destinations, to the right are three views of metering. They used
-     to be a second row, which read as a second navigation.{% endcomment %}
-  {% if "toto.quota"|app_installed %}
-  <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-        class="mx-1 hidden h-5 self-center border-l opacity-30 sm:block"></span>
-  {% endif %}
+  {% comment %}No divider, and one look (2026-10-10, the owner: "usage and
+     metered shall be tabs"). The views of metering used to stand to the right
+     of a divider as underlined links, beside pill buttons: two kinds of thing
+     in one strip, of which only one kind read as a tab. They are tabs like
+     the rest now.{% endcomment %}
 
   {% if "toto.quota"|app_installed %}{% url 'quota:index' as metered_url %}{% if metered_url %}
   <a href="{{ metered_url }}"
-     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded px-3 py-2 text-sm font-semibold transition
-            {% if active_tab == 'metered' %}underline underline-offset-4{% else %}opacity-55 hover:opacity-100{% endif %}"
-     {% if active_tab == 'metered' %}aria-current="page"{% endif %}>
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'metered' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
     <i class="fa-solid fa-list"></i>{% trans "Metered" %}</a>
   {% endif %}{% endif %}
 
   {% if "toto.tariffs"|app_installed %}{% url 'tariffs:usage_list' as records_url %}{% if records_url %}
   <a href="{{ records_url }}"
-     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded px-3 py-2 text-sm font-semibold transition
-            {% if active_tab == 'records' %}underline underline-offset-4{% else %}opacity-55 hover:opacity-100{% endif %}"
-     {% if active_tab == 'records' %}aria-current="page"{% endif %}>
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'records' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
     <i class="fa-solid fa-bolt"></i>{% trans "Records" %}</a>
   {% endif %}{% endif %}
 

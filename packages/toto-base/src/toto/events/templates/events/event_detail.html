@@ -148,6 +148,15 @@
           {{ event.route }}
         </span>
       {% endif %}
+      {% comment %}Its place on the map (2026-10-12), on a host with the map
+         and for a viewer who has it and may read the place.{% endcomment %}
+      {% if place_on_map %}
+        <a href="{% url 'locations:address_detail' place_on_map.pk %}" data-testid="event-place-on-map"
+           class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 text-xs font-semibold underline-offset-4 hover:underline">
+          <i class="fa-solid fa-map-location-dot"></i>
+          {% trans "On the map" %}{% if place_on_map|stringformat:"s" != event.address %}: {{ place_on_map }}{% endif %}
+        </a>
+      {% endif %}
     </div>
 
   </section>

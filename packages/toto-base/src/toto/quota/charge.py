@@ -30,15 +30,53 @@ disables itself.
 See also :mod:`toto.quota.rates`, which reaches across the same boundary to
 *quote* prices for the two staff-facing screens. It is kept separate because
 this module is imported by every metered request and that one is not.
+
+**Two things may stand behind this door** (2026-10-11): the ledger's rate
+card (``toto.tariffs``) and Discipline (``toto.discipline``), the platform's
+one mana, which knows no ledger. A host has one charger:
+``settings.QUOTA_CHARGER`` (``"discipline"`` or ``"tariffs"``) names it;
+unstated, it is the rate card where that is installed (every host from
+before Discipline keeps what it had), else Discipline where that is. A name
+that is not an installed charger (``"none"``) charges nothing, which is how a
+host leaves charging out of a test run. The call sites are the same either
+way: what :func:`price_for` hands back is only ever handed back in.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
+DISCIPLINE = "discipline"
+TARIFFS = "tariffs"
+
+
+def charger() -> str:
+    """What charges on this host: ``"discipline"``, ``"tariffs"`` or ``""``."""
+    from django.apps import apps
+    from django.conf import settings
+
+    installed = {TARIFFS: apps.is_installed("toto.tariffs"),
+                 DISCIPLINE: apps.is_installed("toto.discipline")}
+    named = getattr(settings, "QUOTA_CHARGER", "")
+    if named:
+        return named if installed.get(named) else ""
+    return TARIFFS if installed[TARIFFS] else DISCIPLINE if installed[DISCIPLINE] else ""
+
 
 def billing_enabled() -> bool:
-    from django.apps import apps
+    return bool(charger())
 
-    return apps.is_installed("toto.tariffs")
+
+@dataclass(frozen=True)
+class ManaCard:
+    """What :func:`price_for` answers where Discipline charges: the app whose
+    metrics cost mana. The prices themselves are Discipline's file."""
+
+    app_label: str
+
+
+def _mana(tariff) -> bool:
+    return isinstance(tariff, ManaCard)
 
 
 # Note the two guards do different jobs. This import succeeds whenever the host
@@ -68,8 +106,13 @@ except ImportError:
 
 def price_for(user, app_label: str):
     """The rate card governing this user and app, or None when nothing is priced."""
-    if not billing_enabled():
+    which = charger()
+    if not which:
         return None
+    if which == DISCIPLINE:
+        from toto.discipline import services
+
+        return ManaCard(app_label) if services.priced_app(app_label) else None
     from toto.tariffs.charge import get_tariff_for_user
 
     return get_tariff_for_user(user, app_label)
@@ -79,6 +122,10 @@ def check_funds(user, tariff, metric_code: str, quantity, unit: str = "") -> Non
     """Raise :class:`InsufficientFunds` if the user cannot pay for this action."""
     if not tariff:
         return
+    if _mana(tariff):
+        from toto.discipline import services
+
+        return services.check(user, metric_code, quantity)
     from toto.tariffs.charge import check_user_can_act
 
     check_user_can_act(user, tariff, metric_code, quantity, unit)
@@ -94,6 +141,10 @@ def check_funds_all(user, tariff, charges) -> None:
     """
     if not tariff or not charges:
         return
+    if _mana(tariff):
+        from toto.discipline import services
+
+        return services.check_all(user, charges)
     from toto.tariffs.charge import check_user_can_act_all
 
     check_user_can_act_all(user, tariff, charges)
@@ -112,15 +163,30 @@ def quote(user, tariff, charges, metrics=()):
     """
     if not tariff:
         return None
+    if _mana(tariff):
+        from toto.discipline import services
+
+        lines = [{"metric_code": code, "quantity": quantity,
+                  "amount": services.cost(code, quantity), "asset": "mana"}
+                 for code, quantity, *_unit in charges]
+        return {"charges": lines, "total": sum((line["amount"] for line in lines), 0),
+                "balance": services.balance(user), "asset": "mana"}
     from toto.tariffs.charge import quote_user
 
     return quote_user(user, tariff, charges, metrics=metrics)
 
 
 def charge(user, tariff, metric_code: str, quantity, unit: str = "", **kwargs):
-    """Debit the user's account. Returns (UsageRecord, LedgerTransaction) or None."""
+    """Debit the user's account. Returns (UsageRecord, LedgerTransaction) or None.
+
+    Where Discipline charges: ``(the mana event, None)``. The door checked
+    before it did the work, so a balance that fell short in between gives
+    what it has rather than failing work that is already done; pass
+    ``idempotency_key`` to make a retried call charge once."""
     if not tariff:
         return None
+    if _mana(tariff):
+        return _spend_mana(user, metric_code, quantity, unit, strict=False, **kwargs)
     from toto.tariffs.charge import charge_user
 
     return charge_user(user, tariff, metric_code, quantity, unit=unit, **kwargs)
@@ -130,6 +196,8 @@ def check_and_charge(user, tariff, metric_code: str, quantity, unit: str = "", *
     """Check affordability and debit in one step."""
     if not tariff:
         return None
+    if _mana(tariff):
+        return _spend_mana(user, metric_code, quantity, unit, strict=True, **kwargs)
     from toto.tariffs.charge import check_and_charge as _f
 
     return _f(user, tariff, metric_code, quantity, unit=unit, **kwargs)
@@ -158,6 +226,14 @@ def credit(user, tariff, metric_code: str, quantity, unit: str = "", **kwargs):
     """
     if not tariff:
         return None
+    if _mana(tariff):
+        from toto.discipline import services
+
+        amount = services.cost(metric_code, quantity)
+        if amount <= 0:
+            return None
+        return services.grant(user, amount, key=kwargs.get("reference", ""),
+                              reason=kwargs.get("description", "") or metric_code)
     from toto.tariffs.charge import credit_user
 
     return credit_user(user, tariff, metric_code, quantity, unit=unit, **kwargs)
@@ -170,6 +246,10 @@ def refund(usage_record, *, reference: str = "", description: str = ""):
     """
     if not billing_enabled() or usage_record is None:
         return None
+    if charger() == DISCIPLINE:
+        from toto.discipline import services
+
+        return services.refund(usage_record, reason=description)
     from toto.tariffs.charge import refund_usage_record
 
     return refund_usage_record(usage_record, reference=reference, description=description)
@@ -196,6 +276,10 @@ def refund_for(source_type: str, source_id, metric_code: str = "", *, reason: st
     """
     if not billing_enabled():
         return None
+    if charger() == DISCIPLINE:
+        from toto.discipline import services
+
+        return services.refund_for(source_type, source_id, metric_code, reason=reason)
     from toto.tariffs.models import UsageRecord, UsageStatus
 
     records = UsageRecord.objects.filter(
@@ -207,3 +291,13 @@ def refund_for(source_type: str, source_id, metric_code: str = "", *, reason: st
         records = records.filter(metric_code=metric_code)
 
     return refund(records.order_by("-created_at").first(), description=reason)
+
+
+def _spend_mana(user, metric_code, quantity, unit, *, strict, **kwargs):
+    from toto.discipline import services
+
+    event = services.spend(
+        user, metric_code, quantity, strict=strict, unit=unit,
+        key=kwargs.get("idempotency_key", ""), source_type=kwargs.get("source_type", ""),
+        source_id=kwargs.get("source_id", ""), reason=kwargs.get("description", ""))
+    return (event, None) if event is not None else None
