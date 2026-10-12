@@ -2,6 +2,8 @@ import csv
 import io
 import json
 
+from .props import visible_items, visible_props
+
 
 def load_query_graph(query_id, refresh=False):
     """Return (nodes, edges) from cache; re-runs Neo4j if refresh=True or no cache."""
@@ -14,7 +16,8 @@ def load_query_graph(query_id, refresh=False):
     if not refresh:
         result = CypherQueryResult.objects.filter(query=query).first()
         if result and result.result_nodes is not None:
-            return result.result_nodes, result.result_edges or []
+            # A row saved before props.py may still hold the vectors.
+            return visible_items(result.result_nodes), visible_items(result.result_edges)
 
     from .connection import Neo4jClient, is_enabled
 
@@ -57,11 +60,11 @@ def build_networkx_graph(nodes, edges):
     G = nx.MultiDiGraph()
 
     for node in nodes:
-        props = node.get("props") or {}
+        props = visible_props(node.get("props"))
         G.add_node(node["id"], labels=node.get("labels", []), **props)
 
     for edge in edges:
-        props = edge.get("props") or {}
+        props = visible_props(edge.get("props"))
         G.add_edge(
             edge["start"],
             edge["end"],

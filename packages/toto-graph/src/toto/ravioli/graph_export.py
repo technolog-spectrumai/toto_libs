@@ -32,6 +32,8 @@ from toto.sql_neo4j_sync.loader import import_model, load_all_configs
 from toto.sql_neo4j_sync.planner import neo4j_props, normalize
 from toto.sql_neo4j_sync.projection import _get_value
 
+from .props import visible_props
+
 
 HISTORICAL_REL = "_HISTORICAL"
 
@@ -96,7 +98,10 @@ def archive_node_to_history(client, label, uuid):
         return
     archived_at = time.time()
     child_uuid = f"{uuid}~{int(archived_at * 1000)}-{uuid_lib.uuid4().hex[:6]}"
-    snapshot = {k: v for k, v in records[0]["props"].items() if k != "uuid"}
+    # Not the embedding (props.py): a snapshot keeps the canonical's label, so a copied
+    # vector would put every old version into the vector index and before the person
+    # on the History tab. The canonical keeps its own; it is derived data anyway.
+    snapshot = {k: v for k, v in visible_props(records[0]["props"]).items() if k != "uuid"}
     snapshot.update(
         {"uuid": child_uuid, "_prev_uuid": uuid, "_historical": True, "_archived_at": archived_at}
     )

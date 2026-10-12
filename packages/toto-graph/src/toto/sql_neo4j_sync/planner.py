@@ -1,6 +1,8 @@
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
 
+from toto.ravioli.props import visible_props
+
 from .loader import import_model, load_all_configs
 from .projection import _get_value, _neo4j_property_value, link_key
 
@@ -400,7 +402,9 @@ def compute_diff(expected_nodes, actual_nodes, expected_relationships, actual_re
 
         for uuid, actual in graph_nodes.items():
             if uuid not in nodes:
-                diff["nodes"]["delete"].append(actual)
+                # Delete needs only label and uuid; the stored plan (and the review
+                # modal, the admin) must not carry a node's embedding.
+                diff["nodes"]["delete"].append({**actual, "props": visible_props(actual.get("props"))})
 
     for key, expected in expected_relationships.items():
         actual = actual_relationships.get(key)
@@ -422,7 +426,9 @@ def compute_diff(expected_nodes, actual_nodes, expected_relationships, actual_re
 
     for key, actual in actual_relationships.items():
         if key not in expected_relationships:
-            diff["relationships"]["delete"].append(actual)
+            diff["relationships"]["delete"].append(
+                {**actual, "props": visible_props(actual.get("props"))}
+            )
 
     totals = {
         "expected_nodes": sum(len(nodes) for nodes in expected_nodes.values()),

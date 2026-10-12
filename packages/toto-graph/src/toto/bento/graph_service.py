@@ -19,6 +19,8 @@ from contextlib import contextmanager
 
 from django.utils.dateparse import parse_datetime
 
+from toto.ravioli.props import is_hidden, visible_props
+
 from .models import BentoCategory, BentoEdgeType
 from . import registry
 
@@ -137,7 +139,7 @@ def _split_props(schema, props):
             coerced = _coerce(index[key].get("type"), value)
             if coerced is not None:
                 declared[key] = coerced
-        else:
+        elif not is_hidden(key, value):  # an embedding is never someone's extra data
             extra[key] = value
     for name, field in index.items():
         if field.get("required") and declared.get(name) in (None, ""):
@@ -171,13 +173,17 @@ def _display_name(props):
 
 
 def _serialize_node(props, labels):
-    props = dict(props)
+    # Never an embedding (toto.ravioli.props): every page, form and API of a node is
+    # built from this dict, and an older edit may have copied one into ``extra``.
+    props = visible_props(props)
     extra = props.get("extra")
     if isinstance(extra, str):
         try:
             props["extra"] = json.loads(extra)
         except ValueError:
             props["extra"] = {}
+    if isinstance(props.get("extra"), dict):
+        props["extra"] = visible_props(props["extra"])
     label = next((lbl for lbl in labels if lbl in _labels_map()), labels[0] if labels else "")
     category = _labels_map().get(label)
     return {
@@ -348,7 +354,7 @@ def _edge_payload(edge_type, props):
 
 
 def _serialize_edge(rec):
-    props = dict(rec["props"])
+    props = visible_props(rec["props"])  # neo4j-graphrag can embed relationships too
     extra = props.get("extra")
     if isinstance(extra, str):
         try:

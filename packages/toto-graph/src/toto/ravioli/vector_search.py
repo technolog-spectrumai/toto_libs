@@ -9,6 +9,7 @@ import re
 from django.conf import settings
 
 from toto.ravioli.connection import Neo4jClient, Neo4jConnectionError
+from toto.ravioli.props import visible_props
 from toto.vicuna.embeddings import EmbeddingUnavailable, embed_text
 
 
@@ -78,7 +79,9 @@ def retrieve_vector_results(query: str, top_k: int = 25) -> list[dict]:
     records = _shared_vector_query(query, top_k)
     results = []
     for record in records:
-        raw_props = record.get("props") or {}
+        # The hit's own embedding is in its properties (it is how the index found it);
+        # drop it before _to_json_safe, which would turn a driver vector into text.
+        raw_props = visible_props(record.get("props"))
         props = {k: _to_json_safe(v) for k, v in raw_props.items()}
         score = record.get("score")
         results.append({

@@ -30,6 +30,21 @@ def _own_file(user, file_pk) -> VaultFile:
     return get_object_or_404(access.gate_by_bucket(user, files), pk=file_pk, owner=user)
 
 
+def _without_embeddings(content: str) -> str:
+    """The file's text without embedding vectors (2026-10-12), for the editor to show.
+
+    A file exported before ravioli's props rule holds every node's vector: hundreds of
+    floats in the JSON view and the properties panel. Rewritten only when something was
+    hidden, so a hand-made file keeps its layout; unparseable text is shown as it is.
+    Saving the shown text drops the vectors from the file, never from Neo4j: loading
+    uses ``SET n += $props``."""
+    try:
+        graph = neojson.loads(content)
+    except Exception:  # noqa: BLE001 — not NeoJSON (yet): the editor shows what is there
+        return content
+    return neojson.dumps(graph) if neojson.hide_embeddings(graph) else content
+
+
 @login_required
 def neojson_editor_view(request, file_pk):
     vault_file = _own_file(request.user, file_pk)
@@ -42,6 +57,8 @@ def neojson_editor_view(request, file_pk):
         content = ""
     if not content.strip():
         content = neojson.dumps(neojson.new_graph())
+    else:
+        content = _without_embeddings(content)
 
     directory_name = (
         vault_file.directory.name if vault_file.directory

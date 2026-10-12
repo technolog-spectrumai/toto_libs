@@ -1,6 +1,7 @@
 """Neo4j search service — the only place that runs search Cypher queries."""
 
 from ..connection import Neo4jClient, Neo4jConnectionError
+from ..props import visible_props
 
 # ---------------------------------------------------------------------------
 # Mode constants
@@ -75,7 +76,7 @@ def _record_to_dict(record, score_key=None):
     """Convert a raw neo4j Record into a plain JSON-safe dict."""
     node = record.get("n") or record.get("node")
     labels = list(record.get("labels") or (node.labels if node else []))
-    raw_props = dict(node) if node else {}
+    raw_props = visible_props(node) if node else {}
     props = {k: _to_json_safe(v) for k, v in raw_props.items()}
     result = {"labels": labels, "props": props}
     if score_key and record.get(score_key) is not None:
@@ -87,7 +88,8 @@ def _normalize_result(r: dict) -> dict:
     """Ensure every result has the canonical shape: labels, props, score."""
     return {
         "labels": list(r.get("labels") or []),
-        "props": r.get("props") or {},
+        # Every mode passes here, semantic too: never an embedding in a result.
+        "props": visible_props(r.get("props")),
         "score": r.get("score", None),
     }
 

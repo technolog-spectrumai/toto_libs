@@ -11,6 +11,7 @@ from django.views.decorators.http import require_GET, require_POST
 from django.db import models as _models
 
 from .models import CypherQuery
+from .props import hide_vectors_in_text, visible_items, visible_props
 from toto.celery_utils import celery_available
 from toto.core.safe_next import safe_next
 from toto.ui import PageProcessor
@@ -195,9 +196,10 @@ def query_cached_data(request, query_id):
     result = CypherQueryResult.objects.filter(query=selected_query).first()
     if result is None or result.result_nodes is None:
         return JsonResponse({"error": "No cached result available."}, status=404)
+    # A result saved before props.py still holds the vectors: never show them.
     return JsonResponse({
-        "nodes": result.result_nodes,
-        "edges": result.result_edges or [],
+        "nodes": visible_items(result.result_nodes),
+        "edges": visible_items(result.result_edges),
         "query": selected_query.query,
         "last_run_at": result.last_run_at.isoformat() if result.last_run_at else None,
         "selected_query": {
@@ -608,7 +610,8 @@ def search_status_view(request, run_id):
         node_run = run.node_runs.order_by("id").last()
         output = (node_run.output_data or {}) if node_run else {}
         data = output.get("data") or {}
-        results = data.get("results", [])
+        # A run stored before props.py still holds the vectors in its results.
+        results = visible_items(data.get("results", []))
         try:
             return JsonResponse({
                 "status": "done",
@@ -674,6 +677,17 @@ def start_graphrag_describe_view(request):
     return JsonResponse({"run_id": run.pk, "wf_run_url": f"/workflows/runs/{run.pk}/"})
 
 
+def _visible_rag_graph(graph):
+    """A stored GraphRAG subgraph without embeddings: runs saved before props.py
+    kept every node's full ``properties``."""
+    graph = graph if isinstance(graph, dict) else {}
+    return {
+        **graph,
+        "nodes": visible_items(graph.get("nodes"), key="properties"),
+        "edges": list(graph.get("edges") or []),
+    }
+
+
 @require_GET
 @superuser_required
 def graphrag_describe_status_view(request, run_id):
@@ -691,8 +705,8 @@ def graphrag_describe_status_view(request, run_id):
         return JsonResponse({
             "status": "done",
             "answer": data.get("answer", ""),
-            "context": data.get("context", ""),
-            "graph": data.get("graph") or {"nodes": [], "edges": []},
+            "context": hide_vectors_in_text(data.get("context", "")),
+            "graph": _visible_rag_graph(data.get("graph")),
             "agent": data.get("agent", ""),
             "question": data.get("question", ""),
         })
@@ -980,8 +994,9 @@ def history_data(request):
 
     def jsonable(props):
         # Neo4j temporal/spatial values aren't JSON-serialisable; stringify them.
+        # Never an embedding (props.py) — dropped before str() turns it into text.
         out = {}
-        for k, v in (props or {}).items():
+        for k, v in visible_props(props).items():
             out[k] = v if isinstance(v, (str, int, float, bool, type(None))) else str(v)
         return out
 

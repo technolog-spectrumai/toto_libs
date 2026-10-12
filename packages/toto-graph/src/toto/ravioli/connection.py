@@ -2,6 +2,8 @@ import logging
 from django.conf import settings
 from urllib.parse import urlparse, urlunparse
 
+from toto.ravioli.props import visible_props
+
 logger = logging.getLogger(__name__)
 
 
@@ -157,11 +159,13 @@ class Neo4jClient:
 
     @staticmethod
     def _handle_value(v, nodes, edges):
+        # Never a node's embedding (props.py): every page, stored result, API and
+        # export of a query's graph is built from these dicts.
         if hasattr(v, "labels"):
             nodes[str(v.id)] = {
                 "id": str(v.id),
                 "labels": list(v.labels),
-                "props": dict(v),
+                "props": visible_props(v),
             }
         elif hasattr(v, "type"):
             edges.append({
@@ -169,7 +173,7 @@ class Neo4jClient:
                 "type": v.type,
                 "start": str(v.start_node.id),
                 "end": str(v.end_node.id),
-                "props": dict(v),
+                "props": visible_props(v),
             })
 
     def extract_graph(self, records):
@@ -196,7 +200,7 @@ class Neo4jClient:
         if not records:
             return None
         n = records[0]["n"]
-        return {"id": str(n.id), "labels": list(n.labels), "props": dict(n)}
+        return {"id": str(n.id), "labels": list(n.labels), "props": visible_props(n)}
 
     def get_relation_by_id(self, rel_id):
         if not rel_id or rel_id == "None":

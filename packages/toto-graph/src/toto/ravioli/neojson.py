@@ -233,12 +233,18 @@ def from_ravioli(nodes, edges, *, metadata=None, directed: bool = True) -> "NeoG
 
     ``nodes``: list of ``{"id", "labels", "props"}``
     ``edges``: list of ``{"id", "type", "start", "end", "props"}``
+
+    Never an embedding (``toto.ravioli.props``): every NeoJSON export passes here, and
+    a cached result saved before that rule may still hold one. Loading the file back
+    uses ``SET n += $props``, so the vectors in Neo4j are kept.
     """
+    from toto.ravioli.props import visible_props
+
     neo_nodes = [
         NeoNode(
             id=str(n.get("id")),
             labels=list(n.get("labels") or []),
-            properties=dict(n.get("props") or {}),
+            properties=visible_props(n.get("props")),
         )
         for n in (nodes or [])
     ]
@@ -248,7 +254,7 @@ def from_ravioli(nodes, edges, *, metadata=None, directed: bool = True) -> "NeoG
             start=str(e.get("start")),
             end=str(e.get("end")),
             id=str(e["id"]) if e.get("id") is not None else None,
-            properties=dict(e.get("props") or {}),
+            properties=visible_props(e.get("props")),
         )
         for e in (edges or [])
     ]
@@ -258,6 +264,20 @@ def from_ravioli(nodes, edges, *, metadata=None, directed: bool = True) -> "NeoG
         directed=directed,
         metadata=dict(metadata or {}),
     )
+
+
+def hide_embeddings(graph: "NeoGraph") -> int:
+    """Drop every embedding (``toto.ravioli.props``) from ``graph``'s node and
+    relationship properties, in place; return how many properties went. For a file
+    written before exports learnt the rule, shown in the editor."""
+    from toto.ravioli.props import visible_props
+
+    hidden = 0
+    for member in list(graph.nodes) + list(graph.relationships):
+        kept = visible_props(member.properties)
+        hidden += len(member.properties or {}) - len(kept)
+        member.properties = kept
+    return hidden
 
 
 def to_networkx(graph: "NeoGraph"):

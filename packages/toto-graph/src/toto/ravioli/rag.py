@@ -20,7 +20,9 @@ from neo4j_graphrag.embeddings.base import Embedder
 from neo4j_graphrag.generation import GraphRAG
 from neo4j_graphrag.retrievers import Text2CypherRetriever, VectorCypherRetriever
 from neo4j_graphrag.retrievers.base import Retriever
-from neo4j_graphrag.types import RawSearchResult
+from neo4j_graphrag.types import RawSearchResult, RetrieverResultItem
+
+from toto.ravioli.props import hidden_property_names, is_hidden, visible_props
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +63,7 @@ def _extract_graph(records) -> dict:
         if hasattr(value, "labels") and hasattr(value, "element_id"):  # Node
             eid = value.element_id
             if eid not in nodes:
-                props = dict(value)
+                props = visible_props(value)  # never an embedding (props.py)
                 nodes[eid] = {
                     "id": eid,
                     "label": _node_display(props),
@@ -101,6 +103,30 @@ def _extract_graph(records) -> dict:
         for v in values:
             add(v)
     return {"nodes": list(nodes.values()), "edges": list(edges.values())}
+
+
+def _plain(value, names):
+    """A record value as plain data without embeddings, for the model's context.
+
+    The default formatter is ``str(record)``, and a neo4j Node prints every property —
+    a Text2Cypher ``RETURN c`` put the chunk's whole vector into the prompt and onto
+    the "raw context" panel. Here a Node becomes its labels and visible properties, a
+    Relationship its type and visible properties, a Path its nodes and relationships;
+    maps lose their hidden keys and lists their vectors."""
+    if hasattr(value, "labels") and hasattr(value, "element_id"):  # Node
+        return {"labels": sorted(value.labels), **_plain(dict(value), names)}
+    if hasattr(value, "type") and hasattr(value, "start_node") and hasattr(value, "end_node"):  # Rel
+        return {"type": value.type, **_plain(dict(value), names)}
+    if hasattr(value, "nodes") and hasattr(value, "relationships"):  # Path
+        return {
+            "nodes": [_plain(n, names) for n in value.nodes],
+            "relationships": [_plain(r, names) for r in value.relationships],
+        }
+    if isinstance(value, dict):
+        return {k: _plain(v, names) for k, v in value.items() if not is_hidden(k, v, names=names)}
+    if isinstance(value, (list, tuple)):
+        return [_plain(v, names) for v in value if not is_hidden("", v, names=names)]
+    return value
 
 
 class VicunaEmbedder(Embedder):
@@ -146,6 +172,19 @@ class CompositeRetriever(Retriever):
                 self.last_errors.append(f"text2cypher: {exc}")
         self.last_graph = _extract_graph(records)
         return RawSearchResult(records=records, metadata={"__retriever": "CompositeRetriever"})
+
+    def default_record_formatter(self, record) -> RetrieverResultItem:
+        """``str(record)``'s shape, ``<Record key=value ...>``, without embeddings:
+        neither a column that is one (``RETURN c.embedding``) nor one inside a node."""
+        names = hidden_property_names()
+        try:
+            items = list(record.items())
+        except Exception:  # noqa: BLE001 — not a neo4j Record: what the base class would do
+            return super().default_record_formatter(record)
+        shown = " ".join(
+            f"{k}={_plain(v, names)!r}" for k, v in items if not is_hidden(k, v, names=names)
+        )
+        return RetrieverResultItem(content=f"<Record {shown}>", metadata=record.get("metadata"))
 
 
 def build_retriever(driver, *, llm=None, text2cypher=True) -> CompositeRetriever:
